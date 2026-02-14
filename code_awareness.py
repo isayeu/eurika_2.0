@@ -1,0 +1,346 @@
+"""
+Code Awareness v0.1
+
+Read-only code analysis. No modifications. No patches.
+SPEC: scan project, AST analysis, find smells, self_map.json.
+"""
+
+import ast
+import json
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+
+@dataclass
+class FileInfo:
+    path: str
+    lines: int
+    functions: List[str]
+    classes: List[str]
+
+
+@dataclass
+class Smell:
+    file: str
+    location: str  # function/class name or "module"
+    kind: str
+    message: str
+    metric: Optional[int] = None
+
+
+# Thresholds for smell detection
+MAX_FUNCTION_LINES = 50
+MAX_NESTING_DEPTH = 4
+MIN_DUPLICATE_LINES = 5  # Ignore tiny functions
+
+
+class CodeAwareness:
+    """
+    Read-only file system and AST analysis.
+    Domain: own project only (Eurika).
+    """
+
+    def __init__(self, root: Optional[Path] = None):
+        self.root = root or Path(__file__).resolve().parent
+
+    def scan_python_files(self) -> List[Path]:
+        """
+        List all .py files in project, excluding __pycache__ and shelved agent runtime stack.
+
+        Shelved modules (v0.1 observe-only, not part of active architecture):
+        - agent_runtime.py
+        - selector.py
+        - reasoner_dummy.py
+        - executor_sandbox.py
+        """
+        shelved = {
+            "agent_runtime.py",
+            "selector.py",
+            "reasoner_dummy.py",
+            "executor_sandbox.py",
+        }
+        skip_dirs = {"venv", ".venv", "node_modules", ".git"}
+        files: List[Path] = []
+        for p in self.root.rglob("*.py"):
+            if "__pycache__" in str(p):
+                continue
+            if ".eurika_backups" in p.parts:
+                continue
+            if any(skip in p.parts for skip in skip_dirs):
+                continue
+            if p.name in shelved:
+                continue
+            files.append(p)
+        return sorted(files)
+
+    def read_file(self, path: Path) -> str:
+        """Read file contents. Read-only."""
+        return path.read_text(encoding="utf-8")
+
+    def extract_imports(self, path: Path) -> List[Dict[str, Any]]:
+        """Extract imports from Python file."""
+        imports = []
+        try:
+            content = self.read_file(path)
+            tree = ast.parse(content)
+            imports.extend(self._extract_import_nodes(tree))
+        except (SyntaxError, OSError):
+            pass
+        return imports
+
+    def _extract_import_nodes(self, tree: ast.AST) -> List[Dict[str, Any]]:
+        """Walk AST and collect import / from-import nodes into a flat list."""
+        imports: List[Dict[str, Any]] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imports.extend(self._import_to_dicts(node))
+            elif isinstance(node, ast.ImportFrom):
+                imports.extend(self._importfrom_to_dicts(node))
+        return imports
+
+    def _import_to_dicts(self, node: ast.Import) -> List[Dict[str, Any]]:
+        """Convert ast.Import node to list of dicts."""
+        return [
+            {"module": alias.name, "alias": alias.asname}
+            for alias in node.names
+        ]
+
+    def _importfrom_to_dicts(self, node: ast.ImportFrom) -> List[Dict[str, Any]]:
+        """Convert ast.ImportFrom node to list of dicts."""
+        module = node.module or ""
+        return [
+            {"module": module, "name": alias.name, "alias": alias.asname}
+            for alias in node.names
+        ]
+
+    def analyze_file(self, path: Path) -> Optional[FileInfo]:
+        """Parse Python file, extract structure."""
+        try:
+            content = self.read_file(path)
+            tree = ast.parse(content)
+            rel = path.relative_to(self.root) if path.is_relative_to(self.root) else path
+
+            functions = []
+            classes = []
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef):
+                    name = node.name
+                    if not name.startswith("_"):
+                        functions.append(name)
+                elif isinstance(node, ast.ClassDef):
+                    classes.append(node.name)
+
+            return FileInfo(
+                path=str(rel),
+                lines=len(content.splitlines()),
+                functions=functions,
+                classes=classes,
+            )
+        except (SyntaxError, OSError):
+            return None
+
+    def scan_project(self) -> List[FileInfo]:
+        """Full project scan. Returns list of FileInfo."""
+        infos = []
+        for p in self.scan_python_files():
+            info = self.analyze_file(p)
+            if info:
+                infos.append(info)
+        return infos
+
+    def _nesting_depth(self, node: ast.AST) -> int:
+        """Max nesting depth of node (if/for/while/try/with)."""
+        if isinstance(node, (ast.If, ast.For, ast.While, ast.Try, ast.With)):
+            child_depths = [self._nesting_depth(n) for n in ast.iter_child_nodes(node)]
+            return 1 + max(child_depths) if child_depths else 1
+        return max((self._nesting_depth(n) for n in ast.iter_child_nodes(node)), default=0)
+
+    def _function_lines(self, node: ast.FunctionDef, source_lines: List[str]) -> int:
+        """Count logical lines of function body."""
+        if not node.end_lineno or not node.lineno:
+            return 0
+        return node.end_lineno - node.lineno + 1
+
+    def find_smells(self, path: Path) -> List[Smell]:
+        """Find code smells: long functions, deep nesting."""
+        smells = []
+        try:
+            content = self.read_file(path)
+            tree = ast.parse(content)
+            lines = content.splitlines()
+            rel = path.relative_to(self.root) if path.is_relative_to(self.root) else path
+            file_str = str(rel)
+
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef):
+                    loc = node.name
+                    nlines = self._function_lines(node, lines)
+                    if nlines > MAX_FUNCTION_LINES:
+                        smells.append(
+                            Smell(
+                                file=file_str,
+                                location=loc,
+                                kind="long_function",
+                                message=f"Function has {nlines} lines (>{MAX_FUNCTION_LINES})",
+                                metric=nlines,
+                            )
+                        )
+                    depth = self._nesting_depth(node)
+                    if depth > MAX_NESTING_DEPTH:
+                        smells.append(
+                            Smell(
+                                file=file_str,
+                                location=loc,
+                                kind="deep_nesting",
+                                message=f"Nesting depth {depth} (>{MAX_NESTING_DEPTH})",
+                                metric=depth,
+                            )
+                        )
+        except (SyntaxError, OSError):
+            pass
+        return smells
+
+    def _normalize_body(self, text: str) -> str:
+        """Normalize code for duplicate comparison."""
+        return " ".join(line.strip() for line in text.splitlines() if line.strip())
+
+    def find_duplicates(self) -> List[Dict[str, Any]]:
+        """Find functions with identical normalized bodies (copy-paste)."""
+        body_to_locations: Dict[str, List[Dict[str, str]]] = {}
+        for p in self.scan_python_files():
+            self._collect_file_duplicates(p, body_to_locations)
+
+        duplicates = []
+        for body, locs in body_to_locations.items():
+            if len(locs) >= 2:
+                duplicates.append({"locations": locs, "count": len(locs)})
+        return duplicates
+
+    def _collect_file_duplicates(
+        self,
+        path: Path,
+        body_to_locations: Dict[str, List[Dict[str, str]]],
+    ) -> None:
+        """Update body_to_locations with duplicate candidates from a single file."""
+        try:
+            content = self.read_file(path)
+            tree = ast.parse(content)
+            file_str = self._path_to_file_str(path)
+            for node in ast.walk(tree):
+                candidate = self._function_duplicate_candidate(content, node, file_str)
+                if candidate:
+                    normalized, loc = candidate
+                    body_to_locations.setdefault(normalized, []).append(loc)
+        except (SyntaxError, OSError):
+            pass
+
+    def _path_to_file_str(self, path: Path) -> str:
+        """Convert path to relative file string for duplicate locations."""
+        rel = path.relative_to(self.root) if path.is_relative_to(self.root) else path
+        return str(rel).replace("\\", "/")
+
+    def _function_duplicate_candidate(
+        self, content: str, node: ast.AST, file_str: str
+    ) -> Optional[tuple[str, Dict[str, Any]]]:
+        """Extract normalized body and location if function qualifies as duplicate candidate. Returns None to skip."""
+        if not isinstance(node, ast.FunctionDef):
+            return None
+        if not (node.lineno and node.end_lineno):
+            return None
+        nlines = node.end_lineno - node.lineno + 1
+        if nlines < MIN_DUPLICATE_LINES:
+            return None
+        segment = ast.get_source_segment(content, node) or ""
+        normalized = self._normalize_body(segment)
+        if len(normalized) < 50:
+            return None
+        loc = {"file": file_str, "function": node.name, "lines": int(nlines)}
+        return (normalized, loc)
+
+    def build_self_map(self) -> dict:
+        """Build formalized self-map: modules, files, dependencies."""
+        infos = self.scan_project()
+        modules = []
+        dependencies: Dict[str, List[str]] = {}
+
+        for p in self.scan_python_files():
+            rel = p.relative_to(self.root) if p.is_relative_to(self.root) else p
+            rel_str = str(rel).replace("\\", "/")
+            info = self.analyze_file(p)
+            imports = self.extract_imports(p)
+
+            if info:
+                modules.append({
+                    "path": info.path,
+                    "lines": info.lines,
+                    "functions": info.functions,
+                    "classes": info.classes,
+                })
+
+            # Collect internal imports (from project)
+            internal = []
+            for imp in imports:
+                mod = imp.get("module", "")
+                if mod and not mod.startswith("_"):
+                    parts = mod.split(".")[0]
+                    if (self.root / f"{parts}.py").exists() or (self.root / parts / "__init__.py").exists():
+                        internal.append(mod)
+            if internal:
+                dependencies[rel_str] = list(dict.fromkeys(internal))  # unique order
+
+        return {
+            "modules": modules,
+            "dependencies": dependencies,
+            "summary": {"files": len(modules), "total_lines": sum(m["lines"] for m in modules)},
+        }
+
+    def write_self_map(self, output_path: Optional[Path] = None) -> Path:
+        """Write self_map.json to project root."""
+        path = (output_path or self.root) / "self_map.json"
+        data = self.build_self_map()
+        path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        return path
+
+    def analyze_project(self) -> dict:
+        """
+        Full analysis: structure + smells + self_map.
+        Returns dict suitable for report and memory.
+        """
+        infos = self.scan_project()
+        all_smells: List[Smell] = []
+        for p in self.scan_python_files():
+            all_smells.extend(self.find_smells(p))
+
+        duplicates = self.find_duplicates()
+        self_map = self.build_self_map()
+
+        return {
+            "structure": [
+                {
+                    "path": i.path,
+                    "lines": i.lines,
+                    "functions": i.functions,
+                    "classes": i.classes,
+                }
+                for i in infos
+            ],
+            "smells": [
+                {
+                    "file": s.file,
+                    "location": s.location,
+                    "kind": s.kind,
+                    "message": s.message,
+                    "metric": s.metric,
+                }
+                for s in all_smells
+            ],
+            "self_map": self_map,
+            "duplicates": duplicates,
+            "summary": {
+                "files": len(infos),
+                "total_lines": sum(i.lines for i in infos),
+                "smells_count": len(all_smells),
+                "duplicates_count": len(duplicates),
+            },
+        }

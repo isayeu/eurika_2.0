@@ -1,0 +1,1154 @@
+{
+  "learning": [
+    {
+      "timestamp": 1770860690.274134,
+      "project_root": "/mnt/storage/project/eurika_2.0",
+      "modules": [
+        "project_graph_api.py",
+        "architecture_pipeline.py",
+        "architecture_diagnostics.py",
+        "agent_core_arch_review.py",
+        "eurika_cli.py"
+      ],
+      "operations": [
+        {
+          "target_file": "project_graph_api.py",
+          "kind": "refactor_module",
+          "description": "[1] Refactor module project_graph_api.py based on detected architecture smells. Reasons: god_module (severity=16.00), bottleneck (severity=15.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor project_graph_api.py according to architecture plan.\n# Suggested steps:\n# - Split responsibilities or introduce a facade where appropriate.\n# - Reduce excessive fan-in/fan-out.\n# - Align with semantic roles and system topology.\n"
+        },
+        {
+          "target_file": "architecture_pipeline.py",
+          "kind": "refactor_module",
+          "description": "[2] Refactor module architecture_pipeline.py based on detected architecture smells. Reasons: god_module (severity=12.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor architecture_pipeline.py according to architecture plan.\n# Suggested steps:\n# - Split responsibilities or introduce a facade where appropriate.\n# - Reduce excessive fan-in/fan-out.\n# - Align with semantic roles and system topology.\n"
+        },
+        {
+          "target_file": "architecture_diagnostics.py",
+          "kind": "refactor_module",
+          "description": "[3] Refactor module architecture_diagnostics.py based on detected architecture smells. Reasons: god_module (severity=11.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor architecture_diagnostics.py according to architecture plan.\n# Suggested steps:\n# - Split responsibilities or introduce a facade where appropriate.\n# - Reduce excessive fan-in/fan-out.\n# - Align with semantic roles and system topology.\n"
+        },
+        {
+          "target_file": "agent_core_arch_review.py",
+          "kind": "refactor_module",
+          "description": "[4] Refactor module agent_core_arch_review.py based on detected architecture smells. Reasons: god_module (severity=11.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor agent_core_arch_review.py according to architecture plan.\n# Suggested steps:\n# - Split responsibilities or introduce a facade where appropriate.\n# - Reduce excessive fan-in/fan-out.\n# - Align with semantic roles and system topology.\n"
+        },
+        {
+          "target_file": "eurika_cli.py",
+          "kind": "refactor_module",
+          "description": "[5] Refactor module eurika_cli.py based on detected architecture smells. Reasons: hub (severity=7.00)",
+          "diff": "# TODO: Refactor eurika_cli.py according to architecture plan.\n# Suggested steps:\n# - Split responsibilities or introduce a facade where appropriate.\n# - Reduce excessive fan-in/fan-out.\n# - Align with semantic roles and system topology.\n"
+        }
+      ],
+      "risks": [
+        "god_module @ project_graph_api.py (severity=16.00)",
+        "bottleneck @ project_graph_api.py (severity=15.00)",
+        "god_module @ architecture_pipeline.py (severity=12.00)",
+        "god_module @ architecture_diagnostics.py (severity=11.00)",
+        "god_module @ agent_core_arch_review.py (severity=11.00)"
+      ],
+      "verify_success": true
+    },
+    {
+      "timestamp": 1770860786.3054016,
+      "project_root": "/mnt/storage/project/eurika_2.0",
+      "modules": [
+        "project_graph_api.py",
+        "architecture_pipeline.py",
+        "architecture_diagnostics.py",
+        "agent_core_arch_review.py",
+        "eurika_cli.py"
+      ],
+      "operations": [
+        {
+          "target_file": "project_graph_api.py",
+          "kind": "refactor_module",
+          "description": "[1] Refactor module project_graph_api.py based on detected architecture smells. Reasons: god_module (severity=16.00), bottleneck (severity=15.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor project_graph_api.py according to architecture plan.\n# Suggested steps:\n# - Split responsibilities or introduce a facade where appropriate.\n# - Reduce excessive fan-in/fan-out.\n# - Align with semantic roles and system topology.\n"
+        },
+        {
+          "target_file": "architecture_pipeline.py",
+          "kind": "refactor_module",
+          "description": "[2] Refactor module architecture_pipeline.py based on detected architecture smells. Reasons: god_module (severity=12.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor architecture_pipeline.py according to architecture plan.\n# Suggested steps:\n# - Split responsibilities or introduce a facade where appropriate.\n# - Reduce excessive fan-in/fan-out.\n# - Align with semantic roles and system topology.\n"
+        },
+        {
+          "target_file": "architecture_diagnostics.py",
+          "kind": "refactor_module",
+          "description": "[3] Refactor module architecture_diagnostics.py based on detected architecture smells. Reasons: god_module (severity=11.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor architecture_diagnostics.py according to architecture plan.\n# Suggested steps:\n# - Split responsibilities or introduce a facade where appropriate.\n# - Reduce excessive fan-in/fan-out.\n# - Align with semantic roles and system topology.\n"
+        },
+        {
+          "target_file": "agent_core_arch_review.py",
+          "kind": "refactor_module",
+          "description": "[4] Refactor module agent_core_arch_review.py based on detected architecture smells. Reasons: god_module (severity=11.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor agent_core_arch_review.py according to architecture plan.\n# Suggested steps:\n# - Split responsibilities or introduce a facade where appropriate.\n# - Reduce excessive fan-in/fan-out.\n# - Align with semantic roles and system topology.\n"
+        },
+        {
+          "target_file": "eurika_cli.py",
+          "kind": "refactor_module",
+          "description": "[5] Refactor module eurika_cli.py based on detected architecture smells. Reasons: hub (severity=7.00)",
+          "diff": "# TODO: Refactor eurika_cli.py according to architecture plan.\n# Suggested steps:\n# - Split responsibilities or introduce a facade where appropriate.\n# - Reduce excessive fan-in/fan-out.\n# - Align with semantic roles and system topology.\n"
+        }
+      ],
+      "risks": [
+        "god_module @ project_graph_api.py (severity=16.00)",
+        "bottleneck @ project_graph_api.py (severity=15.00)",
+        "god_module @ architecture_pipeline.py (severity=12.00)",
+        "god_module @ architecture_diagnostics.py (severity=11.00)",
+        "god_module @ agent_core_arch_review.py (severity=11.00)"
+      ],
+      "verify_success": true
+    },
+    {
+      "timestamp": 1770860832.6988401,
+      "project_root": "/mnt/storage/project/eurika_2.0",
+      "modules": [
+        "project_graph_api.py",
+        "architecture_pipeline.py",
+        "agent_core_arch_review.py",
+        "architecture_diagnostics.py",
+        "eurika_cli.py"
+      ],
+      "operations": [
+        {
+          "target_file": "project_graph_api.py",
+          "kind": "refactor_module",
+          "description": "[1] Refactor module project_graph_api.py based on detected architecture smells. Reasons: god_module (severity=16.00), bottleneck (severity=15.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor project_graph_api.py according to architecture plan.\n# Suggested steps:\n# - Split responsibilities or introduce a facade where appropriate.\n# - Reduce excessive fan-in/fan-out.\n# - Align with semantic roles and system topology.\n"
+        },
+        {
+          "target_file": "architecture_pipeline.py",
+          "kind": "refactor_module",
+          "description": "[2] Refactor module architecture_pipeline.py based on detected architecture smells. Reasons: god_module (severity=12.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor architecture_pipeline.py according to architecture plan.\n# Suggested steps:\n# - Split responsibilities or introduce a facade where appropriate.\n# - Reduce excessive fan-in/fan-out.\n# - Align with semantic roles and system topology.\n"
+        },
+        {
+          "target_file": "agent_core_arch_review.py",
+          "kind": "refactor_module",
+          "description": "[3] Refactor module agent_core_arch_review.py based on detected architecture smells. Reasons: god_module (severity=11.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor agent_core_arch_review.py according to architecture plan.\n# Suggested steps:\n# - Split responsibilities or introduce a facade where appropriate.\n# - Reduce excessive fan-in/fan-out.\n# - Align with semantic roles and system topology.\n"
+        },
+        {
+          "target_file": "architecture_diagnostics.py",
+          "kind": "refactor_module",
+          "description": "[4] Refactor module architecture_diagnostics.py based on detected architecture smells. Reasons: god_module (severity=11.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor architecture_diagnostics.py according to architecture plan.\n# Suggested steps:\n# - Split responsibilities or introduce a facade where appropriate.\n# - Reduce excessive fan-in/fan-out.\n# - Align with semantic roles and system topology.\n"
+        },
+        {
+          "target_file": "eurika_cli.py",
+          "kind": "refactor_module",
+          "description": "[5] Refactor module eurika_cli.py based on detected architecture smells. Reasons: hub (severity=7.00)",
+          "diff": "# TODO: Refactor eurika_cli.py according to architecture plan.\n# Suggested steps:\n# - Split responsibilities or introduce a facade where appropriate.\n# - Reduce excessive fan-in/fan-out.\n# - Align with semantic roles and system topology.\n"
+        }
+      ],
+      "risks": [
+        "god_module @ project_graph_api.py (severity=16.00)",
+        "bottleneck @ project_graph_api.py (severity=15.00)",
+        "god_module @ architecture_pipeline.py (severity=12.00)",
+        "god_module @ agent_core_arch_review.py (severity=11.00)",
+        "god_module @ architecture_diagnostics.py (severity=11.00)"
+      ],
+      "verify_success": true
+    },
+    {
+      "timestamp": 1770861300.1998038,
+      "project_root": "/mnt/storage/project/eurika_2.0",
+      "modules": [],
+      "operations": [
+        {
+          "target_file": "project_graph_api.py",
+          "kind": "refactor_module",
+          "description": "[1] Refactor module project_graph_api.py based on detected architecture smells. Reasons: god_module (severity=16.00), bottleneck (severity=15.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor project_graph_api.py according to architecture plan.\n# Suggested steps:\n# - Split responsibilities or introduce a facade where appropriate.\n# - Reduce excessive fan-in/fan-out.\n# - Align with semantic roles and system topology.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "architecture_pipeline.py",
+          "kind": "refactor_module",
+          "description": "[2] Refactor module architecture_pipeline.py based on detected architecture smells. Reasons: god_module (severity=12.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor architecture_pipeline.py according to architecture plan.\n# Suggested steps:\n# - Split responsibilities or introduce a facade where appropriate.\n# - Reduce excessive fan-in/fan-out.\n# - Align with semantic roles and system topology.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "architecture_diagnostics.py",
+          "kind": "refactor_module",
+          "description": "[3] Refactor module architecture_diagnostics.py based on detected architecture smells. Reasons: god_module (severity=11.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor architecture_diagnostics.py according to architecture plan.\n# Suggested steps:\n# - Split responsibilities or introduce a facade where appropriate.\n# - Reduce excessive fan-in/fan-out.\n# - Align with semantic roles and system topology.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "agent_core_arch_review.py",
+          "kind": "refactor_module",
+          "description": "[4] Refactor module agent_core_arch_review.py based on detected architecture smells. Reasons: god_module (severity=11.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor agent_core_arch_review.py according to architecture plan.\n# Suggested steps:\n# - Split responsibilities or introduce a facade where appropriate.\n# - Reduce excessive fan-in/fan-out.\n# - Align with semantic roles and system topology.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "eurika_cli.py",
+          "kind": "refactor_module",
+          "description": "[5] Refactor module eurika_cli.py based on detected architecture smells. Reasons: hub (severity=7.00)",
+          "diff": "# TODO: Refactor eurika_cli.py according to architecture plan.\n# Suggested steps:\n# - Split responsibilities or introduce a facade where appropriate.\n# - Reduce excessive fan-in/fan-out.\n# - Align with semantic roles and system topology.\n",
+          "smell_type": "hub"
+        }
+      ],
+      "risks": [
+        "god_module @ project_graph_api.py (severity=16.00)",
+        "bottleneck @ project_graph_api.py (severity=15.00)",
+        "god_module @ architecture_pipeline.py (severity=12.00)",
+        "god_module @ architecture_diagnostics.py (severity=11.00)",
+        "god_module @ agent_core_arch_review.py (severity=11.00)"
+      ],
+      "verify_success": true
+    },
+    {
+      "timestamp": 1770862388.8231986,
+      "project_root": "/mnt/storage/project/eurika_2.0",
+      "modules": [
+        "project_graph_api.py",
+        "architecture_pipeline.py",
+        "architecture_diagnostics.py",
+        "agent_core_arch_review.py",
+        "eurika_cli.py"
+      ],
+      "operations": [
+        {
+          "target_file": "project_graph_api.py",
+          "kind": "refactor_module",
+          "description": "[1] Refactor module project_graph_api.py based on detected architecture smells. Reasons: god_module (severity=16.00), bottleneck (severity=15.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor project_graph_api.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "architecture_pipeline.py",
+          "kind": "refactor_module",
+          "description": "[2] Refactor module architecture_pipeline.py based on detected architecture smells. Reasons: god_module (severity=12.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor architecture_pipeline.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "architecture_diagnostics.py",
+          "kind": "refactor_module",
+          "description": "[3] Refactor module architecture_diagnostics.py based on detected architecture smells. Reasons: god_module (severity=11.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor architecture_diagnostics.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "agent_core_arch_review.py",
+          "kind": "refactor_module",
+          "description": "[4] Refactor module agent_core_arch_review.py based on detected architecture smells. Reasons: god_module (severity=11.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor agent_core_arch_review.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "eurika_cli.py",
+          "kind": "refactor_module",
+          "description": "[5] Refactor module eurika_cli.py based on detected architecture smells. Reasons: hub (severity=8.00)",
+          "diff": "# TODO: Refactor eurika_cli.py (hub -> refactor_module)\n# Suggested steps:\n# - Split outgoing dependencies across clearer layers or services.\n# - Introduce intermediate abstractions to decouple from concrete implementations.\n# - Align with semantic roles and system topology.\n",
+          "smell_type": "hub"
+        }
+      ],
+      "risks": [
+        "god_module @ project_graph_api.py (severity=16.00)",
+        "bottleneck @ project_graph_api.py (severity=15.00)",
+        "god_module @ architecture_pipeline.py (severity=12.00)",
+        "god_module @ architecture_diagnostics.py (severity=11.00)",
+        "god_module @ agent_core_arch_review.py (severity=11.00)"
+      ],
+      "verify_success": true
+    },
+    {
+      "timestamp": 1770863364.0722218,
+      "project_root": "/mnt/storage/project/eurika_2.0",
+      "modules": [
+        "project_graph_api.py",
+        "architecture_pipeline.py",
+        "architecture_diagnostics.py",
+        "agent_core_arch_review.py",
+        "eurika_cli.py"
+      ],
+      "operations": [
+        {
+          "target_file": "project_graph_api.py",
+          "kind": "refactor_module",
+          "description": "[1] Refactor module project_graph_api.py based on detected architecture smells. Reasons: god_module (severity=16.00), bottleneck (severity=15.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor project_graph_api.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "architecture_pipeline.py",
+          "kind": "refactor_module",
+          "description": "[2] Refactor module architecture_pipeline.py based on detected architecture smells. Reasons: god_module (severity=12.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor architecture_pipeline.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "architecture_diagnostics.py",
+          "kind": "refactor_module",
+          "description": "[3] Refactor module architecture_diagnostics.py based on detected architecture smells. Reasons: god_module (severity=11.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor architecture_diagnostics.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "agent_core_arch_review.py",
+          "kind": "refactor_module",
+          "description": "[4] Refactor module agent_core_arch_review.py based on detected architecture smells. Reasons: god_module (severity=11.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor agent_core_arch_review.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "eurika_cli.py",
+          "kind": "refactor_module",
+          "description": "[5] Refactor module eurika_cli.py based on detected architecture smells. Reasons: hub (severity=8.00)",
+          "diff": "# TODO: Refactor eurika_cli.py (hub -> refactor_module)\n# Suggested steps:\n# - Split outgoing dependencies across clearer layers or services.\n# - Introduce intermediate abstractions to decouple from concrete implementations.\n# - Align with semantic roles and system topology.\n",
+          "smell_type": "hub"
+        }
+      ],
+      "risks": [
+        "god_module @ project_graph_api.py (severity=16.00)",
+        "bottleneck @ project_graph_api.py (severity=15.00)",
+        "god_module @ architecture_pipeline.py (severity=12.00)",
+        "god_module @ architecture_diagnostics.py (severity=11.00)",
+        "god_module @ agent_core_arch_review.py (severity=11.00)"
+      ],
+      "verify_success": true
+    },
+    {
+      "timestamp": 1770863577.9475653,
+      "project_root": "/mnt/storage/project/eurika_2.0",
+      "modules": [],
+      "operations": [
+        {
+          "target_file": "project_graph_api.py",
+          "kind": "refactor_module",
+          "description": "[1] Refactor module project_graph_api.py based on detected architecture smells. Reasons: god_module (severity=16.00), bottleneck (severity=15.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor project_graph_api.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "architecture_pipeline.py",
+          "kind": "refactor_module",
+          "description": "[2] Refactor module architecture_pipeline.py based on detected architecture smells. Reasons: god_module (severity=12.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor architecture_pipeline.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "architecture_diagnostics.py",
+          "kind": "refactor_module",
+          "description": "[3] Refactor module architecture_diagnostics.py based on detected architecture smells. Reasons: god_module (severity=11.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor architecture_diagnostics.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "agent_core_arch_review.py",
+          "kind": "refactor_module",
+          "description": "[4] Refactor module agent_core_arch_review.py based on detected architecture smells. Reasons: god_module (severity=11.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor agent_core_arch_review.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "eurika_cli.py",
+          "kind": "refactor_module",
+          "description": "[5] Refactor module eurika_cli.py based on detected architecture smells. Reasons: hub (severity=8.00)",
+          "diff": "# TODO: Refactor eurika_cli.py (hub -> refactor_module)\n# Suggested steps:\n# - Split outgoing dependencies across clearer layers or services.\n# - Introduce intermediate abstractions to decouple from concrete implementations.\n# - Align with semantic roles and system topology.\n",
+          "smell_type": "hub"
+        }
+      ],
+      "risks": [
+        "god_module @ project_graph_api.py (severity=16.00)",
+        "bottleneck @ project_graph_api.py (severity=15.00)",
+        "god_module @ architecture_pipeline.py (severity=12.00)",
+        "god_module @ architecture_diagnostics.py (severity=11.00)",
+        "god_module @ agent_core_arch_review.py (severity=11.00)"
+      ],
+      "verify_success": true
+    },
+    {
+      "timestamp": 1770890605.9848022,
+      "project_root": "/mnt/storage/project/eurika_2.0",
+      "modules": [
+        "cli/handlers.py",
+        "core/pipeline.py"
+      ],
+      "operations": [
+        {
+          "target_file": "project_graph_api.py",
+          "kind": "refactor_module",
+          "description": "[1] Refactor module project_graph_api.py based on detected architecture smells. Reasons: god_module (severity=17.00), bottleneck (severity=16.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor project_graph_api.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "architecture_diagnostics.py",
+          "kind": "refactor_module",
+          "description": "[2] Refactor module architecture_diagnostics.py based on detected architecture smells. Reasons: god_module (severity=13.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor architecture_diagnostics.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "architecture_pipeline.py",
+          "kind": "refactor_module",
+          "description": "[3] Refactor module architecture_pipeline.py based on detected architecture smells. Reasons: god_module (severity=12.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor architecture_pipeline.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "cli/handlers.py",
+          "kind": "refactor_module",
+          "description": "[4] Refactor module cli/handlers.py based on detected architecture smells. Reasons: hub (severity=9.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor cli/handlers.py (hub -> refactor_module)\n# Suggested steps:\n# - Split outgoing dependencies across clearer layers or services.\n# - Introduce intermediate abstractions to decouple from concrete implementations.\n# - Align with semantic roles and system topology.\n",
+          "smell_type": "hub"
+        },
+        {
+          "target_file": "core/pipeline.py",
+          "kind": "refactor_module",
+          "description": "[5] Refactor module core/pipeline.py based on detected architecture smells. Reasons: hub (severity=9.00)",
+          "diff": "# TODO: Refactor core/pipeline.py (hub -> refactor_module)\n# Suggested steps:\n# - Split outgoing dependencies across clearer layers or services.\n# - Introduce intermediate abstractions to decouple from concrete implementations.\n# - Align with semantic roles and system topology.\n",
+          "smell_type": "hub"
+        }
+      ],
+      "risks": [
+        "god_module @ project_graph_api.py (severity=17.00)",
+        "bottleneck @ project_graph_api.py (severity=16.00)",
+        "god_module @ architecture_diagnostics.py (severity=13.00)",
+        "god_module @ architecture_pipeline.py (severity=12.00)",
+        "hub @ cli/handlers.py (severity=9.00)"
+      ],
+      "verify_success": true
+    },
+    {
+      "timestamp": 1771000465.076061,
+      "project_root": "/mnt/storage/project/eurika_2.0",
+      "modules": [
+        "cli/agent_handlers.py",
+        "runtime_scan.py",
+        "action_plan.py"
+      ],
+      "operations": [
+        {
+          "target_file": "project_graph_api.py",
+          "kind": "refactor_module",
+          "description": "[1] Refactor module project_graph_api.py based on detected architecture smells. Reasons: god_module (severity=11.00), bottleneck (severity=10.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor project_graph_api.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "cli/agent_handlers.py",
+          "kind": "refactor_module",
+          "description": "[2] Refactor module cli/agent_handlers.py based on detected architecture smells. Reasons: god_module (severity=7.00), hub (severity=7.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor cli/agent_handlers.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "agent_core_arch_review.py",
+          "kind": "refactor_module",
+          "description": "[3] Refactor module agent_core_arch_review.py based on detected architecture smells. Reasons: god_module (severity=8.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor agent_core_arch_review.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "runtime_scan.py",
+          "kind": "refactor_module",
+          "description": "[4] Refactor module runtime_scan.py based on detected architecture smells. Reasons: god_module (severity=6.00)",
+          "diff": "# TODO: Refactor runtime_scan.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "action_plan.py",
+          "kind": "introduce_facade",
+          "description": "[5] Refactor module action_plan.py based on detected architecture smells. Reasons: bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor action_plan.py (bottleneck -> introduce_facade)\n# Suggested steps:\n# - Introduce a facade or boundary to reduce direct fan-in.\n# - Create a stable public API for this module; let internal structure evolve independently.\n# - Limit the number of modules that import this file directly.\n",
+          "smell_type": "bottleneck"
+        }
+      ],
+      "risks": [
+        "god_module @ project_graph_api.py (severity=11.00)",
+        "bottleneck @ project_graph_api.py (severity=10.00)",
+        "god_module @ agent_core_arch_review.py (severity=8.00)",
+        "god_module @ cli/agent_handlers.py (severity=7.00)",
+        "hub @ cli/agent_handlers.py (severity=7.00)"
+      ],
+      "verify_success": false
+    },
+    {
+      "timestamp": 1771000790.1347663,
+      "project_root": "/mnt/storage/project/eurika_2.0",
+      "modules": [
+        "cli/agent_handlers.py",
+        "runtime_scan.py",
+        "agent_core.py"
+      ],
+      "operations": [
+        {
+          "target_file": "project_graph_api.py",
+          "kind": "refactor_module",
+          "description": "[1] Refactor module project_graph_api.py based on detected architecture smells. Reasons: god_module (severity=11.00), bottleneck (severity=10.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor project_graph_api.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "cli/agent_handlers.py",
+          "kind": "refactor_module",
+          "description": "[2] Refactor module cli/agent_handlers.py based on detected architecture smells. Reasons: god_module (severity=7.00), hub (severity=7.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor cli/agent_handlers.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "agent_core_arch_review.py",
+          "kind": "refactor_module",
+          "description": "[3] Refactor module agent_core_arch_review.py based on detected architecture smells. Reasons: god_module (severity=8.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor agent_core_arch_review.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "runtime_scan.py",
+          "kind": "refactor_module",
+          "description": "[4] Refactor module runtime_scan.py based on detected architecture smells. Reasons: god_module (severity=6.00)",
+          "diff": "# TODO: Refactor runtime_scan.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "agent_core.py",
+          "kind": "introduce_facade",
+          "description": "[5] Refactor module agent_core.py based on detected architecture smells. Reasons: bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor agent_core.py (bottleneck -> introduce_facade)\n# Suggested steps:\n# - Introduce a facade or boundary to reduce direct fan-in.\n# - Create a stable public API for this module; let internal structure evolve independently.\n# - Limit the number of modules that import this file directly.\n",
+          "smell_type": "bottleneck"
+        }
+      ],
+      "risks": [
+        "god_module @ project_graph_api.py (severity=11.00)",
+        "bottleneck @ project_graph_api.py (severity=10.00)",
+        "god_module @ agent_core_arch_review.py (severity=8.00)",
+        "god_module @ cli/agent_handlers.py (severity=7.00)",
+        "hub @ cli/agent_handlers.py (severity=7.00)"
+      ],
+      "verify_success": true
+    },
+    {
+      "timestamp": 1771000931.329972,
+      "project_root": "/mnt/storage/project/eurika_2.0",
+      "modules": [
+        "action_plan.py"
+      ],
+      "operations": [
+        {
+          "target_file": "project_graph_api.py",
+          "kind": "refactor_module",
+          "description": "[1] Refactor module project_graph_api.py based on detected architecture smells. Reasons: god_module (severity=11.00), bottleneck (severity=10.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor project_graph_api.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "cli/agent_handlers.py",
+          "kind": "refactor_module",
+          "description": "[2] Refactor module cli/agent_handlers.py based on detected architecture smells. Reasons: god_module (severity=7.00), hub (severity=7.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor cli/agent_handlers.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "agent_core_arch_review.py",
+          "kind": "refactor_module",
+          "description": "[3] Refactor module agent_core_arch_review.py based on detected architecture smells. Reasons: god_module (severity=8.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor agent_core_arch_review.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "runtime_scan.py",
+          "kind": "refactor_module",
+          "description": "[4] Refactor module runtime_scan.py based on detected architecture smells. Reasons: god_module (severity=6.00)",
+          "diff": "# TODO: Refactor runtime_scan.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "action_plan.py",
+          "kind": "introduce_facade",
+          "description": "[5] Refactor module action_plan.py based on detected architecture smells. Reasons: bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor action_plan.py (bottleneck -> introduce_facade)\n# Suggested steps:\n# - Introduce a facade or boundary to reduce direct fan-in.\n# - Create a stable public API for this module; let internal structure evolve independently.\n# - Limit the number of modules that import this file directly.\n",
+          "smell_type": "bottleneck"
+        }
+      ],
+      "risks": [
+        "god_module @ project_graph_api.py (severity=11.00)",
+        "bottleneck @ project_graph_api.py (severity=10.00)",
+        "god_module @ agent_core_arch_review.py (severity=8.00)",
+        "god_module @ cli/agent_handlers.py (severity=7.00)",
+        "hub @ cli/agent_handlers.py (severity=7.00)"
+      ],
+      "verify_success": true
+    },
+    {
+      "timestamp": 1771025299.1719189,
+      "project_root": "/mnt/storage/project/eurika_2.0",
+      "modules": [
+        "agent_core.py",
+        "action_plan.py"
+      ],
+      "operations": [
+        {
+          "target_file": "project_graph_api.py",
+          "kind": "refactor_module",
+          "description": "[1] Refactor module project_graph_api.py based on detected architecture smells. Reasons: god_module (severity=11.00), bottleneck (severity=10.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor project_graph_api.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "cli/agent_handlers.py",
+          "kind": "refactor_module",
+          "description": "[2] Refactor module cli/agent_handlers.py based on detected architecture smells. Reasons: god_module (severity=6.00), hub (severity=6.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor cli/agent_handlers.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "agent_core.py",
+          "kind": "refactor_module",
+          "description": "[3] Refactor module agent_core.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor agent_core.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "action_plan.py",
+          "kind": "refactor_module",
+          "description": "[4] Refactor module action_plan.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor action_plan.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "runtime_scan.py",
+          "kind": "refactor_module",
+          "description": "[5] Refactor module runtime_scan.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=4.00)",
+          "diff": "# TODO: Refactor runtime_scan.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        }
+      ],
+      "risks": [
+        "god_module @ project_graph_api.py (severity=11.00)",
+        "bottleneck @ project_graph_api.py (severity=10.00)",
+        "god_module @ agent_core_arch_review.py (severity=6.00)",
+        "god_module @ cli/agent_handlers.py (severity=6.00)",
+        "hub @ cli/agent_handlers.py (severity=6.00)"
+      ],
+      "verify_success": true
+    },
+    {
+      "timestamp": 1771025425.6786633,
+      "project_root": "/mnt/storage/project/eurika_2.0",
+      "modules": [],
+      "operations": [
+        {
+          "target_file": "project_graph_api.py",
+          "kind": "refactor_module",
+          "description": "[1] Refactor module project_graph_api.py based on detected architecture smells. Reasons: god_module (severity=11.00), bottleneck (severity=10.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor project_graph_api.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "cli/agent_handlers.py",
+          "kind": "refactor_module",
+          "description": "[2] Refactor module cli/agent_handlers.py based on detected architecture smells. Reasons: god_module (severity=6.00), hub (severity=6.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor cli/agent_handlers.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "action_plan.py",
+          "kind": "refactor_module",
+          "description": "[3] Refactor module action_plan.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor action_plan.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "agent_core.py",
+          "kind": "refactor_module",
+          "description": "[4] Refactor module agent_core.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor agent_core.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "runtime_scan.py",
+          "kind": "refactor_module",
+          "description": "[5] Refactor module runtime_scan.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=4.00)",
+          "diff": "# TODO: Refactor runtime_scan.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n",
+          "smell_type": "god_module"
+        }
+      ],
+      "risks": [
+        "god_module @ project_graph_api.py (severity=11.00)",
+        "bottleneck @ project_graph_api.py (severity=10.00)",
+        "god_module @ cli/agent_handlers.py (severity=6.00)",
+        "god_module @ agent_core_arch_review.py (severity=6.00)",
+        "hub @ cli/agent_handlers.py (severity=6.00)"
+      ],
+      "verify_success": true
+    },
+    {
+      "timestamp": 1771027011.620905,
+      "project_root": "/mnt/storage/project/eurika_2.0",
+      "modules": [
+        "project_graph_api.py",
+        "cli/agent_handlers.py",
+        "agent_core.py",
+        "action_plan.py",
+        "runtime_scan.py"
+      ],
+      "operations": [
+        {
+          "target_file": "project_graph_api.py",
+          "kind": "refactor_module",
+          "description": "[1] Refactor module project_graph_api.py based on detected architecture smells. Reasons: god_module (severity=11.00), bottleneck (severity=10.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor project_graph_api.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Extract from imports: project_graph.py.\n# - Consider grouping callers: tests/test_architecture_history.py, tests/test_architecture_smells.py, tests/test_architecture_advisor.py.\n# - Introduce facade for callers: semantic_architecture.py, system_topology.py, core/snapshot.py....\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "cli/agent_handlers.py",
+          "kind": "refactor_module",
+          "description": "[2] Refactor module cli/agent_handlers.py based on detected architecture smells. Reasons: god_module (severity=6.00), hub (severity=6.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor cli/agent_handlers.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Extract from imports: action_plan.py, agent_core.py, agent_core_arch_review.py.\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "agent_core.py",
+          "kind": "refactor_module",
+          "description": "[3] Refactor module agent_core.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor agent_core.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Consider grouping callers: eurika/reasoning/advisor.py, cli/agent_handlers.py, agent_core_arch_review.py.\n# - Introduce facade for callers: agent_core_arch_review.py, memory.py, cli/agent_handlers.py....\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "action_plan.py",
+          "kind": "refactor_module",
+          "description": "[4] Refactor module action_plan.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor action_plan.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Consider grouping callers: cli/agent_handlers.py, architecture_planner.py, agent_core_arch_review.py.\n# - Introduce facade for callers: agent_core_arch_review.py, architecture_planner.py, cli/agent_handlers.py....\n",
+          "smell_type": "god_module"
+        },
+        {
+          "target_file": "runtime_scan.py",
+          "kind": "refactor_module",
+          "description": "[5] Refactor module runtime_scan.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=4.00)",
+          "diff": "# TODO: Refactor runtime_scan.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Extract from imports: code_awareness.py.\n# - Consider grouping callers: tests/test_runtime_scan.py, cli/agent_handlers.py, cli/core_handlers.py.\n# - Introduce facade for callers: cli/agent_handlers.py, cli/core_handlers.py, tests/test_agent_core_arch_review.py....\n",
+          "smell_type": "god_module"
+        }
+      ],
+      "risks": [
+        "god_module @ project_graph_api.py (severity=11.00)",
+        "bottleneck @ project_graph_api.py (severity=10.00)",
+        "god_module @ cli/agent_handlers.py (severity=6.00)",
+        "god_module @ agent_core_arch_review.py (severity=6.00)",
+        "hub @ cli/agent_handlers.py (severity=6.00)"
+      ],
+      "verify_success": true
+    },
+    {
+      "timestamp": 1771027351.138183,
+      "project_root": "/mnt/storage/project/eurika_2.0",
+      "modules": [
+        "project_graph_api.py",
+        "patch_apply.py",
+        "action_plan.py"
+      ],
+      "operations": [
+        {
+          "target_file": "project_graph_api.py",
+          "kind": "refactor_module",
+          "description": "[1] Refactor module project_graph_api.py based on detected architecture smells. Reasons: god_module (severity=11.00), bottleneck (severity=10.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor project_graph_api.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Extract from imports: project_graph.py.\n# - Consider grouping callers: semantic_architecture.py, eurika/analysis/graph.py, tests/test_system_topology.py.\n# - Introduce facade for callers: semantic_architecture.py, system_topology.py, core/snapshot.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "cli/agent_handlers.py",
+          "kind": "refactor_module",
+          "description": "[2] Refactor module cli/agent_handlers.py based on detected architecture smells. Reasons: god_module (severity=6.00), hub (severity=6.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor cli/agent_handlers.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Extract from imports: action_plan.py, agent_core.py, agent_core_arch_review.py.\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "agent_core.py",
+          "kind": "refactor_module",
+          "description": "[3] Refactor module agent_core.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor agent_core.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Consider grouping callers: eurika/reasoning/advisor.py, cli/agent_handlers.py, agent_core_arch_review.py.\n# - Introduce facade for callers: agent_core_arch_review.py, memory.py, cli/agent_handlers.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "patch_apply.py",
+          "kind": "refactor_module",
+          "description": "[4] Refactor module patch_apply.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor patch_apply.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Consider grouping callers: eurika/reasoning/planner.py, cli/agent_handlers.py, patch_engine.py.\n# - Introduce facade for callers: patch_engine.py, cli/agent_handlers.py, eurika/reasoning/planner.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "action_plan.py",
+          "kind": "refactor_module",
+          "description": "[5] Refactor module action_plan.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor action_plan.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Consider grouping callers: eurika/reasoning/planner.py, cli/agent_handlers.py, agent_core_arch_review.py.\n# - Introduce facade for callers: agent_core_arch_review.py, architecture_planner.py, cli/agent_handlers.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        }
+      ],
+      "risks": [
+        "god_module @ project_graph_api.py (severity=11.00)",
+        "bottleneck @ project_graph_api.py (severity=10.00)",
+        "god_module @ cli/agent_handlers.py (severity=6.00)",
+        "god_module @ agent_core_arch_review.py (severity=6.00)",
+        "hub @ cli/agent_handlers.py (severity=6.00)"
+      ],
+      "verify_success": true
+    },
+    {
+      "timestamp": 1771036777.0243347,
+      "project_root": "/mnt/storage/project/eurika_2.0",
+      "modules": [
+        "project_graph_api.py",
+        "action_plan.py",
+        "agent_core.py",
+        "patch_apply.py"
+      ],
+      "operations": [
+        {
+          "target_file": "project_graph_api.py",
+          "kind": "refactor_module",
+          "description": "[1] Refactor module project_graph_api.py based on detected architecture smells. Reasons: god_module (severity=11.00), bottleneck (severity=10.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor project_graph_api.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Extract from imports: project_graph.py.\n# - Consider grouping callers: tests/test_architecture_advisor.py, eurika/analysis/graph.py, semantic_architecture.py.\n# - Introduce facade for callers: semantic_architecture.py, system_topology.py, core/snapshot.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "cli/agent_handlers.py",
+          "kind": "refactor_module",
+          "description": "[2] Refactor module cli/agent_handlers.py based on detected architecture smells. Reasons: god_module (severity=6.00), hub (severity=6.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor cli/agent_handlers.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Extract from imports: action_plan.py, agent_core.py, agent_core_arch_review.py.\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "action_plan.py",
+          "kind": "refactor_module",
+          "description": "[3] Refactor module action_plan.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor action_plan.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Consider grouping callers: tests/test_executor_sandbox.py, eurika/reasoning/planner.py, agent_core_arch_review.py.\n# - Introduce facade for callers: agent_core_arch_review.py, architecture_planner.py, cli/agent_handlers.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "agent_core.py",
+          "kind": "refactor_module",
+          "description": "[4] Refactor module agent_core.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor agent_core.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Consider grouping callers: tests/test_agent_core_arch_review.py, agent_core_arch_review.py, cli/agent_handlers.py.\n# - Introduce facade for callers: agent_core_arch_review.py, memory.py, cli/agent_handlers.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "patch_apply.py",
+          "kind": "refactor_module",
+          "description": "[5] Refactor module patch_apply.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor patch_apply.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Consider grouping callers: patch_engine.py, eurika/reasoning/planner.py, cli/agent_handlers.py.\n# - Introduce facade for callers: patch_engine.py, cli/agent_handlers.py, eurika/reasoning/planner.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        }
+      ],
+      "risks": [
+        "god_module @ project_graph_api.py (severity=11.00)",
+        "bottleneck @ project_graph_api.py (severity=10.00)",
+        "god_module @ agent_core_arch_review.py (severity=6.00)",
+        "god_module @ cli/agent_handlers.py (severity=6.00)",
+        "hub @ cli/agent_handlers.py (severity=6.00)"
+      ],
+      "verify_success": true
+    },
+    {
+      "timestamp": 1771037164.5356994,
+      "project_root": "/mnt/storage/project/eurika_2.0",
+      "modules": [
+        "project_graph_api.py",
+        "patch_apply.py",
+        "action_plan.py",
+        "agent_core.py"
+      ],
+      "operations": [
+        {
+          "target_file": "project_graph_api.py",
+          "kind": "refactor_module",
+          "description": "[1] Refactor module project_graph_api.py based on detected architecture smells. Reasons: god_module (severity=11.00), bottleneck (severity=10.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor project_graph_api.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Extract from imports: project_graph.py.\n# - Consider grouping callers: system_topology.py, tests/test_architecture_smells.py, tests/test_graph_analysis.py.\n# - Introduce facade for callers: semantic_architecture.py, system_topology.py, core/snapshot.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "cli/agent_handlers.py",
+          "kind": "refactor_module",
+          "description": "[2] Refactor module cli/agent_handlers.py based on detected architecture smells. Reasons: god_module (severity=6.00), hub (severity=6.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor cli/agent_handlers.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Extract from imports: action_plan.py, agent_core.py, agent_core_arch_review.py.\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "patch_apply.py",
+          "kind": "refactor_module",
+          "description": "[3] Refactor module patch_apply.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor patch_apply.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Consider grouping callers: eurika/reasoning/planner.py, tests/test_patch_apply_remove_import.py, cli/agent_handlers.py.\n# - Introduce facade for callers: patch_engine.py, cli/agent_handlers.py, eurika/reasoning/planner.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "action_plan.py",
+          "kind": "refactor_module",
+          "description": "[4] Refactor module action_plan.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor action_plan.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Consider grouping callers: architecture_planner.py, eurika/reasoning/planner.py, tests/test_executor_sandbox.py.\n# - Introduce facade for callers: agent_core_arch_review.py, architecture_planner.py, cli/agent_handlers.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "agent_core.py",
+          "kind": "refactor_module",
+          "description": "[5] Refactor module agent_core.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor agent_core.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Consider grouping callers: memory.py, eurika/reasoning/advisor.py, cli/agent_handlers.py.\n# - Introduce facade for callers: agent_core_arch_review.py, memory.py, cli/agent_handlers.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        }
+      ],
+      "risks": [
+        "god_module @ project_graph_api.py (severity=11.00)",
+        "bottleneck @ project_graph_api.py (severity=10.00)",
+        "god_module @ cli/agent_handlers.py (severity=6.00)",
+        "god_module @ agent_core_arch_review.py (severity=6.00)",
+        "hub @ cli/agent_handlers.py (severity=6.00)"
+      ],
+      "verify_success": true
+    },
+    {
+      "timestamp": 1771037231.8345687,
+      "project_root": "/mnt/storage/project/eurika_2.0",
+      "modules": [
+        "project_graph_api.py",
+        "action_plan.py",
+        "agent_core.py",
+        "patch_apply.py"
+      ],
+      "operations": [
+        {
+          "target_file": "project_graph_api.py",
+          "kind": "refactor_module",
+          "description": "[1] Refactor module project_graph_api.py based on detected architecture smells. Reasons: god_module (severity=11.00), bottleneck (severity=10.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor project_graph_api.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Extract from imports: project_graph.py.\n# - Consider grouping callers: semantic_architecture.py, tests/test_graph_analysis.py, tests/test_architecture_smells.py.\n# - Introduce facade for callers: semantic_architecture.py, system_topology.py, core/snapshot.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "cli/agent_handlers.py",
+          "kind": "refactor_module",
+          "description": "[2] Refactor module cli/agent_handlers.py based on detected architecture smells. Reasons: god_module (severity=6.00), hub (severity=6.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor cli/agent_handlers.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Extract from imports: action_plan.py, agent_core.py, agent_core_arch_review.py.\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "action_plan.py",
+          "kind": "refactor_module",
+          "description": "[3] Refactor module action_plan.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor action_plan.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Consider grouping callers: agent_core_arch_review.py, tests/test_executor_sandbox.py, cli/agent_handlers.py.\n# - Introduce facade for callers: agent_core_arch_review.py, architecture_planner.py, cli/agent_handlers.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "agent_core.py",
+          "kind": "refactor_module",
+          "description": "[4] Refactor module agent_core.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor agent_core.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Consider grouping callers: agent_core_arch_review.py, memory.py, eurika/reasoning/advisor.py.\n# - Introduce facade for callers: agent_core_arch_review.py, memory.py, cli/agent_handlers.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "patch_apply.py",
+          "kind": "refactor_module",
+          "description": "[5] Refactor module patch_apply.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor patch_apply.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Consider grouping callers: patch_engine.py, cli/agent_handlers.py, tests/test_patch_apply.py.\n# - Introduce facade for callers: patch_engine.py, cli/agent_handlers.py, eurika/reasoning/planner.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        }
+      ],
+      "risks": [
+        "god_module @ project_graph_api.py (severity=11.00)",
+        "bottleneck @ project_graph_api.py (severity=10.00)",
+        "god_module @ agent_core_arch_review.py (severity=6.00)",
+        "god_module @ cli/agent_handlers.py (severity=6.00)",
+        "hub @ cli/agent_handlers.py (severity=6.00)"
+      ],
+      "verify_success": true
+    },
+    {
+      "timestamp": 1771037723.8643863,
+      "project_root": "/mnt/storage/project/eurika_2.0",
+      "modules": [
+        "project_graph_api.py",
+        "agent_core.py",
+        "patch_apply.py",
+        "action_plan.py"
+      ],
+      "operations": [
+        {
+          "target_file": "project_graph_api.py",
+          "kind": "refactor_module",
+          "description": "[1] Refactor module project_graph_api.py based on detected architecture smells. Reasons: god_module (severity=11.00), bottleneck (severity=10.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor project_graph_api.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Extract from imports: project_graph.py.\n# - Consider grouping callers: tests/test_architecture_history.py, tests/test_architecture_advisor.py, core/snapshot.py.\n# - Introduce facade for callers: semantic_architecture.py, system_topology.py, core/snapshot.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "cli/agent_handlers.py",
+          "kind": "refactor_module",
+          "description": "[2] Refactor module cli/agent_handlers.py based on detected architecture smells. Reasons: god_module (severity=6.00), hub (severity=6.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor cli/agent_handlers.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Extract from imports: action_plan.py, agent_core.py, agent_core_arch_review.py.\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "agent_core.py",
+          "kind": "refactor_module",
+          "description": "[3] Refactor module agent_core.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor agent_core.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Consider grouping callers: memory.py, eurika/reasoning/advisor.py, agent_core_arch_review.py.\n# - Introduce facade for callers: agent_core_arch_review.py, memory.py, cli/agent_handlers.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "patch_apply.py",
+          "kind": "refactor_module",
+          "description": "[4] Refactor module patch_apply.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor patch_apply.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Consider grouping callers: tests/test_patch_apply.py, patch_engine.py, eurika/reasoning/planner.py.\n# - Introduce facade for callers: patch_engine.py, cli/agent_handlers.py, eurika/reasoning/planner.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "action_plan.py",
+          "kind": "refactor_module",
+          "description": "[5] Refactor module action_plan.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor action_plan.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Consider grouping callers: eurika/reasoning/planner.py, tests/test_executor_sandbox.py, architecture_planner.py.\n# - Introduce facade for callers: agent_core_arch_review.py, architecture_planner.py, cli/agent_handlers.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        }
+      ],
+      "risks": [
+        "god_module @ project_graph_api.py (severity=11.00)",
+        "bottleneck @ project_graph_api.py (severity=10.00)",
+        "god_module @ agent_core_arch_review.py (severity=6.00)",
+        "god_module @ cli/agent_handlers.py (severity=6.00)",
+        "hub @ cli/agent_handlers.py (severity=6.00)"
+      ],
+      "verify_success": true
+    },
+    {
+      "timestamp": 1771037940.5956993,
+      "project_root": "/mnt/storage/project/eurika_2.0",
+      "modules": [
+        "project_graph_api.py"
+      ],
+      "operations": [
+        {
+          "target_file": "project_graph_api.py",
+          "kind": "refactor_module",
+          "description": "[1] Refactor module project_graph_api.py based on detected architecture smells. Reasons: god_module (severity=11.00), bottleneck (severity=10.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor project_graph_api.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Extract from imports: project_graph.py.\n# - Consider grouping callers: eurika/analysis/graph.py, core/snapshot.py, tests/test_semantic_architecture.py.\n# - Introduce facade for callers: semantic_architecture.py, system_topology.py, core/snapshot.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "cli/agent_handlers.py",
+          "kind": "refactor_module",
+          "description": "[2] Refactor module cli/agent_handlers.py based on detected architecture smells. Reasons: god_module (severity=6.00), hub (severity=6.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor cli/agent_handlers.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Extract from imports: action_plan.py, agent_core.py, agent_core_arch_review.py.\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "action_plan.py",
+          "kind": "refactor_module",
+          "description": "[3] Refactor module action_plan.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor action_plan.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Consider grouping callers: cli/agent_handlers.py, eurika/reasoning/planner.py, architecture_planner.py.\n# - Introduce facade for callers: agent_core_arch_review.py, architecture_planner.py, cli/agent_handlers.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "patch_apply.py",
+          "kind": "refactor_module",
+          "description": "[4] Refactor module patch_apply.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor patch_apply.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Consider grouping callers: tests/test_patch_apply_remove_import.py, patch_engine.py, cli/agent_handlers.py.\n# - Introduce facade for callers: patch_engine.py, cli/agent_handlers.py, eurika/reasoning/planner.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "agent_core.py",
+          "kind": "refactor_module",
+          "description": "[5] Refactor module agent_core.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor agent_core.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Consider grouping callers: eurika/reasoning/advisor.py, cli/agent_handlers.py, memory.py.\n# - Introduce facade for callers: agent_core_arch_review.py, memory.py, cli/agent_handlers.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        }
+      ],
+      "risks": [
+        "god_module @ project_graph_api.py (severity=11.00)",
+        "bottleneck @ project_graph_api.py (severity=10.00)",
+        "god_module @ cli/agent_handlers.py (severity=6.00)",
+        "god_module @ agent_core_arch_review.py (severity=6.00)",
+        "hub @ cli/agent_handlers.py (severity=6.00)"
+      ],
+      "verify_success": true
+    },
+    {
+      "timestamp": 1771038315.2420774,
+      "project_root": "/mnt/storage/project/eurika_2.0",
+      "modules": [
+        "project_graph_api.py"
+      ],
+      "operations": [
+        {
+          "target_file": "cli/agent_handlers.py",
+          "kind": "refactor_module",
+          "description": "[1] Refactor module cli/agent_handlers.py based on detected architecture smells. Reasons: god_module (severity=6.00), hub (severity=6.00), mentioned_in_summary_risks, mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor cli/agent_handlers.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Extract from imports: action_plan.py, agent_core.py, agent_core_arch_review.py.\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "patch_apply.py",
+          "kind": "refactor_module",
+          "description": "[2] Refactor module patch_apply.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor patch_apply.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Consider grouping callers: tests/test_patch_apply_remove_import.py, patch_engine.py, eurika/reasoning/planner.py.\n# - Introduce facade for callers: patch_engine.py, cli/agent_handlers.py, eurika/reasoning/planner.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "agent_core.py",
+          "kind": "refactor_module",
+          "description": "[3] Refactor module agent_core.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor agent_core.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Consider grouping callers: eurika/reasoning/advisor.py, tests/test_agent_core_arch_review.py, agent_core_arch_review.py.\n# - Introduce facade for callers: agent_core_arch_review.py, memory.py, cli/agent_handlers.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "action_plan.py",
+          "kind": "refactor_module",
+          "description": "[4] Refactor module action_plan.py based on detected architecture smells. Reasons: god_module (severity=5.00), bottleneck (severity=5.00)",
+          "diff": "# TODO: Refactor action_plan.py (god_module -> refactor_module)\n# Suggested steps:\n# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).\n# - Identify distinct concerns and split this module into focused units.\n# - Reduce total degree (fan-in + fan-out) via extraction.\n# - Consider grouping callers: agent_core_arch_review.py, architecture_planner.py, eurika/reasoning/planner.py.\n# - Introduce facade for callers: agent_core_arch_review.py, architecture_planner.py, cli/agent_handlers.py....\n",
+          "smell_type": "god_module",
+          "params": null
+        },
+        {
+          "target_file": "project_graph_api.py",
+          "kind": "introduce_facade",
+          "description": "[5] Refactor module project_graph_api.py based on detected architecture smells. Reasons: bottleneck (severity=10.00), mentioned_in_summary_risks",
+          "diff": "# TODO: Refactor project_graph_api.py (bottleneck -> introduce_facade)\n# Suggested steps:\n# - Introduce a facade or boundary to reduce direct fan-in.\n# - Create a stable public API for this module; let internal structure evolve independently.\n# - Limit the number of modules that import this file directly.\n# - Introduce facade for callers: semantic_architecture.py, system_topology.py, core/snapshot.py....\n",
+          "smell_type": "bottleneck",
+          "params": null
+        }
+      ],
+      "risks": [
+        "bottleneck @ project_graph_api.py (severity=10.00)",
+        "god_module @ agent_core_arch_review.py (severity=6.00)",
+        "god_module @ cli/agent_handlers.py (severity=6.00)",
+        "hub @ cli/agent_handlers.py (severity=6.00)",
+        "god_module @ patch_apply.py (severity=5.00)"
+      ],
+      "verify_success": true
+    }
+  ]
+}

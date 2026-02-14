@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eurika"
+version = "1.2.0"
+description = "Eurika — observation-only code analysis"
+readme = "README.md"
+requires-python = ">=3.9"
+
+[project.optional-dependencies]
+llm = ["openai>=1.0"]
+env = ["python-dotenv>=1.0"]
+test = ["pytest>=7.0"]
+
+[project.scripts]
+eurika = "eurika_cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["*"]

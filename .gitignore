@@ -1,0 +1,26 @@
+# Local env (API keys) — do not commit
+.env
+.env.local
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Eurika runtime artifacts
+.eurika_backups/
+eurika_observations.json
+architecture_actions_log.jsonl
+sandbox_actions.log
+self_map_new.json
