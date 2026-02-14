@@ -49,3 +49,32 @@ def test_keep_star_import(tmp_path: Path) -> None:
     f.write_text("from os.path import *\nx = join('a', 'b')\n")
     result = remove_unused_imports(f)
     assert result is None
+
+
+def test_keep_imports_in_all(tmp_path: Path) -> None:
+    """Preserve imports that are re-exported via __all__."""
+    code = '''from bar import foo
+
+__all__ = ["foo"]
+'''
+    f = tmp_path / "test.py"
+    f.write_text(code)
+    result = remove_unused_imports(f)
+    assert result is None  # foo must be kept
+
+
+def test_keep_imports_under_type_checking(tmp_path: Path) -> None:
+    """Preserve imports inside `if TYPE_CHECKING:` (used only in type hints)."""
+    code = """from __future__ import annotations
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from foo import Bar
+
+def f() -> Bar:
+    return None
+"""
+    f = tmp_path / "test.py"
+    f.write_text(code)
+    result = remove_unused_imports(f)
+    assert result is None  # Bar import must be kept

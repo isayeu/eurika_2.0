@@ -26,7 +26,7 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Eurika — architecture analysis and refactoring assistant",
         epilog="Product: scan | doctor | fix | clean-imports. Use eurika help for full overview.",
     )
-    parser.add_argument("--version", "-V", action="version", version="%(prog)s 1.2.0")
+    parser.add_argument("--version", "-V", action="version", version="%(prog)s 1.2.1")
     subparsers = parser.add_subparsers(dest="command")
 
     _add_core_commands(subparsers)

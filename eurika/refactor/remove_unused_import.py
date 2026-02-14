@@ -53,7 +53,56 @@ def _collect_used_names(tree: ast.AST) -> Set[str]:
             root = _root_name(node.value)
             if root:
                 used.add(root)
+    # Imports inside `if TYPE_CHECKING:` are for type hints only (often stringified
+    # by `from __future__ import annotations`). Treat them as always used.
+    used.update(_names_imported_under_type_checking(tree))
+    # Names in __all__ are re-exports; treat them as used.
+    used.update(_names_in_all(tree))
     return used
+
+
+def _names_in_all(tree: ast.AST) -> Set[str]:
+    """Return names listed in __all__ = [...] or __all__ = (...)."""
+    names: Set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        for t in node.targets:
+            if isinstance(t, ast.Name) and t.id == "__all__":
+                names.update(_string_elts(node.value))
+                break
+    return names
+
+
+def _string_elts(node: ast.AST) -> Set[str]:
+    """Extract string elements from list/tuple literal."""
+    out: Set[str] = set()
+    if isinstance(node, (ast.List, ast.Tuple)):
+        for elt in node.elts:
+            if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                out.add(elt.value)
+    return out
+
+
+def _names_imported_under_type_checking(tree: ast.AST) -> Set[str]:
+    """Return names bound by imports inside `if TYPE_CHECKING:` blocks."""
+    names: Set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.If) and _is_type_checking_cond(node.test):
+            for child in ast.walk(node):
+                if isinstance(child, ast.Import):
+                    for a in child.names:
+                        names.add(a.asname or a.name.split(".")[0])
+                elif isinstance(child, ast.ImportFrom) and child.module != "__future__":
+                    for a in child.names:
+                        if a.name != "*":
+                            names.add(a.asname or a.name)
+    return names
+
+
+def _is_type_checking_cond(node: ast.AST) -> bool:
+    """True if node is `TYPE_CHECKING` (Name in Load context)."""
+    return isinstance(node, ast.Name) and node.id == "TYPE_CHECKING"
 
 
 def _root_name(node: ast.AST) -> Optional[str]:

@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.2.1 — clean-imports: TYPE_CHECKING и __all__ (2025-02-14)
+
+### remove_unused_import: сохранение нужных импортов
+
+- **`if TYPE_CHECKING:`** — импорты внутри блока считаются используемыми (аннотации часто строки при `from __future__ import annotations`).
+- **`__all__`** — имена из `__all__ = [...]` считаются используемыми (реэкспорты фасадов).
+- Тесты: test_keep_imports_under_type_checking, test_keep_imports_in_all.
+
 ## v1.2.0 — Стабилизация и продуктовый CLI (2025-02-14)
 
 ### split_module: отдельный kind для god_module

@@ -27,7 +27,7 @@ def _err(msg: str) -> None:
 
 def handle_help(parser: Any) -> int:
     """Print high-level command overview and detailed argparse help."""
-    print("Eurika — architecture analysis and refactoring assistant (v1.2.0)")
+    print("Eurika — architecture analysis and refactoring assistant (v1.2.1)")
     print()
     print("Product commands (recommended):")
     print("  scan [path]       full scan + report + history update")
