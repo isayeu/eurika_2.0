@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.2.2 — AST-based split_module (2025-02-14)
+
+### split_module: фактическая экстракция
+
+- **eurika.refactor.split_module:** AST-based split — выделяет функции/классы, которые используют только один из imports_from, в новый модуль `*_extracted.py`.
+- **patch_apply:** обработка kind=split_module с params.imports_from — вызывает split_module_by_import вместо append TODO.
+- Тесты: test_apply_split_module, test_apply_split_module_skips_when_no_extractable.
+
 ## v1.2.1 — clean-imports: TYPE_CHECKING и __all__ (2025-02-14)
 
 ### remove_unused_import: сохранение нужных импортов

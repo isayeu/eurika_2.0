@@ -11,6 +11,8 @@ file to .eurika_backups/<run_id>/ before modifying, so you can restore.
 
 v0.2: remove_cyclic_import — when op.kind is remove_cyclic_import and
 params.target_module is set, uses AST to remove the import instead of appending.
+v0.3: split_module — when op.kind is split_module and params has imports_from,
+uses AST to extract definitions into a new submodule.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from eurika.refactor.remove_import import remove_import_from_file
+from eurika.refactor.split_module import split_module_by_import
 
 BACKUP_DIR = ".eurika_backups"
 
@@ -94,6 +97,39 @@ def apply_patch_plan(
                         backup_dir = str(backup_root)
                 path.write_text(new_content, encoding="utf-8")
                 modified.append(target_file)
+            except Exception as e:
+                errors.append(f"{target_file}: {e}")
+            continue
+
+        # split_module: AST-based extraction
+        if kind == "split_module" and params.get("imports_from"):
+            try:
+                result = split_module_by_import(
+                    path,
+                    params["imports_from"],
+                    extracted_module_stem="_extracted",
+                    target_file=target_file,
+                )
+                if result is None:
+                    skipped.append(target_file)
+                    continue
+                new_rel_path, new_content, modified_original = result
+                new_path = root / new_rel_path
+                if new_path.exists():
+                    skipped.append(target_file)
+                    continue
+                if do_backup:
+                    backup_root = root / BACKUP_DIR / run_id
+                    backup_path = backup_root / target_file
+                    backup_path.parent.mkdir(parents=True, exist_ok=True)
+                    backup_path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+                    if backup_dir is None:
+                        backup_dir = str(backup_root)
+                new_path.parent.mkdir(parents=True, exist_ok=True)
+                new_path.write_text(new_content, encoding="utf-8")
+                path.write_text(modified_original, encoding="utf-8")
+                modified.append(target_file)
+                modified.append(new_rel_path)
             except Exception as e:
                 errors.append(f"{target_file}: {e}")
             continue

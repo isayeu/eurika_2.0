@@ -4,7 +4,7 @@
 
 ---
 
-## Текущее состояние (v1.2.1)
+## Текущее состояние (v1.2.2)
 
 **Выполнено (включая 2.1):**
 - Всё перечисленное в v0.8 (pipeline, Smells 2.0, CLI рефакторинг, self-check, History v0.6, CLI UX, документация)
@@ -20,7 +20,7 @@
 
 ## Следующий шаг
 
-👉 **v1.2.1** ✓ (clean-imports: TYPE_CHECKING, __all__). Следующее: AST-based split для split_module.
+👉 **v1.2.2** ✓ (AST-based split_module). Следующее: Extract Class.
 
 ---
 
@@ -166,7 +166,7 @@
 | **Замкнутый цикл** | ✓ | `eurika fix` = scan → diagnose → plan → patch → verify → learn |
 | **Единая модель Event** | ✓ | Event (type, input, output, result, timestamp), EventStore в eurika.storage.events, ProjectMemory.events; запись при scan и patch (eurika_events.json) |
 | **Граф как инструмент** | ✓ | Граф передаётся в build_patch_plan; graph_ops даёт конкретные hints: cycle break edge, facade candidates, split hints |
-| **Архитектурные операции** | Частично | Remove Cyclic Import: AST-based удаление импорта, kind=remove_cyclic_import в patch_plan; в перспективе: Extract Class, Split Module |
+| **Архитектурные операции** | Частично | Remove Cyclic Import ✓; Split Module ✓ (AST-based extract по imports_from); в перспективе: Extract Class |
 
 Детальный разбор — в **review.md**.
 
