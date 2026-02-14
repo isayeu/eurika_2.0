@@ -1,4 +1,4 @@
-"""Tests for patch_apply with remove_cyclic_import and split_module operations."""
+"""Tests for patch_apply with remove_cyclic_import, split_module, and extract_class operations."""
 from pathlib import Path
 from patch_apply import apply_patch_plan
 
@@ -32,8 +32,8 @@ def test_apply_split_module(tmp_path: Path) -> None:
     assert "from god_extracted import use_bar" in (tmp_path / "god.py").read_text()
 
 
-def test_apply_split_module_skips_when_no_extractable(tmp_path: Path) -> None:
-    """split_module skips when no defs use only one of imports_from."""
+def test_apply_split_module_fallback_to_diff_when_no_extractable(tmp_path: Path) -> None:
+    """split_module falls back to appending diff when no defs use only one of imports_from."""
     target = tmp_path / "mixed.py"
     target.write_text("from a import x\nfrom b import y\n\ndef f():\n    return x() + y()\n")
     plan = {
@@ -42,15 +42,65 @@ def test_apply_split_module_skips_when_no_extractable(tmp_path: Path) -> None:
                 "target_file": "mixed.py",
                 "kind": "split_module",
                 "description": "Split",
-                "diff": "",
+                "diff": "# TODO: split mixed.py\n",
                 "params": {"imports_from": ["a", "b"]},
             }
         ]
     }
     report = apply_patch_plan(tmp_path, plan, dry_run=False, backup=False)
-    assert report["modified"] == []
-    assert "mixed.py" in report["skipped"]
+    assert "mixed.py" in report["modified"]
     assert (tmp_path / "mixed_extracted.py").exists() is False
+    assert "# TODO: split mixed.py" in (tmp_path / "mixed.py").read_text()
+
+
+def test_apply_extract_class(tmp_path: Path) -> None:
+    """extract_class extracts methods into new class when params present."""
+    target = tmp_path / "big.py"
+    target.write_text(
+        '"""Big class."""\n'
+        "class Big:\n"
+        "    def pure(self, x, y):\n"
+        "        return x + y\n"
+    )
+    plan = {
+        "operations": [
+            {
+                "target_file": "big.py",
+                "kind": "extract_class",
+                "description": "Extract pure methods",
+                "diff": "",
+                "params": {"target_class": "Big", "methods_to_extract": ["pure"]},
+            }
+        ]
+    }
+    report = apply_patch_plan(tmp_path, plan, dry_run=False, backup=False)
+    assert "big.py" in report["modified"]
+    assert "big_bigextracted.py" in report["modified"]
+    extracted = tmp_path / "big_bigextracted.py"
+    assert extracted.exists()
+    assert "def pure" in extracted.read_text()
+    assert "BigExtracted.pure" in (tmp_path / "big.py").read_text()
+
+
+def test_apply_extract_class_skips_when_methods_use_self(tmp_path: Path) -> None:
+    """extract_class skips when requested methods use self.attr."""
+    target = tmp_path / "big.py"
+    target.write_text("class Big:\n    def uses_self(self):\n        return self.x\n")
+    plan = {
+        "operations": [
+            {
+                "target_file": "big.py",
+                "kind": "extract_class",
+                "description": "Extract",
+                "diff": "",
+                "params": {"target_class": "Big", "methods_to_extract": ["uses_self"]},
+            }
+        ]
+    }
+    report = apply_patch_plan(tmp_path, plan, dry_run=False, backup=False)
+    assert report["modified"] == []
+    assert "big.py" in report["skipped"]
+    assert not (tmp_path / "big_bigextracted.py").exists()
 
 
 def test_apply_remove_cyclic_import(tmp_path: Path) -> None:

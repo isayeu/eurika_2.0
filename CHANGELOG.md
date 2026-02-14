@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.2.3 — AST-based extract_class (2025-02-14)
+
+### extract_class: извлечение методов в новый класс
+
+- **eurika.refactor.extract_class:** извлечение методов, не использующих self, в новый класс (в отдельный файл). Методы становятся @staticmethod.
+- **patch_apply:** обработка kind=extract_class с params.target_class и params.methods_to_extract.
+- Тесты: test_apply_extract_class, test_apply_extract_class_skips_when_methods_use_self.
+
+### split_module: fallback на TODO
+
+- **patch_apply:** когда split_module_by_import возвращает None (нет экстрагируемых defs), fallback — append diff (TODO-подсказки) вместо полного skip.
+
+### fix: сохранение отчёта по умолчанию
+
+- **handle_agent_cycle:** отчёт fix (modified, skipped, rescan_diff, verify) сохраняется в `eurika_fix_report.json` в корне проекта.
+
 ## v1.2.2 — AST-based split_module (2025-02-14)
 
 ### split_module: фактическая экстракция

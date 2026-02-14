@@ -468,6 +468,17 @@ def handle_agent_cycle(args: Any) -> int:
     except Exception:
         pass
 
+    try:
+        report_path = path / "eurika_fix_report.json"
+        report_path.write_text(
+            json.dumps(report, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        if not quiet:
+            print(f"eurika_fix_report.json written to {report_path}", file=sys.stderr)
+    except Exception:
+        pass
+
     print(json.dumps(report, indent=2, ensure_ascii=False))
 
     if report.get("errors"):

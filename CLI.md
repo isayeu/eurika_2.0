@@ -368,4 +368,5 @@ eurika agent feedback-summary .
 | `eurika_observations.json` | Журнал наблюдений scan |
 | `architecture_learning.json` | Исходы patch-apply + verify |
 | `architecture_feedback.json` | Ручной фидбек по предложениям |
+| `eurika_fix_report.json` | Отчёт fix (modified, skipped, rescan_diff, verify) — по умолчанию |
 | `.eurika_backups/<run_id>/` | Бэкапы при patch-apply --apply |
