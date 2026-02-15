@@ -118,11 +118,7 @@ def split_module_by_function(
         return None
     bindings: Dict[str, str] = {}
     _collect_bindings(tree, bindings)
-    top_level_names = {
-        n.name
-        for n in ast.iter_child_nodes(tree)
-        if isinstance(n, (ast.FunctionDef, ast.ClassDef)) and (not n.name.startswith("_"))
-    }
+    top_level_names = _module_level_names(tree)
     candidates: List[ast.FunctionDef] = []
     for node in ast.iter_child_nodes(tree):
         if not isinstance(node, ast.FunctionDef) or node.name.startswith("_"):
@@ -179,7 +175,7 @@ def split_module_by_class(file_path: Path, extracted_module_stem: str='_extracte
         return None
     bindings: Dict[str, str] = {}
     _collect_bindings(tree, bindings)
-    top_level_names = {n.name for n in ast.iter_child_nodes(tree) if isinstance(n, (ast.FunctionDef, ast.ClassDef)) and (not n.name.startswith('_'))}
+    top_level_names = _module_level_names(tree)
     candidates: List[ast.ClassDef] = []
     for node in ast.iter_child_nodes(tree):
         if not isinstance(node, ast.ClassDef) or node.name.startswith('__'):
@@ -215,8 +211,23 @@ def split_module_by_class(file_path: Path, extracted_module_stem: str='_extracte
     modified_original = _build_modified_original(tree, [to_extract], [to_extract.name], base, '_' + to_extract.name.lower())
     return (new_rel_path, new_module_content, modified_original)
 
+def _module_level_names(tree: ast.AST) -> Set[str]:
+    """Collect all names bound at module level (Assign, AnnAssign, defs, classes) — not imports."""
+    names: Set[str] = set()
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name):
+                    names.add(t.id)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
+        elif isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+            names.add(node.name)
+    return names
+
+
 def _def_references_local_names(node: ast.FunctionDef | ast.ClassDef, local_names: Set[str], bindings: Dict[str, str]) -> bool:
-    """True if node body references any of local_names (other top-level defs in same module)."""
+    """True if node body references any of local_names (other top-level defs/constants in same module)."""
     builtins = {'True', 'False', 'None', 'bool', 'int', 'str', 'list', 'dict', 'set', 'self'}
     for child in ast.walk(node):
         if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load):

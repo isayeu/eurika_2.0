@@ -137,6 +137,31 @@ def test_apply_split_module_extracts_when_def_uses_multiple_imports(tmp_path: Pa
     assert "from mixed_extracted import f" in (tmp_path / "mixed.py").read_text()
 
 
+def test_apply_split_module_by_function_skips_when_uses_module_constant(tmp_path: Path) -> None:
+    """split_module_by_function does NOT extract functions that reference module-level constants."""
+    target = tmp_path / "mod.py"
+    target.write_text(
+        "CONST = 42\n\n"
+        "def uses_const():\n"
+        "    return CONST + 1\n"
+    )
+    plan = {
+        "operations": [
+            {
+                "target_file": "mod.py",
+                "kind": "split_module",
+                "description": "Split",
+                "diff": "# TODO\n",
+                "params": {"imports_from": ["other"]},
+            }
+        ]
+    }
+    report = apply_patch_plan(tmp_path, plan, dry_run=False, backup=False)
+    assert "mod.py" in report["modified"]
+    assert (tmp_path / "mod_uses_const.py").exists() is False
+    assert "# TODO" in (tmp_path / "mod.py").read_text()
+
+
 def test_apply_split_module_fallback_to_diff_when_no_extractable(tmp_path: Path) -> None:
     """split_module falls back to appending diff when no defs, no extractable class, no standalone function."""
     target = tmp_path / "tiny.py"
