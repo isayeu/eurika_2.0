@@ -197,6 +197,50 @@ def apply_patch_plan(
                 errors.append(f"{target_file}: {e}")
             continue
 
+        # refactor_module: try split_module chain (ROADMAP: real fix instead of TODO)
+        if kind == "refactor_module":
+            try:
+                result = split_module_by_import(
+                    path,
+                    params.get("imports_from") or [],
+                    extracted_module_stem="_extracted",
+                    target_file=target_file,
+                )
+                if result is None:
+                    result = split_module_by_class(
+                        path,
+                        target_file=target_file,
+                        min_class_size=3,
+                    )
+                if result is None:
+                    result = split_module_by_function(
+                        path,
+                        target_file=target_file,
+                        min_statements=1,
+                    )
+                if result is not None:
+                    new_rel_path, new_content, modified_original = result
+                    new_path = root / new_rel_path
+                    if new_path.exists():
+                        skipped.append(target_file)
+                        continue
+                    if do_backup:
+                        backup_root = root / BACKUP_DIR / run_id
+                        backup_path = backup_root / target_file
+                        backup_path.parent.mkdir(parents=True, exist_ok=True)
+                        backup_path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+                        if backup_dir is None:
+                            backup_dir = str(backup_root)
+                    new_path.parent.mkdir(parents=True, exist_ok=True)
+                    new_path.write_text(new_content, encoding="utf-8")
+                    path.write_text(modified_original, encoding="utf-8")
+                    modified.append(target_file)
+                    modified.append(new_rel_path)
+                    continue
+            except Exception as e:
+                errors.append(f"{target_file}: {e}")
+                continue
+
         # extract_class: AST-based method extraction
         if kind == "extract_class" and params.get("target_class") and params.get("methods_to_extract"):
             try:

@@ -80,6 +80,33 @@ def test_apply_patch_plan_skips_already_present(tmp_path: Path) -> None:
     assert report['errors'] == []
     assert (tmp_path / 'd.py').read_text() == 'code\n\n# TODO: refactor\n'
 
+def test_apply_refactor_module_produces_real_split(tmp_path: Path) -> None:
+    """refactor_module tries split_module chain; extracts when possible instead of TODO."""
+    (tmp_path / "mod.py").write_text(
+        '"""Module with standalone function."""\n'
+        "import json\n\n"
+        "def process(x):\n"
+        "    return json.loads(x)\n"
+    )
+    plan = {
+        "operations": [
+            {
+                "target_file": "mod.py",
+                "kind": "refactor_module",
+                "description": "Refactor",
+                "diff": "# TODO: refactor mod.py\n",
+            }
+        ]
+    }
+    report = apply_patch_plan(tmp_path, plan, dry_run=False, backup=False)
+    assert "mod.py" in report["modified"]
+    extracted = next((f for f in report["modified"] if f != "mod.py"), None)
+    assert extracted is not None, f"Expected extracted file, got {report['modified']}"
+    assert (tmp_path / extracted).exists()
+    assert "def process" in (tmp_path / extracted).read_text()
+    assert "# TODO: refactor" not in (tmp_path / "mod.py").read_text()
+
+
 def test_apply_patch_plan_skips_when_marker_exists(tmp_path: Path) -> None:
     """If # TODO: Refactor {target} marker exists, skip (avoid duplicates when diff varies)."""
     (tmp_path / 'e.py').write_text('code\n\n# TODO: Refactor e.py (god_module -> refactor_module)\n# Suggested steps:\n# - old hint\n')

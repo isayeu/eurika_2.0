@@ -339,9 +339,9 @@
 | extract_class | ✓ Реальный фикс |
 | split_module (успех) | ✓ Реальный фикс |
 | split_module (fallback) | ✓ Часто реальный (by_function, infer imports, relaxed extraction) |
-| refactor_module | ❌ Append TODO |
+| refactor_module | ✓ Пробует split_module chain, иначе TODO |
 
-**Приоритет:** расширять handlers (refactor_module → реальный split по мере возможностей).
+**Приоритет:** стабилизация цикла, прогоны на других проектах.
 
 ---
 

@@ -17,6 +17,11 @@ All notable changes to this project will be documented in this file.
 
 - Добавлены артефакты успешного цикла: extracted-модули (agent_core, action_plan, patch_apply, orchestrator, agent_handlers, patch_engine, runtime_scan), фасады (action_plan_api, code_awareness_api).
 
+### refactor_module (ROADMAP: реальный фикс вместо TODO)
+
+- **patch_apply:** kind="refactor_module" теперь пробует split_module chain (by_import → by_class → by_function) до fallback на append diff.
+- Тест: test_apply_refactor_module_produces_real_split.
+
 ### Git
 
 - self_map.json исключён из tracking (уже в .gitignore).
