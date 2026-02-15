@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## v2.6.5 — Dogfooding: code_awareness cycle (2025-02-15)
+
+### Cycle artifacts
+
+- **code_awareness:** split_module + extract_class (CodeAwarenessExtracted, code_awareness_extracted).
+- bottleneck: 7 → 6.
+- Дополнительные циклы: clean-imports, мелкие правки в extracted-модулях.
+
+---
+
 ## v2.6.4 — split_module: повышение операционности (2025-02-15)
 
 ### split_module
