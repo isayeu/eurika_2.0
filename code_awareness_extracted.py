@@ -1,7 +1,6 @@
 """Extracted from parent module to reduce complexity."""
-
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 @dataclass
 class FileInfo:

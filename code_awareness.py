@@ -6,7 +6,6 @@ SPEC: scan project, AST analysis, find smells, self_map.json.
 """
 import ast
 import json
-from dataclasses import dataclass
 from pathlib import Path
 from code_awareness_extracted import FileInfo, Smell
 from code_awareness_codeawarenessextracted import CodeAwarenessExtracted
@@ -230,3 +229,11 @@ class CodeAwareness:
 
     def _normalize_body(self, text: str):
         return CodeAwarenessExtracted._normalize_body(text)
+
+# TODO: Refactor code_awareness.py (god_module -> split_module)
+# Suggested steps:
+# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
+# - Identify distinct concerns and split this module into focused units.
+# - Reduce total degree (fan-in + fan-out) via extraction.
+# - Extract from imports: code_awareness_extracted.py, code_awareness_codeawarenessextracted.py.
+# - Consider grouping callers: tests/test_runtime_scan.py, runtime_scan.py, code_awareness_api.py.

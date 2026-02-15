@@ -1,8 +1,7 @@
 """Extracted from parent class to reduce complexity."""
-
 import ast
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List
 
 class CodeAwarenessExtracted:
     """Extracted methods (static)."""
