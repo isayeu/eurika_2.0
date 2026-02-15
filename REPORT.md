@@ -1,12 +1,12 @@
 # REPORT — Текущий статус Eurika
 
-_Обновлено: v1.2.6. Синхронизировано с review.md и ROADMAP.md. Контракт — SPEC.md._
+_Обновлено: v2.6.8. Синхронизировано с review.md и ROADMAP.md. Контракт — SPEC.md._
 
 ---
 
 ## Статус
 
-**Текущая версия:** v1.2.6 (doctor/fix отчёты)
+**Текущая версия:** v2.6.8 (fix_import_from_verify, extract_class constants)
 
 **Основная задача (сейчас):** саморазвитие, анализ и исправление собственного кода, добавление новых функций по запросу и т.д. Eurika в первую очередь работает над собой: scan/doctor/fix по своей кодовой базе, доработки по обратной связи, наращивание возможностей.
 
@@ -31,8 +31,8 @@ _Обновлено: v1.2.6. Синхронизировано с review.md и RO
 
 ### Проверка стабильности
 
-- **Тесты:** 132 passed (pytest).
-- **Использование на других проектах:** на `farm_helper` и `optweb` выполнены scan, doctor, **fix --dry-run** (успешно). Артефакты в каталогах проектов.
+- **Тесты:** 172 passed (pytest).
+- **Использование на других проектах:** farm_helper — 0 ops; optweb — clean-imports, verify failed (Django); eurika (/mnt/storage/project/eurika/) — fix применяет patch, fix_import_from_verify создаёт internal_goals.py и добавляет GOALS_FILE в extracted, verify timeout 120s на тяжёлых тестах.
 - **Полный fix на Eurika:** выполнен `eurika fix .` (без --dry-run) с venv: apply → verify (pytest 131 passed) → rescan → verify_metrics. Артефакты в .gitignore; цикл scan → doctor → fix --dry-run выполнялся, тренды стабильны.
 
 ### Видение (далёкое будущее)

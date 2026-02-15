@@ -2,6 +2,46 @@
 
 All notable changes to this project will be documented in this file.
 
+## v2.6.8 — extract_class: module-level constants + fix_import NameError (2025-02-15)
+
+### extract_class: module-level constants
+- **extract_class:** при экстракции методов добавляет в extracted-модуль используемые модульные константы (напр. GOALS_FILE).
+- _get_module_level_assignments, _names_used_in_node; импорты для констант (Path и др.) подтягиваются автоматически.
+- Тест: test_extract_class_includes_module_level_constants.
+
+### fix_import_from_verify: NameError
+- **fix_import_from_verify:** обработка NameError (name 'X' is not defined) — поиск определения X в других модулях, добавление в failing file.
+- Для goals_goalsystemextracted.py без GOALS_FILE — добавляет `GOALS_FILE = Path('goals.json')` из goals.py.
+- Тесты: test_parse_name_error, test_suggest_fix_name_error_adds_constant.
+
+---
+
+## v2.6.7 — fix_import_from_verify: авто-исправление ModuleNotFoundError (2025-02-15)
+
+### fix_import_from_verify
+
+- **Новая операция:** при провале verify (pytest) с ModuleNotFoundError или ImportError Eurika парсит вывод, предлагает fix и применяет его (retry).
+- **Стратегии:** 1) перенаправить импорт (если символ найден в другом модуле); 2) создать минимальный stub-модуль (load_*, *_FILE).
+- **Интеграция:** apply_and_verify с retry_on_import_error=True (по умолчанию) — после первого verify при импорт-ошибке применяет fix и повторяет verify.
+- **Патч-операции:** create_module_stub, fix_import (в patch_apply).
+- Тесты: tests/test_fix_import_from_verify.py.
+- Прогон на eurika: internal_goals.py создан автоматически, первый verify пройден.
+
+---
+
+## v2.6.6 — Configurable verify command (2025-02-15)
+
+### fix/cycle: --verify-cmd
+
+- **patch_engine:** verify_patch и apply_and_verify принимают `verify_cmd` — переопределение команды верификации.
+- **Приоритет:** `--verify-cmd` > `[tool.eurika] verify_cmd` в pyproject.toml > pytest -q.
+- **CLI:** `eurika fix . --verify-cmd "python manage.py test"`, `eurika cycle . --verify-cmd "..."`.
+- Для проектов без pytest (Django, unittest и т.д.) — настраиваемая verify.
+- Тесты: test_verify_patch_custom_cmd, test_verify_patch_pyproject_verify_cmd.
+- CLI.md обновлён.
+
+---
+
 ## v2.6.5 — Dogfooding: code_awareness cycle (2025-02-15)
 
 ### Cycle artifacts

@@ -26,7 +26,7 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Eurika — architecture analysis and refactoring assistant",
         epilog="Product (5 modes): scan | doctor | fix | cycle | explain. Use eurika help for full list.",
     )
-    parser.add_argument("--version", "-V", action="version", version="%(prog)s 2.6.2")
+    parser.add_argument("--version", "-V", action="version", version="%(prog)s 2.6.8")
     subparsers = parser.add_subparsers(dest="command")
 
     _add_product_commands(subparsers)   # scan, doctor, fix, explain — ROADMAP этап 5
@@ -97,6 +97,7 @@ def _add_product_commands(subparsers: argparse._SubParsersAction) -> None:
     fix_parser.add_argument("--dry-run", action="store_true", help="Only build patch plan, do not apply")
     fix_parser.add_argument("--quiet", "-q", action="store_true", help="Minimal output; final JSON only")
     fix_parser.add_argument("--no-clean-imports", action="store_true", help="Skip remove-unused-imports step (default: included)")
+    fix_parser.add_argument("--verify-cmd", type=str, default=None, metavar="CMD", help="Override verify command (e.g. 'python manage.py test'); else [tool.eurika] verify_cmd or pytest")
     fix_parser.add_argument("--interval", type=int, default=0, metavar="SEC", help="Auto-run: repeat every SEC seconds (0=once, Ctrl+C to stop)")
 
     cycle_parser = subparsers.add_parser(
@@ -115,6 +116,7 @@ def _add_product_commands(subparsers: argparse._SubParsersAction) -> None:
     cycle_parser.add_argument("--quiet", "-q", action="store_true", help="Minimal output; final JSON only")
     cycle_parser.add_argument("--no-llm", action="store_true", help="Architect: use template only (no API key)")
     cycle_parser.add_argument("--no-clean-imports", action="store_true", help="Skip remove-unused-imports in fix (default: included)")
+    cycle_parser.add_argument("--verify-cmd", type=str, default=None, metavar="CMD", help="Override verify command (e.g. 'python manage.py test'); else [tool.eurika] verify_cmd or pytest")
     cycle_parser.add_argument("--interval", type=int, default=0, metavar="SEC", help="Auto-run: repeat every SEC seconds (0=once, Ctrl+C to stop)")
 
     explain_parser = subparsers.add_parser(

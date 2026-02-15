@@ -69,11 +69,11 @@ eurika doctor . --no-llm
 
 ---
 
-### eurika fix [path] [--window N] [--dry-run] [--quiet] [--no-clean-imports]
+### eurika fix [path] [--window N] [--dry-run] [--quiet] [--no-clean-imports] [--verify-cmd CMD]
 
-Полный цикл: scan → arch-review → patch-apply --apply --verify. **По умолчанию** план fix включает операции **remove_unused_import** (clean-imports) для файлов с неиспользуемыми импортами; затем — архитектурные патчи (remove_cyclic_import, split_module и т.д.). Эквивалент `eurika agent cycle` с применением патчей и проверкой тестами. После apply запускается **pytest**; для верификации нужен установленный pytest: `pip install pytest` или `pip install -e ".[test]"`. **Отчёт сохраняется в `eurika_fix_report.json`** (при apply — полный; при `--dry-run` — `dry_run: true` + `patch_plan`).
+Полный цикл: scan → arch-review → patch-apply --apply --verify. **По умолчанию** план fix включает операции **remove_unused_import** (clean-imports) для файлов с неиспользуемыми импортами; затем — архитектурные патчи (remove_cyclic_import, split_module и т.д.). Эквивалент `eurika agent cycle` с применением патчей и проверкой тестами. После apply запускается **pytest** (или `--verify-cmd` / `[tool.eurika] verify_cmd` в pyproject.toml); для верификации нужен установленный pytest: `pip install pytest` или `pip install -e ".[test]"`. **Отчёт сохраняется в `eurika_fix_report.json`** (при apply — полный; при `--dry-run` — `dry_run: true` + `patch_plan`).
 
-**Опции:** `--window N`, `--dry-run` (только план, без apply; сохраняет eurika_fix_report.json), `--quiet` / `-q` (минимальный вывод, итог в JSON), `--no-clean-imports` (исключить remove_unused_import из плана), `--interval SEC` (авто-повтор каждые SEC секунд, 0=один раз; Ctrl+C для остановки).
+**Опции:** `--window N`, `--dry-run` (только план, без apply; сохраняет eurika_fix_report.json), `--quiet` / `-q` (минимальный вывод, итог в JSON), `--no-clean-imports` (исключить remove_unused_import из плана), `--verify-cmd CMD` (переопределить команду верификации, напр. `python manage.py test` для Django; иначе используется `[tool.eurika] verify_cmd` в pyproject.toml или pytest), `--interval SEC` (авто-повтор каждые SEC секунд, 0=один раз; Ctrl+C для остановки).
 
 ```bash
 eurika fix .
@@ -84,11 +84,11 @@ eurika fix . --no-clean-imports
 
 ---
 
-### eurika cycle [path] [--window N] [--dry-run] [--quiet] [--no-llm] [--no-clean-imports]
+### eurika cycle [path] [--window N] [--dry-run] [--quiet] [--no-llm] [--no-clean-imports] [--verify-cmd CMD]
 
 Полный ритуал одной командой: **scan → doctor (report + architect) → fix**. Сначала scan, затем вывод полной диагностики (summary, evolution, architect), затем fix (patch-apply --apply --verify). Fix по умолчанию включает remove_unused_import; architect при cycle получает recent_events (последние patch/learn) в контексте.
 
-**Опции:** `--window N`, `--dry-run` (doctor + plan, без apply), `--quiet` / `-q`, `--no-llm` (architect по шаблону, без API-ключа), `--no-clean-imports` (исключить clean-imports из fix), `--interval SEC` (авто-повтор каждые SEC секунд; Ctrl+C для остановки).
+**Опции:** `--window N`, `--dry-run` (doctor + plan, без apply), `--quiet` / `-q`, `--no-llm` (architect по шаблону, без API-ключа), `--no-clean-imports` (исключить clean-imports из fix), `--verify-cmd CMD` (переопределить команду верификации для fix), `--interval SEC` (авто-повтор каждые SEC секунд; Ctrl+C для остановки).
 
 ### eurika watch [path] [--poll SEC] [--quiet] [--no-clean-imports]
 
@@ -121,7 +121,7 @@ eurika cycle . --no-clean-imports
 | Только план (dry-run) | `eurika fix . --dry-run --quiet` | Построить план без применения; exit 0; для проверки «что было бы сделано» |
 | Полный ритуал без LLM | `eurika cycle . --quiet --no-llm` | scan → doctor (шаблон) → fix; не требует OPENAI_API_KEY |
 
-**Требования:** `pip install pytest` для verify. Артефакты: `eurika_fix_report.json`, `.eurika/`.
+**Требования:** `pip install pytest` для verify (или задать `--verify-cmd` / `[tool.eurika] verify_cmd` в pyproject.toml для Django и др.). При ModuleNotFoundError/NameError Eurika пробует авто-фикс (create stub или add constant) и повторяет verify. Артефакты: `eurika_fix_report.json`, `.eurika/`.
 
 ---
 

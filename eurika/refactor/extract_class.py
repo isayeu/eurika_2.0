@@ -14,6 +14,7 @@ from typing import List, Optional, Set, Tuple
 from .split_module import (
     _collect_bindings,
     _gather_import_lines,
+    _module_level_names,
     _used_import_stems,
 )
 
@@ -136,18 +137,63 @@ def _uses_self_attributes(node: ast.FunctionDef) -> bool:
     return False
 
 
+def _names_used_in_node(node: ast.AST) -> Set[str]:
+    """Collect names loaded (not assigned) in node body."""
+    builtins_ = {"True", "False", "None", "bool", "int", "str", "list", "dict", "set", "self"}
+    used: Set[str] = set()
+    for child in ast.walk(node):
+        if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load):
+            if child.id not in builtins_:
+                used.add(child.id)
+    return used
+
+
+def _get_module_level_assignments(
+    tree: ast.AST, names: Set[str], used_stems_out: Optional[Set[str]] = None
+) -> List[str]:
+    """Return unparsed assignment lines for names defined at module level. Optionally add stems used in RHS to used_stems_out."""
+    result: List[str] = []
+    bindings: dict = {}
+    _collect_bindings(tree, bindings)
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for t in targets:
+                if isinstance(t, ast.Name) and t.id in names:
+                    if used_stems_out is not None:
+                        for child in ast.walk(node):
+                            if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load):
+                                stem = bindings.get(child.id)
+                                if stem:
+                                    used_stems_out.add(stem)
+                    result.append(ast.unparse(node))
+                    break
+    return result
+
+
 def _build_extracted_class_module(
     tree: ast.AST,
     new_class_name: str,
     methods: List[ast.FunctionDef],
 ) -> str:
-    """Build new module with extracted class (static methods). Includes imports for type hints."""
+    """Build new module with extracted class (static methods). Includes imports for type hints and module-level constants used in methods."""
     bindings: dict = {}
     _collect_bindings(tree, bindings)
     used_stems: Set[str] = set()
+    names_in_methods: Set[str] = set()
     for m in methods:
         used_stems |= _used_import_stems(m, bindings)
+        names_in_methods |= _names_used_in_node(m)
     import_lines = _gather_import_lines(tree, used_stems)
+
+    # Module-level names used in methods (excluding imports/class defs)
+    module_level = _module_level_names(tree)
+    imports_and_classes = set(bindings.keys()) | {n.name for n in ast.walk(tree) if isinstance(n, (ast.ClassDef, ast.FunctionDef))}
+    const_needed = names_in_methods & module_level - imports_and_classes
+    const_lines: List[str] = []
+    if const_needed:
+        const_lines = _get_module_level_assignments(tree, const_needed, used_stems_out=used_stems)
+        import_lines = _gather_import_lines(tree, used_stems)
 
     # Convert to static: remove self from args
     static_methods = []
@@ -168,6 +214,9 @@ def _build_extracted_class_module(
     ]
     if import_lines:
         lines.extend(import_lines)
+        lines.append("")
+    if const_lines:
+        lines.extend(const_lines)
         lines.append("")
     lines.extend([
         f"class {new_class_name}:",

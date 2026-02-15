@@ -89,6 +89,23 @@ def test_verify_patch_returns_dict(tmp_path: Path) -> None:
     assert 'stderr' in out
 
 
+def test_verify_patch_custom_cmd(tmp_path: Path) -> None:
+    """verify_patch with verify_cmd override runs that command instead of pytest."""
+    out = verify_patch(tmp_path, timeout=10, verify_cmd="python -c \"exit(0)\"")
+    assert out['success'] is True
+    assert out['returncode'] == 0
+
+
+def test_verify_patch_pyproject_verify_cmd(tmp_path: Path) -> None:
+    """verify_patch uses [tool.eurika] verify_cmd from pyproject.toml when no override."""
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.eurika]\nverify_cmd = "true"\n',
+        encoding="utf-8",
+    )
+    out = verify_patch(tmp_path, timeout=10)
+    assert out['success'] is True
+
+
 def test_rollback_patch_same_as_rollback(tmp_path: Path) -> None:
     """rollback_patch is equivalent to rollback."""
     (tmp_path / '.eurika_backups' / 'r1').mkdir(parents=True)

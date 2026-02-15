@@ -248,7 +248,7 @@ def handle_fix(args: Any) -> int:
     fix_args = SimpleNamespace(
         path=args.path, window=getattr(args, 'window', 5), dry_run=getattr(args, 'dry_run', False),
         quiet=getattr(args, 'quiet', False), no_clean_imports=getattr(args, 'no_clean_imports', False),
-        interval=getattr(args, 'interval', 0),
+        verify_cmd=getattr(args, 'verify_cmd', None), interval=getattr(args, 'interval', 0),
     )
     return handle_agent_cycle(fix_args)
 

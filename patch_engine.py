@@ -3,7 +3,7 @@ Patch Engine (ROADMAP 2.1 / review.md).
 
 Facade: apply_patch(plan), verify_patch(), rollback_patch().
 Plan is built elsewhere (arch-review → suggest_patch_plan); this module
-applies, verifies (pytest), and restores. Optional auto_rollback on verify failure.
+applies, verifies (pytest or custom command), and restores. Optional auto_rollback on verify failure.
 
 Usage:
     from patch_engine import apply_patch, verify_patch, rollback_patch, apply_and_verify
@@ -15,11 +15,29 @@ Usage:
     report = apply_and_verify(project_root, plan, backup=True, verify=True, auto_rollback=True)
 """
 from __future__ import annotations
+import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from patch_apply import apply_patch_plan, list_backups as _list_backups, restore_backup
+
+
+def _get_verify_cmd(project_root: Path, override: Optional[str] = None) -> List[str]:
+    """Resolve verify command: override > pyproject.toml [tool.eurika] verify_cmd > default pytest."""
+    if override is not None and override.strip():
+        return shlex.split(override.strip())
+    pyproject = project_root / "pyproject.toml"
+    if pyproject.exists():
+        try:
+            text = pyproject.read_text(encoding="utf-8")
+            m = re.search(r'verify_cmd\s*=\s*["\']([^"\']+)["\']', text)
+            if m:
+                return shlex.split(m.group(1).strip())
+        except (OSError, UnicodeDecodeError):
+            pass
+    return [sys.executable, "-m", "pytest", "-q"]
 
 
 def apply_patch(
@@ -47,16 +65,19 @@ def verify_patch(
     project_root: Path,
     *,
     timeout: int = 120,
+    verify_cmd: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Run pytest in project_root to verify the current state (e.g. after apply_patch).
+    Run verify command in project_root (default: pytest -q).
+    verify_cmd overrides [tool.eurika] verify_cmd in pyproject.toml.
 
     Returns:
         {"success": bool, "returncode": int, "stdout": str, "stderr": str}
     """
     root = Path(project_root).resolve()
+    cmd = _get_verify_cmd(root, override=verify_cmd)
     proc = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q"],
+        cmd,
         cwd=root,
         capture_output=True,
         text=True,
@@ -97,18 +118,23 @@ def apply_and_verify(
     backup: bool = True,
     verify: bool = True,
     verify_timeout: int = 120,
+    verify_cmd: Optional[str] = None,
     auto_rollback: bool = True,
+    retry_on_import_error: bool = True,
 ) -> Dict[str, Any]:
     """
-    Apply a patch plan and optionally run pytest. On verify failure, optionally roll back.
+    Apply a patch plan and optionally run verify command. On verify failure, optionally
+    try to fix import errors (create missing stub or redirect import) and retry verify.
 
     Args:
         project_root: Project directory.
         plan: Patch plan dict.
         backup: If True, copy files to .eurika_backups/<run_id>/ before modifying.
-        verify: If True, run pytest after apply.
+        verify: If True, run verify command after apply.
         verify_timeout: Timeout in seconds for the verify step.
-        auto_rollback: If True and verify fails, restore from backup (last run_id).
+        verify_cmd: Override for verify command (e.g. "python manage.py test"); else use pyproject or pytest.
+        auto_rollback: If True and verify fails (after retry if any), restore from backup (last run_id).
+        retry_on_import_error: If True and verify fails with ModuleNotFoundError/ImportError, try fix and re-verify once.
 
     Returns:
         Report with keys: dry_run, modified, skipped, errors, backup_dir, run_id;
@@ -120,7 +146,29 @@ def apply_and_verify(
     if not verify:
         report.setdefault("verify", {"success": None, "returncode": None, "stdout": "", "stderr": ""})
         return report
-    report["verify"] = verify_patch(root, timeout=verify_timeout)
+    report["verify"] = verify_patch(root, timeout=verify_timeout, verify_cmd=verify_cmd)
+
+    # Retry on import error: parse verify output, apply fix, re-verify once
+    if (
+        not report["verify"]["success"]
+        and retry_on_import_error
+        and report.get("run_id")
+    ):
+        from eurika.refactor.fix_import_from_verify import (
+            parse_verify_import_error,
+            suggest_fix_import_operations,
+        )
+        v = report["verify"]
+        parsed = parse_verify_import_error(v.get("stdout", ""), v.get("stderr", ""))
+        if parsed:
+            fix_ops = suggest_fix_import_operations(root, parsed)
+            if fix_ops:
+                fix_plan = {"operations": fix_ops}
+                fix_report = apply_patch(root, fix_plan, backup=False)
+                report["modified"] = report.get("modified", []) + fix_report.get("modified", [])
+                report["fix_import_retry"] = {"applied": fix_report.get("modified", [])}
+                report["verify"] = verify_patch(root, timeout=verify_timeout, verify_cmd=verify_cmd)
+
     if not report["verify"]["success"] and auto_rollback and report.get("run_id"):
         rb = rollback_patch(root, report["run_id"])
         report["rollback"] = {

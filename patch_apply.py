@@ -72,11 +72,51 @@ def apply_patch_plan(
         diff = op.get("diff") or ""
         kind = op.get("kind") or ""
         params = op.get("params") or {}
+        content = op.get("content") or ""
         if not target_file:
             errors.append("operation missing target_file")
             continue
 
         path = root / target_file
+
+        # create_module_stub: create new file (path may not exist)
+        if kind == "create_module_stub" and content:
+            if path.exists():
+                skipped.append(target_file)
+                continue
+            if dry_run:
+                modified.append(target_file)
+                continue
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content, encoding="utf-8")
+                modified.append(target_file)
+            except Exception as e:
+                errors.append(f"{target_file}: {e}")
+            continue
+
+        # fix_import: replace line in existing file
+        if kind == "fix_import" and diff:
+            if not path.exists() or not path.is_file():
+                skipped.append(target_file)
+                continue
+            if dry_run:
+                modified.append(target_file)
+                continue
+            try:
+                if do_backup:
+                    backup_root = root / BACKUP_DIR / run_id
+                    backup_path = backup_root / target_file
+                    backup_path.parent.mkdir(parents=True, exist_ok=True)
+                    backup_path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+                    if backup_dir is None:
+                        backup_dir = str(backup_root)
+                path.write_text(diff, encoding="utf-8")
+                modified.append(target_file)
+            except Exception as e:
+                errors.append(f"{target_file}: {e}")
+            continue
+
         if not path.exists():
             skipped.append(target_file)
             continue

@@ -72,15 +72,16 @@ def run_cycle(
     quiet: bool = False,
     no_llm: bool = False,
     no_clean_imports: bool = False,
+    verify_cmd: str | None = None,
 ) -> dict[str, Any]:
     """Единая точка входа: mode='doctor' | 'fix' | 'full'. Другие аргументы передаются в соответствующий цикл."""
     path = Path(path).resolve()
     if mode == "doctor":
         return run_doctor_cycle(path, window=window, no_llm=no_llm)
     if mode == "fix":
-        return run_fix_cycle(path, window=window, dry_run=dry_run, quiet=quiet, no_clean_imports=no_clean_imports)
+        return run_fix_cycle(path, window=window, dry_run=dry_run, quiet=quiet, no_clean_imports=no_clean_imports, verify_cmd=verify_cmd)
     if mode == "full":
-        return run_full_cycle(path, window=window, dry_run=dry_run, quiet=quiet, no_llm=no_llm, no_clean_imports=no_clean_imports)
+        return run_full_cycle(path, window=window, dry_run=dry_run, quiet=quiet, no_llm=no_llm, no_clean_imports=no_clean_imports, verify_cmd=verify_cmd)
     return {"error": f"Unknown mode: {mode}. Use 'doctor', 'fix', or 'full'."}
 
 
@@ -135,6 +136,7 @@ def run_full_cycle(
     quiet: bool = False,
     no_llm: bool = False,
     no_clean_imports: bool = False,
+    verify_cmd: str | None = None,
 ) -> dict[str, Any]:
     """Run scan → doctor (full report) → fix. Single command for the full ritual."""
     from eurika.smells.rules import summary_to_text
@@ -154,7 +156,7 @@ def run_full_cycle(
         print(file=sys.stderr)
         print(data["architect_text"], file=sys.stderr)
         print(file=sys.stderr)
-    out = run_fix_cycle(path, window=window, dry_run=dry_run, quiet=quiet, skip_scan=True, no_clean_imports=no_clean_imports)
+    out = run_fix_cycle(path, window=window, dry_run=dry_run, quiet=quiet, skip_scan=True, no_clean_imports=no_clean_imports, verify_cmd=verify_cmd)
     out["doctor_report"] = data
     return out
 
@@ -167,6 +169,7 @@ def run_fix_cycle(
     quiet: bool = False,
     skip_scan: bool = False,
     no_clean_imports: bool = False,
+    verify_cmd: str | None = None,
 ) -> dict[str, Any]:
     """Run full fix cycle: scan → diagnose → plan → patch → verify. Writes eurika_fix_report.json and appends to memory. Returns dict with return_code, report, operations, modified, verify_success, agent_result."""
     from agent_core import InputEvent
@@ -275,7 +278,7 @@ def run_fix_cycle(
         (path / BACKUP_DIR).mkdir(parents=True, exist_ok=True)
         rescan_before.write_text(self_map_path.read_text(encoding="utf-8"), encoding="utf-8")
 
-    report = apply_and_verify(path, patch_plan, backup=True, verify=True, auto_rollback=True)
+    report = apply_and_verify(path, patch_plan, backup=True, verify=True, verify_cmd=verify_cmd, auto_rollback=True)
 
     if report["verify"]["success"] and rescan_before.exists():
         if not quiet:
