@@ -9,8 +9,17 @@ All notable changes to this project will be documented in this file.
 - **split_module_by_function:** новый fallback — экстракция standalone top-level функций в отдельный модуль.
 - **split_module_by_import:** при пустом params.imports_from — inference stems из AST модуля.
 - **Relax extraction:** defs с несколькими импортами из imports_from теперь экстрагируются (assign to stem cluster).
+- **Module-level constants:** _module_level_names() — не экстрагировать defs, использующие модульные константы (избежание NameError после extract).
 - Цепочка: split_module_by_import → split_module_by_class → split_module_by_function.
-- Тесты: test_apply_split_module_by_function_fallback, test_apply_split_module_extracts_when_def_uses_multiple_imports.
+- Тесты: test_apply_split_module_by_function_fallback, test_apply_split_module_extracts_when_def_uses_multiple_imports, test_apply_split_module_by_function_skips_when_uses_module_constant.
+
+### Cycle artifacts (dogfooding)
+
+- Добавлены артефакты успешного цикла: extracted-модули (agent_core, action_plan, patch_apply, orchestrator, agent_handlers, patch_engine, runtime_scan), фасады (action_plan_api, code_awareness_api).
+
+### Git
+
+- self_map.json исключён из tracking (уже в .gitignore).
 
 ---
 
