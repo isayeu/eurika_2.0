@@ -212,6 +212,40 @@ def test_apply_extract_class(tmp_path: Path) -> None:
     assert "BigExtracted.pure" in (tmp_path / "big.py").read_text()
 
 
+def test_apply_extract_class_includes_type_hint_imports(tmp_path: Path) -> None:
+    """extract_class adds imports for type hints (e.g. Path) used in method signatures."""
+    target = tmp_path / "mod.py"
+    target.write_text(
+        '"""Module."""\n'
+        "from pathlib import Path\n\n"
+        "class Big:\n"
+        "    def read(self, path: Path) -> str:\n"
+        "        return path.read_text()\n"
+        "    def other(self) -> int:\n"
+        "        return 1\n"
+        "    def more(self) -> str:\n"
+        "        return 'x'\n"
+    )
+    plan = {
+        "operations": [
+            {
+                "target_file": "mod.py",
+                "kind": "extract_class",
+                "description": "Extract",
+                "diff": "",
+                "params": {"target_class": "Big", "methods_to_extract": ["read"]},
+            }
+        ]
+    }
+    report = apply_patch_plan(tmp_path, plan, dry_run=False, backup=False)
+    assert "mod.py" in report["modified"]
+    extracted = tmp_path / "mod_bigextracted.py"
+    assert extracted.exists()
+    content = extracted.read_text()
+    assert "from pathlib import Path" in content
+    assert "def read(path: Path)" in content
+
+
 def test_apply_extract_class_skips_when_methods_use_self(tmp_path: Path) -> None:
     """extract_class skips when requested methods use self.attr."""
     target = tmp_path / "big.py"

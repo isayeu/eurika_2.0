@@ -17,6 +17,12 @@ All notable changes to this project will be documented in this file.
 
 - Добавлены артефакты успешного цикла: extracted-модули (agent_core, action_plan, patch_apply, orchestrator, agent_handlers, patch_engine, runtime_scan), фасады (action_plan_api, code_awareness_api).
 
+### extract_class: imports for type hints
+
+- **extract_class:** собирает используемые импорты (включая type hints в сигнатурах) и добавляет их в extracted-модуль.
+- Фикс NameError при методах с `path: Path` и др.
+- Тест: test_apply_extract_class_includes_type_hint_imports.
+
 ### refactor_module (ROADMAP: реальный фикс вместо TODO)
 
 - **patch_apply:** kind="refactor_module" теперь пробует split_module chain (by_import → by_class → by_function) до fallback на append diff.

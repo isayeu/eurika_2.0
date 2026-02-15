@@ -9,7 +9,13 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Set, Tuple
+
+from .split_module import (
+    _collect_bindings,
+    _gather_import_lines,
+    _used_import_stems,
+)
 
 
 MIN_METHODS_GOD_CLASS = 6
@@ -135,7 +141,14 @@ def _build_extracted_class_module(
     new_class_name: str,
     methods: List[ast.FunctionDef],
 ) -> str:
-    """Build new module with extracted class (static methods)."""
+    """Build new module with extracted class (static methods). Includes imports for type hints."""
+    bindings: dict = {}
+    _collect_bindings(tree, bindings)
+    used_stems: Set[str] = set()
+    for m in methods:
+        used_stems |= _used_import_stems(m, bindings)
+    import_lines = _gather_import_lines(tree, used_stems)
+
     # Convert to static: remove self from args
     static_methods = []
     for m in methods:
@@ -152,10 +165,15 @@ def _build_extracted_class_module(
     lines = [
         '"""Extracted from parent class to reduce complexity."""',
         "",
+    ]
+    if import_lines:
+        lines.extend(import_lines)
+        lines.append("")
+    lines.extend([
         f"class {new_class_name}:",
         '    """Extracted methods (static)."""',
         "",
-    ]
+    ])
     for sm in static_methods:
         for line in sm.split("\n"):
             lines.append("    " + line if line.strip() else "")
