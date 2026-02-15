@@ -338,10 +338,10 @@
 | introduce_facade | ✓ Реальный фикс (создаёт {stem}_api.py) |
 | extract_class | ✓ Реальный фикс |
 | split_module (успех) | ✓ Реальный фикс |
+| split_module (fallback) | ✓ Часто реальный (by_function, infer imports, relaxed extraction) |
 | refactor_module | ❌ Append TODO |
-| split_module (fallback) | ❌ Append TODO |
 
-**Приоритет:** расширять handlers (split_module fallback → реальный split по мере возможностей).
+**Приоритет:** расширять handlers (refactor_module → реальный split по мере возможностей).
 
 ---
 

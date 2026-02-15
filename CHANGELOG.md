@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## v2.6.4 — split_module: повышение операционности (2025-02-15)
+
+### split_module
+
+- **split_module_by_function:** новый fallback — экстракция standalone top-level функций в отдельный модуль.
+- **split_module_by_import:** при пустом params.imports_from — inference stems из AST модуля.
+- **Relax extraction:** defs с несколькими импортами из imports_from теперь экстрагируются (assign to stem cluster).
+- Цепочка: split_module_by_import → split_module_by_class → split_module_by_function.
+- Тесты: test_apply_split_module_by_function_fallback, test_apply_split_module_extracts_when_def_uses_multiple_imports.
+
+---
+
 ## v2.6.2 — watch + performance-based filter (ROADMAP 2.6.2, 2.6.3) (2025-02-15)
 
 ### eurika watch [path]
