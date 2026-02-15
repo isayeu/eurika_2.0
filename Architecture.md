@@ -92,22 +92,20 @@ scan → diagnose → plan → patch → verify → learn
 
 ### Patch Engine (2.1)
 
-**Явный модуль `patch_engine.py`:** фасад «применить план → проверить (pytest) → откат».
-
-- **apply_and_verify(project_root, plan, backup=..., verify=...)** — вызов apply_patch_plan + при verify запуск pytest; возвращает отчёт с ключами modified, run_id, verify (success, returncode, stdout, stderr).
-- **rollback(project_root, run_id=None)** — восстановление из `.eurika_backups/<run_id>` (при run_id=None — последний run).
-- **list_backups(project_root)** — список доступных run_id.
-
-План по-прежнему строится в arch-review (suggest_patch_plan); patch_plan.py и patch_apply.py остаются реализацией. Цикл fix и команда patch-apply с --verify используют patch_engine.apply_and_verify.
+**Модуль `patch_engine.py`** — фасад «применить план → проверить → откат». Текущая реализация: apply_and_verify, rollback, list_backups. **Целевой API (по review.md):** явные операции **apply_patch(plan)**, **verify_patch()** (перескан + метрики), **rollback_patch()**; при провале verify — автоматический откат. Без этого Eurika не станет автономной. Детали — ROADMAP § «Этап 1 — Patch Engine».
 
 ### Консолидация памяти
 
-Реализовано: единый фасад **ProjectMemory(project_root)** (eurika.storage) — **.events** (единый лог), .feedback, .learning, .observations, .history. **Единая модель события** (review.md): Event с полями type, input, output, result, timestamp; хранилище EventStore, файл eurika_events.json. События пишутся при scan (runtime_scan) и при patch (cycle, patch-apply --verify). Остальные файлы: architecture_feedback.json, architecture_learning.json, eurika_observations.json, architecture_history.json.
+Реализовано: **event_engine(project_root)** (eurika.storage.event_engine) — единая точка входа для журнала событий; хранилище eurika_events.json. Event { type, input, output/action, result, timestamp }; сериализация с полем `action`. **ProjectMemory.events** возвращает event_engine(project_root). Запись при scan и patch. Файлы feedback/learning/observations/history по-прежнему отдельные для своих API; единый лог «что произошло» — eurika_events.json.
 
 ### Оценка по review.md и направление 2.1
 
-- **2.0** — «архитектурный аналитик»: анализ и отчёты сильны, действие (patch + verify) есть, но не выделено как главный фокус.
-- **2.1** — цель «инженерный инструмент»: явный Patch Engine, граф как источник решений и планирования, единая модель Event, упрощение мета-слоёв. Детали — в **review.md** и ROADMAP § «Версия 2.1».
+- **Актуальный review (review.md):** диагноз — «архитектурный аналитик с амбициями автономного агента»; таблица оценок (архитектура 8.5, код 8, концепция 9, операционность 5, продукт 5, потенциал 9.5); вывод — усиливать execution критично, LLM преждевременно; долгосрочная цель — полноценный AI-агент с самоусовершенствованием.
+- **2.1 (план прорыва) выполнен:** Patch Engine (apply_patch, verify_patch, rollback_patch), Verify stage, Event Engine, три автофикса, CLI 4 режима — реализованы. Дальше — Knowledge Layer, стабилизация, использование.
+
+### Knowledge Layer / онлайн-слой (после 1.0, по review.md)
+
+Подключать внешние источники (документация, релизы, PEP) **только после** стабилизации детерминированного ядра. Не «поиск в интернете», а **Knowledge Provider Layer**: абстракция `KnowledgeProvider.query(topic) -> StructuredKnowledge`; реализации — Local, OfficialDocs, ReleaseNotes, StaticAnalyzer. LLM формулирует гипотезу → Knowledge layer проверяет по отобранным источникам → план уточняется → Patch engine применяет детерминированный патч → Verify. Онлайн-слой имеет смысл только когда Eurika уже автономный агент с verify и rollback. Детали — **review.md** (раздел про онлайн-ресурсы и Knowledge Layer).
 
 ---
 

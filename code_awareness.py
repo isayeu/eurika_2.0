@@ -344,3 +344,10 @@ class CodeAwareness:
                 "duplicates_count": len(duplicates),
             },
         }
+
+# TODO: Refactor code_awareness.py (bottleneck -> introduce_facade)
+# Suggested steps:
+# - Introduce a facade or boundary to reduce direct fan-in.
+# - Create a stable public API for this module; let internal structure evolve independently.
+# - Limit the number of modules that import this file directly.
+# - Introduce facade for callers: runtime_scan.py, cli/core_handlers.py, eurika/analysis/scanner.py....

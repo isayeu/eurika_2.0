@@ -19,9 +19,13 @@ build/
 *.swo
 
 # Eurika runtime artifacts
+.eurika/
 .eurika_backups/
-eurika_observations.json
+self_map.json
+self_map_new.json
+eurika_doctor_report.json
 eurika_fix_report.json
+eurika_patch_plan.json
+eurika_knowledge.json
 architecture_actions_log.jsonl
 sandbox_actions.log
-self_map_new.json

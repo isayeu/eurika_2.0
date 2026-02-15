@@ -4,7 +4,7 @@
 
 ---
 
-## Рекомендуемый цикл (по review.md)
+## Рекомендуемый цикл (по review.md и ROADMAP)
 
 Целевой поток — от анализа к действию, а не только к отчётам:
 
@@ -14,12 +14,15 @@ Scan → Diagnose → Plan → Patch → Verify → Log
 
 | Шаг | Команда | Назначение |
 |-----|---------|------------|
+| **Всё сразу** | `eurika cycle .` | scan → doctor → fix одной командой |
 | Scan | `eurika scan .` | Обновить self_map, smells, summary, history |
 | Diagnose | `eurika doctor .` или `eurika report .` + `eurika suggest-plan .` | Отчёт + интерпретация + план рефакторинга |
 | Plan | `eurika fix . --dry-run` или `eurika agent patch-plan .` | Построить план патчей без применения |
 | Patch | `eurika fix .` или `eurika agent patch-apply . --apply` | Применить патчи (с бэкапами) |
-| Verify | встроено в `eurika fix` (pytest после apply) | Проверка тестами; при провале — подсказка rollback |
-| Log | автоматически (learning, history) | Исходы записываются в ProjectMemory |
+| Verify | встроено в `eurika fix` (pytest после apply) | pytest; при провале — подсказка rollback; при ухудшении метрик — автоматический откат |
+| Log | автоматически (events, history) | Исходы записываются в `.eurika/events.json`, architect получает recent_events |
+
+**Продуктовые режимы (5):** **scan**, **doctor**, **fix**, **cycle**, **explain**. В `eurika help` выводятся первыми.
 
 ---
 
@@ -35,7 +38,9 @@ eurika agent <subcommand> [path] [options]
 - `eurika --version`, `eurika -V` — версия.
 - По умолчанию `path` = `.` (текущий каталог).
 
-**Продуктовые команды (рекомендуются):** `scan`, `doctor`, `fix`, `clean-imports`.
+**Продуктовые команды (5 режимов):** `scan`, `doctor`, `fix`, `cycle`, `explain`. В `eurika help` они выводятся первыми; остальные команды — Other/Advanced (ROADMAP этап 5).
+
+**Для LLM (doctor, architect, cycle):** запускайте через venv из `/mnt/storage/project/` (см. DOGFOODING.md). Без него — только шаблонный вывод architect.
 
 ---
 
@@ -53,7 +58,7 @@ eurika scan .
 
 ### eurika doctor [path] [--window N] [--no-llm]
 
-Только диагностика: report (summary + evolution) и интерпретация architect. Патчи не предлагаются и не применяются.
+Только диагностика: report (summary + evolution) и интерпретация architect. Патчи не предлагаются и не применяются. **Отчёт сохраняется в `eurika_doctor_report.json`** (summary, history, architect, patch_plan).
 
 **Опции:** `--window N` (размер окна истории), `--no-llm` (architect по шаблону, без LLM).
 
@@ -64,23 +69,59 @@ eurika doctor . --no-llm
 
 ---
 
-### eurika fix [path] [--window N] [--dry-run] [--quiet]
+### eurika fix [path] [--window N] [--dry-run] [--quiet] [--no-clean-imports]
 
-Полный цикл: scan → arch-review → patch-apply --apply --verify. Эквивалент `eurika agent cycle` с применением патчей и проверкой тестами. После apply запускается **pytest**; для верификации нужен установленный pytest: `pip install pytest` или `pip install -e ".[test]"`.
+Полный цикл: scan → arch-review → patch-apply --apply --verify. **По умолчанию** план fix включает операции **remove_unused_import** (clean-imports) для файлов с неиспользуемыми импортами; затем — архитектурные патчи (remove_cyclic_import, split_module и т.д.). Эквивалент `eurika agent cycle` с применением патчей и проверкой тестами. После apply запускается **pytest**; для верификации нужен установленный pytest: `pip install pytest` или `pip install -e ".[test]"`. **Отчёт сохраняется в `eurika_fix_report.json`** (при apply — полный; при `--dry-run` — `dry_run: true` + `patch_plan`).
 
-**Опции:** `--window N`, `--dry-run` (только план, без apply), `--quiet` / `-q` (минимальный вывод, итог в JSON).
+**Опции:** `--window N`, `--dry-run` (только план, без apply; сохраняет eurika_fix_report.json), `--quiet` / `-q` (минимальный вывод, итог в JSON), `--no-clean-imports` (исключить remove_unused_import из плана), `--interval SEC` (авто-повтор каждые SEC секунд, 0=один раз; Ctrl+C для остановки).
 
 ```bash
 eurika fix .
 eurika fix . --dry-run
 eurika fix . -q
+eurika fix . --no-clean-imports
 ```
 
 ---
 
-### eurika explain <module> [path]
+### eurika cycle [path] [--window N] [--dry-run] [--quiet] [--no-llm] [--no-clean-imports]
 
-Роль и риски модуля в графе. См. секцию ниже.
+Полный ритуал одной командой: **scan → doctor (report + architect) → fix**. Сначала scan, затем вывод полной диагностики (summary, evolution, architect), затем fix (patch-apply --apply --verify). Fix по умолчанию включает remove_unused_import; architect при cycle получает recent_events (последние patch/learn) в контексте.
+
+**Опции:** `--window N`, `--dry-run` (doctor + plan, без apply), `--quiet` / `-q`, `--no-llm` (architect по шаблону, без API-ключа), `--no-clean-imports` (исключить clean-imports из fix), `--interval SEC` (авто-повтор каждые SEC секунд; Ctrl+C для остановки).
+
+### eurika watch [path] [--poll SEC] [--quiet] [--no-clean-imports]
+
+Мониторинг .py файлов: при изменении (mtime) запускает fix. Опрос каждые `--poll` секунд (default 5). Ctrl+C для остановки. ROADMAP 2.6.2.
+
+```bash
+eurika cycle .
+eurika cycle . --dry-run --no-llm
+eurika cycle . -q
+eurika cycle . --no-clean-imports
+```
+
+---
+
+### eurika explain <module> [path] [--window N]
+
+Роль и риски модуля в графе. См. секцию ниже. Опция `--window N` — окно для patch-plan.
+
+---
+
+## CI/CD
+
+Команды `eurika fix` и `eurika cycle` возвращают **exit code 0** при успехе, **1** при ошибке (scan failed, verify failed, metrics worsened + rollback). Подходят для CI.
+
+**Рекомендуемые команды для CI:**
+
+| Сценарий | Команда | Описание |
+|----------|---------|----------|
+| Применить фиксы и проверить | `eurika fix . --quiet` | scan → plan → apply → verify; минимум вывода; exit 1 при провале pytest или ухудшении метрик |
+| Только план (dry-run) | `eurika fix . --dry-run --quiet` | Построить план без применения; exit 0; для проверки «что было бы сделано» |
+| Полный ритуал без LLM | `eurika cycle . --quiet --no-llm` | scan → doctor (шаблон) → fix; не требует OPENAI_API_KEY |
+
+**Требования:** `pip install pytest` для verify. Артефакты: `eurika_fix_report.json`, `.eurika/`.
 
 ---
 
@@ -90,7 +131,7 @@ eurika fix . -q
 
 Полный сценарий: сканирование, smells, summary, рекомендации, evolution, health, observation memory.
 
-**Артефакты:** `self_map.json`, `architecture_history.json`, `eurika_observations.json`
+**Артефакты:** `self_map.json`, `.eurika/history.json`, `.eurika/observations.json`, `.eurika/events.json`
 
 **Опции v0.7:**
 - `--format`, `-f` — `text` (по умолчанию) или `markdown`
@@ -118,7 +159,7 @@ eurika arch-summary .
 
 ### eurika arch-history [path] [--window N]
 
-Evolution report из `architecture_history.json`: тренды, регрессии, maturity, version, risk score.
+Evolution report из `.eurika/history.json`: тренды, регрессии, maturity, version, risk score.
 
 ```bash
 eurika arch-history .
@@ -171,13 +212,16 @@ eurika report . --json --window 5
 
 ---
 
-### eurika explain <module> [path]
+### eurika explain <module> [path] [--window N]
 
-Роль и риски модуля в графе (fan-in/fan-out, central, smells).
+Роль и риски модуля в графе (fan-in/fan-out, central, smells). Planned operations берутся из patch-plan (get_patch_plan с заданным окном).
+
+**Опции:** `--window N` — окно истории для patch-plan (по умолчанию 5).
 
 ```bash
 eurika explain architecture_diff.py
 eurika explain cli/handlers.py .
+eurika explain action_plan.py . --window 10
 ```
 
 ---
@@ -244,7 +288,7 @@ eurika agent arch-review . --window 5
 
 ### eurika agent arch-evolution [path] [--window N]
 
-Эволюция архитектуры по `architecture_history.json`.
+Эволюция архитектуры по `.eurika/history.json`.
 
 ```bash
 eurika agent arch-evolution .
@@ -351,7 +395,7 @@ eurika agent learning-summary .
 
 ### eurika agent feedback-summary [path]
 
-Статистика по ручному фидбеку (`architecture_feedback.json`).
+Статистика по ручному фидбеку (события type=feedback в `.eurika/events.json`).
 
 ```bash
 eurika agent feedback-summary .
@@ -364,9 +408,9 @@ eurika agent feedback-summary .
 | Файл | Описание |
 |------|----------|
 | `self_map.json` | Модули, строки, зависимости |
-| `architecture_history.json` | История снимков, version, risk_score |
-| `eurika_observations.json` | Журнал наблюдений scan |
-| `architecture_learning.json` | Исходы patch-apply + verify |
-| `architecture_feedback.json` | Ручной фидбек по предложениям |
+| `.eurika/events.json` | Единый журнал событий (scan, patch, learn, feedback) — ROADMAP 3.2 |
+| `.eurika/history.json` | История снимков, version, risk_score |
+| `.eurika/observations.json` | Журнал наблюдений scan |
 | `eurika_fix_report.json` | Отчёт fix (modified, skipped, rescan_diff, verify) — по умолчанию |
+| `eurika_doctor_report.json` | Отчёт doctor (summary, history, architect, patch_plan) — по умолчанию |
 | `.eurika_backups/<run_id>/` | Бэкапы при patch-apply --apply |

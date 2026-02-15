@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from eurika.api import get_summary, get_history, get_diff
+from eurika.api import get_summary, get_history, get_diff, get_patch_plan
 
 
 def test_get_summary_returns_json_serializable(tmp_path: Path) -> None:
@@ -62,3 +62,23 @@ def test_get_diff_returns_json_serializable(tmp_path: Path) -> None:
     assert "maturity" in data
     out = json.dumps(data)
     assert "modules_common" in out or "modules_added" in out
+
+
+def test_get_patch_plan_returns_none_without_self_map(tmp_path: Path) -> None:
+    """get_patch_plan returns None when self_map.json is missing."""
+    assert get_patch_plan(tmp_path) is None
+
+
+def test_get_patch_plan_returns_dict_with_self_map(tmp_path: Path) -> None:
+    """get_patch_plan returns dict with operations when self_map exists."""
+    self_map = tmp_path / "self_map.json"
+    self_map.write_text(
+        '{"modules":[{"path":"a.py","lines":10,"functions":[],"classes":[]}],'
+        '"dependencies":{},"summary":{"files":1,"total_lines":10}}',
+        encoding="utf-8",
+    )
+    data = get_patch_plan(tmp_path)
+    assert data is not None
+    assert "operations" in data
+    assert isinstance(data["operations"], list)
+    json.dumps(data)

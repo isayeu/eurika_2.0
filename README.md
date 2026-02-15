@@ -4,6 +4,8 @@
 
 *Требования: Python 3.9+.* Для проверки после `eurika fix` нужен pytest: `pip install pytest` или `pip install -e ".[test]"`.
 
+**Текущий фокус (по review):** переход от «архитектурного аналитика» к «инженерному инструменту» — полноценный Patch Engine (apply/verify/rollback), автофиксы, единый Event Engine. Детали — в **review.md** и **ROADMAP.md**.
+
 ## Быстрый старт
 
 ```bash
@@ -16,13 +18,18 @@ or, after `pip install -e .`:
 eurika scan .
 ```
 
+**Для LLM (doctor, architect, cycle):** используйте venv из `/mnt/storage/project/` — в нём установлены openai, pytest и зависимости. Иначе LLM не вызывается. Подробнее — **DOGFOODING.md**.
+
 **Pipeline:** `cli → core/pipeline → code_awareness → scan → graph → smells → summary → history → report`
 
 ## Режимы (продуктовые)
 
 - **`eurika scan [path]`** — полный скан и обновление артефактов.
-- **`eurika doctor [path]`** — только диагностика: report + architect (без патчей). Опции: `--window N`, `--no-llm`.
-- **`eurika fix [path]`** — полный цикл: scan → plan → patch-apply --apply --verify. Опции: `--window N`, `--dry-run`, `--quiet`.
+- **`eurika doctor [path]`** — только диагностика: report + architect (без патчей). Опции: `--window N`, `--no-llm`. При наличии `eurika_knowledge.json` темы подбираются по диагнозу (всегда `python`; при циклах — `cyclic_imports`; при god/hub — `architecture_refactor`) или задаются через `EURIKA_KNOWLEDGE_TOPIC` (см. **docs/KNOWLEDGE_LAYER.md**).
+- **`eurika fix [path]`** — полный цикл: scan → plan → patch-apply --apply --verify. Опции: `--window N`, `--dry-run`, `--quiet`, `--no-clean-imports`.
+- **`eurika cycle [path]`** — ритуал одной командой: scan → doctor (report + architect) → fix. Опции: `--window N`, `--dry-run`, `--quiet`, `--no-llm`, `--no-clean-imports`.
+
+**CI:** `eurika fix . --quiet` — exit 0 при успехе, 1 при провале verify или ошибках. См. CLI.md § CI/CD.
 - **`eurika explain <module> [path]`** — роль и риски модуля.
 
 ## CLI commands
@@ -32,6 +39,7 @@ eurika scan .
 - **`eurika scan [path]`**: полный сценарий — сканирование, smells, summary, рекомендации, history, observation memory. Каталог `.eurika_backups` исключён из анализа.
 - **`eurika doctor [path]`**: диагностика без патчей (report + architect). Опции: `--window N`, `--no-llm`.
 - **`eurika fix [path]`**: полный цикл исправлений (scan → plan → apply → verify). Опции: `--window N`, `--dry-run`, `--quiet`.
+- **`eurika cycle [path]`**: scan → doctor → fix одной командой. Опции: `--window N`, `--dry-run`, `--quiet`, `--no-llm`.
 - **`eurika arch-summary [path]`**: только архитектурный summary по текущему `self_map.json`.
 - **`eurika arch-history [path]`**: выводит последний `Architecture Evolution Analysis` из `architecture_history.json`.
 - **`eurika history [path]`**: алиас для arch-history.
@@ -83,21 +91,23 @@ eurika scan .
 - **Architecture Smells**: `god_module`, `hub`, `bottleneck`, циклы.
 - **Architecture Summary**: центральные модули, риски, maturity.
 - **Architecture Advisor**: рекомендации по smells.
-- **Architecture History**: тренды, dynamic maturity, version (pyproject), risk score (0–100), опционально git hash (`architecture_history.json`).
+- **Architecture History**: тренды, dynamic maturity, version (pyproject), risk score (0–100), опционально git hash (`.eurika/history.json`).
 - **Action Plan / Patch Plan**: приоритизация модулей и план рефакторинга (read-only).
-- **Patch Engine** (`patch_engine.py`): фасад apply_and_verify (применить план + pytest) и rollback; используется в `eurika fix` и `eurika agent patch-apply --apply --verify`.
+- **Patch Engine** (`patch_engine.py`): фасад apply_and_verify и rollback; используется в `eurika fix` и `eurika agent patch-apply --apply --verify`. Цель (ROADMAP): полноценные apply_patch / verify_patch / rollback_patch и автоматический откат при провале верификации.
 - **Patch Apply**: применение patch plan с бэкапами в `.eurika_backups/<run_id>/`, опционально `--verify` (pytest).
 - **Patch Rollback**: восстановление из бэкапа.
-- **Learning Loop**: после `patch-apply --apply --verify` записываются исходы в `architecture_learning.json`; при следующих arch-review/action-dry-run прошлые success rate используются для коррекции expected_benefit (`learned_signals`).
+- **Learning Loop**: после `patch-apply --apply --verify` исходы записываются как события (type=learn) в `.eurika/events.json`; architect использует recent_events в промпте; при arch-review прошлые success rate — для `learned_signals`.
 
 ## Документация
 
-- **review.md** — технический разбор версии 2.0 и направление 2.1 (Patch Engine, Event, инженерный путь)
-- **Architecture.md** — структура системы, замкнутый цикл, Patch Engine, оценка по review
-- **CLI.md** — полный справочник команд и рекомендуемый цикл
-- **ROADMAP.md** — план задач, блок «Версия 2.1 (по review.md)»
-- **REPORT.md** — краткий статус и фокус по review
-- **SPEC.md** — контракт проекта (v0.1–v0.4)
+- **review.md** — разбор, диагноз зрелости, план прорыва (5 этапов)
+- **ROADMAP.md** — план задач, оценка зрелости, «что не хватает», план прорыва, этапы до продуктовой 1.0
+- **REPORT.md** — текущий статус, оценка по review, следующий шаг
+- **Architecture.md** — структура системы, замкнутый цикл, Patch Engine (целевой API), направление 2.1
+- **CLI.md** — справочник команд, рекомендуемый цикл
+- **DOGFOODING.md** — ритуал полного цикла на самом Eurika (scan → doctor → fix), про venv
+- **docs/KNOWLEDGE_LAYER.md** — Knowledge Provider Layer (контракт, формат `eurika_knowledge.json`, интеграция с doctor/architect). Пример: `docs/eurika_knowledge.example.json`.
+- **SPEC.md** — контракт проекта (v0.1–v0.4), текущий фокус
 - **THEORY.md** — идеология и философия Eurika
 
 ## Self-analysis ritual

@@ -19,7 +19,7 @@ from typing import Dict, List, Optional
 from eurika.analysis.graph import ProjectGraph
 from eurika.analysis.metrics import summarize_graph
 from eurika.smells.detector import ArchSmell
-from eurika.smells.rules import compute_health
+from eurika.reasoning.graph_ops import metrics_from_graph
 
 def _ascii_bar(value: int, max_val: int=100, width: int=10) -> str:
     """Simple ASCII bar: [████░░░░░░] 40/100."""
@@ -113,8 +113,8 @@ class ArchitectureHistory:
         version = _read_version(project_root)
         git_commit = _get_git_commit(project_root)
         trends = self.trend(window=5)
-        health = compute_health(summary, smells, trends)
-        risk_score = int(health['score'])
+        metrics = metrics_from_graph(graph, smells, trends)  # ROADMAP 3.1.3
+        risk_score = int(metrics["risk_score"])
         point = HistoryPoint(timestamp=time.time(), modules=int(sys.get('modules', g_sum.get('nodes', 0))), dependencies=int(sys.get('dependencies', g_sum.get('edges', 0))), cycles=int(sys.get('cycles', len(g_sum.get('cycles', [])))), max_degree=int(max_degree), total_smells=int(total_smells), smell_counts=smell_counts, version=version, git_commit=git_commit, risk_score=risk_score)
         self._points.append(point)
         self._save()

@@ -2,7 +2,483 @@
 
 All notable changes to this project will be documented in this file.
 
+## v2.6.2 — watch + performance-based filter (ROADMAP 2.6.2, 2.6.3) (2025-02-15)
+
+### eurika watch [path]
+
+- **2.6.2:** команда `eurika watch .` — мониторинг .py файлов (polling по mtime), при изменении запускает fix.
+- Опции: `--poll SEC` (интервал опроса, default 5), `--quiet`, `--no-clean-imports`, `--window`.
+- Ctrl+C для остановки.
+
+### Performance-based improvement (2.6.3)
+
+- **architecture_planner:** при learning_stats — операции с success_rate < 0.25 и total >= 3 исключаются из плана.
+- Тест: test_build_patch_plan_filters_low_success_rate_ops.
+
+---
+
+## v2.6.1 — Auto-run mode, версии по ROADMAP (2025-02-15)
+
+**Версии следуют ROADMAP:** major.minor = фаза (2.1, 2.3, 2.6, 3.0), patch = инкремент в фазе.
+
+### eurika fix / eurika cycle --interval SEC
+
+- **--interval SEC:** повторять цикл каждые SEC секунд (0 = один раз). Остановка: Ctrl+C.
+- Реализует часть v2.6 «auto-run mode» (review.md).
+- CLI.md обновлён.
+
+---
+
+## v1.2.22 — Фикс обрезки описаний и architect max_tokens (2025-02-15)
+
+### explain: Planned operations
+
+- **cli/core_handlers:** описания операций в `eurika explain` обрезаются по границе слова (max 200 символов), а не посередине фразы.
+- Раньше: `desc[:80]` давал обрывы вида «Refactor module ac»; теперь — полная фраза до последнего пробела.
+- **eurika explain --window N:** опция для окна истории patch-plan (по умолчанию 5). CLI.md, DOGFOODING обновлены.
+- **README, CLI.md:** напоминание — для LLM (doctor, architect, cycle) запускать через venv из `/mnt/storage/project/` (иначе только шаблон architect).
+- **Прогоны на других проектах:** scan + doctor проверены на farm_helper (5 модулей), optweb (38 модулей) — отработали штатно.
+
+### architect
+
+- **eurika/reasoning/architect.py:** `max_tokens` увеличен с 150 до 350 — ответы LLM (в т.ч. «Key Actions») не обрываются на полуфразе.
+
+---
+
+## v1.2.21 — introduce_facade: реальный handler для bottleneck (2025-02-15)
+
+### introduce_facade
+
+- **eurika/refactor/introduce_facade.py** — создаёт `{stem}_api.py`, реэкспортирующий публичные символы bottleneck. Уменьшает прямой fan-in.
+- **patch_apply:** handler `kind="introduce_facade"` — вызывает introduce_facade, создаёт новый файл. Раньше был только append TODO.
+- **Тесты:** test_apply_introduce_facade, test_apply_introduce_facade_skips_when_api_exists.
+- **Повышение операционности:** bottleneck теперь даёт реальный фикс (фасад), а не TODO.
+
+---
+
+## v1.2.20 — CI-ready: документация и тест exit code (2025-02-15)
+
+### CI/CD
+
+- **CLI.md:** новая секция «CI/CD» — рекомендуемые команды (`eurika fix . --quiet`, `--dry-run --quiet`, `eurika cycle . --quiet --no-llm`), семантика exit code (0/1).
+- **README:** добавлена строка про CI.
+- **Тест:** test_fix_quiet_exit_code_success — проверка, что fix --quiet возвращает 0 при успехе.
+
+---
+
+## v1.2.19 — Дедупликация modified, EurikaOrchestrator (2025-02-15)
+
+### Изменения
+
+- **patch_apply:** список `modified` в отчёте дедуплицируется (один файл, несколько операций — одна запись).
+- **EurikaOrchestrator:** формальный класс в cli/orchestrator.py (review.md Part 1); делегирует run_cycle; OOP-интерфейс для цикла.
+- **Тесты:** test_apply_patch_plan_dedupes_modified, test_eurika_orchestrator_run.
+
+---
+
+## v1.2.18 — ROADMAP по обновлённому review (2025-02-15)
+
+### Обновление по review.md
+
+- **ROADMAP:** Горизонт 3 переписан как Roadmap до 3.0 (v2.1 Execution Milestone, v2.3 Stability, v2.6 Semi-Autonomous, v3.0 AI Engineer).
+- **review_vs_codebase.md:** добавлена секция «Обновление review» — сопоставление Orchestrator Core design и roadmap v2.1–v3.0 с текущим кодом.
+- **LLM:** зафиксировано — усиливать только после 2.1; в 3.0 — smarter planner, adaptive refactor, historical memory.
+- **Orchestrator:** отмечено, что cli/orchestrator.py реализует цикл; EurikaOrchestrator (core/) — опциональный следующий шаг; режимы: хирургическая интеграция или новая архитектура.
+
+---
+
+## v1.2.17 — Интеграция remove_unused_import в fix cycle (ROADMAP 2.4) (2025-02-15)
+
+### Fix cycle включает clean-imports
+
+- **eurika fix**, **eurika cycle** по умолчанию добавляют операции `remove_unused_import` в план (файлы с неиспользуемыми импортами).
+- **patch_apply:** handler `kind="remove_unused_import"` — вызывает `remove_unused_imports`, применяет результат.
+- **eurika.api.get_clean_imports_operations(project_root)** — возвращает список ops для patch_plan.
+- **--no-clean-imports** — опция fix/cycle, отключает добавление clean-imports.
+- **ROADMAP:** блок «Причина низкой операционности (TODO vs реальные фиксы)»; фаза 2.4 реализована.
+- **Тесты:** test_apply_remove_unused_import, test_fix_cycle_includes_clean_imports_ops, test_fix_no_clean_imports_excludes_clean_ops.
+
+### Причина низкой операционности (review)
+
+- Зафиксировано в ROADMAP: patch часто = append TODO, а не код. Путь к повышению — расширять реальные handlers; clean-imports — первый шаг.
+
+---
+
+## v1.2.16 — Актуализация ROADMAP и документации (2025-02-15)
+
+### Обновления
+
+- **ROADMAP:** текущее состояние v1.2.15; review §7 пункт 4 (граф) отмечен выполненным; фазы 3.1, 3.2 отражены.
+- **README, CLI.md:** команда `eurika cycle`; артефакты в `.eurika/`; learning/feedback — views над events.
+- **eurika --version:** 1.2.15.
+
+---
+
+## v1.2.15 — Команда cycle, пояснение --no-llm (2025-02-15)
+
+### eurika cycle — полный ритуал одной командой
+
+- **eurika cycle .** — scan → doctor (report + architect) → fix. Один вызов вместо трёх.
+- Опции: --window, --dry-run, --quiet, --no-llm (architect без API ключа).
+
+### --no-llm
+
+- Используется для детерминированного шаблонного вывода architect (без OPENAI_API_KEY).
+- Применение: CI, окружения без сети, ускорение. С LLM architect даёт более развёрнутые рекомендации.
+
+---
+
+## v1.2.14 — Контекст для architect (ROADMAP 3.2.3) (2025-02-15)
+
+### Architect использует последние события в промпте
+
+- **EventStore.recent_events(limit, types)** — последние N событий, фильтр по типам (patch, learn).
+- **eurika/api.get_recent_events(project_root, limit, types)** — единая точка доступа.
+- **architect**: `_format_recent_events`, параметр `recent_events` в `interpret_architecture`; блок «Recent actions» в template и LLM prompt.
+- **handle_architect**, **run_doctor_cycle** — передают `recent_events` в architect.
+- Тесты: test_event_store_recent_events, test_architect_includes_recent_events, test_format_recent_events.
+
+---
+
+## v1.2.13 — Event как первичная сущность (ROADMAP 3.2.2) (2025-02-15)
+
+### Learning и feedback — views над EventStore
+
+- **eurika/storage/event_views.py** — LearningView, FeedbackView: append → events.append_event(type="learn"|"feedback"); all() и aggregate_* выводят из events.by_type().
+- **ProjectMemory.learning / .feedback** возвращают views вместо LearningStore/FeedbackStore.
+- Автомиграция: при первом append/all legacy learning.json/feedback.json переносятся в events и удаляются.
+- Типы событий: добавлен "feedback".
+
+---
+
+## v1.2.12 — Консолидация storage (ROADMAP 3.2.1) (2025-02-14)
+
+### Единый каталог хранения .eurika/
+
+- **eurika/storage/paths.py** — STORAGE_DIR, storage_path(), migrate_if_needed(), ensure_storage_dir().
+- Все артефакты памяти в `project_root/.eurika/`: events.json, learning.json, feedback.json, observations.json, history.json.
+- **ProjectMemory** и **event_engine** используют consolidated paths.
+- Автомиграция: при первом доступе файлы из legacy путей (eurika_events.json, architecture_*.json и т.п.) копируются в .eurika/.
+- Тесты: test_migration_from_legacy_path (feedback, learning, observations, events).
+
+---
+
+## v1.2.11 — Инициация операций графом (ROADMAP 3.1.4) (2025-02-14)
+
+### Граф передаёт цели в patch_plan
+
+- **graph_ops.targets_from_graph(graph, smells, ...)** — список целей (name, kind, reasons) из graph.nodes; фильтр по наличию в графе.
+- **build_patch_plan** при наличии graph использует targets_from_graph; params для split_module и introduce_facade строятся из graph.edges (suggest_god_module_split_hint, suggest_facade_candidates).
+- Тест test_targets_from_graph.
+
+---
+
+## v1.2.10 — Граф как база метрик (ROADMAP 3.1.3) (2025-02-14)
+
+### Граф как единый источник метрик
+
+- **graph_ops.metrics_from_graph(graph, smells, trends)** — risk_score, health level и centrality из графа; делегирует compute_health, добавляет centrality_from_graph.
+- **graph_ops.centrality_from_graph(graph)** — max_degree, top_by_degree.
+- **history.append** использует metrics_from_graph вместо compute_health напрямую.
+- **orchestrator** verify_metrics использует metrics_from_graph для before/after.
+- Тесты: test_centrality_from_graph, test_metrics_from_graph.
+
+---
+
+## v1.2.9 — Триггер операций по типам smell (ROADMAP 3.1.2) (2025-02-14)
+
+### Граф как движок — smell_type → refactor_kind
+
+- **graph_ops.SMELL_TYPE_TO_REFACTOR_KIND, refactor_kind_for_smells()** — канонический маппинг smell_type → refactor_kind: god_module→split_module, hub→split_module, bottleneck→introduce_facade, cyclic_dependency→break_cycle.
+- **architecture_planner** использует refactor_kind_for_smells вместо _decide_step_kind; hub теперь триггерит split_module (раньше refactor_module).
+- **DIFF_HINTS** добавлены для (hub, split_module).
+- Тесты: test_refactor_kind_for_smells, test_smell_type_to_refactor_kind_canonical, test_build_patch_plan_hub_produces_split_module.
+
+---
+
+## v1.2.8 — Learning при skip, рефакторинг runtime_scan (2025-02-14)
+
+### Исправление Learning при modified=[]
+
+- **orchestrator, agent_handlers:** при `modified=[]` (все операции пропущены) не вызывается `memory.learning.append`. Исключено завышение success rate для не применённых операций.
+- Тест `test_learning_not_appended_when_all_skipped`.
+
+### Рефакторинг runtime_scan → ProjectMemory.record_scan
+
+- **ProjectMemory.record_scan(observation)** — вынос записи scan observation и event в storage.
+- **runtime_scan:** вызов `memory.record_scan(observation)` вместо inline-логики; удалены дубликаты TODO.
+
+---
+
+## v1.2.7 — Приоритизация из графа (ROADMAP 3.1.1) (2025-02-14)
+
+### Граф как движок — приоритизация модулей
+
+- **priority_from_graph(graph, smells, summary_risks, top_n)** в `eurika.reasoning.graph_ops`: возвращает упорядоченный список модулей для рефакторинга, комбинируя severity из smells, degree (fan-in + fan-out), бонусы для god_module/hub (fan-out) и bottleneck (fan-in), плюс summary_risks. ROADMAP 3.1.1.
+- **get_patch_plan** использует `priority_from_graph` вместо ручного подсчёта scores; patch_plan сортирует операции по приоритету из графа.
+- Тесты: `test_priority_from_graph_orders_by_severity_and_degree`, `test_priority_from_graph_includes_summary_risks`.
+
+---
+
+## v1.2.6 — Сохранение отчётов doctor и fix --dry-run (2025-02-14)
+
+### Стабилизация — прогон тестов, doctor, fix --dry-run
+
+- **pytest:** полный прогон — 126 passed.
+- **eurika doctor . --no-llm:** выполнен успешно; вывод содержит блок Reference из Knowledge Layer.
+- **eurika fix . --dry-run:** выполнен успешно; patch_plan с 8 операциями (split_module, introduce_facade), файлы не изменены.
+- **ROADMAP, REPORT:** «Следующий горизонт» уточнён — Knowledge Layer отмечен реализованным; дальше стабилизация, использование, опционально наполнение кэша и ReleaseNotes.
+
+### Синхронизация с обновлённым review.md
+
+- **review.md** обновлён: концептуальный разбор (аналитик vs агент), таблица оценок (архитектурная структура, качество кода, концепция, операционность, продуктовая готовность, потенциал), стратегическое заключение (Patch Engine, Verify, Event Engine → автономный инструмент), вывод — долгосрочно Eurika как AI-агент с самоусовершенствованием.
+- **REPORT.md:** таблица зрелости приведена к формулировкам review; добавлен блок «В ответ на review реализовано» и отсылка к долгосрочной цели из review.
+- **ROADMAP.md:** оценка зрелости и диагноз переписаны по актуальному review; зафиксировано выполнение плана прорыва и долгосрочная цель (AI-агент).
+- **Architecture.md:** блок «Оценка по review.md и направление 2.1» обновлён: кратко актуальный диагноз и вывод review; 2.1 отмечен выполненным.
+
+### Общий Orchestrator run_cycle (фаза 2.3.2)
+
+- **run_cycle(path, mode="doctor"|"fix", ...)** — единая точка входа. Handlers doctor и fix вызывают run_cycle вместо run_doctor_cycle/run_fix_cycle. Неизвестный mode возвращает {"error": "Unknown mode: ..."}. Тест test_run_cycle_single_entry_point.
+
+### Цикл 2.1, обновление REPORT
+
+- Выполнен scan → doctor → fix --dry-run; REPORT обновлён (фазы 2.2, 2.3.1 выполнены; 131 passed).
+
+### Наполнение eurika_knowledge.json (фаза 2.2.3)
+
+- Добавлены темы: `version_migration` (Python/deps upgrade), `security` (vulnerable deps, deprecated), `async_patterns` (async/await). Обновлены `eurika_knowledge.json` и `docs/eurika_knowledge.example.json`. KNOWLEDGE_LAYER обновлён.
+
+### Кэш сетевых ответов Knowledge (фаза 2.2.2)
+
+- **OfficialDocsProvider, ReleaseNotesProvider:** поддержка `cache_dir` и `ttl_seconds` (по умолчанию 24h). При `eurika doctor` и `eurika architect` ответы сохраняются в `path/.eurika/knowledge_cache/`; при повторном запуске без сети или в пределах TTL используется кэш. `.eurika/` добавлен в .gitignore. Тест `test_official_docs_provider_uses_cache`. Документация в KNOWLEDGE_LAYER.md.
+
+### Артефакты в .gitignore
+
+- `self_map.json`, `eurika_knowledge.json` добавлены; все runtime-артефакты (self_map, doctor/fix отчёты, backups) — в .gitignore. DOGFOODING: блок «Артефакты и Git».
+
+### Orchestrator / фасад циклов (фаза 2.3.1)
+
+- **cli/orchestrator.py:** единая точка управления циклами: `run_doctor_cycle(path, window, no_llm)` и `run_fix_cycle(path, window, dry_run, quiet)`. Логика стадий (scan → diagnose → plan → patch → verify) собрана в одном модуле; doctor и fix вызывают фасад, handlers остаются тонкими (I/O и вывод). Подбор тем Knowledge вынесен в `_knowledge_topics_from_env_or_summary` в orchestrator, используется doctor и architect.
+
+### Knowledge: чистка HTML в _fetch_url (фаза 2.2.1)
+
+- В **OfficialDocsProvider** и **ReleaseNotesProvider** при загрузке страниц: удаляются блоки `<script>...</script>` и `<style>...</style>`; после снятия тегов обрезается ведущий boilerplate (Python X documentation, Skip to main content, Navigation и т.п.) до первого осмысленного блока (What's New in Python, Summary и т.д.). Фрагменты в Reference без мусора в начале. Добавлен тест `test_fetch_html_cleanup`.
+
+### Knowledge: явная пустая карта topic_urls (багфикс)
+
+- **OfficialDocsProvider, ReleaseNotesProvider:** при передаче `topic_urls={}` использовался дефолтный allow-list (`topic_urls or DEFAULT`), из‑за чего тесты test_*_topic_not_in_map падали при наличии сети. Исправлено: дефолт только при `topic_urls is None`; явная пустая карта `{}` даёт пустой результат по любой теме. Verify при `eurika fix` после этого проходит.
+
+### ROADMAP — переписан с учётом основной задачи (саморазвитие)
+
+- **ROADMAP.md:** добавлен блок «Принцип ROADMAP»: основная задача сейчас — саморазвитие, анализ и исправление собственного кода, добавление функций по запросу; работа в первую очередь над собой; долгосрок — полноценный агент (очень далеко). «Следующий горизонт» и фаза 2.1 переформулированы: фокус на работе над собой (scan/doctor/fix по eurika, функции по запросу, стабилизация); прогоны на других проектах и полный fix на Eurika — опционально. Фазы 2.2–2.3 и горизонт 3 приведены в соответствие с этой логикой. Заголовок упрощён до «ROADMAP» (без «до v1.0»).
+- **REPORT.md:** формулировка «Следующий горизонт» обновлена под новую фазу 2.1.
+
+### REPORT, ROADMAP — основная задача (сейчас)
+
+- **REPORT.md:** добавлен пункт «Основная задача (сейчас)»: саморазвитие, анализ и исправление собственного кода, добавление новых функций по запросу; Eurika в первую очередь работает над собой.
+- **ROADMAP.md:** в «Текущее состояние» добавлена формулировка основной задачи; использование на других проектах указано как вторичное.
+
+### ROADMAP, REPORT — видение полноценного агента (далёкое будущее)
+
+- **ROADMAP.md (Горизонт 3):** направление сформулировано как «Полноценный агент (далёкое будущее)»: универсальный агент — звонки, финансы, код по запросу, собственная LLM и т.д.; проекты pphone, mind_games, binance, eurika, farm_helper, pytorch приведены как примеры диапазона областей, не как исчерпывающий список.
+- **REPORT.md:** блок переименован в «Видение (далёкое будущее)»; акцент на агенте с разными способностями; примеры проектов — иллюстрация областей.
+
+### ROADMAP — следующие шаги (горизонт 2 и 3)
+
+- **ROADMAP.md:** добавлен блок «Следующие шаги (горизонт 2 и далее)» с приоритизированными фазами без жёстких сроков. **Фаза 2.1** — стабилизация и использование (прогоны на проектах, багфиксы, актуализация доков). **Фаза 2.2** — качество Knowledge Layer (чистка HTML в _fetch_url, опционально кэширование сетевых ответов, наполнение кэша). **Фаза 2.3** — Orchestrator / единая точка управления циклом (фасад run_doctor_cycle / run_fix_cycle). **Горизонт 3** — долгосрок по review: граф как движок, единая модель памяти, самоусовершенствование. Таблицы с задачами и критериями готовности по каждой фазе.
+- **REPORT.md:** «Следующий горизонт» переведён на отсылку к ROADMAP § Следующие шаги.
+
+### Knowledge Layer — тема python_3_12 по умолчанию
+
+- **Теми по умолчанию:** в `_knowledge_topics_from_env_or_summary` добавлена тема `python_3_12` (вместе с `python`). Без env в Reference попадают фрагменты из OfficialDocs и ReleaseNotes по What's New 3.12 (при доступной сети).
+- **tests/test_cycle.py:** test_knowledge_topics_derived_from_summary обновлён — ожидается `["python", "python_3_12"]` и наличие `python_3_12` в остальных кейсах.
+- **docs/KNOWLEDGE_LAYER.md:** уточнено описание тем по умолчанию.
+
+### Knowledge Layer — CompositeKnowledgeProvider, doctor/architect используют сеть
+
+- **CompositeKnowledgeProvider:** объединяет несколько провайдеров; по каждой теме запрашивает всех и склеивает фрагменты, добавляя к заголовку префикс источника `[source]`.
+- **doctor и architect:** вместо одного LocalKnowledgeProvider передаётся Composite из Local + OfficialDocsProvider + ReleaseNotesProvider. В блоке Reference появляются фрагменты из локального кэша и (при доступной сети и теме из allow-list) из официальной документации и release notes.
+- **eurika.knowledge:** экспорт CompositeKnowledgeProvider. Тест test_composite_knowledge_provider_merges_fragments.
+- **docs/KNOWLEDGE_LAYER.md:** обновлено описание интеграции (Composite, три провайдера).
+
+### Knowledge Layer — ReleaseNotesProvider с curated URL (сеть)
+
+- **ReleaseNotesProvider:** реализован запрос по allow-list `RELEASE_NOTES_TOPIC_URLS` (python_3_12, python_3_11 → What's New), по образцу OfficialDocsProvider; stdlib urllib, timeout 5 с. Конструктор принимает опциональные `topic_urls` и `timeout`.
+- **tests/test_knowledge.py:** тесты `test_release_notes_provider_topic_not_in_map`, `test_release_notes_provider_unknown_topic_returns_empty`, `test_release_notes_provider_fetch_mocked`.
+- **docs/KNOWLEDGE_LAYER.md:** описание ReleaseNotesProvider обновлено.
+
+### Knowledge Layer — OfficialDocsProvider с curated URL (сеть)
+
+- **OfficialDocsProvider:** реализован запрос по фиксированному allow-list: `OFFICIAL_DOCS_TOPIC_URLS` (topic → url), по умолчанию python_3_12 и python_3_11 (What's New). Используется только stdlib `urllib.request`, таймаут 5 с; HTML упрощается до текста (strip tags), один фрагмент до 8000 символов. При отсутствии темы в списке или ошибке сети возвращается пустой ответ.
+- **tests/test_knowledge.py:** тесты `test_official_docs_provider_topic_not_in_map`, `test_official_docs_provider_fetch_mocked` (мок urlopen).
+- **docs/KNOWLEDGE_LAYER.md:** обновлено описание OfficialDocsProvider.
+
+### Knowledge Layer — подбор тем по диагнозу, несколько тем
+
+- **interpret_architecture:** параметр `knowledge_topic` может быть строкой или списком строк; при списке запрашиваются все темы и фрагменты объединяются.
+- **doctor и architect:** темы по умолчанию выводятся из summary: базовая `python`; при `system.cycles > 0` добавляется `cyclic_imports`; при наличии в risks слов god_module/hub/bottleneck — `architecture_refactor`. Функция `_knowledge_topics_from_env_or_summary` в cli/core_handlers; при заданной переменной `EURIKA_KNOWLEDGE_TOPIC` (через запятую для нескольких тем) используется она.
+- **docs/KNOWLEDGE_LAYER.md:** обновлено описание интеграции (подбор тем по диагнозу, несколько тем).
+- **tests/test_cycle.py:** тест `test_knowledge_topics_derived_from_summary` — проверка вывода тем по summary и по env.
+
+### Knowledge Layer — наполнение кэша
+
+- В **eurika_knowledge.json** и **docs/eurika_knowledge.example.json** добавлены темы: **deprecated_api** (release notes, replacement APIs), **typing** (PEP 484, mypy/pyright, 3.12 generics), **cyclic_imports** (TYPE_CHECKING, отдельный модуль для общих типов). Тема по умолчанию для doctor — `python`; при необходимости задайте `EURIKA_KNOWLEDGE_TOPIC=typing` или `cyclic_imports` и т.д.
+- **docs/KNOWLEDGE_LAYER.md:** в описании примера перечислены все темы.
+
+### Dogfooding: eurika_knowledge.json в корне, DOGFOODING
+
+- **eurika_knowledge.json** в корне проекта (содержимое как в docs/eurika_knowledge.example.json): при `eurika doctor .` вывод архитектора включает блок Reference из Knowledge Layer.
+- **DOGFOODING.md:** комментарий в шаге doctor про eurika_knowledge.json; новая секция «Knowledge Layer (doctor)»; в результатах прогона — упоминание Reference при наличии кэша.
+- **REPORT.md:** количество тестов обновлено (123 passed).
+
+### Knowledge Layer — README, интеграционный тест (после 1.0)
+
+- **README.md:** в описании `eurika doctor` добавлено упоминание опционального `eurika_knowledge.json` и `EURIKA_KNOWLEDGE_TOPIC`; в списке документации уточнён пункт про docs/KNOWLEDGE_LAYER.md и пример eurika_knowledge.example.json.
+- **tests/test_cycle.py:** интеграционный тест `test_doctor_includes_knowledge_when_cache_present` — при наличии eurika_knowledge.json (тема python) вывод `eurika doctor --no-llm` содержит «Reference» и контент из кэша. Вспомогательная функция `_minimal_self_map`.
+
+### Knowledge Layer — REPORT, ROADMAP, пример кэша (после 1.0)
+
+- **REPORT.md:** блок «Следующий горизонт» обновлён — Knowledge Layer с интеграцией doctor/architect и eurika_knowledge.json отражён как выполненный начальный этап.
+- **ROADMAP.md:** в «Следующий горизонт» добавлен пункт про начальную реализацию Knowledge Layer; следующий шаг — наполнение кэша и опционально сетевые провайдеры.
+- **docs/eurika_knowledge.example.json:** пример файла кэша (темы python, python_3_12, architecture_refactor) для копирования в корень проекта.
+- **docs/KNOWLEDGE_LAYER.md:** ссылка на пример в разделе про формат кэша.
+
+### Knowledge Layer — интеграция в architect, StaticAnalyzer, док (после 1.0)
+
+- **StaticAnalyzerProvider:** заглушка (source `static_analyzer`), экспорт из `eurika.knowledge`. Тест `test_static_analyzer_provider_stub`.
+- **Интеграция в architect:** `interpret_architecture(..., knowledge_provider=..., knowledge_topic=...)`. При передаче провайдера и темы вызывается `query(topic)`; фрагменты форматируются (`_format_knowledge_fragments`) и подставляются в промпт LLM и в шаблонный вывод (блок «Reference»). Обратная совместимость: параметры опциональны.
+- **doctor и architect:** в `handle_doctor` и `handle_architect` передаётся `LocalKnowledgeProvider(path / "eurika_knowledge.json")` и тема из env `EURIKA_KNOWLEDGE_TOPIC` (по умолчанию `python`). При наличии файла кэша фрагменты по теме попадают в вывод архитектора.
+- **docs/KNOWLEDGE_LAYER.md:** раздел «Реализация» — интеграция с doctor/architect; формат `eurika_knowledge.json` (структура `topics`, нормализация ключа).
+- **tests/test_architect.py:** `test_interpret_architecture_with_knowledge` — проверка появления «Reference» и контента фрагмента при передаче провайдера с кэшем.
+
+### Knowledge Layer — кэш Local и заглушки провайдеров (после 1.0)
+
+- **LocalKnowledgeProvider:** загрузка кэша из JSON (`cache_path`). Формат: `{"topics": {"topic_id": [{"title": "...", "content": "..."}, ...]}}`. Нормализация темы в ключ (`_topic_key`: lowercase, пробелы → `_`). При отсутствии файла или ошибке парсинга — пустой ответ.
+- **OfficialDocsProvider, ReleaseNotesProvider:** добавлены как заглушки (без сетевых вызовов): `query(topic)` возвращает `StructuredKnowledge` с соответствующим `source` и пустыми `fragments`.
+- **eurika.knowledge:** экспорт `OfficialDocsProvider`, `ReleaseNotesProvider` из пакета.
+- **tests/test_knowledge.py:** тесты загрузки кэша (`test_local_knowledge_provider_loads_cache`), отсутствия кэша, заглушек OfficialDocs/ReleaseNotes (всего 7 тестов).
+
+### Knowledge Layer — проектирование и скелет (после 1.0)
+
+- **docs/KNOWLEDGE_LAYER.md:** контракт Knowledge Provider, провайдеры (Local, OfficialDocs, ReleaseNotes, StaticAnalyzer), схема интеграции с LLM и Patch engine, источники по review.md.
+- **eurika.knowledge:** пакет с `KnowledgeProvider` (ABC), `StructuredKnowledge` (topic, source, fragments, meta), `LocalKnowledgeProvider` (заглушка, пустой ответ). Без сетевых вызовов.
+- **tests/test_knowledge.py:** тесты контракта и LocalKnowledgeProvider.
+
+### Полный цикл fix на Eurika и fix --dry-run на других проектах
+
+- **farm_helper, optweb:** выполнены **fix --dry-run** (успешно, план строится).
+- **Eurika:** выполнен **eurika fix .** (без --dry-run) с venv: scan → plan → apply (часть операций skipped) → **verify (pytest 113 passed)** → rescan → **verify_metrics (46→46)**. Откат не потребовался.
+- **REPORT.md:** в «Проверка стабильности» добавлены полный fix на Eurika и fix --dry-run на farm_helper/optweb.
+
+### Стабилизация: тесты и проверка на других проектах
+
+- **Тесты:** 113 passed (pytest с venv).
+- **farm_helper, optweb (с правами на запись):** полный **scan** (артефакты в каталогах проектов) и **doctor --no-llm** выполнены успешно. farm_helper: 5 модулей, risk 80; optweb: 38 модулей, risk 80.
+- **DOGFOODING.md:** секция «Использование на других проектах» (проекты в `/mnt/storage/project`, примеры команд).
+
+### Управляющие документы: план прорыва выполнен
+
+- **REPORT.md:** «Выполнено» приведено в соответствие с планом прорыва (Patch Engine, Verify, Event Engine, CLI 4, dogfooding); диагноз обновлён; блок «Следующий горизонт» — стабилизация, использование на других проектах, Knowledge Layer.
+- **ROADMAP.md:** блок «Следующий шаг» заменён на «План прорыва выполнен» и «Следующий горизонт» (стабилизация, использование, опционально fix без dry-run, Knowledge Layer).
+
+### Dogfooding (ROADMAP)
+
+- Прогнан полный цикл на проекте Eurika с venv: **/mnt/storage/project/venv/bin/python** — scan → doctor (с LLM) → fix --dry-run (успешно).
+- **DOGFOODING.md:** путь к venv `/mnt/storage/project/venv` (без него LLM не работает); примеры с `$PY -m eurika_cli` и `source …/venv/bin/activate`.
+
+### CLI — 4 продуктовых режима (ROADMAP этап 5)
+
+- **eurika_cli.py:** разбивка на _add_product_commands (scan, doctor, fix, explain) и _add_other_commands; продуктовые команды регистрируются первыми — в usage и help они идут первыми.
+- **handle_help:** блок «Product (4 modes):» — только scan, doctor, fix, explain; «Other» и «Advanced (eurika agent …)» для остальных. Версия в help обновлена до v1.2.6.
+- **epilog:** «Product (4 modes): scan | doctor | fix | explain».
+
+### Event Engine (ROADMAP этап 4)
+
+- **eurika/storage/event_engine.py:** единая точка входа **event_engine(project_root)** → EventStore; контракт Event { type, input, action, result, timestamp } (action в сериализации = output).
+- **eurika/storage/events.py:** Event.to_dict() добавляет поле `action` (равно output); Event.from_dict() принимает `action` как синоним `output`.
+- **eurika/storage/memory.py:** ProjectMemory.events получает хранилище через event_engine(project_root).
+- **eurika/storage:** экспорт Event, EventStore, event_engine из __init__.py.
+- **Тесты:** test_event_engine_entry_point, test_event_to_dict_includes_action, test_event_from_dict_accepts_action.
+
+### Фиксация Knowledge Layer в документах (по обновлённому review.md)
+
+- **ROADMAP.md:** раздел «После 1.0 — Knowledge Layer» — порядок (сначала детерминизм, потом Knowledge layer), контракт Knowledge Provider, ссылка на review.md.
+- **Architecture.md:** подраздел «Knowledge Layer / онлайн-слой (после 1.0)» — абстракция, схема LLM → Knowledge → Patch → Verify.
+- **REPORT.md:** в таблице документов у review.md и ROADMAP указано про Knowledge Layer.
+
+### Verify Stage — метрики и откат при ухудшении (ROADMAP этап 3)
+
+- **handle_agent_cycle:** после успешного pytest и rescan сравниваются health score (compute_health) до и после патча. Если after_score < before_score, выполняется **rollback_patch** и в отчёт добавляются **verify_metrics** (success: false, before_score, after_score) и **rollback** (reason: "metrics_worsened"). Сообщение в stderr: «Metrics worsened (health X → Y); changes rolled back.»
+- **Этап 2 в ROADMAP** отмечен выполненным (три операции уже в коде).
+
+### Patch Engine — целевой API и автооткат (ROADMAP этап 1)
+
+- **patch_engine.py:** добавлены явные операции **apply_patch(project_root, plan, backup=...)** (только применение), **verify_patch(project_root, timeout=...)** (pytest), **rollback_patch(project_root, run_id=None)** (восстановление из бэкапа). **rollback** оставлен как алиас для rollback_patch.
+- **apply_and_verify:** параметр **auto_rollback=True** (по умолчанию): при провале verify автоматически вызывается rollback_patch; в отчёт добавляется ключ **rollback** (done, run_id, restored, errors).
+- **cli/agent_handlers:** цикл fix вызывает apply_and_verify(..., auto_rollback=True); при провале verify выводится «Tests failed; changes rolled back automatically.» если откат выполнен.
+- **Тесты:** test_apply_patch_only, test_verify_patch_returns_dict, test_rollback_patch_same_as_rollback, test_apply_and_verify_auto_rollback_on_failure; test_apply_and_verify_modifies_files дополнен проходящим pytest в tmp_path.
+
+### Синхронизация управляющих документов (review + ROADMAP)
+
+- **REPORT.md:** обновлён под оценку зрелости из review.md, диагноз, следующий шаг (прорыв вглубь), таблица документов.
+- **README.md:** добавлен блок «Текущий фокус»; описание Patch Engine приведено к целевым apply/verify/rollback; список документации обновлён.
+- **SPEC.md:** добавлен раздел «Текущий фокус» — операционный прорыв, без расширения reasoning.
+- **Architecture.md:** оценка 2.1 переформулирована как целевое состояние; Patch Engine и память — текущее состояние и цель (event_engine, целевой API).
+- **CLI.md:** в рекомендуемый цикл добавлена цель Verify (перескан + откат); целевое упрощение до 4 режимов (ROADMAP этап 5).
+- **ROADMAP.md** (ранее): оценка зрелости, «что не хватает», план прорыва (этапы 1–5), стратегический вывод.
+
+### doctor: сохранение в eurika_doctor_report.json
+
+- **handle_doctor:** отчёт (summary, history, architect, patch_plan) сохраняется в `eurika_doctor_report.json` в корне проекта по умолчанию.
+- По аналогии с `eurika fix` → `eurika_fix_report.json`.
+
+### fix --dry-run: сохранение в eurika_fix_report.json
+
+- **handle_agent_cycle:** при `--dry-run` сохраняется `eurika_fix_report.json` с ключами `dry_run: true` и `patch_plan`.
+
+---
+
+## v1.2.4 — Увеличение доли успешно применяемых патчей (2025-02-14)
+
+### split_module: fallback split_module_by_class
+
+- **eurika.refactor.split_module:** `split_module_by_class()` — извлечение крупнейшего self-contained класса (≥3 методов, без ссылок на другие top-level defs) в новый модуль, когда split_module_by_import возвращает None.
+- **patch_apply:** для split_module сначала пробует import-based split, при провале — class-based.
+- Тест: test_apply_split_module_by_class_fallback.
+
+### Приоритеты: топ-8 вместо топ-5
+
+- **architecture_planner:** priorities[:8] — agent_core_arch_review (с god_class) чаще попадает в план, extract_class может примениться.
+
+### Post-fix: исправления после split_module_by_class
+
+- **agent_core_arch_review_archreviewagentcore:** исправлен баг `store.aggregate_by_action_kind()` → `memory.learning.aggregate_by_action_kind()` (NameError при пустом aggregate_by_smell_action).
+- **agent_core_arch_review.py:** упрощён до чистого фасада (реэкспорт ArchReviewAgentCore), удалены лишние импорты, добавлен `__all__`.
+- **Регрессия:** eurika scan + fix --dry-run на optweb (38 модулей, Django) — проходит без ошибок.
+
+---
+
+## v1.2.5 — Architect/Explain связка с patch-plan (ROADMAP §7)
+
+### Пункт 7: подсказки архитектора связаны с patch-plan и explain
+
+- **eurika.api:** `get_patch_plan(project_root, window)` — строит PatchPlan из диагностики.
+- **eurika architect:** получает patch_plan и передаёт в LLM/шаблон; выводит «Planned refactorings: N ops (kinds); top targets».
+- **eurika explain:** секция «Planned operations (from patch-plan)» — операции, затрагивающие модуль.
+- **LLM prompt:** при OPENAI_API_KEY в prompt добавлен блок с planned operations.
+- **architecture_planner:** импорт graph_ops перенесён внутрь build_patch_plan (устранён circular import).
+- Тесты: test_template_interpret_with_patch_plan, test_get_patch_plan_*.
+
+---
+
 ## v1.2.3 — AST-based extract_class (2025-02-14)
+
+### god_class: детекция и автофикс через extract_class
+
+- **eurika.refactor.extract_class:** `suggest_extract_class(file_path, min_methods=6)` — находит классы с ≥6 методами и предлагает extractable (без self.attr) методы.
+- **architecture_planner:** при god_module вызывается suggest_extract_class; при успехе добавляется op extract_class.
+- **eurika.smells.detector:** REMEDIATION_HINTS["god_class"] — hint для extract_class.
+- Тесты: test_suggest_extract_class_*, test_build_patch_plan_god_module_with_god_class_produces_extract_class.
 
 ### extract_class: извлечение методов в новый класс
 

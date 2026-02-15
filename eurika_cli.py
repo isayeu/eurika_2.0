@@ -24,12 +24,13 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="eurika",
         description="Eurika — architecture analysis and refactoring assistant",
-        epilog="Product: scan | doctor | fix | clean-imports. Use eurika help for full overview.",
+        epilog="Product (5 modes): scan | doctor | fix | cycle | explain. Use eurika help for full list.",
     )
-    parser.add_argument("--version", "-V", action="version", version="%(prog)s 1.2.3")
+    parser.add_argument("--version", "-V", action="version", version="%(prog)s 2.6.2")
     subparsers = parser.add_subparsers(dest="command")
 
-    _add_core_commands(subparsers)
+    _add_product_commands(subparsers)   # scan, doctor, fix, explain — ROADMAP этап 5
+    _add_other_commands(subparsers)
     _add_agent_commands(subparsers)
 
     subparsers.add_parser("help", help="Show Eurika command overview")
@@ -37,9 +38,9 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _add_core_commands(subparsers: argparse._SubParsersAction) -> None:
-    """Register core (non-agent) CLI commands."""
-    scan_parser = subparsers.add_parser("scan", help="Scan project, analyze, report")
+def _add_product_commands(subparsers: argparse._SubParsersAction) -> None:
+    """Register the 4 product commands first (ROADMAP этап 5: scan, doctor, fix, explain)."""
+    scan_parser = subparsers.add_parser("scan", help="Scan project, update artifacts, report")
     scan_parser.add_argument(
         "path",
         nargs="?",
@@ -67,6 +68,86 @@ def _add_core_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Disable color output",
     )
 
+    doctor_parser = subparsers.add_parser(
+        "doctor",
+        help="Diagnostics only: report + architect (no patches)",
+    )
+    doctor_parser.add_argument(
+        "path",
+        nargs="?",
+        default=".",
+        type=Path,
+        help="Project root (default: .)",
+    )
+    doctor_parser.add_argument("--window", type=int, default=5, help="History window (default: 5)")
+    doctor_parser.add_argument("--no-llm", action="store_true", help="Architect: use template only")
+
+    fix_parser = subparsers.add_parser(
+        "fix",
+        help="Full cycle: scan → plan → patch → verify",
+    )
+    fix_parser.add_argument(
+        "path",
+        nargs="?",
+        default=".",
+        type=Path,
+        help="Project root (default: .)",
+    )
+    fix_parser.add_argument("--window", type=int, default=5, help="History window (default: 5)")
+    fix_parser.add_argument("--dry-run", action="store_true", help="Only build patch plan, do not apply")
+    fix_parser.add_argument("--quiet", "-q", action="store_true", help="Minimal output; final JSON only")
+    fix_parser.add_argument("--no-clean-imports", action="store_true", help="Skip remove-unused-imports step (default: included)")
+    fix_parser.add_argument("--interval", type=int, default=0, metavar="SEC", help="Auto-run: repeat every SEC seconds (0=once, Ctrl+C to stop)")
+
+    cycle_parser = subparsers.add_parser(
+        "cycle",
+        help="Full ritual: scan → doctor (report + architect) → fix. Single command.",
+    )
+    cycle_parser.add_argument(
+        "path",
+        nargs="?",
+        default=".",
+        type=Path,
+        help="Project root (default: .)",
+    )
+    cycle_parser.add_argument("--window", type=int, default=5, help="History window (default: 5)")
+    cycle_parser.add_argument("--dry-run", action="store_true", help="Doctor + plan only; do not apply patches")
+    cycle_parser.add_argument("--quiet", "-q", action="store_true", help="Minimal output; final JSON only")
+    cycle_parser.add_argument("--no-llm", action="store_true", help="Architect: use template only (no API key)")
+    cycle_parser.add_argument("--no-clean-imports", action="store_true", help="Skip remove-unused-imports in fix (default: included)")
+    cycle_parser.add_argument("--interval", type=int, default=0, metavar="SEC", help="Auto-run: repeat every SEC seconds (0=once, Ctrl+C to stop)")
+
+    explain_parser = subparsers.add_parser(
+        "explain",
+        help="Explain role and risks of a module",
+    )
+    explain_parser.add_argument(
+        "module",
+        type=str,
+        help="Module path or name (e.g. architecture_diff.py or cli/handlers.py)",
+    )
+    explain_parser.add_argument(
+        "path",
+        nargs="?",
+        default=".",
+        type=Path,
+        help="Project root (default: .)",
+    )
+    explain_parser.add_argument("--window", type=int, default=5, help="History window for patch-plan (default: 5)")
+
+    watch_parser = subparsers.add_parser(
+        "watch",
+        help="Watch for .py changes and run fix (ROADMAP 2.6.2)",
+    )
+    watch_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
+    watch_parser.add_argument("--poll", type=int, default=5, metavar="SEC", help="Poll interval (default: 5)")
+    watch_parser.add_argument("--window", type=int, default=5, help="History window for patch-plan (default: 5)")
+    watch_parser.add_argument("--quiet", "-q", action="store_true", help="Minimal output")
+    watch_parser.add_argument("--no-clean-imports", action="store_true", help="Skip remove-unused-imports")
+
+
+def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
+    """Register other (non-agent) commands: report, arch-*, self-check, serve, etc."""
     summary_parser = subparsers.add_parser(
         "arch-summary",
         help="Print architecture summary for project",
@@ -165,52 +246,6 @@ def _add_core_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     report_parser.add_argument("--json", action="store_true", help="Output JSON (machine-readable)")
     report_parser.add_argument("--window", type=int, default=5, help="History window for evolution (default: 5)")
-
-    explain_parser = subparsers.add_parser(
-        "explain",
-        help="Explain role and risks of a module",
-    )
-    explain_parser.add_argument(
-        "module",
-        type=str,
-        help="Module path or name (e.g. architecture_diff.py or cli/handlers.py)",
-    )
-    explain_parser.add_argument(
-        "path",
-        nargs="?",
-        default=".",
-        type=Path,
-        help="Project root (default: .)",
-    )
-
-    doctor_parser = subparsers.add_parser(
-        "doctor",
-        help="Diagnostics only: report + architect (no patches)",
-    )
-    doctor_parser.add_argument(
-        "path",
-        nargs="?",
-        default=".",
-        type=Path,
-        help="Project root (default: .)",
-    )
-    doctor_parser.add_argument("--window", type=int, default=5, help="History window (default: 5)")
-    doctor_parser.add_argument("--no-llm", action="store_true", help="Architect: use template only")
-
-    fix_parser = subparsers.add_parser(
-        "fix",
-        help="Full cycle: scan → plan → patch-apply --apply --verify (refactor assistant)",
-    )
-    fix_parser.add_argument(
-        "path",
-        nargs="?",
-        default=".",
-        type=Path,
-        help="Project root (default: .)",
-    )
-    fix_parser.add_argument("--window", type=int, default=5, help="History window (default: 5)")
-    fix_parser.add_argument("--dry-run", action="store_true", help="Only build patch plan, do not apply")
-    fix_parser.add_argument("--quiet", "-q", action="store_true", help="Minimal output; final JSON only")
 
     architect_parser = subparsers.add_parser(
         "architect",
@@ -461,9 +496,11 @@ def main() -> int:
         "self-check": lambda: handlers.handle_self_check(args),
         "doctor": lambda: handlers.handle_doctor(args),
         "fix": lambda: handlers.handle_fix(args),
+        "cycle": lambda: handlers.handle_cycle(args),
         "architect": lambda: handlers.handle_architect(args),
         "suggest-plan": lambda: handlers.handle_suggest_plan(args),
         "clean-imports": lambda: handlers.handle_clean_imports(args),
+        "watch": lambda: handlers.handle_watch(args),
         "serve": lambda: handlers.handle_serve(args),
     }
     if args.command == "help":

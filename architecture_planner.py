@@ -13,19 +13,15 @@ for concrete hints (cycle break edge, facade candidates, split hints).
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
+from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 SMELL_ACTION_SEP = "|"
 
 from eurika.smells.detector import ArchSmell
+from eurika.refactor.extract_class import suggest_extract_class
 from action_plan import Action, ActionPlan
 from patch_plan import PatchOperation, PatchPlan
-from eurika.reasoning.graph_ops import (
-    graph_hints_for_smell,
-    resolve_module_for_edge,
-    suggest_cycle_break_edge,
-    suggest_god_module_split_hint,
-)
 
 if TYPE_CHECKING:
     from eurika.analysis.graph import ProjectGraph
@@ -143,6 +139,11 @@ DIFF_HINTS: Dict[tuple[str, str], List[str]] = {
         "Introduce intermediate abstractions to decouple from concrete implementations.",
         "Align with semantic roles and system topology.",
     ],
+    ("hub", "split_module"): [
+        "Split outgoing dependencies across clearer layers or services.",
+        "Extract coherent sub-graphs by domain or layer.",
+        "Reduce fan-out via extraction into focused modules.",
+    ],
     ("cyclic_dependency", "refactor_dependencies"): [
         "Break import cycles via inversion of dependencies or adapters.",
         "Extract shared interfaces; depend on abstractions, not implementations.",
@@ -207,23 +208,53 @@ def build_patch_plan(
     are enriched with graph-derived suggestions (cycle break edge, facade
     candidates, split hints).
     """
+    from eurika.reasoning.graph_ops import (
+        graph_hints_for_smell,
+        refactor_kind_for_smells,
+        resolve_module_for_edge,
+        suggest_cycle_break_edge,
+        suggest_facade_candidates,
+        suggest_god_module_split_hint,
+        targets_from_graph,
+    )
+
     operations: List[PatchOperation] = []
     smells_by_node = _index_smells_by_node(smells)
     cycles_handled: set = set()  # frozenset(nodes) per cycle to avoid duplicate remove_cyclic_import
 
-    for idx, p in enumerate(priorities[:5], start=1):
-        name = p.get("name") or p.get("module") or ""
+    # ROADMAP 3.1.4: when graph provided, use graph.nodes/graph.edges to build targets
+    if graph:
+        plan_targets = targets_from_graph(
+            graph, smells,
+            summary_risks=summary.get("risks"),
+            top_n=8,
+        )
+    else:
+        plan_targets = [
+            {
+                "name": p.get("name") or p.get("module") or "",
+                "kind": refactor_kind_for_smells([s.type for s in smells_by_node.get(p.get("name") or "", [])]),
+                "reasons": p.get("reasons") or [],
+            }
+            for p in priorities[:8]
+        ]
+        plan_targets = [t for t in plan_targets if t["name"]]
+
+    for idx, t in enumerate(plan_targets, start=1):
+        name = t.get("name") or ""
         if not name:
             continue
+        kind = t.get("kind") or "refactor_module"
+        reasons = t.get("reasons") or []
 
         node_smells = smells_by_node.get(name, [])
-        kind = _decide_step_kind(node_smells)
+        smell_types = [s.type for s in node_smells]
+        if not kind or kind == "refactor_module":
+            kind = refactor_kind_for_smells(smell_types)
         action_kind = STEP_KIND_TO_ACTION.get(kind, "refactor_module")
         smell_type = (
             max(node_smells, key=lambda s: s.severity).type if node_smells else "unknown"
         )
-
-        reasons = p.get("reasons") or []
         desc_lines = [
             f"[{idx}] Refactor module {name} based on detected architecture smells.",
         ]
@@ -265,6 +296,27 @@ def build_patch_plan(
         if skip_todo:
             continue
 
+        # god_class: when god_module, check for classes with many methods → extract_class
+        if smell_type == "god_module" and action_kind == "split_module":
+            file_path = Path(project_root) / name
+            if file_path.exists() and file_path.is_file():
+                suggestion = suggest_extract_class(file_path)
+                if suggestion:
+                    class_name, methods = suggestion
+                    operations.append(
+                        PatchOperation(
+                            target_file=name,
+                            kind="extract_class",
+                            description=f"[{idx}] Extract class {class_name} from {name} ({len(methods)} static-like methods).",
+                            diff=f"# TODO: Extract class {class_name}\n# Methods to extract: {', '.join(methods[:5])}{'...' if len(methods) > 5 else ''}\n",
+                            smell_type="god_class",
+                            params={
+                                "target_class": class_name,
+                                "methods_to_extract": methods,
+                            },
+                        )
+                    )
+
         hints = list(_diff_hints_for(smell_type, action_kind))
         # Graph-derived hints (ROADMAP 2.1)
         split_params: Optional[Dict[str, Any]] = None
@@ -274,13 +326,16 @@ def build_patch_plan(
                 for gh in graph_hints:
                     if gh and gh not in hints:
                         hints.append(gh)
-            # split_module: store structured data for future AST-based extraction
-            if action_kind == "split_module" and smell_type == "god_module":
+            # split_module: use graph.edges for imports_from, imported_by (ROADMAP 3.1.4)
+            if action_kind == "split_module":
                 info = suggest_god_module_split_hint(graph, name, top_n=5)
                 split_params = {
                     "imports_from": info.get("imports_from", []),
                     "imported_by": info.get("imported_by", []),
                 }
+            elif action_kind == "introduce_facade":
+                callers = suggest_facade_candidates(graph, name, top_n=5)
+                split_params = {"callers": callers} if callers else None
         hint_lines = "\n".join(f"# - {h}" for h in hints)
         diff_hint = (
             f"# TODO: Refactor {name} ({smell_type} -> {action_kind})\n"
@@ -296,6 +351,22 @@ def build_patch_plan(
             params=split_params,
         )
         operations.append(op)
+
+    # ROADMAP 2.6.3: skip ops with low success_rate when we have enough data
+    MIN_TOTAL_FOR_FILTER = 3
+    MIN_SUCCESS_RATE = 0.25
+    if learning_stats:
+        filtered: List[PatchOperation] = []
+        for op in operations:
+            key = f"{op.smell_type or 'unknown'}{SMELL_ACTION_SEP}{op.kind}"
+            d = learning_stats.get(key, {})
+            total = d.get("total", 0)
+            if total >= MIN_TOTAL_FOR_FILTER:
+                rate = (d.get("success", 0) or 0) / total
+                if rate < MIN_SUCCESS_RATE:
+                    continue  # skip: historically failed often
+            filtered.append(op)
+        operations = filtered
 
     if learning_stats:
         operations.sort(
@@ -328,17 +399,10 @@ def _index_smells_by_node(smells: List[ArchSmell]) -> Dict[str, List[ArchSmell]]
 
 
 def _decide_step_kind(node_smells: List[ArchSmell]) -> str:
-    """Choose plan step kind based on dominant smell types."""
-    types = {s.type for s in node_smells}
-    if "god_module" in types:
-        return "split_module"
-    if "bottleneck" in types:
-        return "introduce_facade"
-    if "hub" in types:
-        return "split_responsibility"
-    if "cyclic_dependency" in types:
-        return "break_cycle"
-    return "refactor_module"
+    """Choose plan step kind from smell types (delegates to refactor_kind_for_smells, ROADMAP 3.1.2)."""
+    from eurika.reasoning.graph_ops import refactor_kind_for_smells
+    types = [s.type for s in node_smells]
+    return refactor_kind_for_smells(types)
 
 
 def _build_step_for_module(
@@ -486,3 +550,11 @@ def _step_to_action(
         expected_benefit=round(expected_benefit, 3),
     )
 
+
+# TODO: Refactor architecture_planner.py (god_module -> split_module)
+# Suggested steps:
+# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
+# - Identify distinct concerns and split this module into focused units.
+# - Reduce total degree (fan-in + fan-out) via extraction.
+# - Extract from imports: action_plan.py, patch_plan.py.
+# - Consider grouping callers: tests/test_graph_ops.py, eurika/reasoning/planner.py, agent_core_arch_review.py.

@@ -49,38 +49,12 @@ def run_scan(
     )
     print(arch_report)
 
-    # Observation memory + unified event log
     memory = ProjectMemory(path)
-    memory.observations.record_observation("scan", observation)
-    try:
-        summary = (observation.get("summary", {}) or {}) if isinstance(observation, dict) else {}
-        memory.events.append_event(
-            type="scan",
-            input={"path": str(path)},
-            output={
-                "files": summary.get("files", 0),
-                "total_lines": summary.get("total_lines", 0),
-                "smells_count": summary.get("smells_count", 0),
-            },
-            result=True,
-        )
-    except Exception:
-        pass
+    memory.record_scan(observation)
 
     return 0
 
 
-# TODO: Refactor runtime_scan.py (god_module -> refactor_module)
-# Suggested steps:
-# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
-# - Identify distinct concerns and split this module into focused units.
-# - Reduce total degree (fan-in + fan-out) via extraction.
-
-# TODO: Refactor runtime_scan.py (god_module -> refactor_module)
-# Suggested steps:
-# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
-# - Identify distinct concerns and split this module into focused units.
-# - Reduce total degree (fan-in + fan-out) via extraction.
+# TODO: Refactor runtime_scan.py (god_module -> split_module)
 # - Extract from imports: code_awareness.py.
-# - Consider grouping callers: tests/test_runtime_scan.py, cli/agent_handlers.py, cli/core_handlers.py.
-# - Introduce facade for callers: cli/agent_handlers.py, cli/core_handlers.py, tests/test_agent_core_arch_review.py....
+# - Consider grouping callers: cli/agent_handlers.py, cli/core_handlers.py, tests.

@@ -1,6 +1,14 @@
 """Tests for eurika.reasoning.graph_ops — graph-driven patch planning."""
 
+from pathlib import Path
+
 from eurika.reasoning.graph_ops import (
+    SMELL_TYPE_TO_REFACTOR_KIND,
+    centrality_from_graph,
+    metrics_from_graph,
+    priority_from_graph,
+    refactor_kind_for_smells,
+    targets_from_graph,
     resolve_module_for_edge,
     suggest_cycle_break_edge,
     suggest_facade_candidates,
@@ -13,6 +21,102 @@ from eurika.analysis.graph import ProjectGraph
 def _make_graph(nodes, edges) -> ProjectGraph:
     """Build ProjectGraph from nodes list and edge dict {src: [dst, ...]}."""
     return ProjectGraph(nodes, edges)
+
+
+def test_refactor_kind_for_smells():
+    """ROADMAP 3.1.2: smell_type → refactor_kind mapping."""
+    assert refactor_kind_for_smells(["god_module"]) == "split_module"
+    assert refactor_kind_for_smells(["hub"]) == "split_module"
+    assert refactor_kind_for_smells(["bottleneck"]) == "introduce_facade"
+    assert refactor_kind_for_smells(["cyclic_dependency"]) == "break_cycle"
+    assert refactor_kind_for_smells(["god_module", "bottleneck"]) == "split_module"
+    assert refactor_kind_for_smells(["bottleneck", "hub"]) == "introduce_facade"
+    assert refactor_kind_for_smells([]) == "refactor_module"
+    assert refactor_kind_for_smells(["unknown"]) == "refactor_module"
+
+
+def test_targets_from_graph():
+    """ROADMAP 3.1.4: targets built from graph.nodes, kind from smells."""
+    from eurika.smells.models import ArchSmell
+
+    g = _make_graph(["a", "b", "x"], {"a": ["x"], "b": ["x"], "x": []})
+    smells = [
+        ArchSmell(type="bottleneck", nodes=["x"], severity=5.0, description=""),
+        ArchSmell(type="god_module", nodes=["a"], severity=2.0, description=""),
+    ]
+    targets = targets_from_graph(g, smells, top_n=5)
+    names = [t["name"] for t in targets]
+    assert "x" in names
+    assert "a" in names
+    kinds = {t["name"]: t["kind"] for t in targets}
+    assert kinds["x"] == "introduce_facade"
+    assert kinds["a"] == "split_module"
+    assert all(t["name"] in g.nodes for t in targets)
+
+
+def test_centrality_from_graph():
+    """ROADMAP 3.1.3: centrality computed from graph."""
+    g = _make_graph(["a", "b", "c", "x"], {"a": ["x"], "b": ["x"], "c": ["x"], "x": []})
+    c = centrality_from_graph(g, top_n=3)
+    assert c["max_degree"] == 3
+    assert any(n == "x" and d == 3 for n, d in c["top_by_degree"])
+    assert len(c["top_by_degree"]) <= 3
+
+
+def test_metrics_from_graph():
+    """ROADMAP 3.1.3: risk_score and centrality from graph."""
+    from eurika.smells.models import ArchSmell
+
+    g = _make_graph(["a", "b"], {"a": ["b"], "b": []})
+    smells = [ArchSmell(type="bottleneck", nodes=["b"], severity=3.0, description="")]
+    m = metrics_from_graph(g, smells, trends={})
+    assert "risk_score" in m
+    assert "score" in m
+    assert "centrality" in m
+    assert m["centrality"]["max_degree"] >= 0
+    assert 0 <= m["risk_score"] <= 100
+
+
+def test_smell_type_to_refactor_kind_canonical():
+    """SMELL_TYPE_TO_REFACTOR_KIND is the canonical mapping."""
+    assert SMELL_TYPE_TO_REFACTOR_KIND["god_module"] == "split_module"
+    assert SMELL_TYPE_TO_REFACTOR_KIND["hub"] == "split_module"
+    assert SMELL_TYPE_TO_REFACTOR_KIND["bottleneck"] == "introduce_facade"
+    assert SMELL_TYPE_TO_REFACTOR_KIND["cyclic_dependency"] == "break_cycle"
+
+
+def test_priority_from_graph_orders_by_severity_and_degree():
+    """priority_from_graph returns modules ordered by severity + degree bonus."""
+    from eurika.smells.models import ArchSmell
+
+    # a: severity 2, degree 2 (a->b, b->a). b: severity 2, degree 2.
+    # x: severity 5, degree 4 (a,b,c->x). Higher severity+degree → x first.
+    g = _make_graph(
+        ["a", "b", "c", "x"],
+        {"a": ["b", "x"], "b": ["a", "x"], "c": ["x"], "x": []},
+    )
+    smells = [
+        ArchSmell(type="cyclic_dependency", nodes=["a", "b"], severity=2.0, description=""),
+        ArchSmell(type="bottleneck", nodes=["x"], severity=5.0, description=""),
+    ]
+    prio = priority_from_graph(g, smells, summary_risks=None, top_n=8)
+    names = [p["name"] for p in prio]
+    assert "x" in names
+    assert "a" in names or "b" in names
+    # x has higher severity and bottleneck bonus (fan_in * 0.2) → should be first
+    assert names[0] == "x"
+
+
+def test_priority_from_graph_includes_summary_risks():
+    """priority_from_graph adds weight for nodes mentioned in summary_risks."""
+    from eurika.smells.models import ArchSmell
+
+    g = _make_graph(["a", "b"], {"a": ["b"], "b": []})
+    smells = [ArchSmell(type="bottleneck", nodes=["b"], severity=1.0, description="")]
+    risks = ["bottleneck @ b (severity=1)"]
+    prio = priority_from_graph(g, smells, summary_risks=risks, top_n=8)
+    assert any(p["name"] == "b" for p in prio)
+    assert any("mentioned_in_summary_risks" in p["reasons"] for p in prio if p["name"] == "b")
 
 
 def test_resolve_module_for_edge():
@@ -191,6 +295,29 @@ def test_build_patch_plan_with_graph_includes_graph_hints():
     assert "callers" in diff.lower() or "facade" in diff.lower()
 
 
+def test_build_patch_plan_hub_produces_split_module():
+    """ROADMAP 3.1.2: hub smell triggers split_module (not refactor_module)."""
+    from architecture_planner import build_patch_plan
+    from eurika.smells.models import ArchSmell
+
+    g = _make_graph(["hub_node", "a", "b"], {"hub_node": ["a", "b"], "a": [], "b": []})
+    smells = [ArchSmell(type="hub", nodes=["hub_node"], severity=5.0, description="High fan-out")]
+    summary = {"risks": []}
+    history_info = {"trends": {}}
+    priorities = [{"name": "hub_node", "reasons": ["hub"]}]
+
+    plan = build_patch_plan(
+        project_root="/tmp",
+        summary=summary,
+        smells=smells,
+        history_info=history_info,
+        priorities=priorities,
+        graph=g,
+    )
+    assert len(plan.operations) >= 1
+    assert plan.operations[0].kind == "split_module"
+
+
 def test_build_patch_plan_god_module_produces_split_module():
     """god_module with graph produces kind=split_module and params with imports_from/imported_by."""
     from architecture_planner import build_patch_plan
@@ -221,3 +348,70 @@ def test_build_patch_plan_god_module_produces_split_module():
     assert op.params is not None
     assert "imports_from" in op.params
     assert "imported_by" in op.params
+
+
+def test_build_patch_plan_god_module_with_god_class_produces_extract_class(tmp_path: Path) -> None:
+    """When god_module has a class with 6+ extractable methods, add extract_class op."""
+    from architecture_planner import build_patch_plan
+    from eurika.smells.models import ArchSmell
+
+    # Create file with god class (6+ methods, no self)
+    target = tmp_path / "big_module.py"
+    methods = "\n".join(f"    def m{i}(self): return {i}" for i in range(6))
+    target.write_text(f"class BigClass:\n{methods}\n")
+
+    g = _make_graph(["big_module.py", "a", "b"], {"big_module.py": ["a", "b"]})
+    smells = [
+        ArchSmell(type="god_module", nodes=["big_module.py"], severity=6.0, description="High degree"),
+    ]
+    summary = {"risks": []}
+    history_info = {"trends": {}}
+    priorities = [{"name": "big_module.py", "reasons": ["god_module"]}]
+
+    plan = build_patch_plan(
+        project_root=str(tmp_path),
+        summary=summary,
+        smells=smells,
+        history_info=history_info,
+        priorities=priorities,
+        graph=g,
+    )
+    # First op should be extract_class (concrete), then split_module
+    extract_ops = [o for o in plan.operations if o.kind == "extract_class"]
+    assert len(extract_ops) >= 1, "expected at least one extract_class op"
+    op = extract_ops[0]
+    assert op.params["target_class"] == "BigClass"
+    assert "methods_to_extract" in op.params
+    assert len(op.params["methods_to_extract"]) >= 6
+
+
+def test_build_patch_plan_filters_low_success_rate_ops(tmp_path: Path) -> None:
+    """ROADMAP 2.6.3: ops with success_rate < 0.25 and total >= 3 are excluded."""
+    from architecture_planner import build_patch_plan
+    from eurika.smells.models import ArchSmell
+
+    g = _make_graph(["a.py", "b.py", "c.py"], {"a.py": ["b.py"], "b.py": ["c.py"]})
+    smells = [
+        ArchSmell(type="god_module", nodes=["a.py"], severity=5.0, description=""),
+        ArchSmell(type="god_module", nodes=["b.py"], severity=4.0, description=""),
+    ]
+    summary = {"risks": []}
+    history_info = {"trends": {}}
+    priorities = [{"name": "a.py", "reasons": ["god_module"]}, {"name": "b.py", "reasons": ["god_module"]}]
+
+    # god_module|split_module: 1 success out of 4 → 0.25, excluded when < 0.25
+    learning_stats = {
+        "god_module|split_module": {"total": 4, "success": 0, "fail": 4},
+    }
+    plan = build_patch_plan(
+        project_root=str(tmp_path),
+        summary=summary,
+        smells=smells,
+        history_info=history_info,
+        priorities=priorities,
+        graph=g,
+        learning_stats=learning_stats,
+    )
+    # All split_module ops should be filtered (0% success)
+    split_ops = [o for o in plan.operations if o.kind == "split_module"]
+    assert len(split_ops) == 0, "low success_rate ops should be excluded"

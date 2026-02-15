@@ -37,6 +37,7 @@ def severity_to_level(severity: float) -> str:
 
 
 REMEDIATION_HINTS: Dict[str, str] = {
+    "god_class": "Extract methods that don't use self into a new class (extract_class).",
     "god_module": "Consider splitting into smaller modules; extract coherent sub-responsibilities.",
     "bottleneck": "Introduce facade or adapter to distribute dependents; avoid single point of failure.",
     "hub": "Extract coherent sub-graphs; consider splitting by domain or layer.",

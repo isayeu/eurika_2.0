@@ -39,7 +39,13 @@
     },
     {
       "path": "agent_core_arch_review.py",
-      "lines": 650,
+      "lines": 19,
+      "functions": [],
+      "classes": []
+    },
+    {
+      "path": "agent_core_arch_review_archreviewagentcore.py",
+      "lines": 266,
       "functions": [
         "handle"
       ],
@@ -121,7 +127,7 @@
     },
     {
       "path": "architecture_planner.py",
-      "lines": 488,
+      "lines": 560,
       "functions": [
         "build_plan",
         "build_action_plan",
@@ -154,7 +160,7 @@
     },
     {
       "path": "cli/agent_handlers.py",
-      "lines": 546,
+      "lines": 341,
       "functions": [
         "handle_agent_arch_review",
         "handle_agent_arch_evolution",
@@ -173,7 +179,7 @@
     },
     {
       "path": "cli/core_handlers.py",
-      "lines": 371,
+      "lines": 411,
       "functions": [
         "handle_help",
         "handle_scan",
@@ -185,22 +191,38 @@
         "handle_explain",
         "handle_doctor",
         "handle_fix",
+        "handle_cycle",
         "handle_architect",
         "handle_suggest_plan",
         "handle_clean_imports",
+        "handle_watch",
         "handle_serve"
       ],
       "classes": []
     },
     {
       "path": "cli/handlers.py",
-      "lines": 78,
+      "lines": 14,
       "functions": [],
       "classes": []
     },
     {
+      "path": "cli/orchestrator.py",
+      "lines": 376,
+      "functions": [
+        "run_cycle",
+        "run_doctor_cycle",
+        "run_full_cycle",
+        "run_fix_cycle",
+        "run"
+      ],
+      "classes": [
+        "EurikaOrchestrator"
+      ]
+    },
+    {
       "path": "code_awareness.py",
-      "lines": 346,
+      "lines": 353,
       "functions": [
         "scan_python_files",
         "read_file",
@@ -295,10 +317,13 @@
     },
     {
       "path": "eurika/api/__init__.py",
-      "lines": 88,
+      "lines": 194,
       "functions": [
         "get_summary",
         "get_history",
+        "get_patch_plan",
+        "get_clean_imports_operations",
+        "get_recent_events",
         "get_diff"
       ],
       "classes": []
@@ -355,7 +380,7 @@
     },
     {
       "path": "eurika/evolution/history.py",
-      "lines": 372,
+      "lines": 264,
       "functions": [
         "append",
         "trend",
@@ -368,6 +393,34 @@
       ]
     },
     {
+      "path": "eurika/knowledge/__init__.py",
+      "lines": 21,
+      "functions": [],
+      "classes": []
+    },
+    {
+      "path": "eurika/knowledge/base.py",
+      "lines": 280,
+      "functions": [
+        "is_empty",
+        "query",
+        "query",
+        "query",
+        "query",
+        "query",
+        "query"
+      ],
+      "classes": [
+        "StructuredKnowledge",
+        "KnowledgeProvider",
+        "LocalKnowledgeProvider",
+        "OfficialDocsProvider",
+        "ReleaseNotesProvider",
+        "StaticAnalyzerProvider",
+        "CompositeKnowledgeProvider"
+      ]
+    },
+    {
       "path": "eurika/reasoning/__init__.py",
       "lines": 4,
       "functions": [],
@@ -375,13 +428,13 @@
     },
     {
       "path": "eurika/reasoning/advisor.py",
-      "lines": 8,
+      "lines": 9,
       "functions": [],
       "classes": []
     },
     {
       "path": "eurika/reasoning/architect.py",
-      "lines": 110,
+      "lines": 232,
       "functions": [
         "interpret_architecture"
       ],
@@ -389,8 +442,13 @@
     },
     {
       "path": "eurika/reasoning/graph_ops.py",
-      "lines": 168,
+      "lines": 317,
       "functions": [
+        "centrality_from_graph",
+        "metrics_from_graph",
+        "refactor_kind_for_smells",
+        "targets_from_graph",
+        "priority_from_graph",
         "resolve_module_for_edge",
         "suggest_cycle_break_edge",
         "suggest_facade_candidates",
@@ -426,6 +484,23 @@
       "classes": []
     },
     {
+      "path": "eurika/refactor/extract_class.py",
+      "lines": 226,
+      "functions": [
+        "suggest_extract_class",
+        "extract_class"
+      ],
+      "classes": []
+    },
+    {
+      "path": "eurika/refactor/introduce_facade.py",
+      "lines": 97,
+      "functions": [
+        "introduce_facade"
+      ],
+      "classes": []
+    },
+    {
       "path": "eurika/refactor/remove_import.py",
       "lines": 76,
       "functions": [
@@ -439,7 +514,7 @@
     },
     {
       "path": "eurika/refactor/remove_unused_import.py",
-      "lines": 103,
+      "lines": 152,
       "functions": [
         "remove_unused_imports",
         "visit_Import",
@@ -448,6 +523,16 @@
       "classes": [
         "_UnusedImportRemover"
       ]
+    },
+    {
+      "path": "eurika/refactor/split_module.py",
+      "lines": 328,
+      "functions": [
+        "split_module_by_import",
+        "split_module_by_function",
+        "split_module_by_class"
+      ],
+      "classes": []
     },
     {
       "path": "eurika/reporting/__init__.py",
@@ -489,7 +574,7 @@
     },
     {
       "path": "eurika/smells/detector.py",
-      "lines": 49,
+      "lines": 50,
       "functions": [
         "detect_architecture_smells",
         "severity_to_level",
@@ -539,19 +624,47 @@
     },
     {
       "path": "eurika/storage/__init__.py",
-      "lines": 7,
+      "lines": 8,
       "functions": [],
       "classes": []
     },
     {
+      "path": "eurika/storage/event_engine.py",
+      "lines": 32,
+      "functions": [
+        "event_engine"
+      ],
+      "classes": []
+    },
+    {
+      "path": "eurika/storage/event_views.py",
+      "lines": 212,
+      "functions": [
+        "append",
+        "all",
+        "aggregate_by_action_kind",
+        "aggregate_by_smell_action",
+        "append",
+        "all",
+        "aggregate_by_action",
+        "to_input",
+        "to_input"
+      ],
+      "classes": [
+        "LearningView",
+        "FeedbackView"
+      ]
+    },
+    {
       "path": "eurika/storage/events.py",
-      "lines": 119,
+      "lines": 134,
       "functions": [
         "to_dict",
         "from_dict",
         "append_event",
         "all",
-        "by_type"
+        "by_type",
+        "recent_events"
       ],
       "classes": [
         "Event",
@@ -560,17 +673,28 @@
     },
     {
       "path": "eurika/storage/memory.py",
-      "lines": 93,
+      "lines": 124,
       "functions": [
         "events",
         "feedback",
         "learning",
         "observations",
-        "history"
+        "history",
+        "record_scan"
       ],
       "classes": [
         "ProjectMemory"
       ]
+    },
+    {
+      "path": "eurika/storage/paths.py",
+      "lines": 54,
+      "functions": [
+        "storage_path",
+        "ensure_storage_dir",
+        "migrate_if_needed"
+      ],
+      "classes": []
     },
     {
       "path": "eurika/storage/persistence.py",
@@ -598,7 +722,7 @@
     },
     {
       "path": "eurika_cli.py",
-      "lines": 497,
+      "lines": 534,
       "functions": [
         "main"
       ],
@@ -640,7 +764,7 @@
     },
     {
       "path": "patch_apply.py",
-      "lines": 239,
+      "lines": 374,
       "functions": [
         "apply_patch_plan",
         "list_backups",
@@ -650,10 +774,13 @@
     },
     {
       "path": "patch_engine.py",
-      "lines": 89,
+      "lines": 148,
       "functions": [
-        "apply_and_verify",
+        "apply_patch",
+        "verify_patch",
+        "rollback_patch",
         "rollback",
+        "apply_and_verify",
         "list_backups"
       ],
       "classes": []
@@ -672,7 +799,7 @@
     },
     {
       "path": "project_graph.py",
-      "lines": 181,
+      "lines": 158,
       "functions": [
         "from_self_map",
         "fan_in_out",
@@ -699,7 +826,7 @@
     },
     {
       "path": "report/ux.py",
-      "lines": 159,
+      "lines": 113,
       "functions": [
         "should_use_color",
         "ascii_bar",
@@ -711,7 +838,7 @@
     },
     {
       "path": "runtime_scan.py",
-      "lines": 86,
+      "lines": 60,
       "functions": [
         "run_scan"
       ],
@@ -758,21 +885,27 @@
     },
     {
       "path": "tests/test_api.py",
-      "lines": 64,
+      "lines": 84,
       "functions": [
         "test_get_summary_returns_json_serializable",
         "test_get_summary_with_self_map",
         "test_get_history_returns_json_serializable",
-        "test_get_diff_returns_json_serializable"
+        "test_get_diff_returns_json_serializable",
+        "test_get_patch_plan_returns_none_without_self_map",
+        "test_get_patch_plan_returns_dict_with_self_map"
       ],
       "classes": []
     },
     {
       "path": "tests/test_architect.py",
-      "lines": 41,
+      "lines": 109,
       "functions": [
         "test_template_interpret_minimal",
-        "test_interpret_architecture_no_llm"
+        "test_interpret_architecture_no_llm",
+        "test_template_interpret_with_patch_plan",
+        "test_interpret_architecture_with_knowledge",
+        "test_architect_includes_recent_events",
+        "test_format_recent_events"
       ],
       "classes": []
     },
@@ -823,7 +956,7 @@
     },
     {
       "path": "tests/test_architecture_learning.py",
-      "lines": 50,
+      "lines": 24,
       "functions": [
         "test_learning_store_append_and_aggregate"
       ],
@@ -844,7 +977,7 @@
     },
     {
       "path": "tests/test_clean_imports_cli.py",
-      "lines": 48,
+      "lines": 35,
       "functions": [
         "test_clean_imports_dry_run",
         "test_clean_imports_skips_api_facades",
@@ -854,12 +987,22 @@
     },
     {
       "path": "tests/test_cycle.py",
-      "lines": 183,
+      "lines": 306,
       "functions": [
+        "test_fix_quiet_exit_code_success",
+        "test_run_cycle_single_entry_point",
+        "test_eurika_orchestrator_run",
         "test_fix_dry_run_on_self",
         "test_cycle_dry_run_on_self",
+        "test_product_cycle_dry_run",
         "test_cycle_dry_run_on_minimal_project",
-        "test_cycle_full_apply_then_rollback"
+        "test_doctor_includes_knowledge_when_cache_present",
+        "test_knowledge_topics_derived_from_summary",
+        "test_cycle_full_apply_then_rollback",
+        "test_fix_cycle_includes_clean_imports_ops",
+        "test_fix_no_clean_imports_excludes_clean_ops",
+        "test_learning_not_appended_when_all_skipped",
+        "fake_apply"
       ],
       "classes": []
     },
@@ -874,10 +1017,20 @@
     },
     {
       "path": "tests/test_executor_sandbox.py",
-      "lines": 64,
+      "lines": 31,
       "functions": [
         "test_executor_sandbox_dry_run",
         "test_executor_sandbox_execute"
+      ],
+      "classes": []
+    },
+    {
+      "path": "tests/test_extract_class.py",
+      "lines": 30,
+      "functions": [
+        "test_suggest_extract_class_finds_god_class",
+        "test_suggest_extract_class_returns_none_when_few_methods",
+        "test_suggest_extract_class_returns_none_when_all_use_self"
       ],
       "classes": []
     },
@@ -891,8 +1044,15 @@
     },
     {
       "path": "tests/test_graph_ops.py",
-      "lines": 223,
+      "lines": 417,
       "functions": [
+        "test_refactor_kind_for_smells",
+        "test_targets_from_graph",
+        "test_centrality_from_graph",
+        "test_metrics_from_graph",
+        "test_smell_type_to_refactor_kind_canonical",
+        "test_priority_from_graph_orders_by_severity_and_degree",
+        "test_priority_from_graph_includes_summary_risks",
         "test_resolve_module_for_edge",
         "test_suggest_cycle_break_edge_empty",
         "test_suggest_cycle_break_edge_simple_cycle",
@@ -906,16 +1066,47 @@
         "test_graph_hints_for_smell_unknown_empty",
         "test_build_patch_plan_creates_remove_cyclic_import_when_cycle",
         "test_build_patch_plan_with_graph_includes_graph_hints",
-        "test_build_patch_plan_god_module_produces_split_module"
+        "test_build_patch_plan_hub_produces_split_module",
+        "test_build_patch_plan_god_module_produces_split_module",
+        "test_build_patch_plan_god_module_with_god_class_produces_extract_class",
+        "test_build_patch_plan_filters_low_success_rate_ops"
       ],
       "classes": []
     },
     {
+      "path": "tests/test_knowledge.py",
+      "lines": 162,
+      "functions": [
+        "test_structured_knowledge_empty",
+        "test_structured_knowledge_non_empty",
+        "test_local_knowledge_provider_query",
+        "test_local_knowledge_provider_loads_cache",
+        "test_local_knowledge_provider_no_cache",
+        "test_official_docs_provider_stub",
+        "test_release_notes_provider_topic_not_in_map",
+        "test_release_notes_provider_unknown_topic_returns_empty",
+        "test_release_notes_provider_fetch_mocked",
+        "test_static_analyzer_provider_stub",
+        "test_composite_knowledge_provider_merges_fragments",
+        "test_official_docs_provider_topic_not_in_map",
+        "test_official_docs_provider_fetch_mocked",
+        "test_official_docs_provider_uses_cache",
+        "test_fetch_html_cleanup",
+        "query",
+        "query"
+      ],
+      "classes": [
+        "StubA",
+        "StubB"
+      ]
+    },
+    {
       "path": "tests/test_patch_apply.py",
-      "lines": 175,
+      "lines": 103,
       "functions": [
         "test_apply_patch_plan_dry_run",
         "test_apply_patch_plan_apply",
+        "test_apply_patch_plan_dedupes_modified",
         "test_apply_patch_plan_skips_missing",
         "test_apply_patch_plan_creates_backup",
         "test_list_backups_empty",
@@ -927,23 +1118,37 @@
     },
     {
       "path": "tests/test_patch_apply_remove_import.py",
-      "lines": 52,
+      "lines": 270,
       "functions": [
+        "test_apply_remove_unused_import",
+        "test_apply_split_module",
+        "test_apply_split_module_by_function_fallback",
+        "test_apply_split_module_by_class_fallback",
+        "test_apply_split_module_extracts_when_def_uses_multiple_imports",
+        "test_apply_split_module_fallback_to_diff_when_no_extractable",
+        "test_apply_extract_class",
+        "test_apply_extract_class_skips_when_methods_use_self",
         "test_apply_remove_cyclic_import",
+        "test_apply_introduce_facade",
+        "test_apply_introduce_facade_skips_when_api_exists",
         "test_apply_remove_cyclic_import_dry_run"
       ],
       "classes": []
     },
     {
       "path": "tests/test_patch_engine.py",
-      "lines": 82,
+      "lines": 122,
       "functions": [
         "test_apply_and_verify_modifies_files",
         "test_apply_and_verify_no_verify",
         "test_rollback_restores_files",
         "test_rollback_latest_when_no_run_id",
         "test_list_backups_empty",
-        "test_list_backups_finds_runs"
+        "test_list_backups_finds_runs",
+        "test_apply_patch_only",
+        "test_verify_patch_returns_dict",
+        "test_rollback_patch_same_as_rollback",
+        "test_apply_and_verify_auto_rollback_on_failure"
       ],
       "classes": []
     },
@@ -958,7 +1163,7 @@
     },
     {
       "path": "tests/test_refactor_plan.py",
-      "lines": 41,
+      "lines": 25,
       "functions": [
         "test_suggest_plan_from_risks",
         "test_suggest_plan_from_recommendations",
@@ -968,7 +1173,7 @@
     },
     {
       "path": "tests/test_remove_import.py",
-      "lines": 55,
+      "lines": 47,
       "functions": [
         "test_remove_import_simple",
         "test_remove_import_from_import",
@@ -980,13 +1185,15 @@
     },
     {
       "path": "tests/test_remove_unused_import.py",
-      "lines": 51,
+      "lines": 80,
       "functions": [
         "test_remove_unused_simple",
         "test_keep_used_import",
         "test_remove_one_from_multi",
         "test_keep_future",
-        "test_keep_star_import"
+        "test_keep_star_import",
+        "test_keep_imports_in_all",
+        "test_keep_imports_under_type_checking"
       ],
       "classes": []
     },
@@ -1021,23 +1228,28 @@
     },
     {
       "path": "tests/test_storage_events.py",
-      "lines": 54,
+      "lines": 91,
       "functions": [
         "test_event_to_dict_roundtrip",
         "test_event_store_append_and_all",
         "test_event_store_by_type",
-        "test_project_memory_events"
+        "test_project_memory_events",
+        "test_event_engine_entry_point",
+        "test_event_to_dict_includes_action",
+        "test_event_from_dict_accepts_action",
+        "test_event_store_recent_events"
       ],
       "classes": []
     },
     {
       "path": "tests/test_storage_memory.py",
-      "lines": 58,
+      "lines": 85,
       "functions": [
         "test_project_memory_feedback",
         "test_project_memory_learning",
         "test_project_memory_observations",
-        "test_project_memory_history"
+        "test_project_memory_history",
+        "test_migration_from_legacy_path"
       ],
       "classes": []
     },
@@ -1052,6 +1264,9 @@
   ],
   "dependencies": {
     "agent_core_arch_review.py": [
+      "agent_core_arch_review_archreviewagentcore"
+    ],
+    "agent_core_arch_review_archreviewagentcore.py": [
       "agent_core",
       "action_plan",
       "executor_sandbox",
@@ -1089,10 +1304,11 @@
     ],
     "architecture_planner.py": [
       "eurika.smells.detector",
+      "eurika.refactor.extract_class",
       "action_plan",
       "patch_plan",
-      "eurika.reasoning.graph_ops",
-      "eurika.analysis.graph"
+      "eurika.analysis.graph",
+      "eurika.reasoning.graph_ops"
     ],
     "architecture_smells.py": [
       "eurika.smells.models"
@@ -1107,28 +1323,44 @@
       "action_plan",
       "agent_core",
       "agent_core_arch_review",
-      "eurika.evolution.diff",
       "eurika.storage",
-      "eurika.core.pipeline",
       "executor_sandbox",
       "patch_apply",
       "patch_engine",
-      "runtime_scan"
+      "cli.orchestrator"
     ],
     "cli/core_handlers.py": [
+      "cli.orchestrator",
       "eurika.smells.detector",
       "architecture_pipeline",
       "eurika.core.pipeline",
       "runtime_scan",
-      "cli.agent_handlers",
       "eurika.api",
+      "eurika.smells.rules",
+      "cli.agent_handlers",
       "eurika.reasoning.architect",
+      "eurika.knowledge",
       "eurika.reasoning.refactor_plan",
       "code_awareness",
       "eurika.refactor.remove_unused_import",
       "eurika.api.serve",
       "eurika.analysis.self_map",
       "eurika.smells.advisor"
+    ],
+    "cli/orchestrator.py": [
+      "eurika.api",
+      "eurika.knowledge",
+      "eurika.reasoning.architect",
+      "eurika.smells.rules",
+      "runtime_scan",
+      "agent_core",
+      "agent_core_arch_review",
+      "patch_apply",
+      "patch_engine",
+      "eurika.core.pipeline",
+      "eurika.evolution.diff",
+      "eurika.reasoning.graph_ops",
+      "eurika.storage"
     ],
     "core/pipeline.py": [
       "eurika.smells.rules",
@@ -1170,6 +1402,9 @@
       "eurika.smells.rules",
       "eurika.evolution.history",
       "eurika.storage",
+      "eurika.reasoning.graph_ops",
+      "architecture_planner",
+      "eurika.refactor.remove_unused_import",
       "eurika.evolution.diff"
     ],
     "eurika/api/serve.py": [
@@ -1193,14 +1428,19 @@
       "eurika.analysis.graph",
       "eurika.analysis.metrics",
       "eurika.smells.detector",
-      "eurika.smells.rules"
+      "eurika.reasoning.graph_ops"
     ],
     "eurika/reasoning/advisor.py": [
       "agent_core_arch_review",
       "agent_core"
     ],
+    "eurika/reasoning/architect.py": [
+      "eurika.knowledge",
+      "eurika.storage.events"
+    ],
     "eurika/reasoning/graph_ops.py": [
-      "eurika.analysis.graph"
+      "eurika.analysis.graph",
+      "eurika.smells.rules"
     ],
     "eurika/reasoning/heuristics.py": [
       "memory",
@@ -1242,11 +1482,13 @@
     "eurika/storage/__init__.py": [
       "memory"
     ],
-    "eurika/storage/memory.py": [
-      "architecture_feedback",
+    "eurika/storage/event_views.py": [
       "architecture_learning",
+      "architecture_feedback"
+    ],
+    "eurika/storage/memory.py": [
       "observation_memory",
-      "eurika.storage.events",
+      "eurika.storage.event_engine",
       "eurika.evolution.history"
     ],
     "eurika/storage/persistence.py": [
@@ -1264,7 +1506,11 @@
       "agent_core"
     ],
     "patch_apply.py": [
-      "eurika.refactor.remove_import"
+      "eurika.refactor.remove_import",
+      "eurika.refactor.remove_unused_import",
+      "eurika.refactor.split_module",
+      "eurika.refactor.extract_class",
+      "eurika.refactor.introduce_facade"
     ],
     "patch_engine.py": [
       "patch_apply"
@@ -1299,7 +1545,9 @@
       "eurika.api"
     ],
     "tests/test_architect.py": [
-      "eurika.reasoning.architect"
+      "eurika.reasoning.architect",
+      "eurika.storage.events",
+      "eurika.knowledge"
     ],
     "tests/test_architecture_advisor.py": [
       "project_graph_api",
@@ -1331,12 +1579,20 @@
     "tests/test_clean_imports_cli.py": [
       "cli.core_handlers"
     ],
+    "tests/test_cycle.py": [
+      "cli.orchestrator",
+      "cli.core_handlers",
+      "patch_engine"
+    ],
     "tests/test_evolution_diff.py": [
       "eurika.evolution.diff"
     ],
     "tests/test_executor_sandbox.py": [
       "action_plan",
       "executor_sandbox"
+    ],
+    "tests/test_extract_class.py": [
+      "eurika.refactor.extract_class"
     ],
     "tests/test_graph_analysis.py": [
       "project_graph_api",
@@ -1345,8 +1601,12 @@
     "tests/test_graph_ops.py": [
       "eurika.reasoning.graph_ops",
       "eurika.analysis.graph",
-      "architecture_planner",
-      "eurika.smells.models"
+      "eurika.smells.models",
+      "architecture_planner"
+    ],
+    "tests/test_knowledge.py": [
+      "eurika.knowledge",
+      "eurika.knowledge.base"
     ],
     "tests/test_patch_apply.py": [
       "patch_apply"
@@ -1385,7 +1645,8 @@
       "eurika.storage.events"
     ],
     "tests/test_storage_memory.py": [
-      "eurika.storage"
+      "eurika.storage",
+      "eurika.storage.paths"
     ],
     "tests/test_system_topology.py": [
       "project_graph_api",
@@ -1393,7 +1654,7 @@
     ]
   },
   "summary": {
-    "files": 110,
-    "total_lines": 9912
+    "files": 122,
+    "total_lines": 12306
   }
 }

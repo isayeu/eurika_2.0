@@ -13,7 +13,8 @@ v0.2: remove_cyclic_import — when op.kind is remove_cyclic_import and
 params.target_module is set, uses AST to remove the import instead of appending.
 v0.3: split_module — when op.kind is split_module and params has imports_from,
 uses AST to extract definitions into a new submodule.
-v0.4: extract_class — when op.kind is extract_class and params has target_class
+v0.4: extract_class — when op.kind is extract_class and params has target_class.
+v0.5: introduce_facade — when op.kind is introduce_facade, creates {stem}_api.py re-exporting public symbols.
 and methods_to_extract, uses AST to extract methods (that don't use self) into
 a new class in a new file.
 """
@@ -25,8 +26,10 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from eurika.refactor.remove_import import remove_import_from_file
-from eurika.refactor.split_module import split_module_by_import
+from eurika.refactor.remove_unused_import import remove_unused_imports
+from eurika.refactor.split_module import split_module_by_import, split_module_by_class, split_module_by_function
 from eurika.refactor.extract_class import extract_class
+from eurika.refactor.introduce_facade import introduce_facade
 
 BACKUP_DIR = ".eurika_backups"
 
@@ -85,6 +88,26 @@ def apply_patch_plan(
             modified.append(target_file)
             continue
 
+        # remove_unused_import: AST-based removal (ROADMAP 2.4.1)
+        if kind == "remove_unused_import":
+            try:
+                new_content = remove_unused_imports(path)
+                if new_content is None:
+                    skipped.append(target_file)
+                    continue
+                if do_backup:
+                    backup_root = root / BACKUP_DIR / run_id
+                    backup_path = backup_root / target_file
+                    backup_path.parent.mkdir(parents=True, exist_ok=True)
+                    backup_path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+                    if backup_dir is None:
+                        backup_dir = str(backup_root)
+                path.write_text(new_content, encoding="utf-8")
+                modified.append(target_file)
+            except Exception as e:
+                errors.append(f"{target_file}: {e}")
+            continue
+
         # remove_cyclic_import: AST-based removal
         if kind == "remove_cyclic_import" and params.get("target_module"):
             try:
@@ -105,15 +128,27 @@ def apply_patch_plan(
                 errors.append(f"{target_file}: {e}")
             continue
 
-        # split_module: AST-based extraction (or fallback to TODO when no extractable defs)
-        if kind == "split_module" and params.get("imports_from"):
+        # split_module: AST-based extraction (import-based or class-based fallback)
+        if kind == "split_module":
             try:
                 result = split_module_by_import(
                     path,
-                    params["imports_from"],
+                    params.get("imports_from") or [],
                     extracted_module_stem="_extracted",
                     target_file=target_file,
                 )
+                if result is None:
+                    result = split_module_by_class(
+                        path,
+                        target_file=target_file,
+                        min_class_size=3,
+                    )
+                if result is None:
+                    result = split_module_by_function(
+                        path,
+                        target_file=target_file,
+                        min_statements=1,
+                    )
                 if result is not None:
                     new_rel_path, new_content, modified_original = result
                     new_path = root / new_rel_path
@@ -137,6 +172,30 @@ def apply_patch_plan(
             except Exception as e:
                 errors.append(f"{target_file}: {e}")
                 continue
+
+        # introduce_facade: create {stem}_api.py re-exporting bottleneck (ROADMAP: real fix for bottleneck)
+        if kind == "introduce_facade":
+            try:
+                result = introduce_facade(
+                    path,
+                    target_file=target_file,
+                    callers=params.get("callers"),
+                )
+                if result is None:
+                    skipped.append(target_file)
+                    continue
+                new_rel_path, new_content = result
+                new_path = root / new_rel_path
+                if new_path.exists():
+                    skipped.append(target_file)
+                    continue
+                # No backup: we only create new file, do not modify bottleneck
+                new_path.parent.mkdir(parents=True, exist_ok=True)
+                new_path.write_text(new_content, encoding="utf-8")
+                modified.append(new_rel_path)
+            except Exception as e:
+                errors.append(f"{target_file}: {e}")
+            continue
 
         # extract_class: AST-based method extraction
         if kind == "extract_class" and params.get("target_class") and params.get("methods_to_extract"):
@@ -200,9 +259,12 @@ def apply_patch_plan(
         except Exception as e:
             errors.append(f"{target_file}: {e}")
 
+    # Deduplicate modified (same file can be touched by multiple ops, e.g. clean_imports + refactor)
+    modified_unique = list(dict.fromkeys(modified))
+
     return {
         "dry_run": dry_run,
-        "modified": modified,
+        "modified": modified_unique,
         "skipped": skipped,
         "errors": errors,
         "backup_dir": backup_dir,

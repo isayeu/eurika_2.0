@@ -4,7 +4,7 @@ Unified Event model (ROADMAP 2.1 / review.md).
 Single event type for all memory/logging:
   Event { type, input, output, result, timestamp }
 
-Types: "scan", "diagnose", "plan", "patch", "verify", "learn".
+Types: "scan", "diagnose", "plan", "patch", "verify", "learn", "feedback".
 Persisted to project_root/eurika_events.json (append-only).
 """
 
@@ -14,7 +14,7 @@ import json
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 
 EVENTS_FILE = "eurika_events.json"
@@ -37,14 +37,18 @@ class Event:
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
+        d["action"] = d["output"]  # review.md: Event { type, input, action, result, timestamp }
         return d
 
     @staticmethod
     def from_dict(d: Dict[str, Any]) -> "Event":
+        output = d.get("output")
+        if output is None and "action" in d:
+            output = d["action"]
         return Event(
             type=d.get("type", ""),
             input=d.get("input", {}),
-            output=d.get("output", {}),
+            output=output or {},
             result=d.get("result"),
             timestamp=float(d.get("timestamp", time.time())),
         )
@@ -117,3 +121,14 @@ class EventStore:
     def by_type(self, type: str) -> List[Event]:
         """Return events of given type."""
         return [e for e in self._events if e.type == type]
+
+    def recent_events(
+        self,
+        limit: int = 10,
+        types: Optional[Sequence[str]] = None,
+    ) -> List[Event]:
+        """Return last `limit` events, newest first. Optional filter by types (patch, learn, etc)."""
+        pool = self._events[-MAX_EVENTS:]
+        if types:
+            pool = [e for e in pool if e.type in types]
+        return list(reversed(pool[-limit:]))

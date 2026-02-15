@@ -12,6 +12,49 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 
+MIN_METHODS_GOD_CLASS = 6
+
+
+def suggest_extract_class(
+    file_path: Path,
+    min_methods: int = MIN_METHODS_GOD_CLASS,
+) -> Optional[Tuple[str, List[str]]]:
+    """
+    Find a class with many methods and suggest extractable (no self) methods.
+
+    Returns:
+        (class_name, extractable_method_names) or None.
+    """
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return None
+
+    best: Optional[Tuple[str, List[str]]] = None
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        methods = [
+            n for n in ast.iter_child_nodes(node)
+            if isinstance(n, ast.FunctionDef) and not n.name.startswith("__")
+        ]
+        if len(methods) < min_methods:
+            continue
+        extractable = [
+            m.name for m in methods
+            if not _uses_self_attributes(m)
+        ]
+        if not extractable:
+            continue
+        if best is None or len(extractable) > len(best[1]):
+            best = (node.name, extractable)
+    return best
+
+
 def extract_class(
     file_path: Path,
     target_class: str,

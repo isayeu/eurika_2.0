@@ -1,0 +1,70 @@
+{
+  "topics": {
+    "python": [
+      {
+        "title": "PEP 701 – Syntactic formalization of f-strings",
+        "content": "In Python 3.12+, f-strings can contain nested quotes and backslashes. Use for clearer formatting and fewer workarounds."
+      },
+      {
+        "title": "What's New in Python 3.12",
+        "content": "Type parameter syntax: def f[T](x: T) -> T. Improved error messages. Performance improvements."
+      }
+    ],
+    "python_3_12": [
+      {
+        "title": "New type parameter syntax",
+        "content": "def max[T](a: T, b: T) -> T: ... and class C[T]: ... are valid in 3.12."
+      }
+    ],
+    "architecture_refactor": [
+      {
+        "title": "Split god module",
+        "content": "Extract cohesive subsets into new modules; reduce fan-out of the original; update imports."
+      }
+    ],
+    "deprecated_api": [
+      {
+        "title": "Deprecated API",
+        "content": "Check release notes for removed or deprecated APIs; prefer replacement APIs before upgrading. Pin known-good versions if needed."
+      }
+    ],
+    "typing": [
+      {
+        "title": "Type hints",
+        "content": "PEP 484; use typing and typing_extensions. For static checking: mypy, pyright. Python 3.12: def f[T](x: T) -> T."
+      }
+    ],
+    "cyclic_imports": [
+      {
+        "title": "Break import cycles",
+        "content": "Move shared types to a separate module; use TYPE_CHECKING for type-only imports; or defer imports inside functions."
+      }
+    ],
+    "version_migration": [
+      {
+        "title": "Python version upgrade",
+        "content": "Check What's New and Deprecation sections. Test with target version; update syntax (e.g. 3.12 type params), replace removed stdlib (e.g. imp), fix deprecated APIs."
+      },
+      {
+        "title": "Dependency upgrade",
+        "content": "Pin or constrain versions; run tests; check CHANGELOG for breaking changes. Use tools: pip-audit, safety."
+      }
+    ],
+    "security": [
+      {
+        "title": "Vulnerable dependencies",
+        "content": "Run pip-audit or safety check. Update vulnerable packages; prefer maintained alternatives. Avoid eval, exec on untrusted input."
+      },
+      {
+        "title": "Deprecated and removed",
+        "content": "Deprecated APIs may be removed in next major. Prefer replacements early; avoid postponing migration."
+      }
+    ],
+    "async_patterns": [
+      {
+        "title": "Async/await",
+        "content": "asyncio; async def, await. Avoid blocking in async code. Use asyncio.run() for top-level. Context managers: async with."
+      }
+    ]
+  }
+}

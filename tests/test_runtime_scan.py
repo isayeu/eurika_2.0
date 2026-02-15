@@ -27,10 +27,10 @@ def test_run_scan_on_minimal_project(tmp_path: Path):
     assert "Files:" in out
     assert "self_map.json written to" in out
 
-    # Check that artifacts were created in the project root
+    # Check that artifacts were created (.eurika/ for memory, self_map in root)
     assert (project_root / "self_map.json").exists()
-    assert (project_root / "architecture_history.json").exists()
-    assert (project_root / "eurika_observations.json").exists()
+    assert (project_root / ".eurika" / "history.json").exists()
+    assert (project_root / ".eurika" / "observations.json").exists()
 
 
 def test_scan_excludes_venv_and_node_modules(tmp_path: Path):

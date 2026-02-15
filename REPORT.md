@@ -1,30 +1,54 @@
 # REPORT — Текущий статус Eurika
 
-_Обновлено: v1.2.3. Детальный план — ROADMAP.md, контракт — SPEC.md._
+_Обновлено: v1.2.6. Синхронизировано с review.md и ROADMAP.md. Контракт — SPEC.md._
 
 ---
 
 ## Статус
 
-**Текущая версия:** v1.2.3 (extract_class)
+**Текущая версия:** v1.2.6 (doctor/fix отчёты)
 
-**Выполнено:** Architecture Awareness Engine, AgentCore v0.2–v0.4, core pipeline, history v0.6 (+ diff metrics), self-check, CLI UX, smells 2.0 (severity_level, remediation_hints), Smells × History (per-type динамика в evolution_report), Diff Engine (top fan-in growth, new bottlenecks, maturity degradation, recommended actions), `eurika history`, `eurika report`, `eurika explain`, `eurika architect` (мини-AI §7; LLM через OpenAI или OpenRouter, .env), `eurika serve` (JSON API). **Миграция к target layout:** пакет `eurika/` с фасадами (core, analysis, smells, evolution, reporting, storage, reasoning, utils). Реализация перенесена в пакет: `eurika.smells.detector` (из architecture_diagnostics), `eurika.smells.models` (из architecture_smells), `eurika.smells.health` (из architecture_health), `eurika.smells.advisor` (из architecture_advisor), `eurika.smells.summary` (из architecture_summary), `eurika.analysis.metrics` (из graph_analysis), `eurika.evolution.history` (из architecture_history), `eurika.evolution.diff` (из architecture_diff); фасады self_map, topology в analysis. Плоские файлы architecture_diagnostics, architecture_smells, architecture_health, architecture_advisor, architecture_summary, graph_analysis, architecture_history, architecture_diff — реэкспорты из `eurika.*`. Оставшиеся плоские модули (architecture_pipeline и др.) — фасады или ещё не перенесены.
+**Основная задача (сейчас):** саморазвитие, анализ и исправление собственного кода, добавление новых функций по запросу и т.д. Eurika в первую очередь работает над собой: scan/doctor/fix по своей кодовой базе, доработки по обратной связи, наращивание возможностей.
 
-**Следующий шаг:** Релиз v1.2.3; в перспективе god_class detection.
+**Выполнено:** Architecture Awareness Engine, AgentCore v0.2–v0.4, core pipeline, history v0.6 (+ diff metrics), self-check, CLI UX, smells 2.0, Diff Engine, `eurika scan | doctor | fix | explain`, `eurika architect`, `eurika serve` (JSON API). **План прорыва (ROADMAP):** Patch Engine (apply_patch, verify_patch, rollback_patch, auto_rollback), Verify Stage (метрики + откат при ухудшении), три автофикса (unused imports, cyclic imports, split module), Event Engine (event_engine.py), CLI 4 режима первыми, dogfooding с venv (/mnt/storage/project/venv). **v1.2.6:** doctor/fix отчёты, event_engine, упрощение CLI. **Багфикс (Knowledge):** при явной пустой карте `topic_urls={}` у OfficialDocsProvider/ReleaseNotesProvider использовался дефолтный allow-list (`topic_urls or DEFAULT`), из‑за чего падали тесты и verify при `eurika fix`. Исправлено: дефолт только при `topic_urls is None`; `{}` даёт пустой результат по любой теме.
 
-**Оценка по review.md:** 2.0 — «архитектурный аналитик»; цель 2.1 — «инженерный инструмент» (3 типа автофиксов, стабильный CLI, конкретная польза). Риск: «слишком сложно, чтобы стать полезным» — фокус на инженерном пути, не на усложнении reasoning.
+### Оценка зрелости (по review.md, актуальная версия)
 
-**Основная угроза:** архитектурная расползучесть. Фокус — стабилизация ядра, явный Patch Engine, единый контракт памяти/событий.
+| Компонент               | Оценка |
+| ----------------------- | ------ |
+| Архитектурная структура | 8.5/10 |
+| Качество кода           | 8/10   |
+| Концепция               | 9/10   |
+| Операционность          | 5/10   |
+| Продуктовая готовность  | 5/10   |
+| Потенциал               | 9.5/10 |
+
+**Диагноз (review):** «Архитектурный аналитик с амбициями автономного агента» — автономным агентом пока не является. Усиливать LLM — преждевременно; усиливать execution — критично.
+
+**В ответ на review реализовано:** Patch Engine (apply_patch, verify_patch, rollback_patch, auto_rollback), Verify Stage (метрики + откат при ухудшении), детерминированные автофиксы, единый Event Engine, CLI 4 продуктовых режима, dogfooding. Это закладывает фундамент для перехода к «автономному архитектурному инструменту» и, в долгосроке, к полноценному AI-агенту с самоусовершенствованием (см. вывод в review.md).
+
+**Следующий горизонт:** фазы 2.2, 2.3.1 и 2.3.2 выполнены. Остаётся: регулярный цикл 2.1, горизонт 3.
+
+### Проверка стабильности
+
+- **Тесты:** 132 passed (pytest).
+- **Использование на других проектах:** на `farm_helper` и `optweb` выполнены scan, doctor, **fix --dry-run** (успешно). Артефакты в каталогах проектов.
+- **Полный fix на Eurika:** выполнен `eurika fix .` (без --dry-run) с venv: apply → verify (pytest 131 passed) → rescan → verify_metrics. Артефакты в .gitignore; цикл scan → doctor → fix --dry-run выполнялся, тренды стабильны.
+
+### Видение (далёкое будущее)
+
+В перспективе система должна стать **полноценным агентом**: не только анализ и рефакторинг кода, но и звонки, разбор финансов, написание кода по запросу, собственная LLM и т.д. До этого ещё очень далеко; примеры проектов рядом (pphone, mind_games, binance, eurika, farm_helper, pytorch) показывают диапазон областей. Сейчас — архитектурный инструмент и фундамент; см. ROADMAP § Горизонт 3.
 
 ---
 
 ## Ключевые документы
 
-| Документ | Назначение |
-|----------|------------|
-| **review.md** | Технический разбор 2.0, направление 2.1 (Patch Engine, Event, граф) |
-| **ROADMAP.md** | План задач, этапы, чеклисты, блок «Версия 2.1 (по review.md)» |
-| **Architecture.md** | Структура системы, замкнутый цикл, Patch Engine, оценка по review |
-| **SPEC.md** | Контракт проекта (v0.1–v0.4) |
-| **CLI.md** | Справочник команд, рекомендуемый цикл |
-| **CHANGELOG.md** | История версий |
+| Документ        | Назначение |
+|-----------------|------------|
+| **review.md**   | Концептуальный разбор: диагноз (аналитик vs агент), операционность vs reasoning, стратегическое заключение; вывод — долгосрочно Eurika как AI-агент с самоусовершенствованием, фундамент закладываем сейчас. |
+| **ROADMAP.md**  | План задач, план прорыва (этапы 1–5), dogfooding ✓, после 1.0 — Knowledge Layer |
+| **DOGFOODING.md** | Ритуал: scan → doctor → fix на Eurika; про venv для verify |
+| **Architecture.md** | Структура системы, замкнутый цикл, Patch Engine (целевой API), оценка по review |
+| **SPEC.md**     | Контракт проекта (v0.1–v0.4), текущий фокус |
+| **CLI.md**      | Справочник команд, рекомендуемый цикл, целевое упрощение CLI |
+| **CHANGELOG.md**| История версий |

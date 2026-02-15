@@ -1,7 +1,9 @@
 """
-Graph-based operations for patch planning (ROADMAP 2.1 — Граф как инструмент).
+Graph-based operations for patch planning (ROADMAP 2.1, 3.1 — Граф как инструмент).
 
 Uses ProjectGraph structure to suggest concrete refactoring decisions:
+- refactor_kind_for_smells: smell_type → refactor_kind (ROADMAP 3.1.2)
+- priority_from_graph: ordered list of modules for refactoring (degree, severity, fan-in/out)
 - cyclic_dependency: which edge to break (weakest link heuristic)
 - bottleneck: facade candidates (callers that could be grouped)
 - god_module: split hints from dependency clusters
@@ -13,6 +15,153 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from eurika.analysis.graph import ProjectGraph
+
+
+# ROADMAP 3.1.2 — Canonical smell_type → refactor_kind mapping.
+# Used by architecture_planner to trigger operations in patch_plan.
+SMELL_TYPE_TO_REFACTOR_KIND: Dict[str, str] = {
+    "god_module": "split_module",
+    "hub": "split_module",
+    "bottleneck": "introduce_facade",
+    "cyclic_dependency": "break_cycle",
+}
+
+
+def centrality_from_graph(graph: ProjectGraph, top_n: int = 10) -> Dict[str, Any]:
+    """
+    Compute centrality metrics from graph (ROADMAP 3.1.3).
+
+    Returns:
+        {max_degree, top_by_degree: [(node, degree), ...]}
+    """
+    fan = graph.fan_in_out()
+    degrees = [(n, fi + fo) for n, (fi, fo) in fan.items()]
+    degrees.sort(key=lambda x: -x[1])
+    max_d = max((d for _, d in degrees), default=0)
+    return {
+        "max_degree": max_d,
+        "top_by_degree": degrees[:top_n],
+    }
+
+
+def metrics_from_graph(
+    graph: ProjectGraph,
+    smells: List[Any],
+    trends: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
+    """
+    Compute health/risk and centrality from graph (ROADMAP 3.1.3).
+
+    Graph is the single source; no duplication with other metric paths.
+    Returns dict with: score, risk_score, level, factors, centrality.
+    """
+    from eurika.smells.rules import compute_health
+
+    trends = trends or {}
+    health = compute_health({}, smells, trends)
+    centrality = centrality_from_graph(graph)
+    return {
+        **health,
+        "risk_score": health["score"],
+        "centrality": centrality,
+    }
+
+
+def refactor_kind_for_smells(smell_types: List[str]) -> str:
+    """
+    Map smell types to refactor kind (ROADMAP 3.1.2).
+
+    Priority: god_module > bottleneck > hub > cyclic_dependency.
+    Returns first match or "refactor_module" as fallback.
+    """
+    for st in ("god_module", "bottleneck", "hub", "cyclic_dependency"):
+        if st in smell_types:
+            return SMELL_TYPE_TO_REFACTOR_KIND[st]
+    return "refactor_module"
+
+
+def targets_from_graph(
+    graph: ProjectGraph,
+    smells: List[Any],
+    summary_risks: Optional[List[str]] = None,
+    top_n: int = 8,
+) -> List[Dict[str, Any]]:
+    """
+    Build explicit targets (target_file, kind) from graph structure (ROADMAP 3.1.4).
+
+    Uses graph.nodes and graph.edges: only nodes present in the graph,
+    kind derived from smells, ordering from priority_from_graph.
+    Planner uses this to initiate operations from graph structure.
+    """
+    priorities = priority_from_graph(graph, smells, summary_risks, top_n)
+    smells_by_node: Dict[str, List[str]] = {}
+    for s in smells:
+        for node in s.nodes:
+            smells_by_node.setdefault(node, []).append(s.type)
+    graph_nodes = graph.nodes
+    targets: List[Dict[str, Any]] = []
+    for p in priorities:
+        name = p.get("name") or ""
+        if not name or name not in graph_nodes:
+            continue
+        reasons = p.get("reasons") or []
+        smell_types = smells_by_node.get(name, [])
+        kind = refactor_kind_for_smells(smell_types)
+        targets.append({"name": name, "kind": kind, "reasons": reasons})
+    return targets
+
+
+def priority_from_graph(
+    graph: ProjectGraph,
+    smells: List[Any],
+    summary_risks: Optional[List[str]] = None,
+    top_n: int = 8,
+) -> List[Dict[str, Any]]:
+    """
+    Return ordered list of modules for refactoring (ROADMAP 3.1.1).
+
+    Combines severity (from smells), graph structure (degree, fan-in, fan-out),
+    and summary risks. Higher degree modules that appear in smells are prioritized
+    (more impactful to fix). Hub/bottleneck get extra weight.
+
+    Returns:
+        List of {"name": node_path, "reasons": [smell_type, ...]} sorted by priority.
+    """
+    fan = graph.fan_in_out()
+    scores: Dict[str, float] = {}
+    reasons: Dict[str, List[str]] = {}
+
+    for s in smells:
+        for node in s.nodes:
+            severity = float(getattr(s, "severity", 0) or 0)
+            scores[node] = scores.get(node, 0.0) + severity
+            reasons.setdefault(node, []).append(s.type)
+
+    if summary_risks:
+        for risk in summary_risks:
+            if "@ " in risk:
+                _, rest = risk.split("@ ", 1)
+                target = rest.split(" ", 1)[0]
+                scores[target] = scores.get(target, 0.0) + 1.0
+                if "mentioned_in_summary_risks" not in (reasons.get(target) or []):
+                    reasons.setdefault(target, []).append("mentioned_in_summary_risks")
+
+    for node in list(scores.keys()):
+        fi, fo = fan.get(node, (0, 0))
+        degree = fi + fo
+        smell_types = reasons.get(node, [])
+        degree_bonus = degree * 0.1
+        if "god_module" in smell_types or "hub" in smell_types:
+            degree_bonus += fo * 0.2
+        if "bottleneck" in smell_types:
+            degree_bonus += fi * 0.2
+        scores[node] = scores[node] + degree_bonus
+
+    ordered = sorted(scores.items(), key=lambda x: -x[1])[:top_n]
+    return [
+        {"name": name, "reasons": reasons.get(name, [])}
+        for name, _ in ordered
+    ]
 
 
 def resolve_module_for_edge(self_map: Dict[str, Any], src_path: str, dst_path: str) -> Optional[str]:

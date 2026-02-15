@@ -1,15 +1,15 @@
 """
 Unified memory facade (Memory + Events + Decisions).
 
-Single entry point for project-scoped persistence:
-- events: unified event log (eurika_events.json) — type, input, output, result, timestamp
-- feedback: manual feedback on proposals (architecture_feedback.json)
-- learning: outcomes of patch-apply + verify (architecture_learning.json)
-- observations: scan observations (eurika_observations.json)
-- history: architecture evolution snapshots (architecture_history.json)
+Single entry point for project-scoped persistence.
+All artifacts live under project_root/.eurika/ (ROADMAP 3.2.1).
+Event as primary (ROADMAP 3.2.2): learning and feedback are views over EventStore.
 
-Callers use ProjectMemory(project_root) and access .feedback, .learning,
-.observations, .history instead of constructing stores and paths manually.
+- events: unified event log (events.json) — primary store
+- learning: view over events (type=learn)
+- feedback: view over events (type=feedback)
+- observations: scan observations (observations.json)
+- history: architecture evolution snapshots (history.json)
 """
 
 from __future__ import annotations
@@ -17,33 +17,43 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .paths import ensure_storage_dir, migrate_if_needed, storage_path
+
 if TYPE_CHECKING:
-    from architecture_feedback import FeedbackStore
-    from architecture_learning import LearningStore
+    from .event_views import FeedbackView, LearningView
     from observation_memory import ObservationMemory
-    from eurika.storage.events import EventStore
+    from eurika.storage.event_engine import EventStore
 
-# Lazy imports to avoid pulling flat modules at eurika.storage import time
-# when only history is needed (e.g. from eurika.api).
-def _feedback_store(path: Path):
-    from architecture_feedback import FeedbackStore
-    return FeedbackStore(storage_path=path / "architecture_feedback.json")
+# Lazy: feedback and learning are views over EventStore (ROADMAP 3.2.2)
+def _feedback_view(events: "EventStore", path: Path) -> "FeedbackView":
+    migrate_if_needed(path, "feedback")
+    ensure_storage_dir(path)
+    from .event_views import FeedbackView
+    return FeedbackView(events, path)
 
-def _learning_store(path: Path):
-    from architecture_learning import LearningStore
-    return LearningStore(storage_path=path / "architecture_learning.json")
+def _learning_view(events: "EventStore", path: Path) -> "LearningView":
+    migrate_if_needed(path, "learning")
+    ensure_storage_dir(path)
+    from .event_views import LearningView
+    return LearningView(events, path)
 
 def _observation_memory(path: Path):
+    migrate_if_needed(path, "observations")
+    ensure_storage_dir(path)
     from observation_memory import ObservationMemory
-    return ObservationMemory(storage_path=path / "eurika_observations.json")
+    return ObservationMemory(storage_path=storage_path(path, "observations"))
 
 def _architecture_history(path: Path):
+    migrate_if_needed(path, "history")
+    ensure_storage_dir(path)
     from eurika.evolution.history import ArchitectureHistory
-    return ArchitectureHistory(storage_path=path / "architecture_history.json")
+    return ArchitectureHistory(storage_path=storage_path(path, "history"))
 
 def _event_store(path: Path):
-    from eurika.storage.events import EventStore
-    return EventStore(storage_path=path / "eurika_events.json")
+    migrate_if_needed(path, "events")
+    ensure_storage_dir(path)
+    from eurika.storage.event_engine import event_engine
+    return event_engine(path)
 
 
 class ProjectMemory:
@@ -59,35 +69,56 @@ class ProjectMemory:
 
     @property
     def events(self) -> "EventStore":
-        """Unified event log. File: eurika_events.json."""
+        """Unified event log. File: .eurika/events.json."""
         if not hasattr(self, "_events"):
             self._events = _event_store(self.project_root)
         return self._events
 
     @property
-    def feedback(self) -> "FeedbackStore":
-        """Manual feedback on proposals. File: architecture_feedback.json."""
+    def feedback(self) -> "FeedbackView":
+        """Manual feedback — view over events (type=feedback)."""
         if not hasattr(self, "_feedback"):
-            self._feedback = _feedback_store(self.project_root)
+            self._feedback = _feedback_view(self.events, self.project_root)
         return self._feedback
 
     @property
-    def learning(self) -> "LearningStore":
-        """Outcomes of patch-apply + verify. File: architecture_learning.json."""
+    def learning(self) -> "LearningView":
+        """Outcomes of patch-apply + verify — view over events (type=learn)."""
         if not hasattr(self, "_learning"):
-            self._learning = _learning_store(self.project_root)
+            self._learning = _learning_view(self.events, self.project_root)
         return self._learning
 
     @property
     def observations(self) -> "ObservationMemory":
-        """Scan observations. File: eurika_observations.json."""
+        """Scan observations. File: .eurika/observations.json."""
         if not hasattr(self, "_observations"):
             self._observations = _observation_memory(self.project_root)
         return self._observations
 
     @property
     def history(self):
-        """Architecture evolution snapshots. File: architecture_history.json."""
+        """Architecture evolution snapshots. File: .eurika/history.json."""
         if not hasattr(self, "_history"):
             self._history = _architecture_history(self.project_root)
         return self._history
+
+    def record_scan(self, observation: dict) -> None:
+        """
+        Record scan observation and append scan event.
+        Extracted from runtime_scan to reduce god_module (ROADMAP 3.1).
+        """
+        try:
+            self.observations.record_observation("scan", observation)
+            summary = (observation.get("summary", {}) or {}) if isinstance(observation, dict) else {}
+            self.events.append_event(
+                type="scan",
+                input={"path": str(self.project_root)},
+                output={
+                    "files": summary.get("files", 0),
+                    "total_lines": summary.get("total_lines", 0),
+                    "smells_count": summary.get("smells_count", 0),
+                },
+                result=True,
+            )
+        except Exception:
+            pass

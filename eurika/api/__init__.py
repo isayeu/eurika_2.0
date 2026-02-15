@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Sequence
 
 
 def _to_json_safe(obj: Any) -> Any:
@@ -64,6 +64,112 @@ def get_history(project_root: Path, window: int = 5) -> Dict[str, Any]:
         "evolution_report": history.evolution_report(window=window),
         "points": [asdict(p) for p in points],
     }
+
+
+def get_patch_plan(project_root: Path, window: int = 5) -> Dict[str, Any] | None:
+    """
+    Build patch plan from diagnostics (summary, smells, history, graph).
+    Returns operations dict or None on error. Used by architect and explain.
+    """
+    from eurika.analysis.self_map import build_graph_from_self_map, load_self_map
+    from eurika.reasoning.graph_ops import priority_from_graph
+    from eurika.smells.detector import ArchSmell, detect_architecture_smells
+    from eurika.smells.rules import build_summary
+    from architecture_planner import build_patch_plan
+    from eurika.storage import ProjectMemory
+
+    root = Path(project_root).resolve()
+    self_map_path = root / "self_map.json"
+    if not self_map_path.exists():
+        return None
+    try:
+        graph = build_graph_from_self_map(self_map_path)
+        smells = detect_architecture_smells(graph)
+        summary = build_summary(graph, smells)
+    except Exception:
+        return None
+
+    memory = ProjectMemory(root)
+    history = memory.history
+    history_info = {
+        "trends": history.trend(window=window),
+        "regressions": history.detect_regressions(window=window),
+        "evolution_report": history.evolution_report(window=window),
+    }
+
+    priorities = priority_from_graph(
+        graph, smells,
+        summary_risks=summary.get("risks"),
+        top_n=8,
+    )
+
+    learning_stats = None
+    self_map = None
+    try:
+        learning_stats = memory.learning.aggregate_by_smell_action()
+    except Exception:
+        pass
+    try:
+        self_map = load_self_map(self_map_path)
+    except Exception:
+        pass
+
+    plan = build_patch_plan(
+        project_root=str(root),
+        summary=summary,
+        smells=smells,
+        history_info=history_info,
+        priorities=priorities,
+        learning_stats=learning_stats or None,
+        graph=graph,
+        self_map=self_map,
+    )
+    return plan.to_dict()
+
+
+def get_clean_imports_operations(project_root: Path) -> List[Dict[str, Any]]:
+    """
+    Build patch operations to remove unused imports (ROADMAP 2.4.2).
+
+    Scans Python files (excludes __init__.py, *_api.py, venv, .git).
+    Returns list of op dicts for patch_apply (kind="remove_unused_import").
+    """
+    from eurika.refactor.remove_unused_import import remove_unused_imports
+
+    root = Path(project_root).resolve()
+    skip_dirs = {"venv", ".venv", "node_modules", ".git", "__pycache__", ".eurika_backups"}
+    ops: List[Dict[str, Any]] = []
+    for p in sorted(root.rglob("*.py")):
+        if any(skip in p.parts for skip in skip_dirs):
+            continue
+        if p.name == "__init__.py" or p.name.endswith("_api.py"):
+            continue
+        if not p.is_file():
+            continue
+        if remove_unused_imports(p) is None:
+            continue
+        rel = str(p.relative_to(root))
+        ops.append({
+            "target_file": rel,
+            "kind": "remove_unused_import",
+            "description": f"Remove unused imports from {rel}",
+            "diff": "# Removed unused imports.",
+            "smell_type": None,
+        })
+    return ops
+
+
+def get_recent_events(
+    project_root: Path,
+    limit: int = 5,
+    types: Optional[Sequence[str]] = None,
+) -> list:
+    """Last N events for architect context (ROADMAP 3.2.3). Returns Event objects."""
+    from eurika.storage import ProjectMemory
+
+    root = Path(project_root).resolve()
+    memory = ProjectMemory(root)
+    return memory.events.recent_events(limit=limit, types=types or ("patch", "learn"))
 
 
 def get_diff(old_self_map_path: Path, new_self_map_path: Path) -> Dict[str, Any]:
