@@ -160,6 +160,8 @@ def _fetch_url_cached(
 
 # Curated URLs for OfficialDocsProvider (topic key -> url). No arbitrary search.
 OFFICIAL_DOCS_TOPIC_URLS: Dict[str, str] = {
+    "python_3_14": "https://docs.python.org/3/whatsnew/3.14.html",
+    "python_3_13": "https://docs.python.org/3/whatsnew/3.13.html",
     "python_3_12": "https://docs.python.org/3/whatsnew/3.12.html",
     "python_3_11": "https://docs.python.org/3/whatsnew/3.11.html",
 }
@@ -208,6 +210,8 @@ class OfficialDocsProvider(KnowledgeProvider):
 
 # Curated URLs for ReleaseNotesProvider (topic key -> url). No arbitrary search.
 RELEASE_NOTES_TOPIC_URLS: Dict[str, str] = {
+    "python_3_14": "https://docs.python.org/3/whatsnew/3.14.html",
+    "python_3_13": "https://docs.python.org/3/whatsnew/3.13.html",
     "python_3_12": "https://docs.python.org/3/whatsnew/3.12.html",
     "python_3_11": "https://docs.python.org/3/whatsnew/3.11.html",
 }

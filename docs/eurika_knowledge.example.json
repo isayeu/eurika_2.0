@@ -3,17 +3,17 @@
     "python": [
       {
         "title": "PEP 701 – Syntactic formalization of f-strings",
-        "content": "In Python 3.12+, f-strings can contain nested quotes and backslashes. Use for clearer formatting and fewer workarounds."
+        "content": "In modern Python, f-strings can contain nested quotes and backslashes. Use for clearer formatting and fewer workarounds."
       },
       {
-        "title": "What's New in Python 3.12",
-        "content": "Type parameter syntax: def f[T](x: T) -> T. Improved error messages. Performance improvements."
+        "title": "What's New in Python 3.14",
+        "content": "Track syntax updates, typing changes, and runtime performance improvements in the active target version."
       }
     ],
-    "python_3_12": [
+    "python_3_14": [
       {
         "title": "New type parameter syntax",
-        "content": "def max[T](a: T, b: T) -> T: ... and class C[T]: ... are valid in 3.12."
+        "content": "Use this topic for curated notes and migration hints specific to Python 3.14."
       }
     ],
     "architecture_refactor": [
@@ -31,7 +31,7 @@
     "typing": [
       {
         "title": "Type hints",
-        "content": "PEP 484; use typing and typing_extensions. For static checking: mypy, pyright. Python 3.12: def f[T](x: T) -> T."
+        "content": "PEP 484; use typing and typing_extensions. For static checking: mypy, pyright. Keep examples aligned with the active Python target."
       }
     ],
     "cyclic_imports": [
@@ -43,7 +43,7 @@
     "version_migration": [
       {
         "title": "Python version upgrade",
-        "content": "Check What's New and Deprecation sections. Test with target version; update syntax (e.g. 3.12 type params), replace removed stdlib (e.g. imp), fix deprecated APIs."
+        "content": "Check What's New and Deprecation sections. Test with target version; update syntax and typing constructs; replace removed stdlib APIs; fix deprecated APIs."
       },
       {
         "title": "Dependency upgrade",

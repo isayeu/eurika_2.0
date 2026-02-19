@@ -52,7 +52,8 @@ def _knowledge_topics_from_env_or_summary(summary: Any) -> list:
     env = os.environ.get("EURIKA_KNOWLEDGE_TOPIC", "").strip()
     if env:
         return [t.strip() for t in env.split(",") if t.strip()]
-    topics = ["python", "python_3_12"]
+    # Default to the current Python line for knowledge lookups.
+    topics = ["python", "python_3_14"]
     sys_info = summary.get("system") or {}
     if (sys_info.get("cycles") or 0) > 0:
         topics.append("cyclic_imports")

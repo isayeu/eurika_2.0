@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 from eurika.knowledge import CompositeKnowledgeProvider, KnowledgeProvider, LocalKnowledgeProvider, OfficialDocsProvider, ReleaseNotesProvider, StaticAnalyzerProvider, StructuredKnowledge
+from eurika.knowledge.base import OFFICIAL_DOCS_TOPIC_URLS, RELEASE_NOTES_TOPIC_URLS
 
 def test_structured_knowledge_empty() -> None:
     k = StructuredKnowledge(topic='python_3_12', source='local', fragments=[], meta={})
@@ -52,6 +53,11 @@ def test_official_docs_provider_stub() -> None:
     assert k.source == 'official_docs'
     assert k.topic == 'python_typing'
     assert k.is_empty() is True
+
+def test_curated_topic_maps_include_current_python() -> None:
+    """Default curated topic maps include the current Python line."""
+    assert "python_3_14" in OFFICIAL_DOCS_TOPIC_URLS
+    assert "python_3_14" in RELEASE_NOTES_TOPIC_URLS
 
 def test_release_notes_provider_topic_not_in_map() -> None:
     """ReleaseNotesProvider with empty topic_urls returns empty for any topic."""

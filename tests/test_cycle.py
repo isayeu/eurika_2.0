@@ -168,11 +168,11 @@ def test_knowledge_topics_derived_from_summary(monkeypatch: Any) -> None:
     from cli.core_handlers import _knowledge_topics_from_env_or_summary
 
     topics = _knowledge_topics_from_env_or_summary({"system": {}, "risks": []})
-    assert topics == ["python", "python_3_12"]
+    assert topics == ["python", "python_3_14"]
     topics = _knowledge_topics_from_env_or_summary({"system": {"cycles": 1}, "risks": []})
-    assert "python" in topics and "python_3_12" in topics and "cyclic_imports" in topics
+    assert "python" in topics and "python_3_14" in topics and "cyclic_imports" in topics
     topics = _knowledge_topics_from_env_or_summary({"system": {}, "risks": ["god_module @ a.py"]})
-    assert "python" in topics and "python_3_12" in topics and "architecture_refactor" in topics
+    assert "python" in topics and "python_3_14" in topics and "architecture_refactor" in topics
 
 
 def _parse_final_json(stdout: str):
