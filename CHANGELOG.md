@@ -2,6 +2,105 @@
 
 All notable changes to this project will be documented in this file.
 
+## v2.6.16 — architecture_planner: fix _apply_learning_bump nonlocal SyntaxError (2025-02-19)
+
+### Bugfix
+- **_apply_learning_bump:** `nonlocal expected_benefit` в standalone-функции вызывал `SyntaxError: no binding for nonlocal 'expected_benefit' found` — nonlocal работает только во вложенных функциях.
+- Решение: функция принимает `expected_benefit` как параметр и возвращает обновлённое значение; `_step_to_action` присваивает результат обратно.
+- Тесты: 183 passed.
+
+---
+
+## v2.6.15 — extract_nested_function: skip functions with nonlocal/global (2025-02-15)
+
+### Bugfix
+- **suggest_extract_nested_function:** пропуск вложенных функций с `nonlocal` или `global` — их извлечение приводит к SyntaxError (no binding for nonlocal).
+- Пример: `_apply_learning_bump` в `_step_to_action` использовал `nonlocal expected_benefit`; при извлечении на уровень модуля nonlocal становился невалидным.
+- Добавлен `_has_nonlocal_or_global()` check перед добавлением в candidates.
+
+### Tests
+- test_suggest_extract_nested_function_skips_when_nonlocal.
+
+---
+
+## v2.6.14 — extract_nested_function: real fix for long_function when nested exists (2025-02-15)
+
+### Real refactor for long_function
+- **eurika/refactor/extract_function.py:** new module — moves nested function to module level when it doesn't use parent locals (no closure dependency).
+- **get_code_smell_operations:** for long_function, tries suggest_extract_nested_function first; if extractable nested found, creates kind="extract_nested_function" (real fix) instead of refactor_code_smell (TODO).
+- **patch_apply:** handler for extract_nested_function — calls extract_nested_function, writes modified content.
+
+### Tests
+- tests/test_extract_function.py: suggest, skip when uses parent locals, extract, not found.
+- test_apply_extract_nested_function in test_patch_apply.
+
+---
+
+## v2.6.13 — Fix skipped ops: refactor_code_smell when architectural TODO exists (2025-02-15)
+
+### Skip logic fix
+- **patch_apply:** marker skip (# TODO: Refactor {target}) only for refactor_module and split_module. refactor_code_smell uses different format — can add long_function/deep_nesting TODOs to files that already have architectural TODO.
+- Eurika cycle previously modified=[] because all files had architectural TODOs and we blocked all ops. Now refactor_code_smell ops are applied.
+
+### Debug
+- **skipped_reasons:** report includes per-file skip reason (path not found, diff already in content, architectural TODO already present, etc.).
+
+### Tests
+- test_apply_patch_plan_refactor_code_smell_not_skipped_by_architectural_todo.
+
+---
+
+## v2.6.12 — py_compile fallback when pytest finds no tests (2025-02-15)
+
+### Verify fallback
+- **apply_and_verify:** при pytest returncode 5 ("no tests collected") и verify_cmd=None — fallback на `python -m py_compile` по изменённым .py файлам; если py_compile успешен, rollback не выполняется.
+- Проекты без pytest (binance/bbot и др.) — изменения сохраняются при валидном синтаксисе.
+- **DOGFOODING.md:** раздел «Проекты без pytest» — варианты verify_cmd, pyproject.toml.
+
+### Tests
+- test_apply_and_verify_py_compile_fallback_when_no_tests.
+
+---
+
+## v2.6.11 — Facade protection: exclude patch_engine/patch_apply from split and clean (2025-02-15)
+
+### Problem
+Fix cycle repeatedly broke patch_engine: split_module removed re-exports, remove_unused_import deleted facade imports → ImportError on verify → rollback.
+
+### Solution
+- **architecture_planner:** FACADE_MODULES = {patch_engine.py, patch_apply.py} — skip split_module/refactor_module for these targets.
+- **eurika/api get_clean_imports_operations:** skip facade modules; their imports are re-exports, not unused.
+- patch_engine.py, patch_apply.py — critical facades; cycle no longer modifies them destructively.
+
+---
+
+## v2.6.10 — patch_engine/verify_patch extraction, patch_apply _backup_file (2025-02-15)
+
+### patch_engine
+- **patch_engine_verify_patch:** выделен verify_patch и _get_verify_cmd с полной поддержкой verify_cmd (override, pyproject.toml).
+- **patch_engine_apply_and_verify:** выделен apply_and_verify (orchestration: apply → verify → retry → rollback) — результат split_module в fix cycle.
+- patch_engine.py — тонкий фасад: импортирует apply_patch, rollback_patch, verify_patch, apply_and_verify; API без изменений.
+
+### patch_apply
+- **_backup_file:** вспомогательная функция — убирает дублирование логики backup в handlers.
+- **_try_split_module_chain:** общая логика split_module_by_import → by_class → by_function; убрано дублирование между split_module и refactor_module.
+- Все операции используют _backup_file.
+
+---
+
+## v2.6.9 — Code-level smells in fix cycle (long_function, deep_nesting) (2025-02-15)
+
+### Code smells in patch plan
+
+- **get_code_smell_operations:** новый API — сканирует CodeAwareness.find_smells, возвращает ops с kind="refactor_code_smell" для long_function и deep_nesting.
+- **Orchestrator:** fix cycle добавляет code_smell ops в patch plan (после clean_imports).
+- **patch_apply:** kind="refactor_code_smell" — добавляет TODO-комментарий в файл (default append-diff).
+- **--no-code-smells** — опция fix/cycle/watch, исключает refactor_code_smell из плана (аналог --no-clean-imports).
+- Подсказки: "consider extracting helper" для long_function, "consider extracting nested block" для deep_nesting.
+- Тесты: test_apply_refactor_code_smell_appends_todo, test_get_code_smell_operations_returns_ops_for_long_function, test_fix_no_code_smells_excludes_code_smell_ops.
+
+---
+
 ## v2.6.8 — extract_class: module-level constants + fix_import NameError (2025-02-15)
 
 ### extract_class: module-level constants

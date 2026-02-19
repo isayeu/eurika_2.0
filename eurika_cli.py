@@ -26,7 +26,7 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Eurika — architecture analysis and refactoring assistant",
         epilog="Product (5 modes): scan | doctor | fix | cycle | explain. Use eurika help for full list.",
     )
-    parser.add_argument("--version", "-V", action="version", version="%(prog)s 2.6.8")
+    parser.add_argument("--version", "-V", action="version", version="%(prog)s 2.6.16")
     subparsers = parser.add_subparsers(dest="command")
 
     _add_product_commands(subparsers)   # scan, doctor, fix, explain — ROADMAP этап 5
@@ -97,6 +97,7 @@ def _add_product_commands(subparsers: argparse._SubParsersAction) -> None:
     fix_parser.add_argument("--dry-run", action="store_true", help="Only build patch plan, do not apply")
     fix_parser.add_argument("--quiet", "-q", action="store_true", help="Minimal output; final JSON only")
     fix_parser.add_argument("--no-clean-imports", action="store_true", help="Skip remove-unused-imports step (default: included)")
+    fix_parser.add_argument("--no-code-smells", action="store_true", help="Skip refactor_code_smell (long_function, deep_nesting) ops (default: included)")
     fix_parser.add_argument("--verify-cmd", type=str, default=None, metavar="CMD", help="Override verify command (e.g. 'python manage.py test'); else [tool.eurika] verify_cmd or pytest")
     fix_parser.add_argument("--interval", type=int, default=0, metavar="SEC", help="Auto-run: repeat every SEC seconds (0=once, Ctrl+C to stop)")
 
@@ -116,6 +117,7 @@ def _add_product_commands(subparsers: argparse._SubParsersAction) -> None:
     cycle_parser.add_argument("--quiet", "-q", action="store_true", help="Minimal output; final JSON only")
     cycle_parser.add_argument("--no-llm", action="store_true", help="Architect: use template only (no API key)")
     cycle_parser.add_argument("--no-clean-imports", action="store_true", help="Skip remove-unused-imports in fix (default: included)")
+    cycle_parser.add_argument("--no-code-smells", action="store_true", help="Skip refactor_code_smell ops in fix (default: included)")
     cycle_parser.add_argument("--verify-cmd", type=str, default=None, metavar="CMD", help="Override verify command (e.g. 'python manage.py test'); else [tool.eurika] verify_cmd or pytest")
     cycle_parser.add_argument("--interval", type=int, default=0, metavar="SEC", help="Auto-run: repeat every SEC seconds (0=once, Ctrl+C to stop)")
 
@@ -146,6 +148,7 @@ def _add_product_commands(subparsers: argparse._SubParsersAction) -> None:
     watch_parser.add_argument("--window", type=int, default=5, help="History window for patch-plan (default: 5)")
     watch_parser.add_argument("--quiet", "-q", action="store_true", help="Minimal output")
     watch_parser.add_argument("--no-clean-imports", action="store_true", help="Skip remove-unused-imports")
+    watch_parser.add_argument("--no-code-smells", action="store_true", help="Skip refactor_code_smell ops")
 
 
 def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
@@ -534,3 +537,12 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+# TODO (eurika): refactor long_function '_add_product_commands' — consider extracting helper
+
+
+# TODO (eurika): refactor long_function '_add_other_commands' — consider extracting helper
+
+
+# TODO (eurika): refactor long_function 'main' — consider extracting helper
