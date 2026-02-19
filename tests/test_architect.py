@@ -9,6 +9,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from eurika.reasoning.architect import (
+    _call_ollama_cli,
     _format_recent_events,
     _llm_interpret,
     _template_interpret,
@@ -191,7 +192,61 @@ def test_llm_interpret_falls_back_to_ollama_cli_on_http_errors() -> None:
             return_value=("cli fallback ok", None),
         ) as call_cli,
     ):
-        text, reason = _llm_interpret(summary, history)
+        text, reason = _llm_interpret(
+            summary,
+            history,
+            knowledge_snippet="Reference knowledge blob",
+            recent_events_snippet="event1; event2",
+        )
     assert text == "cli fallback ok"
     assert reason is None
     call_cli.assert_called_once()
+    cli_prompt = call_cli.call_args[0][1]
+    assert "Reference knowledge" not in cli_prompt
+    assert "Recent refactoring events" not in cli_prompt
+
+
+def test_call_ollama_cli_starts_server_and_retries_once() -> None:
+    """On connection error, _call_ollama_cli starts daemon and retries once."""
+    first = type("R", (), {"returncode": 1, "stderr": "Error: could not connect to ollama server", "stdout": ""})()
+    second = type("R", (), {"returncode": 0, "stderr": "", "stdout": "model details"})()
+    third = type("R", (), {"returncode": 0, "stderr": "", "stdout": "ok from cli\n"})()
+    with (
+        patch("subprocess.run", side_effect=[first, second, third]) as run_mock,
+        patch("subprocess.Popen") as popen_mock,
+        patch("time.sleep"),
+    ):
+        text, reason = _call_ollama_cli("qwen2.5:1.5b", "hello")
+    assert text == "ok from cli"
+    assert reason is None
+    assert run_mock.call_count == 3
+    popen_mock.assert_called_once()
+
+
+def test_call_ollama_cli_reports_missing_model_after_server_start() -> None:
+    """If daemon starts but model is absent, returns actionable pull instruction."""
+    first = type("R", (), {"returncode": 1, "stderr": "Error: could not connect to ollama server", "stdout": ""})()
+    second = type("R", (), {"returncode": 1, "stderr": "Error: model 'qwen2.5:1.5b' not found", "stdout": ""})()
+    with (
+        patch("subprocess.run", side_effect=[first, second]) as run_mock,
+        patch("subprocess.Popen") as popen_mock,
+        patch("time.sleep"),
+    ):
+        text, reason = _call_ollama_cli("qwen2.5:1.5b", "hello")
+    assert text is None
+    assert reason is not None
+    assert "ollama pull qwen2.5:1.5b" in reason
+    assert run_mock.call_count == 2
+    popen_mock.assert_called_once()
+
+
+def test_call_ollama_cli_timeout_reports_missing_model_hint() -> None:
+    """On run timeout, model check should surface actionable pull hint."""
+    first = type("R", (), {"returncode": 1, "stderr": "command timed out after 45 seconds", "stdout": ""})()
+    second = type("R", (), {"returncode": 1, "stderr": "Error: model 'qwen2.5:1.5b' not found", "stdout": ""})()
+    with patch("subprocess.run", side_effect=[first, second]) as run_mock:
+        text, reason = _call_ollama_cli("qwen2.5:1.5b", "hello")
+    assert text is None
+    assert reason is not None
+    assert "ollama pull qwen2.5:1.5b" in reason
+    assert run_mock.call_count == 2

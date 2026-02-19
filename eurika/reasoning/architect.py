@@ -200,11 +200,24 @@ def _build_openai_client(
     base_url: str | None,
 ) -> tuple[Any | None, str | None]:
     """Build OpenAI client instance. Returns (client, reason)."""
+    from urllib.parse import urlparse
+
     try:
         from openai import OpenAI
     except ImportError:
         return None, "openai package not installed (pip install openai)"
-    return OpenAI(api_key=api_key, base_url=base_url), None
+    kwargs: dict[str, Any] = {"api_key": api_key, "base_url": base_url}
+    if base_url:
+        try:
+            host = (urlparse(base_url).hostname or "").lower()
+            if host in {"127.0.0.1", "localhost", "::1"}:
+                import httpx
+
+                # Local Ollama should bypass inherited proxy env vars.
+                kwargs["http_client"] = httpx.Client(trust_env=False)
+        except Exception:
+            pass
+    return OpenAI(**kwargs), None
 
 
 def _init_primary_openai_client() -> tuple[Any | None, str | None, str | None]:
@@ -258,13 +271,43 @@ def _build_llm_prompt(
     )
 
 
+def _build_ollama_cli_prompt(
+    summary: Dict[str, Any],
+    history: Dict[str, Any],
+    patch_plan: Optional[Dict[str, Any]],
+) -> str:
+    """Compact prompt for local CLI fallback to avoid long generation stalls."""
+    sys_info = summary.get("system") or {}
+    modules = sys_info.get("modules", 0)
+    deps = sys_info.get("dependencies", 0)
+    cycles = sys_info.get("cycles", 0)
+    maturity = summary.get("maturity", "unknown")
+    top_risk = (summary.get("risks") or ["none"])[0]
+    trends = history.get("trends") or {}
+    patch_desc = _build_llm_patch_desc(patch_plan)
+    return (
+        "You are a software architect. Reply in exactly 2 short sentences.\n"
+        "Sentence 1: architecture risk level. Sentence 2: one highest-impact refactoring.\n\n"
+        f"Metrics: modules={modules}, dependencies={deps}, cycles={cycles}, maturity={maturity}\n"
+        f"Top risk: {top_risk}\n"
+        f"Trends: complexity={trends.get('complexity', 'unknown')}, "
+        f"smells={trends.get('smells', 'unknown')}, "
+        f"centralization={trends.get('centralization', 'unknown')}"
+        f"{patch_desc}"
+    )
+
+
 def _call_llm_architect(client: Any, model: str, prompt: str) -> tuple[str | None, str | None]:
     """Call OpenAI chat completions and normalize response shape."""
+    import os
+
+    timeout_sec = float(os.environ.get("EURIKA_LLM_TIMEOUT_SEC", "20"))
     try:
         r = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=350,
+            timeout=timeout_sec,
         )
         if r.choices and r.choices[0].message.content:
             return r.choices[0].message.content.strip(), None
@@ -275,27 +318,79 @@ def _call_llm_architect(client: Any, model: str, prompt: str) -> tuple[str | Non
 
 def _call_ollama_cli(model: str, prompt: str) -> tuple[str | None, str | None]:
     """Fallback path via local `ollama run` CLI when HTTP endpoints are unavailable."""
+    import os
     import subprocess
+    import time
+
+    cli_timeout_sec = int(os.environ.get("EURIKA_OLLAMA_CLI_TIMEOUT_SEC", "45"))
+
+    def _run_once(timeout_sec: int | None = None) -> tuple[str | None, str | None]:
+        if timeout_sec is None:
+            timeout_sec = cli_timeout_sec
+        try:
+            r = subprocess.run(
+                ["ollama", "run", model, prompt],
+                capture_output=True,
+                text=True,
+                timeout=timeout_sec,
+                check=False,
+            )
+        except FileNotFoundError:
+            return None, "ollama CLI not found in PATH"
+        except Exception as e:  # pragma: no cover - defensive
+            return None, str(e)
+        if r.returncode != 0:
+            reason = (r.stderr or r.stdout or "").strip() or f"ollama exited with code {r.returncode}"
+            return None, reason
+        text = (r.stdout or "").strip()
+        if not text:
+            return None, "empty ollama CLI response"
+        return text, None
+
+    def _model_ready_reason() -> str | None:
+        try:
+            r = subprocess.run(
+                ["ollama", "show", model],
+                capture_output=True,
+                text=True,
+                timeout=20,
+                check=False,
+            )
+        except Exception as e:  # pragma: no cover - defensive
+            return str(e)
+        if r.returncode == 0:
+            return None
+        reason = (r.stderr or r.stdout or "").strip() or "unknown model check failure"
+        lowered = reason.lower()
+        if "not found" in lowered or "no such model" in lowered:
+            return f"ollama model '{model}' is not available; run `ollama pull {model}`"
+        return f"ollama model check failed: {reason}"
 
     try:
-        r = subprocess.run(
-            ["ollama", "run", model, prompt],
-            capture_output=True,
-            text=True,
-            timeout=120,
-            check=False,
-        )
-    except FileNotFoundError:
-        return None, "ollama CLI not found in PATH"
+        text, reason = _run_once()
+        if text:
+            return text, None
+        if reason and "could not connect to ollama server" in reason.lower():
+            # Try to self-heal: start local daemon and retry once.
+            subprocess.Popen(
+                ["ollama", "serve"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            time.sleep(2.0)
+            readiness_issue = _model_ready_reason()
+            if readiness_issue:
+                return None, readiness_issue
+            return _run_once()
+        if reason and "timed out" in reason.lower():
+            readiness_issue = _model_ready_reason()
+            if readiness_issue:
+                return None, readiness_issue
+            return None, f"{reason} (cli timeout={cli_timeout_sec}s)"
+        return None, reason
     except Exception as e:  # pragma: no cover - defensive
         return None, str(e)
-    if r.returncode != 0:
-        reason = (r.stderr or r.stdout or "").strip() or f"ollama exited with code {r.returncode}"
-        return None, reason
-    text = (r.stdout or "").strip()
-    if not text:
-        return None, "empty ollama CLI response"
-    return text, None
 
 
 def _llm_interpret(
@@ -334,7 +429,8 @@ def _llm_interpret(
             return fallback_text, None
         fallback_reason = fallback_call_reason
     cli_model = fallback_model or "qwen2.5:1.5b"
-    cli_text, cli_reason = _call_ollama_cli(cli_model, prompt)
+    cli_prompt = _build_ollama_cli_prompt(summary, history, patch_plan)
+    cli_text, cli_reason = _call_ollama_cli(cli_model, cli_prompt)
     if cli_text:
         return cli_text, None
     return None, (
