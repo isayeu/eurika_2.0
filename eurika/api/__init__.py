@@ -150,6 +150,61 @@ def get_patch_plan(project_root: Path, window: int = 5) -> Dict[str, Any] | None
     return plan.to_dict()
 
 
+def _should_try_extract_nested(stats: Optional[Dict[str, Dict[str, Any]]]) -> bool:
+    """Allow extract_nested_function unless history is clearly unfavorable."""
+    if not stats:
+        return True
+    rec = stats.get("long_function|extract_nested_function", {})
+    total = int(rec.get("total", 0) or 0)
+    success = int(rec.get("success", 0) or 0)
+    if total >= 1 and success == 0:
+        return False
+    if total >= 3 and (success / total) < 0.25:
+        return False
+    return True
+
+
+def _load_smell_action_learning_stats(root: Path) -> Optional[Dict[str, Dict[str, Any]]]:
+    """Return smell-action aggregates from memory; None on any storage/parsing error."""
+    from eurika.storage import ProjectMemory
+
+    try:
+        return ProjectMemory(root).learning.aggregate_by_smell_action()
+    except Exception:
+        return None
+
+
+def _build_extract_nested_op(
+    rel_path: str,
+    location: str,
+    nested_name: str,
+    line_count: int,
+) -> Dict[str, Any]:
+    """Build extract_nested_function operation payload."""
+    return {
+        "target_file": rel_path,
+        "kind": "extract_nested_function",
+        "description": f"Extract nested function {nested_name} from {rel_path}:{location} ({line_count} lines)",
+        "diff": f"# Extracted {nested_name} to module level",
+        "smell_type": "long_function",
+        "params": {"location": location, "nested_function_name": nested_name},
+    }
+
+
+def _build_refactor_smell_op(rel_path: str, smell: Any) -> Dict[str, Any]:
+    """Build fallback TODO operation payload for a code smell."""
+    hint = "consider extracting helper" if smell.kind == "long_function" else "consider extracting nested block"
+    diff = f"\n# TODO (eurika): refactor {smell.kind} '{smell.location}' — {hint}\n"
+    return {
+        "target_file": rel_path,
+        "kind": "refactor_code_smell",
+        "description": f"Refactor {smell.kind} in {rel_path}:{smell.location}",
+        "diff": diff,
+        "smell_type": smell.kind,
+        "params": {"location": smell.location, "metric": smell.metric},
+    }
+
+
 def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
     """
     Build patch operations for code-level smells (long_function, deep_nesting).
@@ -160,60 +215,21 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
     """
     from code_awareness import CodeAwareness
     from eurika.refactor.extract_function import suggest_extract_nested_function
-    from eurika.storage import ProjectMemory
-
-    def _should_try_extract_nested(
-        stats: Optional[Dict[str, Dict[str, Any]]],
-    ) -> bool:
-        """Allow extract_nested_function unless history is clearly unfavorable."""
-        if not stats:
-            return True
-        rec = stats.get("long_function|extract_nested_function", {})
-        total = int(rec.get("total", 0) or 0)
-        success = int(rec.get("success", 0) or 0)
-        if total >= 1 and success == 0:
-            return False
-        if total >= 3 and (success / total) < 0.25:
-            return False
-        return True
 
     root = Path(project_root).resolve()
     analyzer = CodeAwareness(root)
-    learning_stats: Optional[Dict[str, Dict[str, Any]]] = None
-    try:
-        learning_stats = ProjectMemory(root).learning.aggregate_by_smell_action()
-    except Exception:
-        learning_stats = None
-    allow_extract_nested = _should_try_extract_nested(learning_stats)
+    allow_extract_nested = _should_try_extract_nested(_load_smell_action_learning_stats(root))
     ops: List[Dict[str, Any]] = []
-    for p in analyzer.scan_python_files():
-        smells = analyzer.find_smells(p)
-        rel = str(p.relative_to(root)).replace("\\", "/")
-        for s in smells:
-            if s.kind == "long_function":
-                if allow_extract_nested:
-                    suggestion = suggest_extract_nested_function(p, s.location)
-                    if suggestion:
-                        nested_name, line_count = suggestion
-                        ops.append({
-                            "target_file": rel,
-                            "kind": "extract_nested_function",
-                            "description": f"Extract nested function {nested_name} from {rel}:{s.location} ({line_count} lines)",
-                            "diff": f"# Extracted {nested_name} to module level",
-                            "smell_type": s.kind,
-                            "params": {"location": s.location, "nested_function_name": nested_name},
-                        })
-                        continue
-            hint = "consider extracting helper" if s.kind == "long_function" else "consider extracting nested block"
-            diff = f"\n# TODO (eurika): refactor {s.kind} '{s.location}' — {hint}\n"
-            ops.append({
-                "target_file": rel,
-                "kind": "refactor_code_smell",
-                "description": f"Refactor {s.kind} in {rel}:{s.location}",
-                "diff": diff,
-                "smell_type": s.kind,
-                "params": {"location": s.location, "metric": s.metric},
-            })
+    for file_path in analyzer.scan_python_files():
+        rel = str(file_path.relative_to(root)).replace("\\", "/")
+        for smell in analyzer.find_smells(file_path):
+            if smell.kind == "long_function" and allow_extract_nested:
+                suggestion = suggest_extract_nested_function(file_path, smell.location)
+                if suggestion:
+                    nested_name, line_count = suggestion
+                    ops.append(_build_extract_nested_op(rel, smell.location, nested_name, line_count))
+                    continue
+            ops.append(_build_refactor_smell_op(rel, smell))
     return ops
 
 
@@ -291,7 +307,3 @@ def get_diff(old_self_map_path: Path, new_self_map_path: Path) -> Dict[str, Any]
 # TODO (eurika): refactor long_function 'get_patch_plan' — consider extracting helper
 
 
-# TODO (eurika): refactor long_function 'get_code_smell_operations' — consider extracting helper
-
-
-# TODO (eurika): refactor deep_nesting 'get_code_smell_operations' — consider extracting nested block
