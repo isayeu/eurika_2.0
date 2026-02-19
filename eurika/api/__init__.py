@@ -205,8 +205,16 @@ def _build_refactor_smell_op(rel_path: str, smell: Any) -> Dict[str, Any]:
     }
 
 
-def _should_emit_refactor_smell_op(root: Path, rel_path: str, diff: str) -> bool:
-    """Skip refactor_code_smell op when the same TODO diff is already present."""
+def _should_emit_refactor_smell_op(
+    root: Path,
+    rel_path: str,
+    diff: str,
+    location: str,
+) -> bool:
+    """Skip noisy refactor_code_smell ops that are likely no-op."""
+    rel_path = rel_path.replace("\\", "/")
+    if rel_path.startswith("tests/"):
+        return False
     path = root / rel_path
     if not (path.exists() and path.is_file()):
         return True
@@ -214,7 +222,15 @@ def _should_emit_refactor_smell_op(root: Path, rel_path: str, diff: str) -> bool
         content = path.read_text(encoding="utf-8")
     except OSError:
         return True
-    return not (diff.strip() and diff.strip() in content)
+    if diff.strip() and diff.strip() in content:
+        return False
+    # Do not stack code-smell TODOs on modules already marked for architectural split.
+    if f"# TODO: Refactor {rel_path}" in content:
+        return False
+    # Skip duplicate location-targeted TODOs even if wording varies.
+    if location and f"'{location}'" in content and "# TODO (eurika): refactor " in content:
+        return False
+    return True
 
 
 def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
@@ -242,7 +258,7 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
                     ops.append(_build_extract_nested_op(rel, smell.location, nested_name, line_count))
                     continue
             op = _build_refactor_smell_op(rel, smell)
-            if _should_emit_refactor_smell_op(root, rel, op["diff"]):
+            if _should_emit_refactor_smell_op(root, rel, op["diff"], smell.location):
                 ops.append(op)
     return ops
 

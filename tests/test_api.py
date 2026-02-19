@@ -124,3 +124,32 @@ def test_get_code_smell_operations_skips_extract_nested_on_failed_learning(tmp_p
         for o in ops
     )
     assert not any(o.get("kind") == "extract_nested_function" for o in ops)
+
+
+def test_get_code_smell_operations_skips_when_architectural_todo_exists(tmp_path: Path) -> None:
+    """Do not add code-smell TODO when module already has architectural TODO marker."""
+    long_func = (
+        "def long_foo():\n"
+        + "    x = 1\n" * 50
+        + "    return x\n"
+        + "\n# TODO: Refactor big.py (god_module -> split_module)\n"
+    )
+    (tmp_path / "big.py").write_text(long_func, encoding="utf-8")
+    ops = get_code_smell_operations(tmp_path)
+    assert not any(
+        o.get("kind") == "refactor_code_smell" and o.get("target_file") == "big.py"
+        for o in ops
+    )
+
+
+def test_get_code_smell_operations_skips_test_files(tmp_path: Path) -> None:
+    """Do not emit refactor_code_smell TODOs for tests/* files."""
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    long_func = "def long_test_fn():\n" + "    x = 1\n" * 50 + "    return x\n"
+    (tests_dir / "test_big.py").write_text(long_func, encoding="utf-8")
+    ops = get_code_smell_operations(tmp_path)
+    assert not any(
+        o.get("kind") == "refactor_code_smell" and o.get("target_file", "").startswith("tests/")
+        for o in ops
+    )
