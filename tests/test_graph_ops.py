@@ -386,6 +386,99 @@ def test_build_patch_plan_god_module_with_god_class_produces_extract_class(tmp_p
     assert len(op.params["methods_to_extract"]) >= 6
 
 
+def test_build_patch_plan_skips_extract_class_when_extracted_file_synced(tmp_path: Path) -> None:
+    """Do not emit extract_class when extracted file already matches signature."""
+    from architecture_planner import build_patch_plan
+    from eurika.smells.models import ArchSmell
+
+    target = tmp_path / "big_module.py"
+    methods = "\n".join(f"    def m{i}(self): return {i}" for i in range(6))
+    target.write_text(f"class BigClass:\n{methods}\n")
+
+    extracted = tmp_path / "big_module_bigclassextracted.py"
+    extracted_methods = "\n".join(f"    def m{i}(): return {i}" for i in range(6))
+    extracted.write_text(f"class BigClassExtracted:\n{extracted_methods}\n")
+
+    g = _make_graph(["big_module.py", "a", "b"], {"big_module.py": ["a", "b"]})
+    smells = [
+        ArchSmell(type="god_module", nodes=["big_module.py"], severity=6.0, description="High degree"),
+    ]
+    summary = {"risks": []}
+    history_info = {"trends": {}}
+    priorities = [{"name": "big_module.py", "reasons": ["god_module"]}]
+
+    plan = build_patch_plan(
+        project_root=str(tmp_path),
+        summary=summary,
+        smells=smells,
+        history_info=history_info,
+        priorities=priorities,
+        graph=g,
+    )
+    assert not any(o.kind == "extract_class" for o in plan.operations)
+
+
+def test_build_patch_plan_skips_extract_class_when_synced_except_staticmethod(tmp_path: Path) -> None:
+    """Static methods left in source should not break synced-signature detection."""
+    from architecture_planner import build_patch_plan
+    from eurika.smells.models import ArchSmell
+
+    target = tmp_path / "code_awareness_like.py"
+    target.write_text(
+        "\n".join(
+            [
+                "class CodeAwarenessLike:",
+                "    @staticmethod",
+                "    def helper_static(): return 1",
+                "    def a(self): return 1",
+                "    def b(self): return 2",
+                "    def c(self): return 3",
+                "    def d(self): return 4",
+                "    def e(self): return 5",
+                "    def f(self): return 6",
+                "",
+            ]
+        )
+    )
+
+    extracted = tmp_path / "code_awareness_like_codeawarenesslikeextracted.py"
+    extracted.write_text(
+        "\n".join(
+            [
+                "class CodeAwarenessLikeExtracted:",
+                "    def a(): return 1",
+                "    def b(): return 2",
+                "    def c(): return 3",
+                "    def d(): return 4",
+                "    def e(): return 5",
+                "    def f(): return 6",
+                "",
+            ]
+        )
+    )
+
+    g = _make_graph(
+        ["code_awareness_like.py", "a", "b"],
+        {"code_awareness_like.py": ["a", "b"]},
+    )
+    smells = [
+        ArchSmell(type="god_module", nodes=["code_awareness_like.py"], severity=6.0, description="High degree"),
+    ]
+    summary = {"risks": []}
+    history_info = {"trends": {}}
+    priorities = [{"name": "code_awareness_like.py", "reasons": ["god_module"]}]
+
+    plan = build_patch_plan(
+        project_root=str(tmp_path),
+        summary=summary,
+        smells=smells,
+        history_info=history_info,
+        priorities=priorities,
+        graph=g,
+    )
+    assert not any(o.kind == "extract_class" for o in plan.operations)
+
+
 def test_build_patch_plan_filters_low_success_rate_ops(tmp_path: Path) -> None:
     """ROADMAP 2.6.3: ops with success_rate < 0.25 and total >= 3 are excluded."""
     from architecture_planner import build_patch_plan

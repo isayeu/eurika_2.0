@@ -5,16 +5,14 @@
 | Поле | Значение |
 |------|----------|
 | **modified** | 0 |
-| **skipped** | 1 |
+| **skipped** | 0 |
 | **errors** | 0 |
 | **verify** | success |
-| **tests** | 187 passed in ~30s |
+| **tests** | 188 passed in ~28s |
 
 ### Skipped — причины (`skipped_reasons`)
 
-| Причина | Файлы |
-|---------|-------|
-| extract_class: extracted file exists | code_awareness.py |
+- Нет (`patch plan has no operations`).
 
 ### Rescan diff
 
@@ -37,8 +35,8 @@
 
 ### Центральные модули
 
-- patch_engine.py (fan-in 6, fan-out 5)
 - project_graph_api.py (fan-in 10, fan-out 1)
+- patch_engine.py (fan-in 6, fan-out 5)
 - patch_apply.py (fan-in 10, fan-out 0)
 
 ### Риски
@@ -52,7 +50,7 @@
 
 ### Planned refactorings
 
-- 1 op (`extract_class=1`), top target: `code_awareness.py`.
+- 0 ops (`patch_plan.operations=[]`).
 
 ---
 
@@ -95,8 +93,16 @@
 
 ## 5. Итог
 
-- **Verify:** 187 тестов прошли
+- **Verify:** 188 тестов прошли
 - **Изменений в контрольном fix:** 0
-- **Skip шум резко снижен:** осталась 1 причина (`extract_class: extracted file exists`)
+- **Skip-шум устранён:** стабильная причина `extract_class: extracted file exists` больше не воспроизводится
 - **Система стабильна:** score 46, регрессий нет
 - **Фокус дальше:** повышать долю реальных apply и улучшать fallback-policy для слабых пар learning
+
+---
+
+## 6. Рефактор `eurika/reasoning/architect.py`
+
+- Разбит `long_function` в `_template_interpret` и `_llm_interpret` на helper-функции.
+- Поведение сохранено: LLM fallback и шаблонная интерпретация без функциональных изменений.
+- Проверка: `pytest -q tests/test_architect.py` → `6 passed`.

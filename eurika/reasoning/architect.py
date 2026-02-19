@@ -108,6 +108,62 @@ def _resolve_knowledge_snippet(
     return _format_knowledge_fragments(all_fragments) if all_fragments else ""
 
 
+def _template_structure_sentence(modules: int, deps: int, cycles: int) -> str:
+    """Sentence describing structural graph size and cyclicity."""
+    if cycles == 0:
+        return f"The codebase has {modules} modules and {deps} dependencies with no cycles."
+    return f"The codebase has {modules} modules, {deps} dependencies and {cycles} cycles."
+
+
+def _template_risks_sentence(
+    risks: List[str],
+    central_modules: List[Dict[str, Any]],
+) -> str:
+    """Sentence about top risks; fallback to central modules when risks absent."""
+    if risks:
+        top = risks[:3]
+        risk_str = "; ".join(top) if len(top) <= 2 else top[0] + " and " + str(len(risks) - 1) + " more"
+        return f"Main risks: {risk_str}."
+    if central_modules:
+        names = [c.get("name", "") for c in central_modules[:3] if isinstance(c, dict)]
+        return f"Central modules: {', '.join(names)}."
+    return ""
+
+
+def _template_trends_sentences(
+    trend_complexity: str,
+    trend_smells: str,
+    regressions: List[str],
+) -> List[str]:
+    """Optional trend and regression sentences."""
+    out: List[str] = []
+    if trend_complexity != "unknown" or trend_smells != "unknown":
+        out.append(f"Trends: complexity {trend_complexity}, smells {trend_smells}.")
+    if regressions:
+        out.append(f"Potential regressions: {'; '.join(regressions[:2])}.")
+    return out
+
+
+def _template_context_sentences(
+    patch_plan: Optional[Dict[str, Any]],
+    knowledge_snippet: str,
+    recent_events_snippet: str,
+) -> List[str]:
+    """Optional sentences for patch-plan, recent events and knowledge."""
+    out: List[str] = []
+    patch_sentence = _format_template_patch_plan_sentence(patch_plan)
+    if patch_sentence:
+        out.append(patch_sentence)
+    if recent_events_snippet:
+        out.append(f"Recent actions: {recent_events_snippet}.")
+    if knowledge_snippet:
+        out.append(
+            f"Reference: {knowledge_snippet[:300]}"
+            + ("..." if len(knowledge_snippet) > 300 else "")
+        )
+    return out
+
+
 def _template_interpret(
     summary: Dict[str, Any],
     history: Dict[str, Any],
@@ -129,38 +185,72 @@ def _template_interpret(
     regressions = history.get("regressions") or []
 
     parts: list[str] = []
-    # Structure
-    if cycles == 0:
-        parts.append(
-            f"The codebase has {modules} modules and {deps} dependencies with no cycles."
-        )
-    else:
-        parts.append(
-            f"The codebase has {modules} modules, {deps} dependencies and {cycles} cycles."
-        )
-    # Maturity and risks
+    parts.append(_template_structure_sentence(modules, deps, cycles))
     parts.append(f"Syntactic maturity is {maturity}.")
-    if risks:
-        top = risks[:3]
-        risk_str = "; ".join(top) if len(top) <= 2 else top[0] + " and " + str(len(risks) - 1) + " more"
-        parts.append(f"Main risks: {risk_str}.")
-    elif central:
-        names = [c.get("name", "") for c in central[:3] if isinstance(c, dict)]
-        parts.append(f"Central modules: {', '.join(names)}.")
-    # Trends
-    if trend_complexity != "unknown" or trend_smells != "unknown":
-        parts.append(f"Trends: complexity {trend_complexity}, smells {trend_smells}.")
-    if regressions:
-        parts.append(f"Potential regressions: {'; '.join(regressions[:2])}.")
-    # Patch plan summary (ROADMAP §7 — связка с patch-plan)
-    patch_sentence = _format_template_patch_plan_sentence(patch_plan)
-    if patch_sentence:
-        parts.append(patch_sentence)
-    if recent_events_snippet:
-        parts.append(f"Recent actions: {recent_events_snippet}.")
-    if knowledge_snippet:
-        parts.append(f"Reference: {knowledge_snippet[:300]}" + ("..." if len(knowledge_snippet) > 300 else ""))
+    risks_sentence = _template_risks_sentence(risks, central)
+    if risks_sentence:
+        parts.append(risks_sentence)
+    parts.extend(_template_trends_sentences(trend_complexity, trend_smells, regressions))
+    parts.extend(_template_context_sentences(patch_plan, knowledge_snippet, recent_events_snippet))
     return " ".join(parts)
+
+
+def _init_openai_client() -> tuple[Any | None, str | None, str | None]:
+    """Initialize OpenAI client from env. Returns (client, model, reason)."""
+    import os
+
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return None, None, "OPENAI_API_KEY not set (add to .env or export; pip install python-dotenv to load .env)"
+    try:
+        from openai import OpenAI
+    except ImportError:
+        return None, None, "openai package not installed (pip install openai)"
+    base_url = os.environ.get("OPENAI_BASE_URL") or None
+    model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+    return OpenAI(api_key=api_key, base_url=base_url), model, None
+
+
+def _build_llm_prompt(
+    summary: Dict[str, Any],
+    history: Dict[str, Any],
+    patch_plan: Optional[Dict[str, Any]],
+    knowledge_snippet: str,
+    recent_events_snippet: str,
+) -> str:
+    """Assemble a concise architect prompt for LLM."""
+    patch_desc = _build_llm_patch_desc(patch_plan)
+    ref_block = ""
+    if knowledge_snippet:
+        ref_block = "\n\nReference knowledge (use if relevant):\n" + knowledge_snippet
+    events_block = ""
+    if recent_events_snippet:
+        events_block = "\n\nRecent refactoring events (for context): " + recent_events_snippet
+    return (
+        "You are a software architect. In 2-4 short sentences, summarize the state of this codebase "
+        "and the main recommendation. Be concrete and concise. If patch operations are planned, "
+        "mention the most impactful refactorings.\n\n"
+        f"Summary: {summary}\n\n"
+        f"History (trends/regressions): {history.get('trends')}, regressions: {history.get('regressions', [])[:3]}"
+        f"{patch_desc}"
+        f"{events_block}"
+        f"{ref_block}"
+    )
+
+
+def _call_llm_architect(client: Any, model: str, prompt: str) -> tuple[str | None, str | None]:
+    """Call OpenAI chat completions and normalize response shape."""
+    try:
+        r = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=350,
+        )
+        if r.choices and r.choices[0].message.content:
+            return r.choices[0].message.content.strip(), None
+        return None, "empty LLM response"
+    except Exception as e:
+        return None, str(e)
 
 
 def _llm_interpret(
@@ -175,48 +265,17 @@ def _llm_interpret(
     Env: OPENAI_API_KEY (required), OPENAI_BASE_URL (e.g. OpenRouter), OPENAI_MODEL (e.g. mistralai/...).
     knowledge_snippet: optional pre-formatted reference knowledge to append to the prompt.
     """
-    import os
-
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        return None, "OPENAI_API_KEY not set (add to .env or export; pip install python-dotenv to load .env)"
-    try:
-        from openai import OpenAI
-    except ImportError:
-        return None, "openai package not installed (pip install openai)"
-    base_url = os.environ.get("OPENAI_BASE_URL") or None
-    model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
-    client = OpenAI(api_key=api_key, base_url=base_url)
-
-    patch_desc = _build_llm_patch_desc(patch_plan)
-
-    ref_block = ""
-    if knowledge_snippet:
-        ref_block = "\n\nReference knowledge (use if relevant):\n" + knowledge_snippet
-    events_block = ""
-    if recent_events_snippet:
-        events_block = "\n\nRecent refactoring events (for context): " + recent_events_snippet
-    prompt = (
-        "You are a software architect. In 2-4 short sentences, summarize the state of this codebase "
-        "and the main recommendation. Be concrete and concise. If patch operations are planned, "
-        "mention the most impactful refactorings.\n\n"
-        f"Summary: {summary}\n\n"
-        f"History (trends/regressions): {history.get('trends')}, regressions: {history.get('regressions', [])[:3]}"
-        f"{patch_desc}"
-        f"{events_block}"
-        f"{ref_block}"
+    client, model, init_reason = _init_openai_client()
+    if not client or not model:
+        return None, init_reason
+    prompt = _build_llm_prompt(
+        summary=summary,
+        history=history,
+        patch_plan=patch_plan,
+        knowledge_snippet=knowledge_snippet,
+        recent_events_snippet=recent_events_snippet,
     )
-    try:
-        r = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=350,
-        )
-        if r.choices and r.choices[0].message.content:
-            return r.choices[0].message.content.strip(), None
-        return None, "empty LLM response"
-    except Exception as e:
-        return None, str(e)
+    return _call_llm_architect(client, model, prompt)
 
 
 def interpret_architecture(

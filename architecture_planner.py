@@ -177,7 +177,62 @@ def _maybe_add_extract_class_operation(
     if not suggestion:
         return
     class_name, methods = suggestion
+    if _existing_extracted_class_is_synced(project_root, name, class_name, methods):
+        return
     operations.append(PatchOperation(target_file=name, kind='extract_class', description=f'[{idx}] Extract class {class_name} from {name} ({len(methods)} static-like methods).', diff=f"# TODO: Extract class {class_name}\n# Methods to extract: {', '.join(methods[:5])}{('...' if len(methods) > 5 else '')}\n", smell_type='god_class', params={'target_class': class_name, 'methods_to_extract': methods}))
+
+
+def _existing_extracted_class_is_synced(
+    project_root: str,
+    target_file: str,
+    target_class: str,
+    methods_to_extract: List[str],
+) -> bool:
+    """
+    True when extracted class file already exists with matching class/method signature.
+
+    Uses the same extracted-file naming convention as eurika.refactor.extract_class.
+    """
+    new_class_name = target_class + "Extracted"
+    t = Path(target_file)
+    new_name = t.stem + "_" + new_class_name.lower() + ".py"
+    new_rel_path = str(t.parent / new_name) if str(t.parent) != "." else new_name
+    extracted_path = Path(project_root) / new_rel_path
+    source_path = Path(project_root) / target_file
+    if not (extracted_path.exists() and extracted_path.is_file()):
+        return False
+    try:
+        import ast
+
+        content = extracted_path.read_text(encoding="utf-8")
+        tree = ast.parse(content)
+        source_tree = ast.parse(source_path.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError):
+        return False
+    static_methods_in_source: set[str] = set()
+    for src_node in ast.walk(source_tree):
+        if not isinstance(src_node, ast.ClassDef) or src_node.name != target_class:
+            continue
+        for member in src_node.body:
+            if not isinstance(member, ast.FunctionDef):
+                continue
+            if any(
+                isinstance(dec, ast.Name) and dec.id == "staticmethod"
+                for dec in member.decorator_list
+            ):
+                static_methods_in_source.add(member.name)
+        break
+    required_methods = set(methods_to_extract) - static_methods_in_source
+    if not required_methods:
+        required_methods = set(methods_to_extract)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == new_class_name:
+            existing_methods = {
+                m.name for m in node.body
+                if isinstance(m, ast.FunctionDef)
+            }
+            return required_methods.issubset(existing_methods)
+    return False
 
 
 def _build_hints_and_params(
