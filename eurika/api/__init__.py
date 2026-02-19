@@ -205,6 +205,18 @@ def _build_refactor_smell_op(rel_path: str, smell: Any) -> Dict[str, Any]:
     }
 
 
+def _should_emit_refactor_smell_op(root: Path, rel_path: str, diff: str) -> bool:
+    """Skip refactor_code_smell op when the same TODO diff is already present."""
+    path = root / rel_path
+    if not (path.exists() and path.is_file()):
+        return True
+    try:
+        content = path.read_text(encoding="utf-8")
+    except OSError:
+        return True
+    return not (diff.strip() and diff.strip() in content)
+
+
 def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
     """
     Build patch operations for code-level smells (long_function, deep_nesting).
@@ -229,7 +241,9 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
                     nested_name, line_count = suggestion
                     ops.append(_build_extract_nested_op(rel, smell.location, nested_name, line_count))
                     continue
-            ops.append(_build_refactor_smell_op(rel, smell))
+            op = _build_refactor_smell_op(rel, smell)
+            if _should_emit_refactor_smell_op(root, rel, op["diff"]):
+                ops.append(op)
     return ops
 
 

@@ -251,13 +251,44 @@ def _operations_for_target(
     return operations
 
 
+def _should_emit_default_todo_op(project_root: str, target_file: str, kind: str, diff: str) -> bool:
+    """
+    Return False when default append-style TODO is already present in target file.
+
+    This reduces noisy skipped operations like:
+    - "diff already in content"
+    - "architectural TODO already present"
+    """
+    if kind not in ("refactor_module", "split_module", "refactor_code_smell"):
+        return True
+    path = Path(project_root) / target_file
+    if not (path.exists() and path.is_file()):
+        return True
+    try:
+        content = path.read_text(encoding="utf-8")
+    except OSError:
+        return True
+    if diff.strip() and diff.strip() in content:
+        return False
+    if kind in ("refactor_module", "split_module"):
+        marker = f"# TODO: Refactor {target_file}"
+        if marker in content:
+            return False
+    return True
+
+
 def _apply_smell_action_filters(
+    project_root: str,
     operations: List[PatchOperation],
     learning_stats: Optional[Dict[str, Dict[str, Any]]],
 ) -> List[PatchOperation]:
     """Apply env-based disabling and low-success filtering."""
     MIN_TOTAL_FOR_FILTER = 3
     MIN_SUCCESS_RATE = 0.25
+    operations = [
+        op for op in operations
+        if _should_emit_default_todo_op(project_root, op.target_file, op.kind, op.diff)
+    ]
     disabled_smell_actions = _disabled_smell_actions_from_env()
     if disabled_smell_actions:
         operations = [
@@ -320,7 +351,7 @@ def build_patch_plan(project_root: str, summary: Dict[str, Any], smells: List[Ar
     plan_targets = _build_plan_targets(priorities, smells, smells_by_node, summary, graph=graph)
     for idx, t in enumerate(plan_targets, start=1):
         operations.extend(_operations_for_target(project_root, idx, t, smells_by_node, cycles_handled, graph=graph, self_map=self_map))
-    operations = _apply_smell_action_filters(operations, learning_stats)
+    operations = _apply_smell_action_filters(project_root, operations, learning_stats)
     operations = _sort_and_reindex_by_learning(operations, learning_stats)
     return PatchPlan(project_root=project_root, operations=operations)
 
