@@ -111,6 +111,47 @@ def targets_from_graph(
     return targets
 
 
+def _init_scores_from_smells(smells: List[Any]) -> tuple[Dict[str, float], Dict[str, List[str]]]:
+    """Initialize priority scores and reasons from smell severities."""
+    scores: Dict[str, float] = {}
+    reasons: Dict[str, List[str]] = {}
+    for s in smells:
+        for node in s.nodes:
+            severity = float(getattr(s, "severity", 0) or 0)
+            scores[node] = scores.get(node, 0.0) + severity
+            reasons.setdefault(node, []).append(s.type)
+    return scores, reasons
+
+
+def _add_summary_risk_bonus(
+    scores: Dict[str, float],
+    reasons: Dict[str, List[str]],
+    summary_risks: Optional[List[str]],
+) -> None:
+    """Add lightweight score bonus for modules explicitly mentioned in summary risks."""
+    if not summary_risks:
+        return
+    for risk in summary_risks:
+        if "@ " not in risk:
+            continue
+        _, rest = risk.split("@ ", 1)
+        target = rest.split(" ", 1)[0]
+        scores[target] = scores.get(target, 0.0) + 1.0
+        if "mentioned_in_summary_risks" not in (reasons.get(target) or []):
+            reasons.setdefault(target, []).append("mentioned_in_summary_risks")
+
+
+def _degree_bonus(fi: int, fo: int, smell_types: List[str]) -> float:
+    """Compute degree-based priority bonus with smell-specific fan-in/out boosts."""
+    degree = fi + fo
+    bonus = degree * 0.1
+    if "god_module" in smell_types or "hub" in smell_types:
+        bonus += fo * 0.2
+    if "bottleneck" in smell_types:
+        bonus += fi * 0.2
+    return bonus
+
+
 def priority_from_graph(
     graph: ProjectGraph,
     smells: List[Any],
@@ -128,33 +169,13 @@ def priority_from_graph(
         List of {"name": node_path, "reasons": [smell_type, ...]} sorted by priority.
     """
     fan = graph.fan_in_out()
-    scores: Dict[str, float] = {}
-    reasons: Dict[str, List[str]] = {}
-
-    for s in smells:
-        for node in s.nodes:
-            severity = float(getattr(s, "severity", 0) or 0)
-            scores[node] = scores.get(node, 0.0) + severity
-            reasons.setdefault(node, []).append(s.type)
-
-    if summary_risks:
-        for risk in summary_risks:
-            if "@ " in risk:
-                _, rest = risk.split("@ ", 1)
-                target = rest.split(" ", 1)[0]
-                scores[target] = scores.get(target, 0.0) + 1.0
-                if "mentioned_in_summary_risks" not in (reasons.get(target) or []):
-                    reasons.setdefault(target, []).append("mentioned_in_summary_risks")
+    scores, reasons = _init_scores_from_smells(smells)
+    _add_summary_risk_bonus(scores, reasons, summary_risks)
 
     for node in list(scores.keys()):
         fi, fo = fan.get(node, (0, 0))
-        degree = fi + fo
         smell_types = reasons.get(node, [])
-        degree_bonus = degree * 0.1
-        if "god_module" in smell_types or "hub" in smell_types:
-            degree_bonus += fo * 0.2
-        if "bottleneck" in smell_types:
-            degree_bonus += fi * 0.2
+        degree_bonus = _degree_bonus(fi, fo, smell_types)
         scores[node] = scores[node] + degree_bonus
 
     ordered = sorted(scores.items(), key=lambda x: -x[1])[:top_n]

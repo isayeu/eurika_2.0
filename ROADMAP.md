@@ -311,7 +311,7 @@
 
 - [x] **Консолидация памяти:** единый контракт — `eurika.storage.ProjectMemory(project_root)`. Довести до единого Event Engine — см. Этап 4 плана прорыва.
 - [x] **Замкнутый цикл (скелет):** поток `eurika fix` = scan → diagnose → plan → patch → verify → learn есть; довести verify + rollback и полноценный Patch Engine — этапы 1, 3.
-- [ ] **Killer-feature (цель):** remove_cyclic_import, remove unused imports, split oversized module; eurika fix с verify и откатом при провале — этапы 1–2, 3.
+- [x] **Killer-feature (цель):** remove_cyclic_import, remove unused imports, split oversized module; eurika fix с verify и откатом при провале — этапы 1–2, 3.
 - [x] **CLI режимы есть:** scan, doctor, fix, explain. Упростить до 4 режимов без dev-команд — этап 5.
 
 ### Уже есть (не дублировать)

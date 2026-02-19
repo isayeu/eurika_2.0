@@ -121,6 +121,55 @@ def handle_report(args: Any) -> int:
     code2 = print_arch_history(path, window=window)
     return 0 if code1 == 0 and code2 == 0 else 1
 
+
+def _resolve_target_module(module_arg: str, path: Path, nodes: list[str]) -> tuple[str | None, str | None]:
+    """Resolve user module argument to a graph node. Returns (target, error)."""
+    mod = module_arg
+    m_path = Path(module_arg)
+    if m_path.is_absolute():
+        try:
+            mod = str(m_path.relative_to(path))
+        except ValueError:
+            mod = m_path.name
+    if mod in nodes:
+        return mod, None
+    candidates = [n for n in nodes if n.endswith('/' + mod) or n.endswith(mod)]
+    if len(candidates) == 1:
+        return candidates[0], None
+    if len(candidates) > 1:
+        return None, f"ambiguous module '{module_arg}'; candidates: {', '.join(candidates)}"
+    return None, f"module '{module_arg}' not in graph (run 'eurika scan .' to refresh self_map.json)"
+
+
+def _truncate_on_word_boundary(raw: str, max_len: int = 200) -> str:
+    """Truncate text by word boundary to keep CLI output readable."""
+    if len(raw) <= max_len:
+        return raw
+    truncated = raw[:max_len]
+    cut = truncated.rfind(' ')
+    return (truncated[:cut] if cut >= 0 else truncated) + '...'
+
+
+def _print_module_operations(path: Path, target: str, window: int) -> None:
+    """Print patch-plan operations targeting the module."""
+    from eurika.api import get_patch_plan
+
+    patch_plan = get_patch_plan(path, window=window)
+    if not (patch_plan and patch_plan.get('operations')):
+        return
+    module_ops = [o for o in patch_plan['operations'] if o.get('target_file') == target]
+    if not module_ops:
+        print()
+        print('Planned operations: none targeting this module')
+        return
+    print()
+    print('Planned operations (from patch-plan):')
+    for op in module_ops[:5]:
+        kind = op.get('kind', '?')
+        desc = _truncate_on_word_boundary(op.get('description', ''))
+        print(f'- [{kind}] {desc}')
+
+
 def handle_explain(args: Any) -> int:
     """Explain role and risks of a given module."""
     module_arg = getattr(args, 'module', None)
@@ -138,27 +187,13 @@ def handle_explain(args: Any) -> int:
     graph = snapshot.graph
     smells = snapshot.smells
     summary = snapshot.summary or {}
-    mod = module_arg
-    from pathlib import Path as _P
-    m_path = _P(module_arg)
-    if m_path.is_absolute():
-        try:
-            mod = str(m_path.relative_to(path))
-        except ValueError:
-            mod = m_path.name
     nodes = list(graph.nodes)
-    target = None
-    if mod in nodes:
-        target = mod
-    else:
-        candidates = [n for n in nodes if n.endswith('/' + mod) or n.endswith(mod)]
-        if len(candidates) == 1:
-            target = candidates[0]
-        elif len(candidates) > 1:
-            _err(f"ambiguous module '{module_arg}'; candidates: {', '.join(candidates)}")
-            return 1
+    target, resolve_error = _resolve_target_module(module_arg, path, nodes)
+    if resolve_error:
+        _err(resolve_error)
+        return 1
     if not target:
-        _err(f"module '{module_arg}' not in graph (run 'eurika scan .' to refresh self_map.json)")
+        _err(f"module '{module_arg}' not in graph")
         return 1
     fan = graph.fan_in_out()
     fi, fo = fan.get(target, (0, 0))
@@ -189,27 +224,7 @@ def handle_explain(args: Any) -> int:
     else:
         for r in module_risks:
             print(f'- {r}')
-    from eurika.api import get_patch_plan
-    patch_plan = get_patch_plan(path, window=getattr(args, 'window', 5))
-    if patch_plan and patch_plan.get('operations'):
-        module_ops = [o for o in patch_plan['operations'] if o.get('target_file') == target]
-        if module_ops:
-            print()
-            print('Planned operations (from patch-plan):')
-            for i, op in enumerate(module_ops[:5], start=1):
-                kind = op.get('kind', '?')
-                raw = op.get('description', '')
-                max_len = 200
-                if len(raw) <= max_len:
-                    desc = raw
-                else:
-                    truncated = raw[:max_len]
-                    cut = truncated.rfind(' ')
-                    desc = (truncated[:cut] if cut >= 0 else truncated) + '...'
-                print(f'- [{kind}] {desc}')
-        else:
-            print()
-            print('Planned operations: none targeting this module')
+    _print_module_operations(path, target, getattr(args, 'window', 5))
     return 0
 
 def handle_doctor(args: Any) -> int:

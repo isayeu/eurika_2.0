@@ -66,19 +66,17 @@ def get_history(project_root: Path, window: int = 5) -> Dict[str, Any]:
     }
 
 
-def get_patch_plan(project_root: Path, window: int = 5) -> Dict[str, Any] | None:
-    """
-    Build patch plan from diagnostics (summary, smells, history, graph).
-    Returns operations dict or None on error. Used by architect and explain.
-    """
-    from eurika.analysis.self_map import build_graph_from_self_map, load_self_map
+def _build_patch_plan_inputs(
+    root: Path,
+    window: int,
+) -> tuple[Any, Any, Dict[str, Any], Dict[str, Any], Any] | None:
+    """Build graph/smells/summary/history/priorities inputs for patch planning."""
+    from eurika.analysis.self_map import build_graph_from_self_map
     from eurika.reasoning.graph_ops import priority_from_graph
-    from eurika.smells.detector import ArchSmell, detect_architecture_smells
+    from eurika.smells.detector import detect_architecture_smells
     from eurika.smells.rules import build_summary
-    from architecture_planner import build_patch_plan
     from eurika.storage import ProjectMemory
 
-    root = Path(project_root).resolve()
     self_map_path = root / "self_map.json"
     if not self_map_path.exists():
         return None
@@ -96,12 +94,18 @@ def get_patch_plan(project_root: Path, window: int = 5) -> Dict[str, Any] | None
         "regressions": history.detect_regressions(window=window),
         "evolution_report": history.evolution_report(window=window),
     }
-
     priorities = priority_from_graph(
-        graph, smells,
+        graph,
+        smells,
         summary_risks=summary.get("risks"),
         top_n=8,
     )
+    return graph, smells, summary, history_info, priorities
+
+
+def _optional_learning_and_self_map(memory: Any, self_map_path: Path) -> tuple[Any, Any]:
+    """Load optional learning stats and self_map; swallow parsing errors."""
+    from eurika.analysis.self_map import load_self_map
 
     learning_stats = None
     self_map = None
@@ -113,6 +117,25 @@ def get_patch_plan(project_root: Path, window: int = 5) -> Dict[str, Any] | None
         self_map = load_self_map(self_map_path)
     except Exception:
         pass
+    return learning_stats, self_map
+
+
+def get_patch_plan(project_root: Path, window: int = 5) -> Dict[str, Any] | None:
+    """
+    Build patch plan from diagnostics (summary, smells, history, graph).
+    Returns operations dict or None on error. Used by architect and explain.
+    """
+    from architecture_planner import build_patch_plan
+    from eurika.storage import ProjectMemory
+
+    root = Path(project_root).resolve()
+    self_map_path = root / "self_map.json"
+    inputs = _build_patch_plan_inputs(root, window)
+    if inputs is None:
+        return None
+    graph, smells, summary, history_info, priorities = inputs
+    memory = ProjectMemory(root)
+    learning_stats, self_map = _optional_learning_and_self_map(memory, self_map_path)
 
     plan = build_patch_plan(
         project_root=str(root),

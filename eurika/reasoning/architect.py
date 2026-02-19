@@ -53,6 +53,61 @@ def _format_knowledge_fragments(fragments: List[Dict[str, Any]]) -> str:
     return "\n".join(lines) if lines else ""
 
 
+def _summarize_patch_plan(patch_plan: Optional[Dict[str, Any]]) -> tuple[int, Dict[str, int], List[str]]:
+    """Extract count/kind breakdown/targets from patch plan."""
+    if not (patch_plan and patch_plan.get("operations")):
+        return 0, {}, []
+    ops = patch_plan["operations"]
+    kind_counts: Dict[str, int] = {}
+    for o in ops:
+        k = o.get("kind", "refactor")
+        kind_counts[k] = kind_counts.get(k, 0) + 1
+    targets = list({o.get("target_file", "") for o in ops if o.get("target_file")})[:5]
+    return len(ops), kind_counts, targets
+
+
+def _format_template_patch_plan_sentence(patch_plan: Optional[Dict[str, Any]]) -> str:
+    """Template sentence describing planned refactorings."""
+    total, kind_counts, targets = _summarize_patch_plan(patch_plan)
+    if not (total and targets):
+        return ""
+    kinds = ", ".join(f"{k}={v}" for k, v in sorted(kind_counts.items()))
+    return f"Planned refactorings: {total} ops ({kinds}); top targets: {', '.join(targets[:3])}."
+
+
+def _build_llm_patch_desc(patch_plan: Optional[Dict[str, Any]]) -> str:
+    """Prompt block with patch-plan context for LLM."""
+    total, _kind_counts, targets = _summarize_patch_plan(patch_plan)
+    if total == 0:
+        return ""
+    kinds = [o.get("kind", "refactor") for o in patch_plan["operations"]]
+    return (
+        f"\n\nPlanned patch operations: {total} total. Kinds: {kinds[:10]}. "
+        f"Top target modules: {targets[:5]}. "
+        "Consider these in your recommendation."
+    )
+
+
+def _resolve_knowledge_snippet(
+    knowledge_provider: Optional["KnowledgeProvider"],
+    knowledge_topic: Optional[Union[str, List[str]]],
+) -> str:
+    """Resolve and format knowledge snippets from provider/topics."""
+    if not (knowledge_provider and knowledge_topic):
+        return ""
+    from eurika.knowledge import StructuredKnowledge
+
+    topics = [knowledge_topic] if isinstance(knowledge_topic, str) else knowledge_topic
+    all_fragments: List[Dict[str, Any]] = []
+    for t in topics:
+        if not t:
+            continue
+        kn = knowledge_provider.query(t.strip())
+        if isinstance(kn, StructuredKnowledge) and not kn.is_empty():
+            all_fragments.extend(kn.fragments)
+    return _format_knowledge_fragments(all_fragments) if all_fragments else ""
+
+
 def _template_interpret(
     summary: Dict[str, Any],
     history: Dict[str, Any],
@@ -98,16 +153,9 @@ def _template_interpret(
     if regressions:
         parts.append(f"Potential regressions: {'; '.join(regressions[:2])}.")
     # Patch plan summary (ROADMAP §7 — связка с patch-plan)
-    if patch_plan and patch_plan.get("operations"):
-        ops = patch_plan["operations"]
-        targets = list({o.get("target_file", "") for o in ops if o.get("target_file")})[:5]
-        if targets:
-            kind_counts: Dict[str, int] = {}
-            for o in ops:
-                k = o.get("kind", "refactor")
-                kind_counts[k] = kind_counts.get(k, 0) + 1
-            kinds = ", ".join(f"{k}={v}" for k, v in sorted(kind_counts.items()))
-            parts.append(f"Planned refactorings: {len(ops)} ops ({kinds}); top targets: {', '.join(targets[:3])}.")
+    patch_sentence = _format_template_patch_plan_sentence(patch_plan)
+    if patch_sentence:
+        parts.append(patch_sentence)
     if recent_events_snippet:
         parts.append(f"Recent actions: {recent_events_snippet}.")
     if knowledge_snippet:
@@ -140,16 +188,7 @@ def _llm_interpret(
     model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
     client = OpenAI(api_key=api_key, base_url=base_url)
 
-    patch_desc = ""
-    if patch_plan and patch_plan.get("operations"):
-        ops = patch_plan["operations"]
-        targets = list({o.get("target_file", "") for o in ops if o.get("target_file")})[:5]
-        kinds = [o.get("kind", "refactor") for o in ops]
-        patch_desc = (
-            f"\n\nPlanned patch operations: {len(ops)} total. Kinds: {kinds[:10]}. "
-            f"Top target modules: {targets[:5]}. "
-            "Consider these in your recommendation."
-        )
+    patch_desc = _build_llm_patch_desc(patch_plan)
 
     ref_block = ""
     if knowledge_snippet:
@@ -203,20 +242,7 @@ def interpret_architecture(
     """
     import sys
 
-    knowledge_snippet = ""
-    if knowledge_provider and knowledge_topic:
-        from eurika.knowledge import StructuredKnowledge
-
-        topics = [knowledge_topic] if isinstance(knowledge_topic, str) else knowledge_topic
-        all_fragments: List[Dict[str, Any]] = []
-        for t in topics:
-            if not t:
-                continue
-            kn = knowledge_provider.query(t.strip())
-            if isinstance(kn, StructuredKnowledge) and not kn.is_empty():
-                all_fragments.extend(kn.fragments)
-        if all_fragments:
-            knowledge_snippet = _format_knowledge_fragments(all_fragments)
+    knowledge_snippet = _resolve_knowledge_snippet(knowledge_provider, knowledge_topic)
 
     recent_snippet = _format_recent_events(recent_events) if recent_events else ""
     if use_llm:

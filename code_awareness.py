@@ -153,8 +153,33 @@ class CodeAwareness:
 
     def _path_to_file_str(self, path: Path) -> str:
         """Convert path to relative file string for duplicate locations."""
-        rel = path.relative_to(self.root) if path.is_relative_to(self.root) else path
-        return str(rel).replace('\\', '/')
+        return str(self._relative_path(path)).replace('\\', '/')
+
+    def _relative_path(self, path: Path) -> Path:
+        """Return path relative to project root when possible."""
+        return path.relative_to(self.root) if path.is_relative_to(self.root) else path
+
+    def _collect_internal_dependencies(self, imports: List[Dict[str, Any]]) -> List[str]:
+        """Keep only imports that resolve to project-internal modules."""
+        internal: List[str] = []
+        for imp in imports:
+            mod = imp.get('module', '')
+            if not mod or mod.startswith('_'):
+                continue
+            stem = mod.split('.')[0]
+            if (self.root / f'{stem}.py').exists() or (self.root / stem / '__init__.py').exists():
+                internal.append(mod)
+        return list(dict.fromkeys(internal))
+
+    @staticmethod
+    def _file_info_dict(info: FileInfo) -> Dict[str, Any]:
+        """Convert FileInfo to JSON-serializable dict."""
+        return {
+            'path': info.path,
+            'lines': info.lines,
+            'functions': info.functions,
+            'classes': info.classes,
+        }
 
     def _function_duplicate_candidate(self, content: str, node: ast.AST, file_str: str) -> Optional[tuple[str, Dict[str, Any]]]:
         """Extract normalized body and location if function qualifies as duplicate candidate. Returns None to skip."""
@@ -174,25 +199,17 @@ class CodeAwareness:
 
     def build_self_map(self) -> dict:
         """Build formalized self-map: modules, files, dependencies."""
-        infos = self.scan_project()
         modules = []
         dependencies: Dict[str, List[str]] = {}
         for p in self.scan_python_files():
-            rel = p.relative_to(self.root) if p.is_relative_to(self.root) else p
-            rel_str = str(rel).replace('\\', '/')
+            rel_str = str(self._relative_path(p)).replace('\\', '/')
             info = self.analyze_file(p)
             imports = self.extract_imports(p)
             if info:
-                modules.append({'path': info.path, 'lines': info.lines, 'functions': info.functions, 'classes': info.classes})
-            internal = []
-            for imp in imports:
-                mod = imp.get('module', '')
-                if mod and (not mod.startswith('_')):
-                    parts = mod.split('.')[0]
-                    if (self.root / f'{parts}.py').exists() or (self.root / parts / '__init__.py').exists():
-                        internal.append(mod)
+                modules.append(self._file_info_dict(info))
+            internal = self._collect_internal_dependencies(imports)
             if internal:
-                dependencies[rel_str] = list(dict.fromkeys(internal))
+                dependencies[rel_str] = internal
         return {'modules': modules, 'dependencies': dependencies, 'summary': {'files': len(modules), 'total_lines': sum((m['lines'] for m in modules))}}
 
     def write_self_map(self, output_path: Optional[Path]=None) -> Path:
@@ -213,7 +230,27 @@ class CodeAwareness:
             all_smells.extend(self.find_smells(p))
         duplicates = self.find_duplicates()
         self_map = self.build_self_map()
-        return {'structure': [{'path': i.path, 'lines': i.lines, 'functions': i.functions, 'classes': i.classes} for i in infos], 'smells': [{'file': s.file, 'location': s.location, 'kind': s.kind, 'message': s.message, 'metric': s.metric} for s in all_smells], 'self_map': self_map, 'duplicates': duplicates, 'summary': {'files': len(infos), 'total_lines': sum((i.lines for i in infos)), 'smells_count': len(all_smells), 'duplicates_count': len(duplicates)}}
+        return {
+            'structure': [self._file_info_dict(i) for i in infos],
+            'smells': [
+                {
+                    'file': s.file,
+                    'location': s.location,
+                    'kind': s.kind,
+                    'message': s.message,
+                    'metric': s.metric,
+                }
+                for s in all_smells
+            ],
+            'self_map': self_map,
+            'duplicates': duplicates,
+            'summary': {
+                'files': len(infos),
+                'total_lines': sum((i.lines for i in infos)),
+                'smells_count': len(all_smells),
+                'duplicates_count': len(duplicates),
+            },
+        }
 
     def read_file(self, path: Path):
         return CodeAwarenessExtracted.read_file(path)

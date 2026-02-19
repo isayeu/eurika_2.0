@@ -165,6 +165,65 @@ def run_full_cycle(
     return out
 
 
+def _run_fix_scan_stage(path: Path, quiet: bool, run_scan: Any) -> bool:
+    """Run scan stage for fix cycle. Returns True on success."""
+    if not quiet:
+        print("--- Step 1/4: scan ---", file=sys.stderr)
+        print("eurika fix: scan → diagnose → plan → patch → verify", file=sys.stderr)
+    if quiet:
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            return run_scan(path) == 0
+    return run_scan(path) == 0
+
+
+def _prepend_fix_operations(
+    path: Path,
+    patch_plan: dict[str, Any],
+    operations: list[dict[str, Any]],
+    no_clean_imports: bool,
+    no_code_smells: bool,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Prepend clean-imports and code-smell operations to patch plan."""
+    if not no_clean_imports:
+        from eurika.api import get_clean_imports_operations
+
+        clean_ops = get_clean_imports_operations(path)
+        if clean_ops:
+            operations = clean_ops + operations
+            patch_plan = dict(patch_plan, operations=operations)
+
+    if not no_code_smells:
+        from eurika.api import get_code_smell_operations
+
+        code_smell_ops = get_code_smell_operations(path)
+        if code_smell_ops:
+            operations = code_smell_ops + operations
+            patch_plan = dict(patch_plan, operations=operations)
+
+    return patch_plan, operations
+
+
+def _build_fix_dry_run_result(path: Path, patch_plan: dict[str, Any], operations: list[dict[str, Any]], result: Any) -> dict[str, Any]:
+    """Build and persist dry-run report/result payload."""
+    report = {"dry_run": True, "patch_plan": patch_plan, "modified": [], "verify": {"success": None}}
+    try:
+        (path / "eurika_fix_report.json").write_text(
+            json.dumps(report, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+    return {
+        "return_code": 0,
+        "report": report,
+        "operations": operations,
+        "modified": [],
+        "verify_success": None,
+        "agent_result": result,
+        "dry_run": True,
+    }
+
+
 def run_fix_cycle(
     path: Path,
     *,
@@ -189,16 +248,8 @@ def run_fix_cycle(
     from eurika.storage import ProjectMemory
 
     if not skip_scan:
-        if not quiet:
-            print("--- Step 1/4: scan ---", file=sys.stderr)
-            print("eurika fix: scan → diagnose → plan → patch → verify", file=sys.stderr)
-        if quiet:
-            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-                if run_scan(path) != 0:
-                    return {"return_code": 1, "report": {}, "operations": [], "modified": [], "verify_success": False, "agent_result": None}
-        else:
-            if run_scan(path) != 0:
-                return {"return_code": 1, "report": {}, "operations": [], "modified": [], "verify_success": False, "agent_result": None}
+        if not _run_fix_scan_stage(path, quiet, run_scan):
+            return {"return_code": 1, "report": {}, "operations": [], "modified": [], "verify_success": False, "agent_result": None}
 
     if not quiet:
         print("--- Step 2/4: diagnose ---", file=sys.stderr)
@@ -236,21 +287,9 @@ def run_fix_cycle(
     patch_plan = patch_proposal.get("arguments", {}).get("patch_plan", {})
     operations = patch_plan.get("operations", [])
 
-    # ROADMAP 2.4.2: prepend clean-imports ops to increase real fixes
-    if not no_clean_imports:
-        from eurika.api import get_clean_imports_operations
-        clean_ops = get_clean_imports_operations(path)
-        if clean_ops:
-            operations = clean_ops + operations
-            patch_plan = dict(patch_plan, operations=operations)
-
-    # ROADMAP: prepend code-level smell ops (long_function, deep_nesting)
-    if not no_code_smells:
-        from eurika.api import get_code_smell_operations
-        code_smell_ops = get_code_smell_operations(path)
-        if code_smell_ops:
-            operations = code_smell_ops + operations
-            patch_plan = dict(patch_plan, operations=operations)
+    patch_plan, operations = _prepend_fix_operations(
+        path, patch_plan, operations, no_clean_imports, no_code_smells
+    )
 
     if not operations:
         return {
@@ -265,23 +304,7 @@ def run_fix_cycle(
     if dry_run:
         if not quiet:
             print("--- Step 3/3: plan (dry-run, no apply) ---", file=sys.stderr)
-        report = {"dry_run": True, "patch_plan": patch_plan, "modified": [], "verify": {"success": None}}
-        try:
-            (path / "eurika_fix_report.json").write_text(
-                json.dumps(report, indent=2, ensure_ascii=False),
-                encoding="utf-8",
-            )
-        except Exception:
-            pass
-        return {
-            "return_code": 0,
-            "report": {"dry_run": True, "patch_plan": patch_plan, "modified": [], "verify": {"success": None}},
-            "operations": operations,
-            "modified": [],
-            "verify_success": None,
-            "agent_result": result,
-            "dry_run": True,
-        }
+        return _build_fix_dry_run_result(path, patch_plan, operations, result)
 
     if not quiet:
         print("--- Step 3/4: patch & verify ---", file=sys.stderr)

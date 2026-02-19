@@ -76,6 +76,54 @@ def _backup_file(
     return str(backup_root) if backup_dir is None else backup_dir
 
 
+def _write_single_file_change(
+    root: Path,
+    path: Path,
+    target_file: str,
+    new_content: str,
+    run_id: str,
+    backup_dir: str | None,
+    do_backup: bool,
+) -> tuple[str | None, bool]:
+    """
+    Backup and write content to an existing file.
+
+    Returns (backup_dir, changed).
+    """
+    backup_dir = _backup_file(root, path, target_file, run_id, backup_dir, do_backup)
+    path.write_text(new_content, encoding="utf-8")
+    return backup_dir, True
+
+
+def _write_extracted_and_original(
+    root: Path,
+    path: Path,
+    target_file: str,
+    new_rel_path: str,
+    new_content: str,
+    modified_original: str,
+    run_id: str,
+    backup_dir: str | None,
+    do_backup: bool,
+    exists_reason: str,
+    skip_cb,
+) -> tuple[str | None, bool]:
+    """
+    Write extracted module and modified original with backup.
+
+    Returns (backup_dir, changed). If extracted file exists, returns (backup_dir, False).
+    """
+    new_path = root / new_rel_path
+    if new_path.exists():
+        skip_cb(exists_reason)
+        return backup_dir, False
+    backup_dir = _backup_file(root, path, target_file, run_id, backup_dir, do_backup)
+    new_path.parent.mkdir(parents=True, exist_ok=True)
+    new_path.write_text(new_content, encoding="utf-8")
+    path.write_text(modified_original, encoding="utf-8")
+    return backup_dir, True
+
+
 def apply_patch_plan(
     project_root: Path,
     plan: Dict[str, Any],
@@ -151,9 +199,11 @@ def apply_patch_plan(
                 modified.append(target_file)
                 continue
             try:
-                backup_dir = _backup_file(root, path, target_file, run_id, backup_dir, do_backup)
-                path.write_text(diff, encoding="utf-8")
-                modified.append(target_file)
+                backup_dir, changed = _write_single_file_change(
+                    root, path, target_file, diff, run_id, backup_dir, do_backup
+                )
+                if changed:
+                    modified.append(target_file)
             except Exception as e:
                 errors.append(f"{target_file}: {e}")
             continue
@@ -176,9 +226,11 @@ def apply_patch_plan(
                 if new_content is None:
                     _skip("remove_unused_import: no unused imports")
                     continue
-                backup_dir = _backup_file(root, path, target_file, run_id, backup_dir, do_backup)
-                path.write_text(new_content, encoding="utf-8")
-                modified.append(target_file)
+                backup_dir, changed = _write_single_file_change(
+                    root, path, target_file, new_content, run_id, backup_dir, do_backup
+                )
+                if changed:
+                    modified.append(target_file)
             except Exception as e:
                 errors.append(f"{target_file}: {e}")
             continue
@@ -190,9 +242,11 @@ def apply_patch_plan(
                 if new_content is None:
                     _skip("remove_cyclic_import: import not found")
                     continue
-                backup_dir = _backup_file(root, path, target_file, run_id, backup_dir, do_backup)
-                path.write_text(new_content, encoding="utf-8")
-                modified.append(target_file)
+                backup_dir, changed = _write_single_file_change(
+                    root, path, target_file, new_content, run_id, backup_dir, do_backup
+                )
+                if changed:
+                    modified.append(target_file)
             except Exception as e:
                 errors.append(f"{target_file}: {e}")
             continue
@@ -203,17 +257,23 @@ def apply_patch_plan(
                 result = _try_split_module_chain(path, target_file, params)
                 if result is not None:
                     new_rel_path, new_content, modified_original = result
-                    new_path = root / new_rel_path
-                    if new_path.exists():
-                        _skip("split_module: extracted file exists")
+                    backup_dir, changed = _write_extracted_and_original(
+                        root,
+                        path,
+                        target_file,
+                        new_rel_path,
+                        new_content,
+                        modified_original,
+                        run_id,
+                        backup_dir,
+                        do_backup,
+                        "split_module: extracted file exists",
+                        _skip,
+                    )
+                    if changed:
+                        modified.append(target_file)
+                        modified.append(new_rel_path)
                         continue
-                    backup_dir = _backup_file(root, path, target_file, run_id, backup_dir, do_backup)
-                    new_path.parent.mkdir(parents=True, exist_ok=True)
-                    new_path.write_text(new_content, encoding="utf-8")
-                    path.write_text(modified_original, encoding="utf-8")
-                    modified.append(target_file)
-                    modified.append(new_rel_path)
-                    continue
                 # result is None: no extractable defs, fall through to append diff (TODO hint)
             except Exception as e:
                 errors.append(f"{target_file}: {e}")
@@ -275,9 +335,11 @@ def apply_patch_plan(
                 if new_content is None:
                     _skip("extract_nested_function: extraction failed")
                     continue
-                backup_dir = _backup_file(root, path, target_file, run_id, backup_dir, do_backup)
-                path.write_text(new_content, encoding="utf-8")
-                modified.append(target_file)
+                backup_dir, changed = _write_single_file_change(
+                    root, path, target_file, new_content, run_id, backup_dir, do_backup
+                )
+                if changed:
+                    modified.append(target_file)
             except Exception as e:
                 errors.append(f"{target_file}: {e}")
             continue
@@ -295,16 +357,22 @@ def apply_patch_plan(
                     _skip("extract_class: extraction failed")
                     continue
                 new_rel_path, new_content, modified_original = result
-                new_path = root / new_rel_path
-                if new_path.exists():
-                    _skip("extract_class: extracted file exists")
-                    continue
-                backup_dir = _backup_file(root, path, target_file, run_id, backup_dir, do_backup)
-                new_path.parent.mkdir(parents=True, exist_ok=True)
-                new_path.write_text(new_content, encoding="utf-8")
-                path.write_text(modified_original, encoding="utf-8")
-                modified.append(target_file)
-                modified.append(new_rel_path)
+                backup_dir, changed = _write_extracted_and_original(
+                    root,
+                    path,
+                    target_file,
+                    new_rel_path,
+                    new_content,
+                    modified_original,
+                    run_id,
+                    backup_dir,
+                    do_backup,
+                    "extract_class: extracted file exists",
+                    _skip,
+                )
+                if changed:
+                    modified.append(target_file)
+                    modified.append(new_rel_path)
             except Exception as e:
                 errors.append(f"{target_file}: {e}")
             continue
@@ -325,12 +393,14 @@ def apply_patch_plan(
                 continue
 
         try:
-            backup_dir = _backup_file(root, path, target_file, run_id, backup_dir, do_backup)
             suffix = "\n" + diff
             if not content.endswith("\n"):
                 suffix = "\n" + suffix
-            path.write_text(content + suffix, encoding="utf-8")
-            modified.append(target_file)
+            backup_dir, changed = _write_single_file_change(
+                root, path, target_file, content + suffix, run_id, backup_dir, do_backup
+            )
+            if changed:
+                modified.append(target_file)
         except Exception as e:
             errors.append(f"{target_file}: {e}")
 
