@@ -170,6 +170,50 @@ def _print_module_operations(path: Path, target: str, window: int) -> None:
         print(f'- [{kind}] {desc}')
 
 
+def _collect_module_explain_context(snapshot: Any, target: str) -> tuple[int, int, bool, list[Any], list[str]]:
+    """Collect fan metrics, central flag, smells and summary risks for target module."""
+    graph = snapshot.graph
+    summary = snapshot.summary or {}
+    fan = graph.fan_in_out()
+    fi, fo = fan.get(target, (0, 0))
+    central = {c['name'] for c in summary.get('central_modules') or []}
+    is_central = target in central
+    module_smells = [s for s in snapshot.smells if target in s.nodes]
+    risks = summary.get('risks') or []
+    module_risks = [r for r in risks if target in r]
+    return fi, fo, is_central, module_smells, module_risks
+
+
+def _print_module_role(fi: int, fo: int, is_central: bool) -> None:
+    """Print role section for explain command."""
+    print('Role:')
+    print(f'- fan-in : {fi}')
+    print(f'- fan-out: {fo}')
+    print(f"- central: {('yes' if is_central else 'no')}")
+
+
+def _print_module_smells(module_smells: list[Any]) -> None:
+    """Print smells section for explain command."""
+    print('Smells:')
+    if not module_smells:
+        print('- none detected for this module')
+        return
+    for smell in module_smells:
+        level = severity_to_level(smell.severity)
+        print(f'- [{smell.type}] ({level}) severity={smell.severity:.2f} — {smell.description}')
+        print(f'  → {get_remediation_hint(smell.type)}')
+
+
+def _print_module_risks(module_risks: list[str]) -> None:
+    """Print summary risk lines for explain command."""
+    print('Risks (from summary):')
+    if not module_risks:
+        print('- none highlighted in summary')
+        return
+    for risk in module_risks:
+        print(f'- {risk}')
+
+
 def handle_explain(args: Any) -> int:
     """Explain role and risks of a given module."""
     module_arg = getattr(args, 'module', None)
@@ -184,10 +228,7 @@ def handle_explain(args: Any) -> int:
     except Exception as exc:
         _err(f'failed to build snapshot: {exc}')
         return 1
-    graph = snapshot.graph
-    smells = snapshot.smells
-    summary = snapshot.summary or {}
-    nodes = list(graph.nodes)
+    nodes = list(snapshot.graph.nodes)
     target, resolve_error = _resolve_target_module(module_arg, path, nodes)
     if resolve_error:
         _err(resolve_error)
@@ -195,35 +236,14 @@ def handle_explain(args: Any) -> int:
     if not target:
         _err(f"module '{module_arg}' not in graph")
         return 1
-    fan = graph.fan_in_out()
-    fi, fo = fan.get(target, (0, 0))
-    central = {c['name'] for c in summary.get('central_modules') or []}
-    is_central = target in central
-    module_smells = [s for s in smells if target in s.nodes]
-    risks = summary.get('risks') or []
-    module_risks = [r for r in risks if target in r]
+    fi, fo, is_central, module_smells, module_risks = _collect_module_explain_context(snapshot, target)
     print(f'MODULE EXPLANATION: {target}')
     print()
-    print('Role:')
-    print(f'- fan-in : {fi}')
-    print(f'- fan-out: {fo}')
-    print(f"- central: {('yes' if is_central else 'no')}")
+    _print_module_role(fi, fo, is_central)
     print()
-    print('Smells:')
-    if not module_smells:
-        print('- none detected for this module')
-    else:
-        for s in module_smells:
-            level = severity_to_level(s.severity)
-            print(f'- [{s.type}] ({level}) severity={s.severity:.2f} — {s.description}')
-            print(f'  → {get_remediation_hint(s.type)}')
+    _print_module_smells(module_smells)
     print()
-    print('Risks (from summary):')
-    if not module_risks:
-        print('- none highlighted in summary')
-    else:
-        for r in module_risks:
-            print(f'- {r}')
+    _print_module_risks(module_risks)
     _print_module_operations(path, target, getattr(args, 'window', 5))
     return 0
 
@@ -425,5 +445,3 @@ def handle_serve(args: Any) -> int:
     run_server(host=args.host, port=args.port, project_root=args.path)
     return 0
 
-
-# TODO (eurika): refactor long_function 'handle_explain' — consider extracting helper
