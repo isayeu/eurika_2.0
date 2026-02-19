@@ -10,6 +10,7 @@ v0.4: graph optional — when ProjectGraph is provided, uses graph_ops
 for concrete hints (cycle break edge, facade candidates, split hints).
 """
 from __future__ import annotations
+import os
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
@@ -92,6 +93,19 @@ def _success_rate_for_op(op: PatchOperation, learning_stats: Optional[Dict[str, 
     if total < 1:
         return 0.0
     return (d.get('success', 0) or 0) / total
+
+
+def _disabled_smell_actions_from_env() -> set[str]:
+    """
+    Parse disabled smell-action pairs from env.
+
+    Format:
+      EURIKA_DISABLE_SMELL_ACTIONS="hub|split_module,long_function|extract_nested_function"
+    """
+    raw = os.environ.get("EURIKA_DISABLE_SMELL_ACTIONS", "").strip()
+    if not raw:
+        return set()
+    return {item.strip() for item in raw.split(",") if item.strip() and SMELL_ACTION_SEP in item}
 
 def build_patch_plan(project_root: str, summary: Dict[str, Any], smells: List[ArchSmell], history_info: Dict[str, Any], priorities: List[Dict[str, Any]], learning_stats: Optional[Dict[str, Dict[str, Any]]]=None, graph: Optional['ProjectGraph']=None, self_map: Optional[Dict[str, Any]]=None) -> PatchPlan:
     """
@@ -183,6 +197,12 @@ def build_patch_plan(project_root: str, summary: Dict[str, Any], smells: List[Ar
         operations.append(op)
     MIN_TOTAL_FOR_FILTER = 3
     MIN_SUCCESS_RATE = 0.25
+    disabled_smell_actions = _disabled_smell_actions_from_env()
+    if disabled_smell_actions:
+        operations = [
+            op for op in operations
+            if f"{op.smell_type or 'unknown'}{SMELL_ACTION_SEP}{op.kind}" not in disabled_smell_actions
+        ]
     if learning_stats:
         filtered: List[PatchOperation] = []
         for op in operations:

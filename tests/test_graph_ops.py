@@ -295,11 +295,12 @@ def test_build_patch_plan_with_graph_includes_graph_hints():
     assert "callers" in diff.lower() or "facade" in diff.lower()
 
 
-def test_build_patch_plan_hub_produces_split_module():
+def test_build_patch_plan_hub_produces_split_module(monkeypatch):
     """ROADMAP 3.1.2: hub smell triggers split_module (not refactor_module)."""
     from architecture_planner import build_patch_plan
     from eurika.smells.models import ArchSmell
 
+    monkeypatch.delenv("EURIKA_DISABLE_SMELL_ACTIONS", raising=False)
     g = _make_graph(["hub_node", "a", "b"], {"hub_node": ["a", "b"], "a": [], "b": []})
     smells = [ArchSmell(type="hub", nodes=["hub_node"], severity=5.0, description="High fan-out")]
     summary = {"risks": []}
@@ -415,3 +416,29 @@ def test_build_patch_plan_filters_low_success_rate_ops(tmp_path: Path) -> None:
     # All split_module ops should be filtered (0% success)
     split_ops = [o for o in plan.operations if o.kind == "split_module"]
     assert len(split_ops) == 0, "low success_rate ops should be excluded"
+
+
+def test_build_patch_plan_disables_smell_action_from_env(monkeypatch) -> None:
+    """EURIKA_DISABLE_SMELL_ACTIONS can disable hub|split_module planning ops."""
+    from architecture_planner import build_patch_plan
+    from eurika.smells.models import ArchSmell
+
+    g = _make_graph(["hub_node", "a", "b"], {"hub_node": ["a", "b"], "a": [], "b": []})
+    smells = [ArchSmell(type="hub", nodes=["hub_node"], severity=5.0, description="High fan-out")]
+    summary = {"risks": []}
+    history_info = {"trends": {}}
+    priorities = [{"name": "hub_node", "reasons": ["hub"]}]
+
+    monkeypatch.setenv("EURIKA_DISABLE_SMELL_ACTIONS", "hub|split_module")
+    plan = build_patch_plan(
+        project_root="/tmp",
+        summary=summary,
+        smells=smells,
+        history_info=history_info,
+        priorities=priorities,
+        graph=g,
+    )
+    assert not any(
+        (o.smell_type == "hub" and o.kind == "split_module")
+        for o in plan.operations
+    )

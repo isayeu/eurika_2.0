@@ -92,3 +92,35 @@ def test_get_code_smell_operations_returns_ops_for_long_function(tmp_path: Path)
     long_ops = [o for o in ops if o.get("kind") == "refactor_code_smell" and o.get("target_file") == "big.py"]
     assert len(long_ops) >= 1
     assert any(o.get("smell_type") == "long_function" and o.get("params", {}).get("location") == "long_foo" for o in long_ops)
+
+
+def test_get_code_smell_operations_skips_extract_nested_on_failed_learning(tmp_path: Path) -> None:
+    """When long_function|extract_nested_function history is 0-success, fallback to refactor_code_smell."""
+    lines = "\n".join(("    x = 1" for _ in range(48)))
+    content = (
+        "def long_foo():\n"
+        "    def helper():\n"
+        "        return 42\n"
+        f"{lines}\n"
+        "    return helper() + x\n"
+    )
+    (tmp_path / "big.py").write_text(content, encoding="utf-8")
+
+    # Prime learning store with 0/1 for long_function|extract_nested_function.
+    from eurika.storage import ProjectMemory
+
+    memory = ProjectMemory(tmp_path)
+    memory.learning.append(
+        project_root=tmp_path,
+        modules=["big.py"],
+        operations=[{"kind": "extract_nested_function", "smell_type": "long_function"}],
+        risks=[],
+        verify_success=False,
+    )
+
+    ops = get_code_smell_operations(tmp_path)
+    assert any(
+        o.get("kind") == "refactor_code_smell" and o.get("smell_type") == "long_function"
+        for o in ops
+    )
+    assert not any(o.get("kind") == "extract_nested_function" for o in ops)
