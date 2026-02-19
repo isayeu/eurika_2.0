@@ -32,3 +32,7 @@ eurika_patch_plan.json
 eurika_knowledge.json
 architecture_actions_log.jsonl
 sandbox_actions.log
+
+# Local LLM runtime artifacts
+.local-ollama/
+.ollama/
