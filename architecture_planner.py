@@ -277,6 +277,32 @@ def _should_emit_default_todo_op(project_root: str, target_file: str, kind: str,
     return True
 
 
+def _fallback_kind_for_low_success(smell_type: str, action_kind: str) -> Optional[str]:
+    """Return safer fallback action for low-success smell/action pairs."""
+    fallbacks = {
+        ("hub", "split_module"): "refactor_module",
+    }
+    return fallbacks.get((smell_type, action_kind))
+
+
+def _rebuild_operation_with_kind(op: PatchOperation, new_kind: str) -> PatchOperation:
+    """Rebuild operation with a different kind and matching diff hints."""
+    smell_type = op.smell_type or "unknown"
+    hints = _diff_hints_for(smell_type, new_kind)
+    hint_lines = "\n".join((f"# - {h}" for h in hints))
+    diff_hint = f"# TODO: Refactor {op.target_file} ({smell_type} -> {new_kind})\n# Suggested steps:\n{hint_lines}\n"
+    # split-module specific params are not applicable to generic fallback actions.
+    params = op.params if new_kind not in ("refactor_module", "refactor_code_smell") else None
+    return PatchOperation(
+        target_file=op.target_file,
+        kind=new_kind,
+        description=op.description,
+        diff=diff_hint,
+        smell_type=op.smell_type,
+        params=params,
+    )
+
+
 def _apply_smell_action_filters(
     project_root: str,
     operations: List[PatchOperation],
@@ -289,13 +315,13 @@ def _apply_smell_action_filters(
         op for op in operations
         if _should_emit_default_todo_op(project_root, op.target_file, op.kind, op.diff)
     ]
-    disabled_smell_actions = _disabled_smell_actions_from_env()
-    if disabled_smell_actions:
-        operations = [
-            op for op in operations
-            if f"{op.smell_type or 'unknown'}{SMELL_ACTION_SEP}{op.kind}" not in disabled_smell_actions
-        ]
     if not learning_stats:
+        disabled_smell_actions = _disabled_smell_actions_from_env()
+        if disabled_smell_actions:
+            operations = [
+                op for op in operations
+                if f"{op.smell_type or 'unknown'}{SMELL_ACTION_SEP}{op.kind}" not in disabled_smell_actions
+            ]
         return operations
     filtered: List[PatchOperation] = []
     for op in operations:
@@ -305,8 +331,18 @@ def _apply_smell_action_filters(
         if total >= MIN_TOTAL_FOR_FILTER:
             rate = (d.get('success', 0) or 0) / total
             if rate < MIN_SUCCESS_RATE:
-                continue
+                fallback = _fallback_kind_for_low_success(op.smell_type or "unknown", op.kind)
+                if fallback:
+                    op = _rebuild_operation_with_kind(op, fallback)
+                else:
+                    continue
         filtered.append(op)
+    disabled_smell_actions = _disabled_smell_actions_from_env()
+    if disabled_smell_actions:
+        filtered = [
+            op for op in filtered
+            if f"{op.smell_type or 'unknown'}{SMELL_ACTION_SEP}{op.kind}" not in disabled_smell_actions
+        ]
     return filtered
 
 

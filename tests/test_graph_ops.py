@@ -442,3 +442,30 @@ def test_build_patch_plan_disables_smell_action_from_env(monkeypatch) -> None:
         (o.smell_type == "hub" and o.kind == "split_module")
         for o in plan.operations
     )
+
+
+def test_build_patch_plan_fallbacks_hub_split_module_on_low_success(tmp_path: Path) -> None:
+    """Low-success hub|split_module falls back to refactor_module (safer action)."""
+    from architecture_planner import build_patch_plan
+    from eurika.smells.models import ArchSmell
+
+    g = _make_graph(["hub_node", "a", "b"], {"hub_node": ["a", "b"], "a": [], "b": []})
+    smells = [ArchSmell(type="hub", nodes=["hub_node"], severity=5.0, description="High fan-out")]
+    summary = {"risks": []}
+    history_info = {"trends": {}}
+    priorities = [{"name": "hub_node", "reasons": ["hub"]}]
+    learning_stats = {
+        "hub|split_module": {"total": 3, "success": 0, "fail": 3},
+    }
+
+    plan = build_patch_plan(
+        project_root=str(tmp_path),
+        summary=summary,
+        smells=smells,
+        history_info=history_info,
+        priorities=priorities,
+        graph=g,
+        learning_stats=learning_stats,
+    )
+    assert any((o.smell_type == "hub" and o.kind == "refactor_module") for o in plan.operations)
+    assert not any((o.smell_type == "hub" and o.kind == "split_module") for o in plan.operations)
