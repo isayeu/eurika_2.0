@@ -273,6 +273,31 @@ def _call_llm_architect(client: Any, model: str, prompt: str) -> tuple[str | Non
         return None, str(e)
 
 
+def _call_ollama_cli(model: str, prompt: str) -> tuple[str | None, str | None]:
+    """Fallback path via local `ollama run` CLI when HTTP endpoints are unavailable."""
+    import subprocess
+
+    try:
+        r = subprocess.run(
+            ["ollama", "run", model, prompt],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+    except FileNotFoundError:
+        return None, "ollama CLI not found in PATH"
+    except Exception as e:  # pragma: no cover - defensive
+        return None, str(e)
+    if r.returncode != 0:
+        reason = (r.stderr or r.stdout or "").strip() or f"ollama exited with code {r.returncode}"
+        return None, reason
+    text = (r.stdout or "").strip()
+    if not text:
+        return None, "empty ollama CLI response"
+    return text, None
+
+
 def _llm_interpret(
     summary: Dict[str, Any],
     history: Dict[str, Any],
@@ -308,9 +333,14 @@ def _llm_interpret(
         if fallback_text:
             return fallback_text, None
         fallback_reason = fallback_call_reason
+    cli_model = fallback_model or "qwen2.5:1.5b"
+    cli_text, cli_reason = _call_ollama_cli(cli_model, prompt)
+    if cli_text:
+        return cli_text, None
     return None, (
         f"primary LLM failed ({primary_reason or 'unknown'}); "
-        f"ollama fallback failed ({fallback_reason or 'unknown'})"
+        f"ollama HTTP fallback failed ({fallback_reason or 'unknown'}); "
+        f"ollama CLI fallback failed ({cli_reason or 'unknown'})"
     )
 
 

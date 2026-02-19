@@ -116,3 +116,18 @@
   - `pytest -q tests/test_architect.py tests/test_cycle.py` → `22 passed`.
 - Контрольный `eurika cycle .` после фикса тестов: `verify=true`, `189 passed`.
 - Operational note: если в shell уже экспортированы `OPENAI_*`, они имеют приоритет над `.env` (из-за `load_dotenv(..., override=False)`), поэтому для принудительного локального сценария нужен `unset OPENAI_API_KEY OPENAI_MODEL OPENAI_BASE_URL`.
+
+---
+
+## 8. Контрольный прогон (после env-priority и no-op prefilter)
+
+- `eurika doctor .`:
+  - system: `modules=140`, `dependencies=92`, `cycles=0`
+  - risk score: `43/100` (было 46)
+  - trends: `complexity=increasing`, `smells=stable`, `centralization=stable`
+  - patch_plan: `operations=[]`
+- `eurika fix . --no-code-smells --quiet`:
+  - `{"message":"Patch plan has no operations. Cycle complete."}`
+- LLM в данном runtime окружении агента: не достигнут ни primary, ни fallback
+  (`primary LLM failed (Connection error.); ollama fallback failed (Connection error.)`).
+  В пользовательском терминале локальный Ollama ранее подтверждён рабочим (`doctor` с содержательным LLM-ответом).

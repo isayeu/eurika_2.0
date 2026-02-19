@@ -156,9 +156,42 @@ def test_llm_interpret_reports_both_primary_and_fallback_errors() -> None:
             "eurika.reasoning.architect._call_llm_architect",
             side_effect=[(None, "primary down"), (None, "ollama down")],
         ),
+        patch(
+            "eurika.reasoning.architect._call_ollama_cli",
+            return_value=(None, "cli down"),
+        ),
     ):
         text, reason = _llm_interpret(summary, history)
     assert text is None
     assert reason is not None
     assert "primary LLM failed" in reason
-    assert "ollama fallback failed" in reason
+    assert "ollama HTTP fallback failed" in reason
+    assert "ollama CLI fallback failed" in reason
+
+
+def test_llm_interpret_falls_back_to_ollama_cli_on_http_errors() -> None:
+    """If both HTTP providers fail, local ollama CLI result should be used."""
+    summary = {"system": {"modules": 1, "dependencies": 0, "cycles": 0}, "maturity": "low"}
+    history = {"trends": {}, "regressions": []}
+    with (
+        patch(
+            "eurika.reasoning.architect._init_primary_openai_client",
+            return_value=(object(), "primary-model", None),
+        ),
+        patch(
+            "eurika.reasoning.architect._init_ollama_fallback_client",
+            return_value=(object(), "ollama-model", None),
+        ),
+        patch(
+            "eurika.reasoning.architect._call_llm_architect",
+            side_effect=[(None, "primary down"), (None, "ollama http down")],
+        ),
+        patch(
+            "eurika.reasoning.architect._call_ollama_cli",
+            return_value=("cli fallback ok", None),
+        ) as call_cli,
+    ):
+        text, reason = _llm_interpret(summary, history)
+    assert text == "cli fallback ok"
+    assert reason is None
+    call_cli.assert_called_once()
