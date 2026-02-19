@@ -17,21 +17,63 @@ v0.4: extract_class — when op.kind is extract_class and params has target_clas
 v0.5: introduce_facade — when op.kind is introduce_facade, creates {stem}_api.py re-exporting public symbols.
 and methods_to_extract, uses AST to extract methods (that don't use self) into
 a new class in a new file.
+v0.6: refactor_code_smell — when op.kind is refactor_code_smell (long_function, deep_nesting),
+appends TODO comment via default append-diff path.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 from eurika.refactor.remove_import import remove_import_from_file
 from eurika.refactor.remove_unused_import import remove_unused_imports
-from eurika.refactor.split_module import split_module_by_import, split_module_by_class, split_module_by_function
+from eurika.refactor.split_module import (
+    split_module_by_class,
+    split_module_by_function,
+    split_module_by_import,
+)
 from eurika.refactor.extract_class import extract_class
+from eurika.refactor.extract_function import extract_nested_function
 from eurika.refactor.introduce_facade import introduce_facade
 
 BACKUP_DIR = ".eurika_backups"
+
+
+def _try_split_module_chain(
+    path: Path, target_file: str, params: Dict[str, Any]
+) -> Optional[Tuple[str, str, str]]:
+    """Try split_module_by_import → by_class → by_function. Returns (new_rel_path, new_content, modified_original) or None."""
+    result = split_module_by_import(
+        path,
+        params.get("imports_from") or [],
+        extracted_module_stem="_extracted",
+        target_file=target_file,
+    )
+    if result is None:
+        result = split_module_by_class(path, target_file=target_file, min_class_size=3)
+    if result is None:
+        result = split_module_by_function(path, target_file=target_file, min_statements=1)
+    return result
+
+
+def _backup_file(
+    root: Path,
+    path: Path,
+    target_file: str,
+    run_id: str,
+    backup_dir: str | None,
+    do_backup: bool,
+) -> str | None:
+    """Copy path to .eurika_backups/run_id/target_file if do_backup. Returns backup_dir."""
+    if not do_backup:
+        return backup_dir
+    backup_root = root / BACKUP_DIR / run_id
+    backup_path = backup_root / target_file
+    backup_path.parent.mkdir(parents=True, exist_ok=True)
+    backup_path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    return str(backup_root) if backup_dir is None else backup_dir
 
 
 def apply_patch_plan(
@@ -60,6 +102,7 @@ def apply_patch_plan(
     root = Path(project_root).resolve()
     modified: List[str] = []
     skipped: List[str] = []
+    skipped_reasons: Dict[str, str] = {}
     errors: List[str] = []
     backup_dir: str | None = None
     run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -79,10 +122,14 @@ def apply_patch_plan(
 
         path = root / target_file
 
+        def _skip(reason: str) -> None:
+            skipped.append(target_file)
+            skipped_reasons[target_file] = reason
+
         # create_module_stub: create new file (path may not exist)
         if kind == "create_module_stub" and content:
             if path.exists():
-                skipped.append(target_file)
+                _skip("create_module_stub: path exists")
                 continue
             if dry_run:
                 modified.append(target_file)
@@ -98,19 +145,13 @@ def apply_patch_plan(
         # fix_import: replace line in existing file
         if kind == "fix_import" and diff:
             if not path.exists() or not path.is_file():
-                skipped.append(target_file)
+                _skip("fix_import: path missing or not file")
                 continue
             if dry_run:
                 modified.append(target_file)
                 continue
             try:
-                if do_backup:
-                    backup_root = root / BACKUP_DIR / run_id
-                    backup_path = backup_root / target_file
-                    backup_path.parent.mkdir(parents=True, exist_ok=True)
-                    backup_path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-                    if backup_dir is None:
-                        backup_dir = str(backup_root)
+                backup_dir = _backup_file(root, path, target_file, run_id, backup_dir, do_backup)
                 path.write_text(diff, encoding="utf-8")
                 modified.append(target_file)
             except Exception as e:
@@ -118,10 +159,10 @@ def apply_patch_plan(
             continue
 
         if not path.exists():
-            skipped.append(target_file)
+            _skip("path not found")
             continue
         if not path.is_file():
-            skipped.append(target_file)
+            _skip("path not a file")
             continue
 
         if dry_run:
@@ -133,15 +174,9 @@ def apply_patch_plan(
             try:
                 new_content = remove_unused_imports(path)
                 if new_content is None:
-                    skipped.append(target_file)
+                    _skip("remove_unused_import: no unused imports")
                     continue
-                if do_backup:
-                    backup_root = root / BACKUP_DIR / run_id
-                    backup_path = backup_root / target_file
-                    backup_path.parent.mkdir(parents=True, exist_ok=True)
-                    backup_path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-                    if backup_dir is None:
-                        backup_dir = str(backup_root)
+                backup_dir = _backup_file(root, path, target_file, run_id, backup_dir, do_backup)
                 path.write_text(new_content, encoding="utf-8")
                 modified.append(target_file)
             except Exception as e:
@@ -153,15 +188,9 @@ def apply_patch_plan(
             try:
                 new_content = remove_import_from_file(path, params["target_module"])
                 if new_content is None:
-                    skipped.append(target_file)
+                    _skip("remove_cyclic_import: import not found")
                     continue
-                if do_backup:
-                    backup_root = root / BACKUP_DIR / run_id
-                    backup_path = backup_root / target_file
-                    backup_path.parent.mkdir(parents=True, exist_ok=True)
-                    backup_path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-                    if backup_dir is None:
-                        backup_dir = str(backup_root)
+                backup_dir = _backup_file(root, path, target_file, run_id, backup_dir, do_backup)
                 path.write_text(new_content, encoding="utf-8")
                 modified.append(target_file)
             except Exception as e:
@@ -171,37 +200,14 @@ def apply_patch_plan(
         # split_module: AST-based extraction (import-based or class-based fallback)
         if kind == "split_module":
             try:
-                result = split_module_by_import(
-                    path,
-                    params.get("imports_from") or [],
-                    extracted_module_stem="_extracted",
-                    target_file=target_file,
-                )
-                if result is None:
-                    result = split_module_by_class(
-                        path,
-                        target_file=target_file,
-                        min_class_size=3,
-                    )
-                if result is None:
-                    result = split_module_by_function(
-                        path,
-                        target_file=target_file,
-                        min_statements=1,
-                    )
+                result = _try_split_module_chain(path, target_file, params)
                 if result is not None:
                     new_rel_path, new_content, modified_original = result
                     new_path = root / new_rel_path
                     if new_path.exists():
-                        skipped.append(target_file)
+                        _skip("split_module: extracted file exists")
                         continue
-                    if do_backup:
-                        backup_root = root / BACKUP_DIR / run_id
-                        backup_path = backup_root / target_file
-                        backup_path.parent.mkdir(parents=True, exist_ok=True)
-                        backup_path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-                        if backup_dir is None:
-                            backup_dir = str(backup_root)
+                    backup_dir = _backup_file(root, path, target_file, run_id, backup_dir, do_backup)
                     new_path.parent.mkdir(parents=True, exist_ok=True)
                     new_path.write_text(new_content, encoding="utf-8")
                     path.write_text(modified_original, encoding="utf-8")
@@ -222,12 +228,12 @@ def apply_patch_plan(
                     callers=params.get("callers"),
                 )
                 if result is None:
-                    skipped.append(target_file)
+                    _skip("introduce_facade: no facade created")
                     continue
                 new_rel_path, new_content = result
                 new_path = root / new_rel_path
                 if new_path.exists():
-                    skipped.append(target_file)
+                    _skip("introduce_facade: facade file exists")
                     continue
                 # No backup: we only create new file, do not modify bottleneck
                 new_path.parent.mkdir(parents=True, exist_ok=True)
@@ -240,37 +246,14 @@ def apply_patch_plan(
         # refactor_module: try split_module chain (ROADMAP: real fix instead of TODO)
         if kind == "refactor_module":
             try:
-                result = split_module_by_import(
-                    path,
-                    params.get("imports_from") or [],
-                    extracted_module_stem="_extracted",
-                    target_file=target_file,
-                )
-                if result is None:
-                    result = split_module_by_class(
-                        path,
-                        target_file=target_file,
-                        min_class_size=3,
-                    )
-                if result is None:
-                    result = split_module_by_function(
-                        path,
-                        target_file=target_file,
-                        min_statements=1,
-                    )
+                result = _try_split_module_chain(path, target_file, params)
                 if result is not None:
                     new_rel_path, new_content, modified_original = result
                     new_path = root / new_rel_path
                     if new_path.exists():
-                        skipped.append(target_file)
+                        _skip("refactor_module: extracted file exists")
                         continue
-                    if do_backup:
-                        backup_root = root / BACKUP_DIR / run_id
-                        backup_path = backup_root / target_file
-                        backup_path.parent.mkdir(parents=True, exist_ok=True)
-                        backup_path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-                        if backup_dir is None:
-                            backup_dir = str(backup_root)
+                    backup_dir = _backup_file(root, path, target_file, run_id, backup_dir, do_backup)
                     new_path.parent.mkdir(parents=True, exist_ok=True)
                     new_path.write_text(new_content, encoding="utf-8")
                     path.write_text(modified_original, encoding="utf-8")
@@ -280,6 +263,24 @@ def apply_patch_plan(
             except Exception as e:
                 errors.append(f"{target_file}: {e}")
                 continue
+
+        # extract_nested_function: move nested function to module level (long_function smell)
+        if kind == "extract_nested_function" and params.get("location") and params.get("nested_function_name"):
+            try:
+                new_content = extract_nested_function(
+                    path,
+                    params["location"],
+                    params["nested_function_name"],
+                )
+                if new_content is None:
+                    _skip("extract_nested_function: extraction failed")
+                    continue
+                backup_dir = _backup_file(root, path, target_file, run_id, backup_dir, do_backup)
+                path.write_text(new_content, encoding="utf-8")
+                modified.append(target_file)
+            except Exception as e:
+                errors.append(f"{target_file}: {e}")
+            continue
 
         # extract_class: AST-based method extraction
         if kind == "extract_class" and params.get("target_class") and params.get("methods_to_extract"):
@@ -291,20 +292,14 @@ def apply_patch_plan(
                     target_file=target_file,
                 )
                 if result is None:
-                    skipped.append(target_file)
+                    _skip("extract_class: extraction failed")
                     continue
                 new_rel_path, new_content, modified_original = result
                 new_path = root / new_rel_path
                 if new_path.exists():
-                    skipped.append(target_file)
+                    _skip("extract_class: extracted file exists")
                     continue
-                if do_backup:
-                    backup_root = root / BACKUP_DIR / run_id
-                    backup_path = backup_root / target_file
-                    backup_path.parent.mkdir(parents=True, exist_ok=True)
-                    backup_path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-                    if backup_dir is None:
-                        backup_dir = str(backup_root)
+                backup_dir = _backup_file(root, path, target_file, run_id, backup_dir, do_backup)
                 new_path.parent.mkdir(parents=True, exist_ok=True)
                 new_path.write_text(new_content, encoding="utf-8")
                 path.write_text(modified_original, encoding="utf-8")
@@ -318,23 +313,19 @@ def apply_patch_plan(
         content = path.read_text(encoding="utf-8")
         # Skip if exact diff already present
         if diff.strip() and diff.strip() in content:
-            skipped.append(target_file)
+            _skip("diff already in content")
             continue
-        # Skip if eurika TODO for this target already exists (prevents duplicates when diff varies)
-        marker = f"# TODO: Refactor {target_file}"
-        if marker in content:
-            skipped.append(target_file)
-            continue
+        # For architectural ops (refactor_module, split_module): skip if file already has
+        # "TODO: Refactor {target}" — prevents duplicate god_module TODOs. refactor_code_smell
+        # uses different format (# TODO (eurika): refactor long_function...) and may add multiple.
+        if kind in ("refactor_module", "split_module"):
+            marker = f"# TODO: Refactor {target_file}"
+            if marker in content:
+                _skip("architectural TODO already present")
+                continue
 
         try:
-            if do_backup:
-                backup_root = root / BACKUP_DIR / run_id
-                backup_path = backup_root / target_file
-                backup_path.parent.mkdir(parents=True, exist_ok=True)
-                backup_path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-                if backup_dir is None:
-                    backup_dir = str(backup_root)
-
+            backup_dir = _backup_file(root, path, target_file, run_id, backup_dir, do_backup)
             suffix = "\n" + diff
             if not content.endswith("\n"):
                 suffix = "\n" + suffix
@@ -350,6 +341,7 @@ def apply_patch_plan(
         "dry_run": dry_run,
         "modified": modified_unique,
         "skipped": skipped,
+        "skipped_reasons": skipped_reasons,
         "errors": errors,
         "backup_dir": backup_dir,
         "run_id": run_id if do_backup and backup_dir else None,
@@ -417,42 +409,10 @@ def restore_backup(
 
     return {"restored": restored, "errors": errors, "run_id": run_id}
 
-# TODO: Refactor patch_apply.py (god_module -> refactor_module)
-# Suggested steps:
-# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
-# - Identify distinct concerns and split this module into focused units.
-# - Reduce total degree (fan-in + fan-out) via extraction.
-# - Consider grouping callers: eurika/reasoning/planner.py, cli/agent_handlers.py, patch_engine.py.
-# - Introduce facade for callers: patch_engine.py, cli/agent_handlers.py, eurika/reasoning/planner.py....
+# TODO (eurika): refactor god_module patch_apply — extract handlers, introduce facade.
 
-# TODO: Refactor patch_apply.py (god_module -> refactor_module)
-# Suggested steps:
-# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
-# - Identify distinct concerns and split this module into focused units.
-# - Reduce total degree (fan-in + fan-out) via extraction.
-# - Consider grouping callers: patch_engine.py, eurika/reasoning/planner.py, cli/agent_handlers.py.
-# - Introduce facade for callers: patch_engine.py, cli/agent_handlers.py, eurika/reasoning/planner.py....
 
-# TODO: Refactor patch_apply.py (god_module -> refactor_module)
-# Suggested steps:
-# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
-# - Identify distinct concerns and split this module into focused units.
-# - Reduce total degree (fan-in + fan-out) via extraction.
-# - Consider grouping callers: eurika/reasoning/planner.py, tests/test_patch_apply_remove_import.py, cli/agent_handlers.py.
-# - Introduce facade for callers: patch_engine.py, cli/agent_handlers.py, eurika/reasoning/planner.py....
+# TODO (eurika): refactor long_function 'apply_patch_plan' — consider extracting helper
 
-# TODO: Refactor patch_apply.py (god_module -> refactor_module)
-# Suggested steps:
-# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
-# - Identify distinct concerns and split this module into focused units.
-# - Reduce total degree (fan-in + fan-out) via extraction.
-# - Consider grouping callers: patch_engine.py, cli/agent_handlers.py, tests/test_patch_apply.py.
-# - Introduce facade for callers: patch_engine.py, cli/agent_handlers.py, eurika/reasoning/planner.py....
 
-# TODO: Refactor patch_apply.py (god_module -> refactor_module)
-# Suggested steps:
-# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
-# - Identify distinct concerns and split this module into focused units.
-# - Reduce total degree (fan-in + fan-out) via extraction.
-# - Consider grouping callers: tests/test_patch_apply.py, patch_engine.py, eurika/reasoning/planner.py.
-# - Introduce facade for callers: patch_engine.py, cli/agent_handlers.py, eurika/reasoning/planner.py....
+# TODO (eurika): refactor deep_nesting 'apply_patch_plan' — consider extracting nested block
