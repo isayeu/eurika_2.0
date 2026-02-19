@@ -210,6 +210,7 @@ def _should_emit_refactor_smell_op(
     rel_path: str,
     diff: str,
     location: str,
+    smell_type: str,
 ) -> bool:
     """Skip noisy refactor_code_smell ops that are likely no-op."""
     rel_path = rel_path.replace("\\", "/")
@@ -229,6 +230,9 @@ def _should_emit_refactor_smell_op(
         return False
     # Skip duplicate location-targeted TODOs even if wording varies.
     if location and f"'{location}'" in content and "# TODO (eurika): refactor " in content:
+        return False
+    # Keep at most one TODO per smell type per file to avoid TODO churn.
+    if smell_type and f"# TODO (eurika): refactor {smell_type} " in content:
         return False
     return True
 
@@ -258,7 +262,7 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
                     ops.append(_build_extract_nested_op(rel, smell.location, nested_name, line_count))
                     continue
             op = _build_refactor_smell_op(rel, smell)
-            if _should_emit_refactor_smell_op(root, rel, op["diff"], smell.location):
+            if _should_emit_refactor_smell_op(root, rel, op["diff"], smell.location, smell.kind):
                 ops.append(op)
     return ops
 

@@ -153,3 +153,21 @@ def test_get_code_smell_operations_skips_test_files(tmp_path: Path) -> None:
         o.get("kind") == "refactor_code_smell" and o.get("target_file", "").startswith("tests/")
         for o in ops
     )
+
+
+def test_get_code_smell_operations_skips_second_todo_same_smell_type(tmp_path: Path) -> None:
+    """Do not stack multiple long_function TODO markers in the same file."""
+    long_func = (
+        "def long_foo():\n"
+        + "    x = 1\n" * 50
+        + "    return x\n"
+        + "\n# TODO (eurika): refactor long_function 'old_fn' — consider extracting helper\n"
+    )
+    (tmp_path / "big.py").write_text(long_func, encoding="utf-8")
+    ops = get_code_smell_operations(tmp_path)
+    assert not any(
+        o.get("kind") == "refactor_code_smell"
+        and o.get("smell_type") == "long_function"
+        and o.get("target_file") == "big.py"
+        for o in ops
+    )
