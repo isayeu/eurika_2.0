@@ -12,17 +12,19 @@
 
 ---
 
-## Текущее состояние (v2.6.9)
+## Текущее состояние (v2.6.x, актуальная ветка)
 
 **Основная задача:** саморазвитие, анализ и исправление собственного кода, добавление новых функций по запросу. Инструмент применяется в первую очередь к своей кодовой базе (eurika).
 
-**Выполнено (включая 3.1, 3.2, v1.2.15):**
+**Выполнено (включая 3.1, 3.2 и последние рефакторинги цикла):**
 - Всё перечисленное в v0.8–v1.2 (pipeline, Smells 2.0, CLI, self-check, History, Patch Engine, Event Engine)
 - **Фаза 3.1 (граф как движок):** priority_from_graph, SMELL_TYPE_TO_REFACTOR_KIND, metrics_from_graph, targets_from_graph — patch_plan формируется с опорой на граф
 - **Фаза 3.2 (единая модель памяти):** консолидация в `.eurika/` (events.json, history.json, observations.json); learning/feedback — views над EventStore; architect использует recent_events в промпте
 - **eurika cycle [path]:** scan → doctor (report + architect) → fix одной командой. Опции: --window, --dry-run, --quiet, --no-llm, --no-clean-imports, --no-code-smells, --interval
 - **Фаза 2.4:** fix/cycle включают remove_unused_import по умолчанию; опция --no-clean-imports
 - **v2.6.9:** fix/cycle включают refactor_code_smell (long_function, deep_nesting) по умолчанию; опция --no-code-smells
+- **Стабилизация execution-policy:** learning-gate для `long_function|extract_nested_function`, env-policy `EURIKA_DISABLE_SMELL_ACTIONS` (например `hub|split_module`)
+- **Снижение сложности ядра цикла:** декомпозиция `build_patch_plan`, `get_code_smell_operations`, `run_fix_cycle`, `handle_explain` на stage/helper-функции с сохранением поведения
 
 ### Оценка зрелости (по review.md, актуальная версия)
 
@@ -52,13 +54,21 @@
 - **Фокус:** работа над собой — регулярный scan/doctor/fix по кодовой базе Eurika, добавление функций по запросу, багфиксы и актуализация документации.
 - **Стабилизация:** тесты зелёные, доки соответствуют коду.
 - **Фазы 2.2 и 2.3:** выполнены (Knowledge: кэш, наполнение; Orchestrator: run_cycle).
-- **Дальше (по review):** фаза 3.1 (граф как движок), фаза 3.2 (единая модель памяти). Опционально: прогоны на других проектах.
+- **Фазы 3.1 и 3.2:** выполнены (граф как движок; единая модель памяти).
+- **Дальше:** повышать операционность (`fix` с реальными применяемыми изменениями), снижать noisy/unstable операции по learning-метрикам, держать документацию синхронной с кодом.
 
 ---
 
 ## Следующие шаги (горизонт 2)
 
 План прорыва выполнен. Ниже — фазы без жёстких сроков, в приоритете саморазвитие и работа над собственной кодовой базой.
+
+### Активный бэклог (операционность, ближайший фокус)
+
+- [ ] Повысить долю реальных apply в `eurika fix` (уменьшить долю `skipped: diff already in content` за счёт более точных операций)
+- [ ] Пересобрать policy для слабых пар learning (`hub|split_module`, `long_function|extract_nested_function`): фильтрация/понижение приоритета + отдельные безопасные эвристики
+- [ ] Актуализировать артефакты после контрольных прогонов (`eurika_doctor_report.json`, `CYCLE_REPORT.md`) при изменении поведения/метрик
+- [ ] Поддерживать “малые рефакторинги + тесты” для топ-long/deep функций в core CLI/pipeline
 
 ### Фаза 2.1 — Саморазвитие и стабилизация (приоритет 1)
 
