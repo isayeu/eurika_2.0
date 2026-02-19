@@ -106,3 +106,13 @@
 - Разбит `long_function` в `_template_interpret` и `_llm_interpret` на helper-функции.
 - Поведение сохранено: LLM fallback и шаблонная интерпретация без функциональных изменений.
 - Проверка: `pytest -q tests/test_architect.py` → `6 passed`.
+
+---
+
+## 7. LLM Fallback (OpenRouter -> Ollama)
+
+- Добавлена цепочка провайдеров в `architect`: сначала `OPENAI_*` (OpenRouter), при ошибке — локальный Ollama (`OLLAMA_OPENAI_*` или дефолт `http://127.0.0.1:11434/v1`, `qwen2.5:1.5b`).
+- Обновлены тесты на контракт dry-run и fallback-поведение:
+  - `pytest -q tests/test_architect.py tests/test_cycle.py` → `22 passed`.
+- Контрольный `eurika cycle .` после фикса тестов: `verify=true`, `189 passed`.
+- Operational note: если в shell уже экспортированы `OPENAI_*`, они имеют приоритет над `.env` (из-за `load_dotenv(..., override=False)`), поэтому для принудительного локального сценария нужен `unset OPENAI_API_KEY OPENAI_MODEL OPENAI_BASE_URL`.
