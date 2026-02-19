@@ -18,6 +18,9 @@ build/
 *.swp
 *.swo
 
+# Test artifacts
+tests/_tmp_mod.py
+
 # Eurika runtime artifacts
 .eurika/
 .eurika_backups/
