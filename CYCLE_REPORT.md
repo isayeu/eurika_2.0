@@ -1,22 +1,19 @@
-# Отчёт цикла Eurika — 2025-02-19
+# Отчёт цикла Eurika — 2026-02-19
 
-## 1. Fix (eurika_fix_report.json)
+## 1. Fix (`eurika fix . --quiet --no-code-smells`)
 
 | Поле | Значение |
 |------|----------|
 | **modified** | 0 |
-| **skipped** | 41 |
+| **skipped** | 1 |
 | **errors** | 0 |
 | **verify** | success |
-| **tests** | 183 passed in ~32s |
+| **tests** | 187 passed in ~30s |
 
-### Skipped — причины (skipped_reasons)
+### Skipped — причины (`skipped_reasons`)
 
 | Причина | Файлы |
 |---------|-------|
-| diff already in content | cli/agent_handlers.py, cli/core_handlers.py, cli/orchestrator.py, core/pipeline.py, eurika/api/__init__.py, eurika/evolution/diff.py, eurika/reasoning/architect.py, eurika/reasoning/graph_ops.py, eurika/refactor/*, eurika_cli.py, patch_apply.py, patch_engine_apply_and_verify.py |
-| architectural TODO already present | architecture_planner.py, agent_core_arch_review.py |
-| split_module: extracted file exists | agent_core.py, action_plan.py |
 | extract_class: extracted file exists | code_awareness.py |
 
 ### Rescan diff
@@ -28,7 +25,7 @@
 
 ---
 
-## 2. Doctor (eurika_doctor_report.json)
+## 2. Doctor (`eurika_doctor_report.json`)
 
 | Метрика | Значение |
 |---------|----------|
@@ -40,67 +37,66 @@
 
 ### Центральные модули
 
-- project_graph_api.py (fan-in 10, fan-out 1)
 - patch_engine.py (fan-in 6, fan-out 5)
+- project_graph_api.py (fan-in 10, fan-out 1)
 - patch_apply.py (fan-in 10, fan-out 0)
 
 ### Риски
 
 - god_module @ patch_engine.py (severity 11.00), patch_apply.py (10.00), code_awareness.py (9.00), agent_core.py (7.00)
-- bottleneck @ patch_apply.py, agent_core.py
+- bottleneck @ patch_apply.py (10.00)
 
 ### Architect
 
-- **LLM:** OpenRouter (mistralai/mistral-small-3.2-24b-instruct) — рекомендации с учётом контекста (extract_function, recent refactorings).
+- **LLM:** fallback на template (`Connection error` при попытке LLM).
 
 ### Planned refactorings
 
-41 ops (extract_class=1, refactor_code_smell=35, split_module=5); топ: architecture_planner.py, code_awareness.py, agent_core.py.
+- 1 op (`extract_class=1`), top target: `code_awareness.py`.
 
 ---
 
-## 3. Learning (agent learning-summary)
+## 3. Learning (`agent learning-summary`)
 
-### По виду операции (by_action_kind)
+### По виду операции (`by_action_kind`)
 
 | action | total | success | fail | rate |
 |--------|-------|---------|------|------|
-| refactor_module | 101 | 97 | 4 | 96% |
-| split_module | 176 | 134 | 42 | 76% |
-| introduce_facade | 19 | 14 | 5 | 74% |
-| remove_unused_import | 17 | 14 | 3 | 82% |
-| extract_class | 11 | 7 | 4 | 64% |
-| refactor_code_smell | 237 | 137 | 100 | 58% |
+| remove_unused_import | 20 | 16 | 4 | 80% |
+| split_module | 120 | 74 | 46 | 62% |
+| introduce_facade | 4 | 2 | 2 | 50% |
+| extract_class | 16 | 10 | 6 | 62% |
+| refactor_code_smell | 411 | 241 | 170 | 59% |
+| extract_nested_function | 1 | 0 | 1 | 0% |
 
 ### По smell+action
 
 | smell\|action | total | success | fail |
 |---------------|-------|---------|------|
-| god_module\|split_module | 173 | 134 | 39 |
-| long_function\|refactor_code_smell | 167 | 97 | 70 |
-| deep_nesting\|refactor_code_smell | 70 | 40 | 30 |
+| god_module\|split_module | 117 | 74 | 43 |
+| long_function\|refactor_code_smell | 284 | 167 | 117 |
+| deep_nesting\|refactor_code_smell | 127 | 74 | 53 |
 | hub\|split_module | 3 | 0 | 3 |
+| long_function\|extract_nested_function | 1 | 0 | 1 |
 
 ---
 
-## 4. Recent events (patch/learn)
+## 4. Recent events (patch/learn, из doctor context)
 
 | type | modified | success |
 |------|----------|---------|
-| patch | [] | True |
-| patch | [3 files] | True |
-| learn | [architecture_planner.py, eurika/refactor/extract_function.py, tests/test_extract_function.py] | True |
-| patch | [3 files] | False |
-| patch | [] | True |
-
-*Цикл 2025-02-19: modified=0, verify ✓, LLM architect.*
+| patch | 1 file | True |
+| learn | [cli/orchestrator.py] | True |
+| patch | 0 files | True |
+| patch | 1 file | True |
+| learn | [eurika/api/__init__.py] | True |
 
 ---
 
 ## 5. Итог
 
-- **Verify:** 183 теста прошли
-- **Изменений в этом цикле:** 0 (все операции пропущены)
-- **Причины skip:** diff уже в файлах; architectural TODO уже есть; extracted-файлы существуют
+- **Verify:** 187 тестов прошли
+- **Изменений в контрольном fix:** 0
+- **Skip шум резко снижен:** осталась 1 причина (`extract_class: extracted file exists`)
 - **Система стабильна:** score 46, регрессий нет
-- **v2.6.16:** фикс _apply_learning_bump (nonlocal → param/return)
+- **Фокус дальше:** повышать долю реальных apply и улучшать fallback-policy для слабых пар learning
