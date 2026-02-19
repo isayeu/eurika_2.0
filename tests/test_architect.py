@@ -2,12 +2,18 @@
 
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from eurika.reasoning.architect import _format_recent_events, interpret_architecture, _template_interpret
+from eurika.reasoning.architect import (
+    _format_recent_events,
+    _llm_interpret,
+    _template_interpret,
+    interpret_architecture,
+)
 from eurika.storage.events import Event
 
 
@@ -107,3 +113,52 @@ def test_format_recent_events():
     assert "2 file" in s or "modified" in s
     assert "learn" in s
     assert "a.py" in s
+
+
+def test_llm_interpret_falls_back_to_ollama_on_primary_error() -> None:
+    """If primary provider fails, _llm_interpret should return Ollama fallback response."""
+    summary = {"system": {"modules": 1, "dependencies": 0, "cycles": 0}, "maturity": "low"}
+    history = {"trends": {}, "regressions": []}
+    with (
+        patch(
+            "eurika.reasoning.architect._init_primary_openai_client",
+            return_value=(object(), "primary-model", None),
+        ),
+        patch(
+            "eurika.reasoning.architect._init_ollama_fallback_client",
+            return_value=(object(), "ollama-model", None),
+        ),
+        patch(
+            "eurika.reasoning.architect._call_llm_architect",
+            side_effect=[(None, "primary down"), ("fallback ok", None)],
+        ) as call_llm,
+    ):
+        text, reason = _llm_interpret(summary, history)
+    assert text == "fallback ok"
+    assert reason is None
+    assert call_llm.call_count == 2
+
+
+def test_llm_interpret_reports_both_primary_and_fallback_errors() -> None:
+    """When both providers fail, reason should contain both error sources."""
+    summary = {"system": {"modules": 1, "dependencies": 0, "cycles": 0}, "maturity": "low"}
+    history = {"trends": {}, "regressions": []}
+    with (
+        patch(
+            "eurika.reasoning.architect._init_primary_openai_client",
+            return_value=(object(), "primary-model", None),
+        ),
+        patch(
+            "eurika.reasoning.architect._init_ollama_fallback_client",
+            return_value=(object(), "ollama-model", None),
+        ),
+        patch(
+            "eurika.reasoning.architect._call_llm_architect",
+            side_effect=[(None, "primary down"), (None, "ollama down")],
+        ),
+    ):
+        text, reason = _llm_interpret(summary, history)
+    assert text is None
+    assert reason is not None
+    assert "primary LLM failed" in reason
+    assert "ollama fallback failed" in reason

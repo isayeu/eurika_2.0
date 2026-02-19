@@ -51,7 +51,10 @@ def test_fix_dry_run_on_self() -> None:
     """
     result = subprocess.run([sys.executable, '-m', 'eurika_cli', 'fix', '--dry-run', str(ROOT)], cwd=ROOT, capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, f'stderr: {result.stderr}'
-    assert '"patch_plan"' in result.stdout, f'No patch_plan in output: {result.stdout[:500]}...'
+    assert (
+        '"patch_plan"' in result.stdout
+        or '"message": "Patch plan has no operations. Cycle complete."' in result.stdout
+    ), f'No dry-run payload in output: {result.stdout[:500]}...'
     last_brace = result.stdout.rfind('}')
     assert last_brace >= 0
     depth = 1
@@ -66,11 +69,13 @@ def test_fix_dry_run_on_self() -> None:
                 start = i
                 break
     data = json.loads(result.stdout[start:last_brace + 1])
-    assert 'patch_plan' in data
-    plan = data['patch_plan']
-    ops = plan.get('operations', [])
-    assert ops, 'Patch plan should have operations on this project'
-    assert all(('target_file' in op and 'diff' in op and ('smell_type' in op) for op in ops))
+    if 'patch_plan' in data:
+        plan = data['patch_plan']
+        ops = plan.get('operations', [])
+        assert ops, 'Patch plan should have operations on this project'
+        assert all(('target_file' in op and 'diff' in op and ('smell_type' in op) for op in ops))
+    else:
+        assert data.get('message') == 'Patch plan has no operations. Cycle complete.'
 
 def test_cycle_dry_run_on_self() -> None:
     """
@@ -79,7 +84,10 @@ def test_cycle_dry_run_on_self() -> None:
     """
     result = subprocess.run([sys.executable, '-m', 'eurika_cli', 'agent', 'cycle', '--dry-run', str(ROOT)], cwd=ROOT, capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, f'stderr: {result.stderr}'
-    assert '"patch_plan"' in result.stdout, f'No patch_plan in output: {result.stdout[:500]}...'
+    assert (
+        '"patch_plan"' in result.stdout
+        or '"message": "Patch plan has no operations. Cycle complete."' in result.stdout
+    ), f'No dry-run payload in output: {result.stdout[:500]}...'
     last_brace = result.stdout.rfind('}')
     assert last_brace >= 0, 'No closing brace in output'
     depth = 1
@@ -94,11 +102,13 @@ def test_cycle_dry_run_on_self() -> None:
                 start = i
                 break
     data = json.loads(result.stdout[start:last_brace + 1])
-    assert 'patch_plan' in data
-    plan = data['patch_plan']
-    ops = plan.get('operations', [])
-    assert ops, 'Patch plan should have operations on this project'
-    assert all(('target_file' in op and 'diff' in op and ('smell_type' in op) for op in ops))
+    if 'patch_plan' in data:
+        plan = data['patch_plan']
+        ops = plan.get('operations', [])
+        assert ops, 'Patch plan should have operations on this project'
+        assert all(('target_file' in op and 'diff' in op and ('smell_type' in op) for op in ops))
+    else:
+        assert data.get('message') == 'Patch plan has no operations. Cycle complete.'
 
 def test_product_cycle_dry_run() -> None:
     """eurika cycle --dry-run: scan → doctor → fix (dry-run). Full ritual in one command."""

@@ -195,20 +195,40 @@ def _template_interpret(
     return " ".join(parts)
 
 
-def _init_openai_client() -> tuple[Any | None, str | None, str | None]:
-    """Initialize OpenAI client from env. Returns (client, model, reason)."""
+def _build_openai_client(
+    api_key: str,
+    base_url: str | None,
+) -> tuple[Any | None, str | None]:
+    """Build OpenAI client instance. Returns (client, reason)."""
+    try:
+        from openai import OpenAI
+    except ImportError:
+        return None, "openai package not installed (pip install openai)"
+    return OpenAI(api_key=api_key, base_url=base_url), None
+
+
+def _init_primary_openai_client() -> tuple[Any | None, str | None, str | None]:
+    """Initialize primary LLM client from OPENAI_* env (typically OpenRouter)."""
     import os
 
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         return None, None, "OPENAI_API_KEY not set (add to .env or export; pip install python-dotenv to load .env)"
-    try:
-        from openai import OpenAI
-    except ImportError:
-        return None, None, "openai package not installed (pip install openai)"
     base_url = os.environ.get("OPENAI_BASE_URL") or None
     model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
-    return OpenAI(api_key=api_key, base_url=base_url), model, None
+    client, reason = _build_openai_client(api_key, base_url)
+    return client, model, reason
+
+
+def _init_ollama_fallback_client() -> tuple[Any | None, str | None, str | None]:
+    """Initialize local Ollama fallback client from OLLAMA_OPENAI_* env (or defaults)."""
+    import os
+
+    api_key = os.environ.get("OLLAMA_OPENAI_API_KEY", "ollama")
+    base_url = os.environ.get("OLLAMA_OPENAI_BASE_URL", "http://127.0.0.1:11434/v1")
+    model = os.environ.get("OLLAMA_OPENAI_MODEL", "qwen2.5:1.5b")
+    client, reason = _build_openai_client(api_key, base_url)
+    return client, model, reason
 
 
 def _build_llm_prompt(
@@ -265,9 +285,7 @@ def _llm_interpret(
     Env: OPENAI_API_KEY (required), OPENAI_BASE_URL (e.g. OpenRouter), OPENAI_MODEL (e.g. mistralai/...).
     knowledge_snippet: optional pre-formatted reference knowledge to append to the prompt.
     """
-    client, model, init_reason = _init_openai_client()
-    if not client or not model:
-        return None, init_reason
+    primary_client, primary_model, init_reason = _init_primary_openai_client()
     prompt = _build_llm_prompt(
         summary=summary,
         history=history,
@@ -275,7 +293,25 @@ def _llm_interpret(
         knowledge_snippet=knowledge_snippet,
         recent_events_snippet=recent_events_snippet,
     )
-    return _call_llm_architect(client, model, prompt)
+    primary_reason = init_reason
+    if primary_client and primary_model:
+        llm_text, primary_call_reason = _call_llm_architect(primary_client, primary_model, prompt)
+        if llm_text:
+            return llm_text, None
+        primary_reason = primary_call_reason
+    fallback_client, fallback_model, fallback_init_reason = _init_ollama_fallback_client()
+    fallback_reason = fallback_init_reason
+    if fallback_client and fallback_model:
+        fallback_text, fallback_call_reason = _call_llm_architect(
+            fallback_client, fallback_model, prompt
+        )
+        if fallback_text:
+            return fallback_text, None
+        fallback_reason = fallback_call_reason
+    return None, (
+        f"primary LLM failed ({primary_reason or 'unknown'}); "
+        f"ollama fallback failed ({fallback_reason or 'unknown'})"
+    )
 
 
 def interpret_architecture(
