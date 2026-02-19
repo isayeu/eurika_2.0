@@ -291,3 +291,15 @@ def _build_modified_original(
     new_tree = ast.Module(body=new_body, type_ignores=[])
     ast.fix_missing_locations(new_tree)
     return ast.unparse(new_tree) + "\n"
+
+
+# TODO (eurika): refactor long_function 'extract_class' — consider extracting helper
+
+
+# TODO (eurika): refactor deep_nesting '_get_module_level_assignments' — consider extracting nested block
+
+
+# TODO (eurika): refactor long_function '_build_extracted_class_module' — consider extracting helper
+
+
+# TODO (eurika): refactor long_function '_build_modified_original' — consider extracting helper

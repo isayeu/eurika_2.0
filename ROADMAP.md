@@ -12,7 +12,7 @@
 
 ---
 
-## Текущее состояние (v2.6.8)
+## Текущее состояние (v2.6.9)
 
 **Основная задача:** саморазвитие, анализ и исправление собственного кода, добавление новых функций по запросу. Инструмент применяется в первую очередь к своей кодовой базе (eurika).
 
@@ -20,8 +20,9 @@
 - Всё перечисленное в v0.8–v1.2 (pipeline, Smells 2.0, CLI, self-check, History, Patch Engine, Event Engine)
 - **Фаза 3.1 (граф как движок):** priority_from_graph, SMELL_TYPE_TO_REFACTOR_KIND, metrics_from_graph, targets_from_graph — patch_plan формируется с опорой на граф
 - **Фаза 3.2 (единая модель памяти):** консолидация в `.eurika/` (events.json, history.json, observations.json); learning/feedback — views над EventStore; architect использует recent_events в промпте
-- **eurika cycle [path]:** scan → doctor (report + architect) → fix одной командой. Опции: --window, --dry-run, --quiet, --no-llm, --no-clean-imports, --interval
+- **eurika cycle [path]:** scan → doctor (report + architect) → fix одной командой. Опции: --window, --dry-run, --quiet, --no-llm, --no-clean-imports, --no-code-smells, --interval
 - **Фаза 2.4:** fix/cycle включают remove_unused_import по умолчанию; опция --no-clean-imports
+- **v2.6.9:** fix/cycle включают refactor_code_smell (long_function, deep_nesting) по умолчанию; опция --no-code-smells
 
 ### Оценка зрелости (по review.md, актуальная версия)
 
@@ -69,7 +70,7 @@
 | 2.1.2 | Добавление новых функций по запросу; **багфиксы** по результатам прогонов (напр. Knowledge: явная пустая карта `topic_urls={}` → дефолт только при `topic_urls is None`) | Тесты зелёные; REPORT и CHANGELOG обновлены при изменении возможностей или числа тестов |
 | 2.1.3 | Актуализировать документацию при изменении поведения | README, CLI.md, KNOWLEDGE_LAYER.md, ROADMAP соответствуют коду и текущей задаче |
 | 2.1.4 | Опционально: полный `eurika fix .` без --dry-run на Eurika (с venv) | ✓ Выполнено: verify 129 passed после багфикса topic_urls |
-| 2.1.5 | Опционально: прогоны scan/doctor/fix на других проектах (farm_helper, optweb и т.д.) | ✓ scan + doctor на farm_helper (5 модулей), optweb (38 модулей) — отработали штатно |
+| 2.1.5 | Опционально: прогоны scan/doctor/fix на других проектах (farm_helper, optweb, binance/bbot и т.д.) | ✓ farm_helper (5), optweb (38); ✓ binance/bbot/34 (11, scan+doctor+fix --dry-run); ✓ binance/binance-trade-bot (26, scan) — отработали штатно |
 
 **Выход из фазы:** стабильный цикл работы над собой; новые функции и правки вносятся по запросу; известные баги зафиксированы или закрыты.
 

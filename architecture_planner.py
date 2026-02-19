@@ -299,3 +299,17 @@ def _step_to_action(step: PlanStep, learning_stats: Optional[Dict[str, Dict[str,
         elif action_type in learning_stats:
             expected_benefit = _apply_learning_bump(learning_stats[action_type], expected_benefit)
     return Action(type=action_type, target=step.target, description=description, risk=round(base_risk, 3), expected_benefit=round(expected_benefit, 3))
+
+
+# TODO (eurika): refactor long_function 'build_patch_plan' — consider extracting helper
+
+
+# TODO (eurika): refactor deep_nesting 'build_patch_plan' — consider extracting nested block
+
+# TODO: Refactor architecture_planner.py (god_module -> split_module)
+# Suggested steps:
+# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
+# - Identify distinct concerns and split this module into focused units.
+# - Reduce total degree (fan-in + fan-out) via extraction.
+# - Extract from imports: action_plan.py, patch_plan.py.
+# - Consider grouping callers: tests/test_graph_ops.py, agent_core_arch_review_archreviewagentcore.py, eurika/reasoning/planner.py.

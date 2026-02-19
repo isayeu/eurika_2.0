@@ -230,3 +230,9 @@ def interpret_architecture(
     return _template_interpret(
         summary, history, patch_plan, knowledge_snippet, recent_snippet
     )
+
+
+# TODO (eurika): refactor long_function '_template_interpret' — consider extracting helper
+
+
+# TODO (eurika): refactor long_function '_llm_interpret' — consider extracting helper

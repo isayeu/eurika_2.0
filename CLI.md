@@ -73,7 +73,7 @@ eurika doctor . --no-llm
 
 Полный цикл: scan → arch-review → patch-apply --apply --verify. **По умолчанию** план fix включает операции **remove_unused_import** (clean-imports) для файлов с неиспользуемыми импортами; затем — архитектурные патчи (remove_cyclic_import, split_module и т.д.). Эквивалент `eurika agent cycle` с применением патчей и проверкой тестами. После apply запускается **pytest** (или `--verify-cmd` / `[tool.eurika] verify_cmd` в pyproject.toml); для верификации нужен установленный pytest: `pip install pytest` или `pip install -e ".[test]"`. **Отчёт сохраняется в `eurika_fix_report.json`** (при apply — полный; при `--dry-run` — `dry_run: true` + `patch_plan`).
 
-**Опции:** `--window N`, `--dry-run` (только план, без apply; сохраняет eurika_fix_report.json), `--quiet` / `-q` (минимальный вывод, итог в JSON), `--no-clean-imports` (исключить remove_unused_import из плана), `--verify-cmd CMD` (переопределить команду верификации, напр. `python manage.py test` для Django; иначе используется `[tool.eurika] verify_cmd` в pyproject.toml или pytest), `--interval SEC` (авто-повтор каждые SEC секунд, 0=один раз; Ctrl+C для остановки).
+**Опции:** `--window N`, `--dry-run` (только план, без apply; сохраняет eurika_fix_report.json), `--quiet` / `-q` (минимальный вывод, итог в JSON), `--no-clean-imports` (исключить remove_unused_import из плана), `--no-code-smells` (исключить refactor_code_smell — long_function, deep_nesting — из плана), `--verify-cmd CMD` (переопределить команду верификации, напр. `python manage.py test` для Django; иначе используется `[tool.eurika] verify_cmd` в pyproject.toml или pytest), `--interval SEC` (авто-повтор каждые SEC секунд, 0=один раз; Ctrl+C для остановки).
 
 ```bash
 eurika fix .
@@ -88,7 +88,7 @@ eurika fix . --no-clean-imports
 
 Полный ритуал одной командой: **scan → doctor (report + architect) → fix**. Сначала scan, затем вывод полной диагностики (summary, evolution, architect), затем fix (patch-apply --apply --verify). Fix по умолчанию включает remove_unused_import; architect при cycle получает recent_events (последние patch/learn) в контексте.
 
-**Опции:** `--window N`, `--dry-run` (doctor + plan, без apply), `--quiet` / `-q`, `--no-llm` (architect по шаблону, без API-ключа), `--no-clean-imports` (исключить clean-imports из fix), `--verify-cmd CMD` (переопределить команду верификации для fix), `--interval SEC` (авто-повтор каждые SEC секунд; Ctrl+C для остановки).
+**Опции:** `--window N`, `--dry-run` (doctor + plan, без apply), `--quiet` / `-q`, `--no-llm` (architect по шаблону, без API-ключа), `--no-clean-imports` (исключить clean-imports из fix), `--no-code-smells` (исключить refactor_code_smell из fix), `--verify-cmd CMD` (переопределить команду верификации для fix), `--interval SEC` (авто-повтор каждые SEC секунд; Ctrl+C для остановки).
 
 ### eurika watch [path] [--poll SEC] [--quiet] [--no-clean-imports]
 

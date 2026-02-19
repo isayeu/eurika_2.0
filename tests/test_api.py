@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from eurika.api import get_summary, get_history, get_diff, get_patch_plan
+from eurika.api import get_summary, get_history, get_diff, get_patch_plan, get_code_smell_operations
 
 
 def test_get_summary_returns_json_serializable(tmp_path: Path) -> None:
@@ -82,3 +82,13 @@ def test_get_patch_plan_returns_dict_with_self_map(tmp_path: Path) -> None:
     assert "operations" in data
     assert isinstance(data["operations"], list)
     json.dumps(data)
+
+
+def test_get_code_smell_operations_returns_ops_for_long_function(tmp_path: Path) -> None:
+    """get_code_smell_operations returns refactor_code_smell ops when file has long function (51+ lines)."""
+    long_func = "def long_foo():\n" + "    x = 1\n" * 50 + "    return x\n"
+    (tmp_path / "big.py").write_text(long_func, encoding="utf-8")
+    ops = get_code_smell_operations(tmp_path)
+    long_ops = [o for o in ops if o.get("kind") == "refactor_code_smell" and o.get("target_file") == "big.py"]
+    assert len(long_ops) >= 1
+    assert any(o.get("smell_type") == "long_function" and o.get("params", {}).get("location") == "long_foo" for o in long_ops)

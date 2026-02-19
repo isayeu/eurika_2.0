@@ -95,3 +95,6 @@ def _names_from_all(node: ast.AST) -> List[str]:
             if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
         ]
     return []
+
+
+# TODO (eurika): refactor long_function 'introduce_facade' — consider extracting helper

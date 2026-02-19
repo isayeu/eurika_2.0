@@ -315,3 +315,6 @@ def graph_hints_for_smell(
                 f"Consider grouping callers: {', '.join(info['imported_by'][:3])}."
             )
     return hints
+
+
+# TODO (eurika): refactor long_function 'priority_from_graph' — consider extracting helper

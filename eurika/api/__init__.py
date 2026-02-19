@@ -127,6 +127,50 @@ def get_patch_plan(project_root: Path, window: int = 5) -> Dict[str, Any] | None
     return plan.to_dict()
 
 
+def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
+    """
+    Build patch operations for code-level smells (long_function, deep_nesting).
+
+    Uses CodeAwareness.find_smells. For long_function, tries extract_nested_function first;
+    if a nested function can be extracted, uses kind="extract_nested_function" (real fix).
+    Otherwise kind="refactor_code_smell" (TODO).
+    """
+    from code_awareness import CodeAwareness
+    from eurika.refactor.extract_function import suggest_extract_nested_function
+
+    root = Path(project_root).resolve()
+    analyzer = CodeAwareness(root)
+    ops: List[Dict[str, Any]] = []
+    for p in analyzer.scan_python_files():
+        smells = analyzer.find_smells(p)
+        rel = str(p.relative_to(root)).replace("\\", "/")
+        for s in smells:
+            if s.kind == "long_function":
+                suggestion = suggest_extract_nested_function(p, s.location)
+                if suggestion:
+                    nested_name, line_count = suggestion
+                    ops.append({
+                        "target_file": rel,
+                        "kind": "extract_nested_function",
+                        "description": f"Extract nested function {nested_name} from {rel}:{s.location} ({line_count} lines)",
+                        "diff": f"# Extracted {nested_name} to module level",
+                        "smell_type": s.kind,
+                        "params": {"location": s.location, "nested_function_name": nested_name},
+                    })
+                    continue
+            hint = "consider extracting helper" if s.kind == "long_function" else "consider extracting nested block"
+            diff = f"\n# TODO (eurika): refactor {s.kind} '{s.location}' — {hint}\n"
+            ops.append({
+                "target_file": rel,
+                "kind": "refactor_code_smell",
+                "description": f"Refactor {s.kind} in {rel}:{s.location}",
+                "diff": diff,
+                "smell_type": s.kind,
+                "params": {"location": s.location, "metric": s.metric},
+            })
+    return ops
+
+
 def get_clean_imports_operations(project_root: Path) -> List[Dict[str, Any]]:
     """
     Build patch operations to remove unused imports (ROADMAP 2.4.2).
@@ -138,11 +182,15 @@ def get_clean_imports_operations(project_root: Path) -> List[Dict[str, Any]]:
 
     root = Path(project_root).resolve()
     skip_dirs = {"venv", ".venv", "node_modules", ".git", "__pycache__", ".eurika_backups"}
+    # Facade modules: imports are re-exports; remove_unused_import would break API
+    facade_modules = {"patch_engine.py", "patch_apply.py"}
     ops: List[Dict[str, Any]] = []
     for p in sorted(root.rglob("*.py")):
         if any(skip in p.parts for skip in skip_dirs):
             continue
         if p.name == "__init__.py" or p.name.endswith("_api.py"):
+            continue
+        if p.name in facade_modules:
             continue
         if not p.is_file():
             continue
@@ -192,3 +240,6 @@ def get_diff(old_self_map_path: Path, new_self_map_path: Path) -> Dict[str, Any]
     new_snap = build_snapshot(new_path)
     diff = diff_snapshots(old_snap, new_snap)
     return _to_json_safe(diff)
+
+
+# TODO (eurika): refactor long_function 'get_patch_plan' — consider extracting helper

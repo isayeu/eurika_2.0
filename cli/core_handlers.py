@@ -248,7 +248,7 @@ def handle_fix(args: Any) -> int:
     fix_args = SimpleNamespace(
         path=args.path, window=getattr(args, 'window', 5), dry_run=getattr(args, 'dry_run', False),
         quiet=getattr(args, 'quiet', False), no_clean_imports=getattr(args, 'no_clean_imports', False),
-        verify_cmd=getattr(args, 'verify_cmd', None), interval=getattr(args, 'interval', 0),
+        no_code_smells=getattr(args, 'no_code_smells', False), verify_cmd=getattr(args, 'verify_cmd', None), interval=getattr(args, 'interval', 0),
     )
     return handle_agent_cycle(fix_args)
 
@@ -391,7 +391,7 @@ def handle_watch(args: Any) -> int:
                 fix_args = SimpleNamespace(
                     path=path, window=getattr(args, 'window', 5), dry_run=False,
                     quiet=quiet, no_clean_imports=getattr(args, 'no_clean_imports', False),
-                    interval=0,
+                    no_code_smells=getattr(args, 'no_code_smells', False), interval=0,
                 )
                 from cli.agent_handlers import handle_agent_cycle
                 handle_agent_cycle(fix_args)
@@ -409,3 +409,6 @@ def handle_serve(args: Any) -> int:
     from eurika.api.serve import run_server
     run_server(host=args.host, port=args.port, project_root=args.path)
     return 0
+
+
+# TODO (eurika): refactor long_function 'handle_explain' — consider extracting helper

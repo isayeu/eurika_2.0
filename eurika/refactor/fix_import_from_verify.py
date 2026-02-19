@@ -347,3 +347,15 @@ def suggest_fix_import_operations(
             "content": stub_content,
         })
     return ops
+
+
+# TODO (eurika): refactor deep_nesting '_find_failing_file' — consider extracting nested block
+
+
+# TODO (eurika): refactor deep_nesting '_find_constant_definition' — consider extracting nested block
+
+
+# TODO (eurika): refactor long_function 'suggest_fix_import_operations' — consider extracting helper
+
+
+# TODO (eurika): refactor deep_nesting 'suggest_fix_import_operations' — consider extracting nested block

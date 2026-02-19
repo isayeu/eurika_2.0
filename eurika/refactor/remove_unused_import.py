@@ -150,3 +150,6 @@ class _UnusedImportRemover(ast.NodeTransformer):
             return None
         node.names = new_names
         return node
+
+
+# TODO (eurika): refactor deep_nesting '_names_imported_under_type_checking' — consider extracting nested block

@@ -255,7 +255,7 @@ def _run_cycle_with_mode(args: Any, mode: str='fix') -> int:
             run_count += 1
             if interval > 0 and run_count > 1 and not quiet:
                 print(f'\neurika: run #{run_count} (interval={interval}s)', file=sys.stderr)
-            out = run_cycle(path, mode=mode, window=getattr(args, 'window', 5), dry_run=getattr(args, 'dry_run', False), quiet=quiet, no_llm=getattr(args, 'no_llm', False), no_clean_imports=getattr(args, 'no_clean_imports', False), verify_cmd=getattr(args, 'verify_cmd', None))
+            out = run_cycle(path, mode=mode, window=getattr(args, 'window', 5), dry_run=getattr(args, 'dry_run', False), quiet=quiet, no_llm=getattr(args, 'no_llm', False), no_clean_imports=getattr(args, 'no_clean_imports', False), no_code_smells=getattr(args, 'no_code_smells', False), verify_cmd=getattr(args, 'verify_cmd', None))
             return_code = out['return_code']
             report = out['report']
             operations = out['operations']
@@ -339,3 +339,9 @@ def handle_agent_learning_summary(args: Any) -> int:
 # - Identify distinct concerns and split this module into focused units.
 # - Reduce total degree (fan-in + fan-out) via extraction.
 # - Extract from imports: action_plan.py, agent_core.py, agent_core_arch_review.py.
+
+
+# TODO (eurika): refactor long_function '_run_cycle_with_mode' — consider extracting helper
+
+
+# TODO (eurika): refactor deep_nesting '_run_cycle_with_mode' — consider extracting nested block

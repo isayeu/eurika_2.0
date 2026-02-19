@@ -107,8 +107,29 @@ def test_apply_refactor_module_produces_real_split(tmp_path: Path) -> None:
     assert "# TODO: refactor" not in (tmp_path / "mod.py").read_text()
 
 
+def test_apply_refactor_code_smell_appends_todo(tmp_path: Path) -> None:
+    """refactor_code_smell falls through to default; appends TODO comment."""
+    (tmp_path / "m.py").write_text("def foo():\n    pass\n")
+    plan = {
+        "operations": [
+            {
+                "target_file": "m.py",
+                "kind": "refactor_code_smell",
+                "description": "Refactor long_function",
+                "diff": "\n# TODO (eurika): refactor long_function 'foo' — consider extracting helper\n",
+                "smell_type": "long_function",
+                "params": {"location": "foo", "metric": 55},
+            }
+        ]
+    }
+    report = apply_patch_plan(tmp_path, plan, dry_run=False, backup=False)
+    assert report["modified"] == ["m.py"]
+    content = (tmp_path / "m.py").read_text()
+    assert "TODO (eurika): refactor long_function 'foo'" in content
+
+
 def test_apply_patch_plan_skips_when_marker_exists(tmp_path: Path) -> None:
-    """If # TODO: Refactor {target} marker exists, skip (avoid duplicates when diff varies)."""
+    """If # TODO: Refactor {target} marker exists, skip refactor_module (avoid duplicates when diff varies)."""
     (tmp_path / 'e.py').write_text('code\n\n# TODO: Refactor e.py (god_module -> refactor_module)\n# Suggested steps:\n# - old hint\n')
     plan = {'operations': [{'target_file': 'e.py', 'kind': 'refactor_module', 'description': 'n/a', 'diff': '# TODO: Refactor e.py (god_module -> refactor_module)\n# Suggested steps:\n# - new hint\n'}]}
     report = apply_patch_plan(tmp_path, plan, dry_run=False)
@@ -116,6 +137,44 @@ def test_apply_patch_plan_skips_when_marker_exists(tmp_path: Path) -> None:
     assert report['skipped'] == ['e.py']
     content = (tmp_path / 'e.py').read_text()
     assert content.count('# TODO: Refactor e.py') == 1
+
+
+def test_apply_extract_nested_function(tmp_path: Path) -> None:
+    """extract_nested_function: real extraction when long function has self-contained nested."""
+    code = (
+        "def long_foo():\n"
+        "    x = 1\n"
+        "    def inner():\n"
+        "        return 99\n"
+        "    return inner()\n"
+    )
+    (tmp_path / "m.py").write_text(code)
+    plan = {"operations": [{
+        "target_file": "m.py",
+        "kind": "extract_nested_function",
+        "params": {"location": "long_foo", "nested_function_name": "inner"},
+    }]}
+    report = apply_patch_plan(tmp_path, plan, dry_run=False, backup=False)
+    assert report["modified"] == ["m.py"]
+    content = (tmp_path / "m.py").read_text()
+    assert "def inner():" in content
+    assert content.index("def inner():") < content.index("def long_foo():")
+    assert "return inner()" in content
+
+
+def test_apply_patch_plan_refactor_code_smell_not_skipped_by_architectural_todo(tmp_path: Path) -> None:
+    """refactor_code_smell is applied even when file has architectural TODO (different op types)."""
+    (tmp_path / 'x.py').write_text('def long_fn(): pass\n\n# TODO: Refactor x.py (god_module)\n')
+    plan = {'operations': [{
+        'target_file': 'x.py',
+        'kind': 'refactor_code_smell',
+        'diff': '\n# TODO (eurika): refactor long_function \'long_fn\' — consider extracting helper\n',
+    }]}
+    report = apply_patch_plan(tmp_path, plan, dry_run=False)
+    assert report['modified'] == ['x.py']
+    content = (tmp_path / 'x.py').read_text()
+    assert 'TODO (eurika): refactor long_function' in content
+
 
 def test_restore_backup(tmp_path: Path) -> None:
     """Restore reverts files from backup run."""

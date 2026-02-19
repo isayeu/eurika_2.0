@@ -279,6 +279,31 @@ def test_fix_no_clean_imports_excludes_clean_ops(tmp_path: Path) -> None:
     assert len(clean2) == 0, "--no-clean-imports should exclude remove_unused_import ops"
 
 
+def test_fix_no_code_smells_excludes_code_smell_ops(tmp_path: Path) -> None:
+    """Fix --no-code-smells: patch_plan has no refactor_code_smell ops when project has long function."""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    long_func = "def long_foo():\n" + "    x = 1\n" * 50 + "    return x\n"
+    (proj / "big.py").write_text(long_func, encoding="utf-8")
+    (proj / "tests").mkdir()
+    (proj / "tests" / "__init__.py").write_text("", encoding="utf-8")
+    (proj / "tests" / "test_big.py").write_text("def test_big(): assert True\n", encoding="utf-8")
+    (proj / "pyproject.toml").write_text("[tool.pytest.ini_options]\ntestpaths=['tests']\n", encoding="utf-8")
+    subprocess.run([sys.executable, "-m", "eurika_cli", "scan", str(proj)], cwd=ROOT, capture_output=True, timeout=30)
+
+    r1 = subprocess.run([sys.executable, "-m", "eurika_cli", "fix", "--dry-run", str(proj)], cwd=ROOT, capture_output=True, text=True, timeout=60)
+    r2 = subprocess.run([sys.executable, "-m", "eurika_cli", "fix", "--dry-run", "--no-code-smells", str(proj)], cwd=ROOT, capture_output=True, text=True, timeout=60)
+    assert r1.returncode == 0 and r2.returncode == 0
+    d1 = _parse_final_json(r1.stdout)
+    d2 = _parse_final_json(r2.stdout)
+    ops1 = d1.get("patch_plan", {}).get("operations", []) if d1 else []
+    ops2 = d2.get("patch_plan", {}).get("operations", []) if d2 else []
+    code_smell1 = [o for o in ops1 if o.get("kind") == "refactor_code_smell"]
+    code_smell2 = [o for o in ops2 if o.get("kind") == "refactor_code_smell"]
+    assert len(code_smell1) >= 1, "without --no-code-smells should have refactor_code_smell ops for long function"
+    assert len(code_smell2) == 0, "--no-code-smells should exclude refactor_code_smell ops"
+
+
 def test_learning_not_appended_when_all_skipped(tmp_path: Path) -> None:
     """When apply returns modified=[], learning.append is not called (no inflated success stats)."""
     proj = tmp_path / "proj"

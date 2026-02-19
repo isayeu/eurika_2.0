@@ -337,3 +337,18 @@ def _build_modified_original(tree: ast.AST, to_remove: List[ast.FunctionDef | as
     insert_idx = sum((1 for n in new_tree.body if isinstance(n, (ast.Import, ast.ImportFrom))))
     new_tree.body.insert(insert_idx, import_ast)
     return ast.unparse(new_tree) + '\n'
+
+
+# TODO (eurika): refactor long_function 'split_module_by_import' — consider extracting helper
+
+
+# TODO (eurika): refactor long_function 'split_module_by_function' — consider extracting helper
+
+
+# TODO (eurika): refactor long_function 'split_module_by_class' — consider extracting helper
+
+
+# TODO (eurika): refactor deep_nesting '_collect_bindings' — consider extracting nested block
+
+
+# TODO (eurika): refactor deep_nesting '_used_import_stems' — consider extracting nested block

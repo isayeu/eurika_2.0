@@ -46,16 +46,35 @@ eurika fix . --dry-run
 
 ## Использование на других проектах
 
-Проекты в `/mnt/storage/project` (farm_helper, optweb, dartopt и др.) можно анализировать, передавая путь:
+Проекты в `/mnt/storage/project` (farm_helper, optweb, dartopt и др.) можно анализировать, передавая путь к **корню конкретного проекта**.
+
+**Каталог `binance/`** — набор разных проектов и их версий (bbot, binance-trade-bot, binance_watchdog_bot, freqtrade, NostalgiaForInfinity и т.д.). Путь указывать на подпроект, а не на корень binance:
 
 ```bash
 source /mnt/storage/project/venv/bin/activate
-eurika scan /mnt/storage/project/optweb
-eurika doctor /mnt/storage/project/optweb
-eurika fix /mnt/storage/project/optweb --dry-run
+eurika scan /mnt/storage/project/binance/bbot
+eurika doctor /mnt/storage/project/binance/bbot
+eurika fix /mnt/storage/project/binance/bbot --dry-run
 ```
 
 Нужны права на запись в целевой каталог (создаются `self_map.json`, `architecture_history.json`, отчёты).
+
+## Проекты без pytest
+
+Если в проекте нет тестов, pytest возвращает returncode 5 ("no tests collected") и Eurika выполняет rollback. Варианты:
+
+1. **Авто-fallback (v2.6.12+):** при returncode 5 и "no tests" Eurika запускает `python -m py_compile` по изменённым файлам — проверка синтаксиса вместо тестов. Rollback не выполняется, если py_compile прошёл.
+
+2. **Явно указать команду верификации:**
+```bash
+eurika fix /path/to/project --verify-cmd "python -m py_compile"
+```
+
+3. **В корне проекта** создать или дополнить `pyproject.toml`:
+```toml
+[tool.eurika]
+verify_cmd = "python -m py_compile"
+```
 
 ## Knowledge Layer (doctor)
 

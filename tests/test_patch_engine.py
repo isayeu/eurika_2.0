@@ -117,6 +117,22 @@ def test_rollback_patch_same_as_rollback(tmp_path: Path) -> None:
     assert r1.get('restored') == r2.get('restored')
 
 
+def test_apply_and_verify_py_compile_fallback_when_no_tests(tmp_path: Path) -> None:
+    """When pytest returns 5 (no tests) and verify_cmd=None, fallback to py_compile on modified files."""
+    (tmp_path / 'foo.py').write_text('x = 1\n', encoding='utf-8')
+    # No test_*.py → pytest returns 5 "no tests ran"
+    plan = {
+        'operations': [
+            {'target_file': 'foo.py', 'diff': '\n# eurika\n', 'kind': 'refactor_module'},
+        ]
+    }
+    report = apply_and_verify(tmp_path, plan, backup=True, verify=True, auto_rollback=True, verify_cmd=None)
+    assert report['verify']['success'] is True
+    assert report['verify'].get('py_compile_fallback') is True
+    assert report.get('rollback') is None
+    assert '# eurika' in (tmp_path / 'foo.py').read_text(encoding='utf-8')
+
+
 def test_apply_and_verify_auto_rollback_on_failure(tmp_path: Path) -> None:
     """When verify fails and auto_rollback=True, files are restored."""
     (tmp_path / 'bad.py').write_text('x = 1\n', encoding='utf-8')

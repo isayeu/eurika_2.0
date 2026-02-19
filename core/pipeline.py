@@ -236,3 +236,6 @@ def _render_architecture_report_md(
 # - Split outgoing dependencies across clearer layers or services.
 # - Introduce intermediate abstractions to decouple from concrete implementations.
 # - Align with semantic roles and system topology.
+
+
+# TODO (eurika): refactor long_function '_render_architecture_report_md' — consider extracting helper

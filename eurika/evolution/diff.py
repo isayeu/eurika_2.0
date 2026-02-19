@@ -441,3 +441,6 @@ def main_cli(old_path: str, new_path: str) -> None:
     new = build_snapshot(Path(new_path))
     diff = diff_snapshots(old, new)
     print(diff_to_text(diff))
+
+
+# TODO (eurika): refactor long_function '_build_recommended_actions' — consider extracting helper

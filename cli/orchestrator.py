@@ -32,6 +32,7 @@ class EurikaOrchestrator:
         quiet: bool = False,
         no_llm: bool = False,
         no_clean_imports: bool = False,
+        no_code_smells: bool = False,
     ) -> dict[str, Any]:
         """Execute cycle. mode: 'doctor' | 'fix' | 'full'."""
         return run_cycle(
@@ -42,6 +43,7 @@ class EurikaOrchestrator:
             quiet=quiet,
             no_llm=no_llm,
             no_clean_imports=no_clean_imports,
+            no_code_smells=no_code_smells,
         )
 
 
@@ -72,6 +74,7 @@ def run_cycle(
     quiet: bool = False,
     no_llm: bool = False,
     no_clean_imports: bool = False,
+    no_code_smells: bool = False,
     verify_cmd: str | None = None,
 ) -> dict[str, Any]:
     """Единая точка входа: mode='doctor' | 'fix' | 'full'. Другие аргументы передаются в соответствующий цикл."""
@@ -79,9 +82,9 @@ def run_cycle(
     if mode == "doctor":
         return run_doctor_cycle(path, window=window, no_llm=no_llm)
     if mode == "fix":
-        return run_fix_cycle(path, window=window, dry_run=dry_run, quiet=quiet, no_clean_imports=no_clean_imports, verify_cmd=verify_cmd)
+        return run_fix_cycle(path, window=window, dry_run=dry_run, quiet=quiet, no_clean_imports=no_clean_imports, no_code_smells=no_code_smells, verify_cmd=verify_cmd)
     if mode == "full":
-        return run_full_cycle(path, window=window, dry_run=dry_run, quiet=quiet, no_llm=no_llm, no_clean_imports=no_clean_imports, verify_cmd=verify_cmd)
+        return run_full_cycle(path, window=window, dry_run=dry_run, quiet=quiet, no_llm=no_llm, no_clean_imports=no_clean_imports, no_code_smells=no_code_smells, verify_cmd=verify_cmd)
     return {"error": f"Unknown mode: {mode}. Use 'doctor', 'fix', or 'full'."}
 
 
@@ -136,6 +139,7 @@ def run_full_cycle(
     quiet: bool = False,
     no_llm: bool = False,
     no_clean_imports: bool = False,
+    no_code_smells: bool = False,
     verify_cmd: str | None = None,
 ) -> dict[str, Any]:
     """Run scan → doctor (full report) → fix. Single command for the full ritual."""
@@ -156,7 +160,7 @@ def run_full_cycle(
         print(file=sys.stderr)
         print(data["architect_text"], file=sys.stderr)
         print(file=sys.stderr)
-    out = run_fix_cycle(path, window=window, dry_run=dry_run, quiet=quiet, skip_scan=True, no_clean_imports=no_clean_imports, verify_cmd=verify_cmd)
+    out = run_fix_cycle(path, window=window, dry_run=dry_run, quiet=quiet, skip_scan=True, no_clean_imports=no_clean_imports, no_code_smells=no_code_smells, verify_cmd=verify_cmd)
     out["doctor_report"] = data
     return out
 
@@ -169,6 +173,7 @@ def run_fix_cycle(
     quiet: bool = False,
     skip_scan: bool = False,
     no_clean_imports: bool = False,
+    no_code_smells: bool = False,
     verify_cmd: str | None = None,
 ) -> dict[str, Any]:
     """Run full fix cycle: scan → diagnose → plan → patch → verify. Writes eurika_fix_report.json and appends to memory. Returns dict with return_code, report, operations, modified, verify_success, agent_result."""
@@ -237,6 +242,14 @@ def run_fix_cycle(
         clean_ops = get_clean_imports_operations(path)
         if clean_ops:
             operations = clean_ops + operations
+            patch_plan = dict(patch_plan, operations=operations)
+
+    # ROADMAP: prepend code-level smell ops (long_function, deep_nesting)
+    if not no_code_smells:
+        from eurika.api import get_code_smell_operations
+        code_smell_ops = get_code_smell_operations(path)
+        if code_smell_ops:
+            operations = code_smell_ops + operations
             patch_plan = dict(patch_plan, operations=operations)
 
     if not operations:
@@ -377,3 +390,6 @@ def run_fix_cycle(
 # - Identify distinct concerns and split this module into focused units.
 # - Reduce total degree (fan-in + fan-out) via extraction.
 # - Extract from imports: agent_core.py, agent_core_arch_review.py, patch_apply.py.
+
+
+# TODO (eurika): refactor long_function 'run_fix_cycle' — consider extracting helper
