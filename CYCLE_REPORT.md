@@ -233,3 +233,25 @@
 
 - `"/mnt/sdb2/project/.venv/bin/python" -m pytest -q tests/test_cycle.py tests/test_cli_runtime_mode.py tests/test_architect.py tests/test_patch_engine.py`
 - Результат: **46 passed**.
+
+---
+
+## 12. CLI Wiring Split progress (ROADMAP 2.8.4, step 1-2)
+
+### До/после по entrypoint
+
+- `eurika_cli.py`: **633 → 59 LOC** (тонкий entrypoint: env-load + parser + dispatch call).
+- Вынесено в `cli/wiring/`:
+  - `parser.py` — регистрация subcommands и аргументов, **231 LOC**
+  - `dispatch.py` — роутинг команд к handlers, **59 LOC**
+
+### Что сохранено по контракту
+
+- Синтаксис CLI и список флагов/команд сохранены 1:1.
+- `eurika --version` и parser-контракт runtime-флагов (`--runtime-mode`, `--non-interactive`, `--session-id`) не изменены.
+- `main()` в `eurika_cli.py` теперь только `parse -> dispatch`, без бизнес-логики.
+
+### Проверка после декомпозиции
+
+- `"/mnt/sdb2/project/.venv/bin/python" -m pytest -q tests/test_cli_runtime_mode.py tests/test_cycle.py`
+- Результат: **25 passed**.
