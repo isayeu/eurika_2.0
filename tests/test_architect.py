@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
 from eurika.reasoning.architect import (
     _call_ollama_cli,
     _format_recent_events,
+    _init_ollama_fallback_client,
     _llm_interpret,
     _template_interpret,
     interpret_architecture,
@@ -206,47 +207,35 @@ def test_llm_interpret_falls_back_to_ollama_cli_on_http_errors() -> None:
     assert "Recent refactoring events" not in cli_prompt
 
 
-def test_call_ollama_cli_starts_server_and_retries_once() -> None:
-    """On connection error, _call_ollama_cli starts daemon and retries once."""
+def test_call_ollama_cli_connection_error_requires_manual_start() -> None:
+    """On connection error, _call_ollama_cli should not auto-start daemon."""
     first = type("R", (), {"returncode": 1, "stderr": "Error: could not connect to ollama server", "stdout": ""})()
-    second = type("R", (), {"returncode": 0, "stderr": "", "stdout": "model details"})()
-    third = type("R", (), {"returncode": 0, "stderr": "", "stdout": "ok from cli\n"})()
-    with (
-        patch("subprocess.run", side_effect=[first, second, third]) as run_mock,
-        patch("subprocess.Popen") as popen_mock,
-        patch("time.sleep"),
-    ):
-        text, reason = _call_ollama_cli("qwen2.5:1.5b", "hello")
-    assert text == "ok from cli"
-    assert reason is None
-    assert run_mock.call_count == 3
-    popen_mock.assert_called_once()
-
-
-def test_call_ollama_cli_reports_missing_model_after_server_start() -> None:
-    """If daemon starts but model is absent, returns actionable pull instruction."""
-    first = type("R", (), {"returncode": 1, "stderr": "Error: could not connect to ollama server", "stdout": ""})()
-    second = type("R", (), {"returncode": 1, "stderr": "Error: model 'qwen2.5:1.5b' not found", "stdout": ""})()
-    with (
-        patch("subprocess.run", side_effect=[first, second]) as run_mock,
-        patch("subprocess.Popen") as popen_mock,
-        patch("time.sleep"),
-    ):
-        text, reason = _call_ollama_cli("qwen2.5:1.5b", "hello")
+    with patch("subprocess.run", side_effect=[first]) as run_mock:
+        text, reason = _call_ollama_cli("qwen2.5-coder:7b", "hello")
     assert text is None
     assert reason is not None
-    assert "ollama pull qwen2.5:1.5b" in reason
-    assert run_mock.call_count == 2
-    popen_mock.assert_called_once()
+    assert "ollama serve" in reason
+    assert run_mock.call_count == 1
+
+
+def test_init_ollama_fallback_client_uses_coding_model_default() -> None:
+    """Fallback client default model should target code-oriented Ollama model."""
+    with (
+        patch.dict("os.environ", {}, clear=True),
+        patch("eurika.reasoning.architect._build_openai_client", return_value=(object(), None)),
+    ):
+        _, model, reason = _init_ollama_fallback_client()
+    assert reason is None
+    assert model == "qwen2.5-coder:7b"
 
 
 def test_call_ollama_cli_timeout_reports_missing_model_hint() -> None:
     """On run timeout, model check should surface actionable pull hint."""
     first = type("R", (), {"returncode": 1, "stderr": "command timed out after 45 seconds", "stdout": ""})()
-    second = type("R", (), {"returncode": 1, "stderr": "Error: model 'qwen2.5:1.5b' not found", "stdout": ""})()
+    second = type("R", (), {"returncode": 1, "stderr": "Error: model 'qwen2.5-coder:7b' not found", "stdout": ""})()
     with patch("subprocess.run", side_effect=[first, second]) as run_mock:
-        text, reason = _call_ollama_cli("qwen2.5:1.5b", "hello")
+        text, reason = _call_ollama_cli("qwen2.5-coder:7b", "hello")
     assert text is None
     assert reason is not None
-    assert "ollama pull qwen2.5:1.5b" in reason
+    assert "ollama pull qwen2.5-coder:7b" in reason
     assert run_mock.call_count == 2

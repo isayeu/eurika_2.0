@@ -239,7 +239,7 @@ def _init_ollama_fallback_client() -> tuple[Any | None, str | None, str | None]:
 
     api_key = os.environ.get("OLLAMA_OPENAI_API_KEY", "ollama")
     base_url = os.environ.get("OLLAMA_OPENAI_BASE_URL", "http://127.0.0.1:11434/v1")
-    model = os.environ.get("OLLAMA_OPENAI_MODEL", "qwen2.5:1.5b")
+    model = os.environ.get("OLLAMA_OPENAI_MODEL", "qwen2.5-coder:7b")
     client, reason = _build_openai_client(api_key, base_url)
     return client, model, reason
 
@@ -320,7 +320,6 @@ def _call_ollama_cli(model: str, prompt: str) -> tuple[str | None, str | None]:
     """Fallback path via local `ollama run` CLI when HTTP endpoints are unavailable."""
     import os
     import subprocess
-    import time
 
     cli_timeout_sec = int(os.environ.get("EURIKA_OLLAMA_CLI_TIMEOUT_SEC", "45"))
 
@@ -371,18 +370,7 @@ def _call_ollama_cli(model: str, prompt: str) -> tuple[str | None, str | None]:
         if text:
             return text, None
         if reason and "could not connect to ollama server" in reason.lower():
-            # Try to self-heal: start local daemon and retry once.
-            subprocess.Popen(
-                ["ollama", "serve"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
-            time.sleep(2.0)
-            readiness_issue = _model_ready_reason()
-            if readiness_issue:
-                return None, readiness_issue
-            return _run_once()
+            return None, "could not connect to ollama server; start it manually with `ollama serve`"
         if reason and "timed out" in reason.lower():
             readiness_issue = _model_ready_reason()
             if readiness_issue:
@@ -428,7 +416,7 @@ def _llm_interpret(
         if fallback_text:
             return fallback_text, None
         fallback_reason = fallback_call_reason
-    cli_model = fallback_model or "qwen2.5:1.5b"
+    cli_model = fallback_model or "qwen2.5-coder:7b"
     cli_prompt = _build_ollama_cli_prompt(summary, history, patch_plan)
     cli_text, cli_reason = _call_ollama_cli(cli_model, cli_prompt)
     if cli_text:

@@ -33,6 +33,14 @@ def test_run_cycle_single_entry_point() -> None:
     assert "Unknown mode" in err["error"]
 
 
+def test_run_cycle_rejects_unknown_runtime_mode() -> None:
+    from cli.orchestrator import run_cycle
+
+    err = run_cycle(ROOT, mode="doctor", runtime_mode="bad-mode")
+    assert "error" in err
+    assert "Unknown runtime_mode" in err["error"]
+
+
 def test_eurika_orchestrator_run() -> None:
     """EurikaOrchestrator.run() delegates to run_cycle; doctor mode returns summary, patch_plan."""
     from cli.orchestrator import EurikaOrchestrator
@@ -339,3 +347,67 @@ def test_learning_not_appended_when_all_skipped(tmp_path: Path) -> None:
             run_cycle(proj, mode="fix", dry_run=False, quiet=True)
 
     assert mock_append.call_count == 0, "learning.append should not be called when modified=[]"
+
+
+def test_fix_cycle_report_includes_telemetry_and_safety_gates(tmp_path: Path) -> None:
+    """Fix cycle report includes telemetry KPI block and safety-gate status."""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "foo.py").write_text("import os\nx = 1\n", encoding="utf-8")
+    (proj / "tests").mkdir()
+    (proj / "tests" / "__init__.py").write_text("", encoding="utf-8")
+    (proj / "tests" / "test_foo.py").write_text("def test_foo(): assert True\n", encoding="utf-8")
+    (proj / "pyproject.toml").write_text("[tool.pytest.ini_options]\ntestpaths=['tests']\n", encoding="utf-8")
+    subprocess.run([sys.executable, "-m", "eurika_cli", "scan", str(proj)], cwd=ROOT, capture_output=True, timeout=30)
+
+    from cli.orchestrator import run_cycle
+
+    out = run_cycle(proj, mode="fix", quiet=True)
+    report = out.get("report", {})
+    telemetry = report.get("telemetry")
+    safety = report.get("safety_gates")
+    assert isinstance(telemetry, dict)
+    assert isinstance(safety, dict)
+    assert "apply_rate" in telemetry
+    assert "no_op_rate" in telemetry
+    assert "rollback_rate" in telemetry
+    assert "verify_duration_ms" in telemetry
+    assert "verify_required" in safety
+    assert "auto_rollback_enabled" in safety
+
+
+def test_fix_cycle_all_rejected_includes_telemetry_and_no_verify_gate() -> None:
+    """If hybrid rejects all ops, report still includes telemetry and verify gate is disabled."""
+    from cli.orchestrator import run_cycle
+
+    fake_result = MagicMock()
+    fake_result.output = {
+        "policy_decisions": [
+            {
+                "index": 1,
+                "target_file": "a.py",
+                "kind": "split_module",
+                "decision": "review",
+                "reason": "high risk",
+                "risk": "high",
+            }
+        ]
+    }
+    ops = [{"target_file": "a.py", "kind": "split_module", "explainability": {"risk": "high"}}]
+    early = None
+    patch_plan = {"operations": ops}
+    with (
+        patch("cli.orchestrator._fix_cycle_deps", return_value={"run_scan": lambda *_args, **_kwargs: True}),
+        patch("cli.orchestrator._prepare_fix_cycle_operations", return_value=(early, fake_result, patch_plan, ops)),
+        patch("cli.orchestrator._select_hybrid_operations", return_value=([], ops)),
+    ):
+        out = run_cycle(ROOT, mode="fix", runtime_mode="hybrid", quiet=True, non_interactive=False)
+    report = out.get("report", {})
+    telemetry = report.get("telemetry", {})
+    safety = report.get("safety_gates", {})
+    assert report.get("message") == "All operations rejected by user/policy. Cycle complete."
+    assert telemetry.get("operations_total") == 1
+    assert telemetry.get("skipped_count") == 1
+    assert telemetry.get("no_op_rate") == 1.0
+    assert safety.get("verify_required") is False
+    assert safety.get("verify_passed") is None

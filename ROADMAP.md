@@ -70,6 +70,31 @@
 - [ ] Актуализировать артефакты после контрольных прогонов (`eurika_doctor_report.json`, `CYCLE_REPORT.md`) при изменении поведения/метрик
 - [ ] Поддерживать “малые рефакторинги + тесты” для топ-long/deep функций в core CLI/pipeline
 
+### Фаза 2.7 — Нативный Agent Runtime в Eurika (без внешней прослойки)
+
+**Цель:** встроить Cursor-подобный workflow напрямую в кодовую базу Eurika: управляемый цикл решений, политики безопасности, объяснимые патчи, session-memory и гибридный режим auto/manual для рефакторинга.
+
+| # | Шаг | Задача | Критерий готовности |
+|---|-----|--------|----------------------|
+| 2.7.1 | Agent Runtime Core | Добавить единый runtime-цикл (`observe -> reason -> propose -> apply -> verify -> learn`) в `eurika/agent/runtime.py`; режимы `assist`, `hybrid`, `auto` | Есть unit-тесты на переходы состояний; цикл запускается из CLI без изменения существующего контракта `scan/doctor/fix` |
+| 2.7.2 | Tool Contract Layer | Ввести типизированные адаптеры инструментов (scan, patch, verify, rollback, tests, git-read) с единым `ToolResult` | Runtime использует только tool-contract API; ошибки нормализованы; поведение воспроизводимо в dry-run |
+| 2.7.3 | Policy Engine | Реализовать policy-конфиг для auto-apply (ограничения по risk, file patterns, max files/ops, API-breaking guard) | Для `hybrid/auto` есть policy-решение `allow/deny/review`; покрытие тестами deny-правил и граничных кейсов |
+| 2.7.4 | Explainability Record | Для каждой операции сохранять `why`, `risk`, `expected_outcome`, `rollback_plan` и outcome verify | В `eurika_fix_report.json`/events видны объяснения по каждому op; `eurika explain` показывает rationale из runtime |
+| 2.7.5 | Session Memory | Добавить память сессии/кампании: история решений, повторные провалы, подавление шумовых операций | Повторный запуск учитывает прошлые fail/skip; уменьшается churn по TODO/no-op операциям |
+| 2.7.6 | Human-in-the-loop CLI | Добавить интерактивный approval в `fix` для `hybrid` (approve/reject/skip/all), с `--non-interactive` для CI | CLI-UX покрыт интеграционными тестами; в CI-режиме поведение детерминировано без промптов |
+| 2.7.7 | Safety & Rollback Gates | Ужесточить guardrails: обязательный verify-gate, авто-rollback при regressions, лимиты на серию операций | Нет частично-применённых невалидных сессий; rollback покрыт тестами на fail verify |
+| 2.7.8 | Telemetry & KPIs | Добавить метрики операционности: apply-rate, rollback-rate, no-op-rate, median verify time | Метрики выводятся в doctor/fix report и используются для корректировки policy |
+| 2.7.9 | Dogfooding Campaign | Провести серию dogfooding-прогонов только новым runtime (assist/hybrid/auto) на Eurika | Минимум 3 стабильных цикла подряд без шумовых TODO-патчей; тесты зелёные |
+| 2.7.10 | Docs & Migration | Обновить CLI.md, ROADMAP, DOGFOODING, CYCLE_REPORT с новым режимом runtime и правилами эксплуатации | Документация синхронизирована с кодом; сценарии запуска/отката описаны и проверены |
+
+**Порядок внедрения (рекомендуемый):** 2.7.1 -> 2.7.2 -> 2.7.3 -> 2.7.4 -> 2.7.5 -> 2.7.6 -> 2.7.7 -> 2.7.8 -> 2.7.9 -> 2.7.10.
+
+**Метрики выхода из фазы 2.7 (DoD):**
+- apply-rate в `eurika fix` устойчиво растёт, а no-op-rate снижается относительно базовой линии.
+- В `hybrid` режиме пользователь контролирует medium/high-risk операции без потери воспроизводимости.
+- Каждый применённый патч имеет machine-readable rationale и rollback trail.
+- По итогам dogfooding новые режимы не ухудшают verify-success и не повышают шум в git diff.
+
 ### Фаза 2.1 — Саморазвитие и стабилизация (приоритет 1)
 
 **Цель:** закрепить цикл «анализ и исправление собственного кода», добавлять новые функции по запросу, держать тесты и документацию в актуальном состоянии.

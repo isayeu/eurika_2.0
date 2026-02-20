@@ -254,7 +254,7 @@ def handle_doctor(args: Any) -> int:
         return 1
     from cli.orchestrator import run_cycle
     from eurika.smells.rules import summary_to_text
-    data = run_cycle(path, mode='doctor', window=getattr(args, 'window', 5), no_llm=getattr(args, 'no_llm', False))
+    data = run_cycle(path, mode='doctor', runtime_mode=getattr(args, 'runtime_mode', 'assist'), window=getattr(args, 'window', 5), no_llm=getattr(args, 'no_llm', False))
     if data.get('error'):
         _err(data['error'])
         return 1
@@ -284,6 +284,9 @@ def handle_fix(args: Any) -> int:
         path=args.path, window=getattr(args, 'window', 5), dry_run=getattr(args, 'dry_run', False),
         quiet=getattr(args, 'quiet', False), no_clean_imports=getattr(args, 'no_clean_imports', False),
         no_code_smells=getattr(args, 'no_code_smells', False), verify_cmd=getattr(args, 'verify_cmd', None), interval=getattr(args, 'interval', 0),
+        runtime_mode=getattr(args, 'runtime_mode', 'assist'),
+        non_interactive=getattr(args, 'non_interactive', False),
+        session_id=getattr(args, 'session_id', None),
     )
     return handle_agent_cycle(fix_args)
 

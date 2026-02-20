@@ -19,6 +19,8 @@ def test_apply_and_verify_modifies_files(tmp_path: Path) -> None:
     assert report['errors'] == []
     assert 'verify' in report
     assert report['verify']['success'] is True
+    assert 'verify_duration_ms' in report
+    assert isinstance(report['verify_duration_ms'], int)
     assert (tmp_path / 'foo.py').read_text(encoding='utf-8') == 'x = 1\n\n# TODO: refactor (eurika)\n'
     assert report.get('run_id')
     assert (tmp_path / '.eurika_backups' / report['run_id'] / 'foo.py').exists()
@@ -30,6 +32,7 @@ def test_apply_and_verify_no_verify(tmp_path: Path) -> None:
     report = apply_and_verify(tmp_path, plan, backup=False, verify=False)
     assert report['modified'] == ['a.py']
     assert report['verify']['success'] is None
+    assert report['verify_duration_ms'] == 0
 
 def test_rollback_restores_files(tmp_path: Path) -> None:
     """rollback restores from .eurika_backups/<run_id>."""
@@ -152,4 +155,5 @@ def test_apply_and_verify_auto_rollback_on_failure(tmp_path: Path) -> None:
     report = apply_and_verify(tmp_path, plan, backup=True, verify=True, auto_rollback=True)
     assert report['verify']['success'] is False
     assert report.get('rollback', {}).get('done') is True
+    assert report.get('rollback', {}).get('trigger') == 'verify_failed'
     assert (tmp_path / 'bad.py').read_text(encoding='utf-8') == 'x = 1\n'

@@ -27,6 +27,9 @@ class EurikaOrchestrator:
         target_path: Path,
         mode: str = "fix",
         *,
+        runtime_mode: str = "assist",
+        non_interactive: bool = False,
+        session_id: str | None = None,
         window: int = 5,
         dry_run: bool = False,
         quiet: bool = False,
@@ -38,6 +41,9 @@ class EurikaOrchestrator:
         return run_cycle(
             target_path,
             mode=mode,
+            runtime_mode=runtime_mode,
+            non_interactive=non_interactive,
+            session_id=session_id,
             window=window,
             dry_run=dry_run,
             quiet=quiet,
@@ -70,6 +76,9 @@ def run_cycle(
     path: Path,
     mode: str = "fix",
     *,
+    runtime_mode: str = "assist",
+    non_interactive: bool = False,
+    session_id: str | None = None,
     window: int = 5,
     dry_run: bool = False,
     quiet: bool = False,
@@ -78,15 +87,33 @@ def run_cycle(
     no_code_smells: bool = False,
     verify_cmd: str | None = None,
 ) -> dict[str, Any]:
-    """Единая точка входа: mode='doctor' | 'fix' | 'full'. Другие аргументы передаются в соответствующий цикл."""
+    """Единая точка входа: mode='doctor' | 'fix' | 'full'."""
     path = Path(path).resolve()
-    if mode == "doctor":
-        return run_doctor_cycle(path, window=window, no_llm=no_llm)
-    if mode == "fix":
-        return run_fix_cycle(path, window=window, dry_run=dry_run, quiet=quiet, no_clean_imports=no_clean_imports, no_code_smells=no_code_smells, verify_cmd=verify_cmd)
-    if mode == "full":
-        return run_full_cycle(path, window=window, dry_run=dry_run, quiet=quiet, no_llm=no_llm, no_clean_imports=no_clean_imports, no_code_smells=no_code_smells, verify_cmd=verify_cmd)
-    return {"error": f"Unknown mode: {mode}. Use 'doctor', 'fix', or 'full'."}
+    if runtime_mode not in {"assist", "hybrid", "auto"}:
+        return {"error": f"Unknown runtime_mode: {runtime_mode}. Use 'assist', 'hybrid', or 'auto'."}
+
+    def _run_cycle_impl() -> dict[str, Any]:
+        if mode == "doctor":
+            return run_doctor_cycle(path, window=window, no_llm=no_llm)
+        if mode == "fix":
+            return run_fix_cycle(path, runtime_mode=runtime_mode, non_interactive=non_interactive, session_id=session_id, window=window, dry_run=dry_run, quiet=quiet, no_clean_imports=no_clean_imports, no_code_smells=no_code_smells, verify_cmd=verify_cmd)
+        if mode == "full":
+            return run_full_cycle(path, runtime_mode=runtime_mode, non_interactive=non_interactive, session_id=session_id, window=window, dry_run=dry_run, quiet=quiet, no_llm=no_llm, no_clean_imports=no_clean_imports, no_code_smells=no_code_smells, verify_cmd=verify_cmd)
+        return {"error": f"Unknown mode: {mode}. Use 'doctor', 'fix', or 'full'."}
+
+    if runtime_mode == "assist":
+        return _run_cycle_impl()
+
+    from eurika.agent.runtime import run_agent_cycle
+    from eurika.agent.tools import OrchestratorToolset
+
+    cycle = run_agent_cycle(
+        mode=runtime_mode,
+        tools=OrchestratorToolset(path=path, mode=mode, cycle_runner=_run_cycle_impl),
+    )
+    out = cycle.payload if isinstance(cycle.payload, dict) else {"error": "agent runtime returned invalid payload"}
+    out.setdefault("agent_runtime", {"mode": runtime_mode, "stages": cycle.stages})
+    return out
 
 
 def run_doctor_cycle(
@@ -135,6 +162,9 @@ def run_doctor_cycle(
 def run_full_cycle(
     path: Path,
     *,
+    runtime_mode: str = "assist",
+    non_interactive: bool = False,
+    session_id: str | None = None,
     window: int = 5,
     dry_run: bool = False,
     quiet: bool = False,
@@ -161,7 +191,7 @@ def run_full_cycle(
         print(file=sys.stderr)
         print(data["architect_text"], file=sys.stderr)
         print(file=sys.stderr)
-    out = run_fix_cycle(path, window=window, dry_run=dry_run, quiet=quiet, skip_scan=True, no_clean_imports=no_clean_imports, no_code_smells=no_code_smells, verify_cmd=verify_cmd)
+    out = run_fix_cycle(path, runtime_mode=runtime_mode, non_interactive=non_interactive, session_id=session_id, window=window, dry_run=dry_run, quiet=quiet, skip_scan=True, no_clean_imports=no_clean_imports, no_code_smells=no_code_smells, verify_cmd=verify_cmd)
     out["doctor_report"] = data
     return out
 
@@ -223,6 +253,109 @@ def _build_fix_dry_run_result(path: Path, patch_plan: dict[str, Any], operations
         "agent_result": result,
         "dry_run": True,
     }
+
+
+def _apply_runtime_policy(
+    patch_plan: dict[str, Any],
+    operations: list[dict[str, Any]],
+    *,
+    runtime_mode: str,
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Evaluate operations via policy engine and attach explainability metadata."""
+    from eurika.agent import evaluate_operation, load_policy_config
+
+    cfg = load_policy_config(runtime_mode)  # assist|hybrid|auto
+    seen_files: set[str] = set()
+    kept: list[dict[str, Any]] = []
+    decisions: list[dict[str, Any]] = []
+    for idx, op in enumerate(operations, start=1):
+        target_file = str(op.get("target_file") or "")
+        res = evaluate_operation(op, config=cfg, index=idx, seen_files=seen_files)
+        op_with_meta = dict(op)
+        op_with_meta["explainability"] = res.explainability
+        decisions.append(
+            {
+                "index": idx,
+                "target_file": target_file,
+                "kind": op.get("kind"),
+                "decision": res.decision,
+                "reason": res.reason,
+                "risk": res.risk,
+            }
+        )
+        if res.decision == "allow" or runtime_mode == "assist":
+            kept.append(op_with_meta)
+            if target_file:
+                seen_files.add(target_file)
+    patch_plan = dict(patch_plan, operations=kept)
+    return patch_plan, kept, decisions
+
+
+def _apply_session_rejections(
+    path: Path,
+    patch_plan: dict[str, Any],
+    operations: list[dict[str, Any]],
+    *,
+    session_id: str | None,
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Skip operations that were explicitly rejected in this session earlier."""
+    if not session_id:
+        return patch_plan, operations, []
+    from eurika.storage import SessionMemory, operation_key
+
+    mem = SessionMemory(path)
+    rejected_keys = mem.rejected_keys(session_id)
+    if not rejected_keys:
+        return patch_plan, operations, []
+    kept: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    for op in operations:
+        if operation_key(op) in rejected_keys:
+            skipped.append(op)
+            continue
+        kept.append(op)
+    return dict(patch_plan, operations=kept), kept, skipped
+
+
+def _select_hybrid_operations(
+    operations: list[dict[str, Any]],
+    *,
+    quiet: bool,
+    non_interactive: bool,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Interactive approval flow for hybrid mode."""
+    if non_interactive or not operations or quiet or not sys.stdin.isatty():
+        return operations, []
+    approved: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    for idx, op in enumerate(operations, start=1):
+        kind = op.get("kind", "?")
+        target = op.get("target_file", "?")
+        risk = (op.get("explainability") or {}).get("risk", "unknown")
+        prompt = (
+            f"[{idx}/{len(operations)}] {kind} -> {target} (risk={risk}) "
+            "[a]pprove/[r]eject/[A]ll approve/[R]eject rest/[s]kip prompt: "
+        )
+        while True:
+            choice = input(prompt).strip() or "a"
+            if choice in {"a", "r", "A", "R", "s"}:
+                break
+            print("Use one of: a, r, A, R, s", file=sys.stderr)
+        if choice == "a":
+            approved.append(op)
+        elif choice == "r":
+            rejected.append(op)
+        elif choice == "A":
+            approved.append(op)
+            approved.extend(operations[idx:])
+            break
+        elif choice == "R":
+            rejected.append(op)
+            rejected.extend(operations[idx:])
+            break
+        elif choice == "s":
+            approved.append(op)
+    return approved, rejected
 
 
 def _run_fix_diagnose_stage(path: Path, window: int, quiet: bool) -> Any:
@@ -364,9 +497,53 @@ def _write_fix_report(path: Path, report: dict[str, Any], quiet: bool) -> None:
         pass
 
 
+def _attach_fix_telemetry(report: dict[str, Any], operations: list[dict[str, Any]]) -> None:
+    """Attach operational telemetry and safety-gate summary to fix report."""
+    policy_total = len(report.get("policy_decisions", []) or [])
+    ops_total = len(operations) or policy_total
+    modified = report.get("modified", []) or []
+    skipped = report.get("skipped", []) or []
+    rollback_done = bool((report.get("rollback") or {}).get("done"))
+    verify_payload = report.get("verify")
+    verify_success_raw = (
+        verify_payload.get("success")
+        if isinstance(verify_payload, dict)
+        else None
+    )
+    verify_ran = verify_success_raw is not None
+    verify_required = verify_ran
+    verify_duration_ms = report.get("verify_duration_ms")
+    if verify_duration_ms is None:
+        verify_duration_ms = 0
+    if not skipped and isinstance(report.get("message"), str):
+        if report["message"].startswith("All operations rejected by user/policy."):
+            skipped = [d.get("target_file") for d in (report.get("policy_decisions") or []) if d.get("target_file")]
+    apply_rate = (len(modified) / ops_total) if ops_total else 0.0
+    no_op_rate = (len(skipped) / ops_total) if ops_total else 0.0
+    rollback_rate = (1.0 if rollback_done else 0.0) if verify_required else 0.0
+    report["telemetry"] = {
+        "operations_total": ops_total,
+        "modified_count": len(modified),
+        "skipped_count": len(skipped),
+        "apply_rate": round(apply_rate, 4),
+        "no_op_rate": round(no_op_rate, 4),
+        "rollback_rate": rollback_rate,
+        "verify_duration_ms": int(verify_duration_ms),
+    }
+    report["safety_gates"] = {
+        "verify_required": verify_required,
+        "auto_rollback_enabled": verify_required,
+        "verify_ran": verify_ran,
+        "verify_passed": (bool(verify_success_raw) if verify_ran else None),
+        "rollback_done": rollback_done,
+    }
+
+
 def _prepare_fix_cycle_operations(
     path: Path,
     *,
+    runtime_mode: str,
+    session_id: str | None,
     window: int,
     quiet: bool,
     skip_scan: bool,
@@ -404,15 +581,30 @@ def _prepare_fix_cycle_operations(
     patch_plan, operations = _prepend_fix_operations(
         path, patch_plan, operations, no_clean_imports, no_code_smells
     )
+    patch_plan, operations, policy_decisions = _apply_runtime_policy(
+        patch_plan,
+        operations,
+        runtime_mode=runtime_mode,
+    )
+    patch_plan, operations, session_skipped = _apply_session_rejections(
+        path, patch_plan, operations, session_id=session_id
+    )
     if not operations:
         return {
             "return_code": 0,
-            "report": {"message": "Patch plan has no operations. Cycle complete."},
+            "report": {
+                "message": "Patch plan has no operations. Cycle complete.",
+                "policy_decisions": policy_decisions,
+                "session_skipped": len(session_skipped),
+            },
             "operations": [],
             "modified": [],
             "verify_success": True,
             "agent_result": result,
         }, result, patch_plan, []
+    if session_skipped:
+        result.output["session_skipped"] = len(session_skipped)
+    result.output["policy_decisions"] = policy_decisions
     return None, result, patch_plan, operations
 
 
@@ -437,6 +629,9 @@ def _execute_fix_apply_stage(
         print("--- Step 3/4: patch & verify ---", file=sys.stderr)
     rescan_before = _prepare_rescan_before(path, backup_dir)
     report = apply_and_verify(path, patch_plan, backup=True, verify=True, verify_cmd=verify_cmd, auto_rollback=True)
+    report["operation_explanations"] = [op.get("explainability", {}) for op in operations]
+    report["policy_decisions"] = result.output.get("policy_decisions", [])
+    _attach_fix_telemetry(report, operations)
     _enrich_report_with_rescan(
         path, report, rescan_before, quiet, run_scan,
         build_snapshot_from_self_map, diff_architecture_snapshots,
@@ -485,6 +680,9 @@ def _build_fix_cycle_result(report: dict[str, Any], operations: list[dict[str, A
 def run_fix_cycle(
     path: Path,
     *,
+    runtime_mode: str = "assist",
+    non_interactive: bool = False,
+    session_id: str | None = None,
     window: int = 5,
     dry_run: bool = False,
     quiet: bool = False,
@@ -496,6 +694,9 @@ def run_fix_cycle(
     """Run full fix cycle: scan → diagnose → plan → patch → verify."""
     return _run_fix_cycle_impl(
         path,
+        runtime_mode=runtime_mode,
+        non_interactive=non_interactive,
+        session_id=session_id,
         window=window,
         dry_run=dry_run,
         quiet=quiet,
@@ -509,6 +710,9 @@ def run_fix_cycle(
 def _run_fix_cycle_impl(
     path: Path,
     *,
+    runtime_mode: str = "assist",
+    non_interactive: bool = False,
+    session_id: str | None = None,
     window: int = 5,
     dry_run: bool = False,
     quiet: bool = False,
@@ -523,6 +727,8 @@ def _run_fix_cycle_impl(
 
     early, result, patch_plan, operations = _prepare_fix_cycle_operations(
         path,
+        runtime_mode=runtime_mode,
+        session_id=session_id,
         window=window,
         quiet=quiet,
         skip_scan=skip_scan,
@@ -531,12 +737,48 @@ def _run_fix_cycle_impl(
         run_scan=run_scan,
     )
     if early is not None:
+        if isinstance(early, dict) and isinstance(early.get("report"), dict):
+            _attach_fix_telemetry(early["report"], early.get("operations", []))
         return early
+
+    approved_ops, rejected_ops = _select_hybrid_operations(
+        operations,
+        quiet=quiet,
+        non_interactive=non_interactive or runtime_mode != "hybrid",
+    )
+    if rejected_ops and session_id:
+        from eurika.storage import SessionMemory
+
+        SessionMemory(path).record(session_id, approved=approved_ops, rejected=rejected_ops)
+    operations = approved_ops
+    patch_plan = dict(patch_plan, operations=operations)
+    if not operations:
+        rejected_files = [str(op.get("target_file", "")) for op in rejected_ops if op.get("target_file")]
+        report = {
+            "message": "All operations rejected by user/policy. Cycle complete.",
+            "policy_decisions": result.output.get("policy_decisions", []),
+            "operation_explanations": [],
+            "skipped": rejected_files,
+        }
+        _attach_fix_telemetry(report, approved_ops)
+        return {
+            "return_code": 0,
+            "report": report,
+            "operations": [],
+            "modified": [],
+            "verify_success": True,
+            "agent_result": result,
+            "dry_run": dry_run,
+        }
 
     if dry_run:
         if not quiet:
             print("--- Step 3/3: plan (dry-run, no apply) ---", file=sys.stderr)
-        return _build_fix_dry_run_result(path, patch_plan, operations, result)
+        out = _build_fix_dry_run_result(path, patch_plan, operations, result)
+        out["report"]["operation_explanations"] = [op.get("explainability", {}) for op in operations]
+        out["report"]["policy_decisions"] = result.output.get("policy_decisions", [])
+        _attach_fix_telemetry(out["report"], operations)
+        return out
     report, modified, verify_success = _execute_fix_apply_stage(
         path, patch_plan, operations,
         quiet=quiet, verify_cmd=verify_cmd, backup_dir=deps["BACKUP_DIR"],

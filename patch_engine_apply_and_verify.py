@@ -2,6 +2,7 @@
 
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -50,7 +51,9 @@ def apply_and_verify(project_root: Path, plan: Dict[str, Any], *, backup: bool=T
     report = apply_patch(root, plan, backup=backup)
     if not verify:
         report.setdefault('verify', {'success': None, 'returncode': None, 'stdout': '', 'stderr': ''})
+        report['verify_duration_ms'] = 0
         return report
+    verify_started = time.perf_counter()
     report['verify'] = verify_patch(root, timeout=verify_timeout, verify_cmd=verify_cmd)
     if not report['verify']['success'] and retry_on_import_error and report.get('run_id'):
         from eurika.refactor.fix_import_from_verify import parse_verify_import_error, suggest_fix_import_operations
@@ -77,11 +80,18 @@ def apply_and_verify(project_root: Path, plan: Dict[str, Any], *, backup: bool=T
         py_compile_result['py_compile_fallback'] = True
         if py_compile_result['success']:
             report['verify'] = py_compile_result
+    report['verify_duration_ms'] = int((time.perf_counter() - verify_started) * 1000)
     if not report['verify']['success'] and auto_rollback and report.get('run_id'):
         rb = rollback_patch(root, report['run_id'])
-        report['rollback'] = {'done': True, 'run_id': report['run_id'], 'restored': rb.get('restored', []), 'errors': rb.get('errors', [])}
+        report['rollback'] = {
+            'done': True,
+            'run_id': report['run_id'],
+            'restored': rb.get('restored', []),
+            'errors': rb.get('errors', []),
+            'trigger': 'verify_failed',
+        }
     elif not report['verify']['success'] and auto_rollback and (not report.get('run_id')):
-        report['rollback'] = {'done': False, 'reason': 'no run_id (no backup)'}
+        report['rollback'] = {'done': False, 'reason': 'no run_id (no backup)', 'trigger': 'verify_failed'}
     return report
 
 

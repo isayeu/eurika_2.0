@@ -131,3 +131,81 @@
 - LLM в данном runtime окружении агента: не достигнут ни primary, ни fallback
   (`primary LLM failed (Connection error.); ollama fallback failed (Connection error.)`).
   В пользовательском терминале локальный Ollama ранее подтверждён рабочим (`doctor` с содержательным LLM-ответом).
+
+---
+
+## 9. Sprint 4 update (Safety gates + KPI telemetry)
+
+### Реализовано
+
+- В `eurika_fix_report.json` добавлены KPI:
+  - `telemetry.operations_total`
+  - `telemetry.modified_count`
+  - `telemetry.skipped_count`
+  - `telemetry.apply_rate`
+  - `telemetry.no_op_rate`
+  - `telemetry.rollback_rate`
+  - `telemetry.verify_duration_ms`
+- Добавлен блок guardrails:
+  - `safety_gates.verify_required`
+  - `safety_gates.auto_rollback_enabled`
+  - `safety_gates.verify_ran`
+  - `safety_gates.verify_passed`
+  - `safety_gates.rollback_done`
+- Для rollback-ветки фиксируется `rollback.trigger = "verify_failed"`.
+- Telemetry/safety теперь формируются не только в apply-ветке, но и в edge-cases:
+  - `patch plan has no operations`
+  - `all operations rejected by user/policy`
+  - `dry-run`.
+
+### Проверка
+
+- Прогон через venv:
+  - `"/mnt/sdb2/project/.venv/bin/python" -m pytest -q tests/test_cycle.py tests/test_patch_engine.py tests/test_architect.py`
+  - Результат: `42 passed`.
+- Добавлен тест на edge-case полного отклонения операций в hybrid (`telemetry + no verify gate`).
+
+### Ollama runtime policy (обновление)
+
+- Автозапуск/перезапуск `ollama serve` из Eurika отключён.
+- При недоступности daemon возвращается явная инструкция запустить `ollama serve` вручную.
+- Дефолт fallback-модели Ollama переключен на coding-профиль:
+  - `OLLAMA_OPENAI_MODEL=qwen2.5-coder:7b`.
+
+---
+
+## 10. Контрольный baseline после Sprint 4
+
+### Прогоны (через venv)
+
+- `"/mnt/sdb2/project/.venv/bin/python" -m eurika_cli doctor .`
+- `"/mnt/sdb2/project/.venv/bin/python" -m eurika_cli fix . --dry-run --quiet`
+- `"/mnt/sdb2/project/.venv/bin/python" -c "... run_cycle(..., mode='fix', dry_run=True, quiet=True) ..."`
+
+### Doctor snapshot
+
+- system: `modules=151`, `dependencies=93`, `cycles=0`
+- risk score: `46/100` (Δ0 по окну)
+- trends: `complexity=stable`, `smells=stable`, `centralization=stable`
+- patch plan from doctor: `operations=[]`
+- LLM status в этом запуске: template fallback, причина:
+  - `ollama CLI fallback failed (could not connect to ollama server; start it manually with ollama serve)`
+
+### Fix dry-run snapshot (runtime assist)
+
+- patch plan operations: `1`
+  - `refactor_code_smell` для `eurika/agent/policy.py:evaluate_operation` (`deep_nesting`, risk=`medium`)
+- telemetry:
+  - `operations_total=1`
+  - `modified_count=0`
+  - `skipped_count=0`
+  - `apply_rate=0.0`
+  - `no_op_rate=0.0`
+  - `rollback_rate=0.0`
+  - `verify_duration_ms=0`
+- safety_gates:
+  - `verify_required=false`
+  - `auto_rollback_enabled=false`
+  - `verify_ran=false`
+  - `verify_passed=null`
+  - `rollback_done=false`

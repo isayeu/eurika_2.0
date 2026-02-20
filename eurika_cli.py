@@ -108,6 +108,12 @@ def _add_product_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     doctor_parser.add_argument("--window", type=int, default=5, help="History window (default: 5)")
     doctor_parser.add_argument("--no-llm", action="store_true", help="Architect: use template only")
+    doctor_parser.add_argument(
+        "--runtime-mode",
+        choices=["assist", "hybrid", "auto"],
+        default="assist",
+        help="Agent runtime mode (default: assist)",
+    )
 
     fix_parser = subparsers.add_parser(
         "fix",
@@ -127,6 +133,23 @@ def _add_product_commands(subparsers: argparse._SubParsersAction) -> None:
     fix_parser.add_argument("--no-code-smells", action="store_true", help="Skip refactor_code_smell (long_function, deep_nesting) ops (default: included)")
     fix_parser.add_argument("--verify-cmd", type=str, default=None, metavar="CMD", help="Override verify command (e.g. 'python manage.py test'); else [tool.eurika] verify_cmd or pytest")
     fix_parser.add_argument("--interval", type=int, default=0, metavar="SEC", help="Auto-run: repeat every SEC seconds (0=once, Ctrl+C to stop)")
+    fix_parser.add_argument(
+        "--runtime-mode",
+        choices=["assist", "hybrid", "auto"],
+        default="assist",
+        help="Agent runtime mode (default: assist)",
+    )
+    fix_parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Do not prompt for approvals in hybrid mode",
+    )
+    fix_parser.add_argument(
+        "--session-id",
+        type=str,
+        default=None,
+        help="Session key for reusing approval/rejection memory",
+    )
 
     cycle_parser = subparsers.add_parser(
         "cycle",
@@ -147,6 +170,23 @@ def _add_product_commands(subparsers: argparse._SubParsersAction) -> None:
     cycle_parser.add_argument("--no-code-smells", action="store_true", help="Skip refactor_code_smell ops in fix (default: included)")
     cycle_parser.add_argument("--verify-cmd", type=str, default=None, metavar="CMD", help="Override verify command (e.g. 'python manage.py test'); else [tool.eurika] verify_cmd or pytest")
     cycle_parser.add_argument("--interval", type=int, default=0, metavar="SEC", help="Auto-run: repeat every SEC seconds (0=once, Ctrl+C to stop)")
+    cycle_parser.add_argument(
+        "--runtime-mode",
+        choices=["assist", "hybrid", "auto"],
+        default="assist",
+        help="Agent runtime mode (default: assist)",
+    )
+    cycle_parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Do not prompt for approvals in hybrid mode",
+    )
+    cycle_parser.add_argument(
+        "--session-id",
+        type=str,
+        default=None,
+        help="Session key for reusing approval/rejection memory",
+    )
 
     explain_parser = subparsers.add_parser(
         "explain",
@@ -497,6 +537,23 @@ def _add_agent_cycle_command(
     p.add_argument("--window", type=int, default=5, help="History window for arch-review (default: 5)")
     p.add_argument("--dry-run", action="store_true", help="Run scan → arch-review → patch-plan only; do not apply or verify")
     p.add_argument("--quiet", "-q", action="store_true", help="Suppress scan/arch output; only final report JSON to stdout")
+    p.add_argument(
+        "--runtime-mode",
+        choices=["assist", "hybrid", "auto"],
+        default="assist",
+        help="Agent runtime mode (default: assist)",
+    )
+    p.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Do not prompt for approvals in hybrid mode",
+    )
+    p.add_argument(
+        "--session-id",
+        type=str,
+        default=None,
+        help="Session key for reusing approval/rejection memory",
+    )
 
 
 def _add_agent_learning_summary_command(

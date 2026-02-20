@@ -69,11 +69,11 @@ eurika doctor . --no-llm
 
 ---
 
-### eurika fix [path] [--window N] [--dry-run] [--quiet] [--no-clean-imports] [--verify-cmd CMD]
+### eurika fix [path] [--window N] [--dry-run] [--quiet] [--runtime-mode MODE] [--non-interactive] [--session-id ID] [--no-clean-imports] [--verify-cmd CMD]
 
 Полный цикл: scan → arch-review → patch-apply --apply --verify. **По умолчанию** план fix включает операции **remove_unused_import** (clean-imports) для файлов с неиспользуемыми импортами; затем — архитектурные патчи (remove_cyclic_import, split_module и т.д.). Эквивалент `eurika agent cycle` с применением патчей и проверкой тестами. После apply запускается **pytest** (или `--verify-cmd` / `[tool.eurika] verify_cmd` в pyproject.toml); для верификации нужен установленный pytest: `pip install pytest` или `pip install -e ".[test]"`. **Отчёт сохраняется в `eurika_fix_report.json`** (при apply — полный; при `--dry-run` — `dry_run: true` + `patch_plan`).
 
-**Опции:** `--window N`, `--dry-run` (только план, без apply; сохраняет eurika_fix_report.json), `--quiet` / `-q` (минимальный вывод, итог в JSON), `--no-clean-imports` (исключить remove_unused_import из плана), `--no-code-smells` (исключить refactor_code_smell — long_function, deep_nesting — из плана), `--verify-cmd CMD` (переопределить команду верификации, напр. `python manage.py test` для Django; иначе используется `[tool.eurika] verify_cmd` в pyproject.toml или pytest), `--interval SEC` (авто-повтор каждые SEC секунд, 0=один раз; Ctrl+C для остановки).
+**Опции:** `--window N`, `--dry-run` (только план, без apply; сохраняет eurika_fix_report.json), `--quiet` / `-q` (минимальный вывод, итог в JSON), `--runtime-mode {assist,hybrid,auto}` (режим agent runtime), `--non-interactive` (для `hybrid`: не спрашивать approve/reject, детерминированный режим для CI), `--session-id ID` (память решений сессии для `hybrid`), `--no-clean-imports` (исключить remove_unused_import из плана), `--no-code-smells` (исключить refactor_code_smell — long_function, deep_nesting — из плана), `--verify-cmd CMD` (переопределить команду верификации, напр. `python manage.py test` для Django; иначе используется `[tool.eurika] verify_cmd` в pyproject.toml или pytest), `--interval SEC` (авто-повтор каждые SEC секунд, 0=один раз; Ctrl+C для остановки).
 
 ```bash
 eurika fix .
@@ -84,11 +84,11 @@ eurika fix . --no-clean-imports
 
 ---
 
-### eurika cycle [path] [--window N] [--dry-run] [--quiet] [--no-llm] [--no-clean-imports] [--verify-cmd CMD]
+### eurika cycle [path] [--window N] [--dry-run] [--quiet] [--runtime-mode MODE] [--non-interactive] [--session-id ID] [--no-llm] [--no-clean-imports] [--verify-cmd CMD]
 
 Полный ритуал одной командой: **scan → doctor (report + architect) → fix**. Сначала scan, затем вывод полной диагностики (summary, evolution, architect), затем fix (patch-apply --apply --verify). Fix по умолчанию включает remove_unused_import; architect при cycle получает recent_events (последние patch/learn) в контексте.
 
-**Опции:** `--window N`, `--dry-run` (doctor + plan, без apply), `--quiet` / `-q`, `--no-llm` (architect по шаблону, без API-ключа), `--no-clean-imports` (исключить clean-imports из fix), `--no-code-smells` (исключить refactor_code_smell из fix), `--verify-cmd CMD` (переопределить команду верификации для fix), `--interval SEC` (авто-повтор каждые SEC секунд; Ctrl+C для остановки).
+**Опции:** `--window N`, `--dry-run` (doctor + plan, без apply), `--quiet` / `-q`, `--runtime-mode {assist,hybrid,auto}`, `--non-interactive`, `--session-id ID`, `--no-llm` (architect по шаблону, без API-ключа), `--no-clean-imports` (исключить clean-imports из fix), `--no-code-smells` (исключить refactor_code_smell из fix), `--verify-cmd CMD` (переопределить команду верификации для fix), `--interval SEC` (авто-повтор каждые SEC секунд; Ctrl+C для остановки).
 
 ### eurika watch [path] [--poll SEC] [--quiet] [--no-clean-imports]
 
@@ -238,8 +238,14 @@ eurika explain action_plan.py . --window 10
 - `OPENAI_API_KEY` — ключ API (обязателен для LLM)
 - `OPENAI_BASE_URL` — для OpenRouter: `https://openrouter.ai/api/v1`
 - `OPENAI_MODEL` — модель, например `mistralai/mistral-small-3.2-24b-instruct` или `gpt-4o-mini`
+- `OLLAMA_OPENAI_BASE_URL` — локальный OpenAI-compatible endpoint (default: `http://127.0.0.1:11434/v1`)
+- `OLLAMA_OPENAI_MODEL` — fallback-модель Ollama (default: `qwen2.5-coder:7b`)
+- `OLLAMA_OPENAI_API_KEY` — ключ для локального endpoint (default: `ollama`)
+- `EURIKA_LLM_TIMEOUT_SEC` — таймаут HTTP LLM вызовов (default: `20`)
+- `EURIKA_OLLAMA_CLI_TIMEOUT_SEC` — таймаут CLI fallback `ollama run` (default: `45`)
 
 Переменные можно задать в `.env` в корне проекта; тогда нужен `pip install python-dotenv` (или `eurika[env]`). При ошибке LLM в stderr выводится причина и используется шаблон.
+Важно: Eurika больше не запускает `ollama serve` автоматически — Ollama daemon должен быть поднят вручную до запуска команд.
 
 ```bash
 eurika architect .
@@ -411,6 +417,6 @@ eurika agent feedback-summary .
 | `.eurika/events.json` | Единый журнал событий (scan, patch, learn, feedback) — ROADMAP 3.2 |
 | `.eurika/history.json` | История снимков, version, risk_score |
 | `.eurika/observations.json` | Журнал наблюдений scan |
-| `eurika_fix_report.json` | Отчёт fix (modified, skipped, rescan_diff, verify) — по умолчанию |
+| `eurika_fix_report.json` | Отчёт fix (modified, skipped, rescan_diff, verify, telemetry, safety_gates, policy_decisions, operation_explanations) — по умолчанию |
 | `eurika_doctor_report.json` | Отчёт doctor (summary, history, architect, patch_plan) — по умолчанию |
 | `.eurika_backups/<run_id>/` | Бэкапы при patch-apply --apply |
