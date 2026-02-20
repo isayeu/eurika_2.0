@@ -477,6 +477,21 @@ def test_drop_noop_append_ops(tmp_path: Path) -> None:
     assert kept[0]["target_file"] == "b.py"
 
 
+def test_deprioritize_weak_pairs_puts_weak_last(tmp_path: Path) -> None:
+    """Weak-pair ops are moved to the end of the operation list."""
+    from cli.orchestration.prepare import _deprioritize_weak_pairs
+
+    ops = [
+        {"target_file": "a.py", "kind": "split_module", "smell_type": "hub"},
+        {"target_file": "b.py", "kind": "remove_unused_import"},
+        {"target_file": "c.py", "kind": "extract_nested_function", "smell_type": "long_function"},
+    ]
+    reordered = _deprioritize_weak_pairs(ops)
+    assert reordered[0]["target_file"] == "b.py"
+    assert reordered[1]["target_file"] in ("a.py", "c.py")
+    assert reordered[2]["target_file"] in ("a.py", "c.py")
+
+
 def test_run_fix_cycle_impl_uses_apply_stage_facade() -> None:
     """run_cycle(fix) should wire through delegated apply-stage builders."""
     from cli.orchestrator import run_cycle

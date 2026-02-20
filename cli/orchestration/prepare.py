@@ -80,6 +80,21 @@ def _drop_noop_append_ops(
     return kept
 
 
+def _is_weak_pair(op: dict[str, Any]) -> bool:
+    """True if op is a historically low-success smell|action pair."""
+    from eurika.agent.policy import WEAK_SMELL_ACTION_PAIRS
+    kind = (op.get("kind") or "").strip()
+    smell = (op.get("smell_type") or "").strip()
+    return (smell, kind) in WEAK_SMELL_ACTION_PAIRS
+
+
+def _deprioritize_weak_pairs(
+    operations: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Move weak-pair ops to the end so they are cut first when hitting max_ops."""
+    return sorted(operations, key=lambda op: (1 if _is_weak_pair(op) else 0))
+
+
 def apply_runtime_policy(
     patch_plan: dict[str, Any],
     operations: list[dict[str, Any]],
@@ -224,6 +239,7 @@ def prepare_fix_cycle_operations(
         path, patch_plan, operations, no_clean_imports, no_code_smells
     )
     operations = _drop_noop_append_ops(operations, path)
+    operations = _deprioritize_weak_pairs(operations)
     patch_plan = dict(patch_plan, operations=operations)
     patch_plan, operations, policy_decisions = apply_runtime_policy(
         patch_plan,

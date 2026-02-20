@@ -42,6 +42,13 @@ def _expected_outcome(op: dict[str, Any]) -> str:
     return "Operation is applied and verified in the patch cycle."
 
 
+WEAK_SMELL_ACTION_PAIRS: frozenset[tuple[str, str]] = frozenset({
+    ("hub", "split_module"),
+    ("bottleneck", "introduce_facade"),
+    ("long_function", "extract_nested_function"),
+})
+
+
 def _weak_pair_policy(
     op: dict[str, Any],
     *,
@@ -50,12 +57,7 @@ def _weak_pair_policy(
     """Return policy override for historically weak smell|action pairs."""
     kind = (op.get("kind") or "").strip()
     smell = (op.get("smell_type") or "").strip()
-    weak_pairs = {
-        ("hub", "split_module"),
-        ("bottleneck", "introduce_facade"),
-        ("long_function", "extract_nested_function"),
-    }
-    if (smell, kind) not in weak_pairs:
+    if (smell, kind) not in WEAK_SMELL_ACTION_PAIRS:
         return None, None
     if mode == "hybrid":
         return "review", f"historically weak pair requires manual approval: {smell}|{kind}"
