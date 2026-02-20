@@ -370,3 +370,33 @@
 
 - `python -m py_compile eurika/reasoning/planner.py eurika/reasoning/heuristics.py eurika/reasoning/advisor.py`
 - `ReadLints` по обновленным файлам — без ошибок.
+
+---
+
+## 17. Dogfooding on New Boundaries (ROADMAP 2.8.8)
+
+### Сценарий
+
+- Проведен dogfooding-контур на декомпозированных границах (`doctor -> fix --dry-run -> fix`) после шагов 2.8.5-2.8.7.
+- Контрольный apply-run: `run_id=20260220_095348` (`eurika_fix_report.json`).
+
+### Контрольные метрики (из fix-report)
+
+- `verify.success=true`, `returncode=0`
+- `verify.stdout`: `214 passed in 31.36s`
+- `telemetry.operations_total=8`
+- `telemetry.modified_count=9`
+- `telemetry.no_op_rate=0.0`
+- `telemetry.rollback_rate=0.0`
+- `telemetry.verify_duration_ms=31840`
+- `safety_gates.verify_required=true`, `verify_ran=true`, `verify_passed=true`, `rollback_done=false`
+
+### Stability / regression check
+
+- Верификация после apply стабильна (падений verify нет).
+- Rollback не потребовался (`rollback_rate=0.0`), safety-gates отработали штатно.
+- По rescan-метрикам score без деградации (`before_score=46`, `after_score=46`).
+
+### Вывод
+
+- Шаг ROADMAP `2.8.8 Dogfooding on New Boundaries` считается закрытым: декомпозиция границ не ухудшила verify-стабильность и не вызвала всплеска rollback/no-op метрик в контрольном прогоне.

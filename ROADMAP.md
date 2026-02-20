@@ -120,7 +120,7 @@
 - [x] 2.8.5 Planner Boundary — выполнено
 - [x] 2.8.6 Patch Subsystem — выполнено (рефакторинг через фасады и выделенные модули `patch_apply_*`, `patch_engine_*`, API сохранен)
 - [x] 2.8.7 Violation Audit — выполнено (закрыты прямые cross-layer вызовы patch_apply из CLI и wildcard-shims в `eurika/reasoning/*`)
-- [ ] 2.8.8 Dogfooding on New Boundaries — в работе
+- [x] 2.8.8 Dogfooding on New Boundaries — выполнено (контур `doctor -> fix --dry-run -> fix` пройден; verify стабилен, rollback/no-op без всплеска)
 
 **Метрики выхода из фазы 2.8 (DoD):**
 - Уменьшение централизации по файлам: `cli/orchestrator.py`, `eurika_cli.py`, `architecture_planner.py`, `patch_apply.py` больше не являются top outliers по LOC/смешению ролей.
