@@ -304,3 +304,6 @@ def handle_non_default_kind(
         return True, backup_dir
 
     return False, backup_dir
+
+
+# TODO (eurika): refactor long_function 'handle_non_default_kind' — consider extracting helper

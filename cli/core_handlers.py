@@ -581,3 +581,6 @@ def handle_serve(args: Any) -> int:
     run_server(host=args.host, port=args.port, project_root=args.path)
     return 0
 
+
+
+# TODO (eurika): refactor long_function 'handle_report_snapshot' — consider extracting helper

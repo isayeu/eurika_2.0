@@ -123,7 +123,12 @@ def apply_runtime_policy(
                 "risk": res.risk,
             }
         )
-        if res.decision == "allow" or runtime_mode == "assist":
+        keep = (
+            runtime_mode == "assist"
+            or res.decision == "allow"
+            or (res.decision == "review" and runtime_mode == "hybrid")
+        )
+        if keep:
             kept.append(op_with_meta)
             if target_file:
                 seen_files.add(target_file)
@@ -151,6 +156,28 @@ def apply_session_rejections(
     skipped: list[dict[str, Any]] = []
     for op in operations:
         if operation_key(op) in rejected_keys:
+            skipped.append(op)
+            continue
+        kept.append(op)
+    return dict(patch_plan, operations=kept), kept, skipped
+
+
+def apply_campaign_memory(
+    path: Path,
+    patch_plan: dict[str, Any],
+    operations: list[dict[str, Any]],
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Skip ops rejected in any session or that failed verify 2+ times (ROADMAP 2.7.5)."""
+    from eurika.storage import SessionMemory, operation_key
+
+    mem = SessionMemory(path)
+    skip_keys = mem.campaign_keys_to_skip()
+    if not skip_keys:
+        return patch_plan, operations, []
+    kept: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    for op in operations:
+        if operation_key(op) in skip_keys:
             skipped.append(op)
             continue
         kept.append(op)
@@ -258,6 +285,7 @@ def prepare_fix_cycle_operations(
         operations,
         runtime_mode=runtime_mode,
     )
+    patch_plan, operations, _ = apply_campaign_memory(path, patch_plan, operations)
     patch_plan, operations, session_skipped = apply_session_rejections(
         path, patch_plan, operations, session_id=session_id
     )
@@ -280,3 +308,6 @@ def prepare_fix_cycle_operations(
     return None, result, patch_plan, operations
 
 
+
+
+# TODO (eurika): refactor long_function 'prepare_fix_cycle_operations' — consider extracting helper
