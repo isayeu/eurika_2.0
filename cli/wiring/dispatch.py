@@ -20,6 +20,7 @@ def dispatch_command(parser: argparse.ArgumentParser, args: Any) -> int:
         "arch-history": lambda: handlers.handle_arch_history(args),
         "history": lambda: handlers.handle_arch_history(args),
         "report": lambda: handlers.handle_report(args),
+        "report-snapshot": lambda: handlers.handle_report_snapshot(args),
         "explain": lambda: handlers.handle_explain(args),
         "arch-diff": lambda: handlers.handle_arch_diff(args),
         "self-check": lambda: handlers.handle_self_check(args),

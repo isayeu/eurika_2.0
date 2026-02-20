@@ -492,6 +492,32 @@ def test_deprioritize_weak_pairs_puts_weak_last(tmp_path: Path) -> None:
     assert reordered[2]["target_file"] in ("a.py", "c.py")
 
 
+def test_report_snapshot_empty_project(tmp_path: Path) -> None:
+    """report-snapshot outputs fallback when no artifacts exist."""
+    result = subprocess.run(
+        [sys.executable, "-m", "eurika_cli", "report-snapshot", str(tmp_path)],
+        cwd=ROOT, capture_output=True, text=True, timeout=10
+    )
+    assert result.returncode == 0
+    assert "No eurika_doctor_report" in result.stdout or "eurika_fix_report" in result.stdout
+
+
+def test_report_snapshot_with_fix_report(tmp_path: Path) -> None:
+    """report-snapshot reads eurika_fix_report.json when present."""
+    (tmp_path / "eurika_fix_report.json").write_text(
+        json.dumps({"modified": ["a.py"], "skipped": [], "verify": {"success": True}}),
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        [sys.executable, "-m", "eurika_cli", "report-snapshot", str(tmp_path)],
+        cwd=ROOT, capture_output=True, text=True, timeout=10
+    )
+    assert result.returncode == 0
+    assert "## 1. Fix" in result.stdout
+    assert "modified" in result.stdout
+    assert "1" in result.stdout
+
+
 def test_run_fix_cycle_impl_uses_apply_stage_facade() -> None:
     """run_cycle(fix) should wire through delegated apply-stage builders."""
     from cli.orchestrator import run_cycle

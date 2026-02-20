@@ -44,6 +44,14 @@ eurika fix . --dry-run
 
 После `eurika fix .` (без --dry-run) запускается **pytest** для верификации; при провале тестов выполняется автоматический откат.
 
+## Обновление CYCLE_REPORT.md после контрольного прогона
+
+После изменения поведения или метрик:
+
+1. Выполнить `eurika doctor .` и `eurika fix .` (или `eurika cycle .`).
+2. Запустить `eurika report-snapshot .` — вывод в формате CYCLE_REPORT.
+3. Вставить или обновить секции в `CYCLE_REPORT.md` (см. §1 Fix, §2 Doctor, §3 Learning).
+
 ## Использование на других проектах
 
 Проекты в `/mnt/storage/project` (farm_helper, optweb, dartopt и др.) можно анализировать, передавая путь к **корню конкретного проекта**.

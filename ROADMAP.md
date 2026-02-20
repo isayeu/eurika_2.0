@@ -67,7 +67,7 @@
 
 - [x] Повысить долю реальных apply в `eurika fix` (уменьшить долю `skipped: diff already in content` за счёт более точных операций) — _drop_noop_append_ops в prepare
 - [x] Пересобрать policy для слабых пар learning (`hub|split_module`, `long_function|extract_nested_function`): фильтрация/понижение приоритета — WEAK_SMELL_ACTION_PAIRS, _deprioritize_weak_pairs
-- [ ] Актуализировать артефакты после контрольных прогонов (`eurika_doctor_report.json`, `CYCLE_REPORT.md`) при изменении поведения/метрик
+- [x] Актуализировать артефакты после контрольных прогонов (`eurika_doctor_report.json`, `CYCLE_REPORT.md`) — `eurika report-snapshot .`, DOGFOODING
 - [ ] Поддерживать “малые рефакторинги + тесты” для топ-long/deep функций в core CLI/pipeline
 
 ### Фаза 2.7 — Нативный Agent Runtime в Eurika (без внешней прослойки)

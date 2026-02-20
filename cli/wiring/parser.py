@@ -112,6 +112,9 @@ def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
     report_parser.add_argument("--json", action="store_true", help="Output JSON (machine-readable)")
     report_parser.add_argument("--window", type=int, default=5, help="History window for evolution (default: 5)")
 
+    snapshot_parser = subparsers.add_parser("report-snapshot", help="Print CYCLE_REPORT-style markdown from doctor/fix artifacts (for updating CYCLE_REPORT.md)")
+    snapshot_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
+
     architect_parser = subparsers.add_parser("architect", help="Print architect's interpretation; LLM if OPENAI_API_KEY set (optional OPENAI_BASE_URL, OPENAI_MODEL for OpenRouter)")
     architect_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
     architect_parser.add_argument("--window", type=int, default=5, help="History window (default: 5)")
@@ -229,3 +232,6 @@ def _add_agent_cycle_command(agent_subparsers: argparse._SubParsersAction) -> No
 def _add_agent_learning_summary_command(agent_subparsers: argparse._SubParsersAction) -> None:
     p = agent_subparsers.add_parser("learning-summary", help="Summarize accumulated self-refactoring outcomes")
     p.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
+
+
+# TODO (eurika): refactor long_function '_add_product_commands' — consider extracting helper
