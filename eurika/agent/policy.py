@@ -72,14 +72,21 @@ def _apply_core_rules(
     seen_files: set[str],
     risk: RiskLevel,
 ) -> tuple[PolicyDecision, str]:
-    """Apply core policy rules (test files, limits, risk). Returns (decision, reason)."""
+    """Apply core policy rules (file patterns, limits, risk, API-breaking guard)."""
     target_file = str(op.get("target_file") or "")
     if target_file.startswith("tests/") and not config.allow_test_files:
         return "deny", "test files are blocked by policy"
+    if config.matches_deny_pattern(target_file):
+        return "deny", f"file matches deny pattern: {target_file}"
     if index > config.max_ops:
         return "deny", f"operation limit exceeded (max_ops={config.max_ops})"
     if target_file and target_file not in seen_files and len(seen_files) >= config.max_files:
         return "deny", f"file scope limit exceeded (max_files={config.max_files})"
+    if config.api_breaking_guard and config.is_api_surface_file(target_file):
+        if risk in ("medium", "high"):
+            if config.mode == "hybrid":
+                return "review", "API surface file requires manual approval"
+            return "deny", "API surface file blocked by api_breaking_guard"
     if not config.allows_risk(risk):
         if config.mode == "hybrid":
             return "review", f"risk={risk} requires manual approval in hybrid mode"

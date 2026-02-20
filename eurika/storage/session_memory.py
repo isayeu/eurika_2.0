@@ -1,4 +1,4 @@
-"""Session memory for hybrid approval decisions."""
+"""Session memory for hybrid approval decisions (ROADMAP 2.7.5)."""
 
 from __future__ import annotations
 
@@ -6,6 +6,9 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+_CAMPAIGN_VERIFY_FAIL_MAX = 20
+_CAMPAIGN_REJECTED_MAX = 100
 
 
 def operation_key(op: dict[str, Any]) -> str:
@@ -62,4 +65,29 @@ class SessionMemory:
         rejected_keys |= {operation_key(op) for op in rejected}
         session["approved_keys"] = sorted(approved_keys)
         session["rejected_keys"] = sorted(rejected_keys)
+        campaign = data.setdefault("campaign", {"rejected_keys": [], "verify_fail_keys": []})
+        campaign_rej = set(campaign.get("rejected_keys") or [])
+        campaign_rej |= rejected_keys
+        campaign["rejected_keys"] = sorted(campaign_rej)[-_CAMPAIGN_REJECTED_MAX:]
         self._save(data)
+
+    def record_verify_failure(self, operations: list[dict[str, Any]]) -> None:
+        """Record op keys from a run that failed verify (ROADMAP 2.7.5)."""
+        data = self._load()
+        campaign = data.setdefault("campaign", {"rejected_keys": [], "verify_fail_keys": []})
+        fail_keys = list(campaign.get("verify_fail_keys") or [])
+        for op in operations:
+            fail_keys.append(operation_key(op))
+        campaign["verify_fail_keys"] = fail_keys[-(_CAMPAIGN_VERIFY_FAIL_MAX):]
+        self._save(data)
+
+    def campaign_keys_to_skip(self) -> set[str]:
+        """Keys to skip based on campaign memory: rejected in any session or 2+ verify failures."""
+        data = self._load()
+        campaign = data.get("campaign") or {}
+        rej = set(campaign.get("rejected_keys") or [])
+        fail_keys = campaign.get("verify_fail_keys") or []
+        from collections import Counter
+        counts = Counter(fail_keys)
+        repeated_fail = {k for k, v in counts.items() if v >= 2}
+        return rej | repeated_fail

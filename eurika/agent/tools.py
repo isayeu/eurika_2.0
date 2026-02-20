@@ -1,4 +1,4 @@
-"""Tool adapter layer used by the native runtime."""
+"""Tool adapter layer used by the native runtime (ROADMAP 2.7.2)."""
 
 from __future__ import annotations
 
@@ -8,14 +8,14 @@ from typing import Any, Callable
 
 from .models import ToolResult
 
-
 @dataclass(slots=True)
 class OrchestratorToolset:
-    """Minimal toolset adapter for wrapping existing orchestrator logic."""
+    """Minimal toolset adapter wrapping orchestrator logic. Uses ToolContract for scan."""
 
     path: Path
     mode: str
     cycle_runner: Callable[[], dict[str, Any]]
+    contract: Any = None  # ToolContract for primitive ops (ROADMAP 2.7.2); observe keeps lightweight to avoid double scan
 
     def observe(self, _: dict[str, Any]) -> ToolResult:
         return ToolResult(payload={"path": str(self.path), "mode": self.mode})

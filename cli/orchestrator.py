@@ -103,11 +103,15 @@ def run_cycle(
         return _run_cycle_impl()
 
     from eurika.agent.runtime import run_agent_cycle
+    from eurika.agent.tool_contract import DefaultToolContract
     from eurika.agent.tools import OrchestratorToolset
 
+    contract = DefaultToolContract()
     cycle = run_agent_cycle(
         mode=runtime_mode,
-        tools=OrchestratorToolset(path=path, mode=mode, cycle_runner=_run_cycle_impl),
+        tools=OrchestratorToolset(
+            path=path, mode=mode, cycle_runner=_run_cycle_impl, contract=contract
+        ),
     )
     out = cycle.payload if isinstance(cycle.payload, dict) else {"error": "agent runtime returned invalid payload"}
     out.setdefault("agent_runtime", {"mode": runtime_mode, "stages": cycle.stages})
@@ -158,7 +162,13 @@ def run_full_cycle(
 
 def _build_fix_dry_run_result(path: Path, patch_plan: dict[str, Any], operations: list[dict[str, Any]], result: Any) -> dict[str, Any]:
     """Build and persist dry-run report/result payload."""
-    report = {"dry_run": True, "patch_plan": patch_plan, "modified": [], "verify": {"success": None}}
+    expls = [dict(op.get("explainability") or {}, verify_outcome=None) for op in operations]
+    report = {
+        "dry_run": True, "patch_plan": patch_plan, "modified": [],
+        "verify": {"success": None},
+        "operation_explanations": expls,
+        "policy_decisions": result.output.get("policy_decisions", []),
+    }
     try:
         (path / "eurika_fix_report.json").write_text(
             json.dumps(report, indent=2, ensure_ascii=False),
@@ -360,8 +370,6 @@ def _run_fix_cycle_impl(
         if not quiet:
             print("--- Step 3/3: plan (dry-run, no apply) ---", file=sys.stderr)
         out = _build_fix_dry_run_result(path, patch_plan, operations, result)
-        out["report"]["operation_explanations"] = [op.get("explainability", {}) for op in operations]
-        out["report"]["policy_decisions"] = result.output.get("policy_decisions", [])
         _apply_attach_fix_telemetry(out["report"], operations)
         return out
     report, modified, verify_success = _apply_execute_fix_apply_stage(

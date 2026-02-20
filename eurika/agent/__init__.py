@@ -4,8 +4,10 @@ from .config import PolicyConfig, load_policy_config
 from .models import AgentCycleResult, AgentMode, AgentStage, ToolResult
 from .policy import OperationPolicyResult, evaluate_operation
 from .runtime import run_agent_cycle
+from .tool_contract import DefaultToolContract
 
 __all__ = [
+    "DefaultToolContract",
     "AgentCycleResult",
     "AgentMode",
     "AgentStage",
