@@ -14,7 +14,53 @@ from patch_engine_rollback_patch import rollback_patch
 from patch_engine_verify_patch import verify_patch
 
 
-def apply_and_verify(project_root: Path, plan: Dict[str, Any], *, backup: bool=True, verify: bool=True, verify_timeout: int=120, verify_cmd: Optional[str]=None, auto_rollback: bool=True, retry_on_import_error: bool=True) -> Dict[str, Any]:
+def _run_verify_with_fallbacks(
+    root: Path,
+    report: Dict[str, Any],
+    *,
+    verify_timeout: int,
+    verify_cmd: Optional[str],
+    retry_on_import_error: bool,
+    auto_rollback: bool,
+) -> None:
+    """Run verify, optional retry/compile fallback, and auto_rollback. Mutates report."""
+    verify_started = time.perf_counter()
+    report["verify"] = verify_patch(root, timeout=verify_timeout, verify_cmd=verify_cmd)
+    maybe_retry_import_fix(
+        root=root,
+        report=report,
+        verify_timeout=verify_timeout,
+        verify_cmd=verify_cmd,
+        retry_on_import_error=retry_on_import_error,
+        apply_patch_fn=apply_patch,
+        verify_patch_fn=verify_patch,
+    )
+    maybe_apply_py_compile_fallback(
+        root=root,
+        report=report,
+        verify_timeout=verify_timeout,
+        verify_cmd=verify_cmd,
+    )
+    report["verify_duration_ms"] = int((time.perf_counter() - verify_started) * 1000)
+    maybe_auto_rollback(
+        root=root,
+        report=report,
+        auto_rollback=auto_rollback,
+        rollback_patch_fn=rollback_patch,
+    )
+
+
+def apply_and_verify(
+    project_root: Path,
+    plan: Dict[str, Any],
+    *,
+    backup: bool = True,
+    verify: bool = True,
+    verify_timeout: int = 120,
+    verify_cmd: Optional[str] = None,
+    auto_rollback: bool = True,
+    retry_on_import_error: bool = True,
+) -> Dict[str, Any]:
     """
     Apply a patch plan and optionally run verify command. On verify failure, optionally
     try to fix import errors (create missing stub or redirect import) and retry verify.
@@ -37,31 +83,15 @@ def apply_and_verify(project_root: Path, plan: Dict[str, Any], *, backup: bool=T
     root = Path(project_root).resolve()
     report = apply_patch(root, plan, backup=backup)
     if not verify:
-        report.setdefault('verify', {'success': None, 'returncode': None, 'stdout': '', 'stderr': ''})
-        report['verify_duration_ms'] = 0
+        report.setdefault("verify", {"success": None, "returncode": None, "stdout": "", "stderr": ""})
+        report["verify_duration_ms"] = 0
         return report
-    verify_started = time.perf_counter()
-    report['verify'] = verify_patch(root, timeout=verify_timeout, verify_cmd=verify_cmd)
-    maybe_retry_import_fix(
+    _run_verify_with_fallbacks(
         root=root,
         report=report,
         verify_timeout=verify_timeout,
         verify_cmd=verify_cmd,
         retry_on_import_error=retry_on_import_error,
-        apply_patch_fn=apply_patch,
-        verify_patch_fn=verify_patch,
-    )
-    maybe_apply_py_compile_fallback(
-        root=root,
-        report=report,
-        verify_timeout=verify_timeout,
-        verify_cmd=verify_cmd,
-    )
-    report['verify_duration_ms'] = int((time.perf_counter() - verify_started) * 1000)
-    maybe_auto_rollback(
-        root=root,
-        report=report,
         auto_rollback=auto_rollback,
-        rollback_patch_fn=rollback_patch,
     )
     return report
