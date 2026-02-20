@@ -352,3 +352,21 @@
 ### Next closure candidates
 
 - Минимизировать wildcard-compat shims в `eurika/reasoning` до явных экспортов/алиасов.
+
+## 16. Violation Audit progress (ROADMAP 2.8.7, iteration 2)
+
+### Closed violations (before -> after)
+
+- `eurika/reasoning/planner.py`: удалены wildcard-реэкспорты (`from ... import *`), введен явный facade-контракт через именованные импорты и `__all__`.
+- `eurika/reasoning/heuristics.py`: удалены wildcard-реэкспорты (`from ... import *`), введен явный facade-контракт через именованные импорты и `__all__`.
+- `eurika/reasoning/advisor.py`: удалены wildcard-реэкспорты (`from ... import *`), введен явный facade-контракт через именованные импорты и `__all__`.
+
+### Compatibility contract
+
+- Сохранена обратная совместимость по публичным сущностям фасадов (`build_*`, `Action*`, `Patch*`, `AgentCore`/`ArchReviewAgentCore`, `SimpleMemory`/`DummyReasoner`/`SimpleSelector` и др.) через явный экспорт.
+- Изолирована поверхность API: внешние импорты получают стабильный список символов вместо неявного расширения через wildcard.
+
+### Verification
+
+- `python -m py_compile eurika/reasoning/planner.py eurika/reasoning/heuristics.py eurika/reasoning/advisor.py`
+- `ReadLints` по обновленным файлам — без ошибок.

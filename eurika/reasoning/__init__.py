@@ -1,4 +1,19 @@
-"""Reasoning / AgentCore façade."""
+"""Reasoning facade package with lazy submodule loading."""
 
-from . import advisor, architect, planner, heuristics, refactor_plan, graph_ops  # noqa: F401
+from importlib import import_module
+
+__all__ = [
+    "advisor",
+    "architect",
+    "planner",
+    "heuristics",
+    "refactor_plan",
+    "graph_ops",
+]
+
+
+def __getattr__(name: str):
+    if name in __all__:
+        return import_module(f"{__name__}.{name}")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 

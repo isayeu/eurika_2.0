@@ -1,6 +1,15 @@
-"""Facade for reasoning heuristics and selection logic."""
+"""Explicit facade for reasoning heuristics and selection logic."""
 
-from memory import *  # noqa: F401,F403
-from reasoner_dummy import *  # noqa: F401,F403
-from selector import *  # noqa: F401,F403
+from memory import MemoryRecord, SimpleMemory
+from reasoner_dummy import ANALYZE_TRIGGERS, REPEAT_WINDOW, DummyReasoner
+from selector import SimpleSelector
+
+__all__ = [
+    "MemoryRecord",
+    "SimpleMemory",
+    "REPEAT_WINDOW",
+    "ANALYZE_TRIGGERS",
+    "DummyReasoner",
+    "SimpleSelector",
+]
 
