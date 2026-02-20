@@ -62,6 +62,29 @@ def _weak_pair_policy(
     return "deny", f"historically weak pair blocked in auto mode: {smell}|{kind}"
 
 
+def _apply_core_rules(
+    op: dict[str, Any],
+    *,
+    config: PolicyConfig,
+    index: int,
+    seen_files: set[str],
+    risk: RiskLevel,
+) -> tuple[PolicyDecision, str]:
+    """Apply core policy rules (test files, limits, risk). Returns (decision, reason)."""
+    target_file = str(op.get("target_file") or "")
+    if target_file.startswith("tests/") and not config.allow_test_files:
+        return "deny", "test files are blocked by policy"
+    if index > config.max_ops:
+        return "deny", f"operation limit exceeded (max_ops={config.max_ops})"
+    if target_file and target_file not in seen_files and len(seen_files) >= config.max_files:
+        return "deny", f"file scope limit exceeded (max_files={config.max_files})"
+    if not config.allows_risk(risk):
+        if config.mode == "hybrid":
+            return "review", f"risk={risk} requires manual approval in hybrid mode"
+        return "deny", f"risk={risk} exceeds auto_apply_max_risk={config.auto_apply_max_risk}"
+    return "allow", "allowed by policy"
+
+
 def evaluate_operation(
     op: dict[str, Any],
     *,
@@ -70,27 +93,10 @@ def evaluate_operation(
     seen_files: set[str],
 ) -> OperationPolicyResult:
     """Evaluate one patch operation against configured policy and produce explainability metadata."""
-    target_file = str(op.get("target_file") or "")
     risk = _estimate_risk(op)
-    decision: PolicyDecision = "allow"
-    reason = "allowed by policy"
-
-    if target_file.startswith("tests/") and not config.allow_test_files:
-        decision = "deny"
-        reason = "test files are blocked by policy"
-    elif index > config.max_ops:
-        decision = "deny"
-        reason = f"operation limit exceeded (max_ops={config.max_ops})"
-    elif target_file and target_file not in seen_files and len(seen_files) >= config.max_files:
-        decision = "deny"
-        reason = f"file scope limit exceeded (max_files={config.max_files})"
-    elif not config.allows_risk(risk):
-        if config.mode == "hybrid":
-            decision = "review"
-            reason = f"risk={risk} requires manual approval in hybrid mode"
-        else:
-            decision = "deny"
-            reason = f"risk={risk} exceeds auto_apply_max_risk={config.auto_apply_max_risk}"
+    decision, reason = _apply_core_rules(
+        op, config=config, index=index, seen_files=seen_files, risk=risk
+    )
 
     if decision in {"allow", "review"}:
         weak_decision, weak_reason = _weak_pair_policy(op, mode=config.mode)
@@ -112,6 +118,3 @@ def evaluate_operation(
         reason=reason,
         explainability=explainability,
     )
-
-
-# TODO (eurika): refactor deep_nesting 'evaluate_operation' — consider extracting nested block
