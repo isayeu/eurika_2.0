@@ -164,6 +164,19 @@ def render_full_architecture_report(
     return "".join(parts)
 
 
+def _render_health_section_md(health: Dict[str, Any]) -> str:
+    """Format Health section as markdown."""
+    lines = ["## Health", "", f"**Score:** {health['score']}/100 ({health['level']})", ""]
+    factors = health.get("factors") or []
+    if factors:
+        for f in factors:
+            lines.append(f"- {f}")
+    else:
+        lines.append("- no significant structural risks detected")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def _render_architecture_report_md(
     snapshot: ArchitectureSnapshot,
     top_smells: int,
@@ -216,17 +229,7 @@ def _render_architecture_report_md(
 
     trends = (snapshot.history or {}).get("trends") or {}
     health = compute_health(snapshot.summary, snapshot.smells, trends)
-    parts.append("## Health")
-    parts.append("")
-    parts.append(f"**Score:** {health['score']}/100 ({health['level']})")
-    parts.append("")
-    factors = health.get("factors") or []
-    if factors:
-        for f in factors:
-            parts.append(f"- {f}")
-    else:
-        parts.append("- no significant structural risks detected")
-    parts.append("")
+    parts.append(_render_health_section_md(health))
 
     return "\n".join(parts)
 
@@ -236,6 +239,3 @@ def _render_architecture_report_md(
 # - Split outgoing dependencies across clearer layers or services.
 # - Introduce intermediate abstractions to decouple from concrete implementations.
 # - Align with semantic roles and system topology.
-
-
-# TODO (eurika): refactor long_function '_render_architecture_report_md' — consider extracting helper
