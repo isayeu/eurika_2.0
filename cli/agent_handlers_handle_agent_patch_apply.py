@@ -5,8 +5,7 @@ from typing import Any
 from agent_core import InputEvent
 from agent_core_arch_review import ArchReviewAgentCore
 from eurika.storage import ProjectMemory
-from patch_apply import apply_patch_plan
-from patch_engine import apply_and_verify
+from patch_engine import apply_and_verify, apply_patch, apply_patch_dry_run
 
 def handle_agent_patch_apply(args: Any) -> int:
     path = args.path.resolve()
@@ -31,7 +30,7 @@ def handle_agent_patch_apply(args: Any) -> int:
     dry_run = not getattr(args, 'apply', False)
     backup = not getattr(args, 'no_backup', False)
     if dry_run:
-        report = apply_patch_plan(path, patch_plan, dry_run=True, backup=backup)
+        report = apply_patch_dry_run(path, patch_plan, backup=backup)
     elif getattr(args, 'verify', False):
         report = apply_and_verify(path, patch_plan, backup=backup, verify=True)
         try:
@@ -47,7 +46,7 @@ def handle_agent_patch_apply(args: Any) -> int:
         except Exception:
             pass
     else:
-        report = apply_patch_plan(path, patch_plan, dry_run=False, backup=backup)
+        report = apply_patch(path, patch_plan, backup=backup)
     print(json.dumps(report, indent=2, ensure_ascii=False))
     if report.get('errors'):
         return 1

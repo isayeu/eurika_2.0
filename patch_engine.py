@@ -24,6 +24,7 @@ from patch_engine_apply_and_verify import apply_and_verify
 from patch_engine_rollback_patch import rollback_patch
 from patch_engine_verify_patch import verify_patch
 from patch_apply import BACKUP_DIR
+from patch_apply import apply_patch_plan as _apply_patch_plan
 from patch_apply import list_backups as _list_backups
 
 
@@ -34,3 +35,9 @@ def rollback(project_root: Path, run_id: Optional[str] = None) -> Dict[str, Any]
 def list_backups(project_root: Path) -> Dict[str, Any]:
     """List available backup run_ids in .eurika_backups/."""
     return _list_backups(Path(project_root).resolve())
+
+
+def apply_patch_dry_run(project_root: Path, plan: Dict[str, Any], *, backup: bool = True) -> Dict[str, Any]:
+    """Dry-run patch apply via patch_engine facade (compat wrapper)."""
+    root = Path(project_root).resolve()
+    return _apply_patch_plan(root, plan, dry_run=True, backup=backup)

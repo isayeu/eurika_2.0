@@ -334,3 +334,21 @@
 
 - `python -m py_compile patch_engine.py cli/orchestration/deps.py`
 - `ReadLints` по `patch_engine.py` и `cli/orchestration/deps.py` — без ошибок.
+
+---
+
+## 15. Violation Audit progress (ROADMAP 2.8.7, iteration 1)
+
+### Closed violations (before -> after)
+
+- `cli/orchestration/deps.py` больше не импортирует `BACKUP_DIR` напрямую из `patch_apply`; зависимость переведена на `patch_engine` facade (`from patch_engine import BACKUP_DIR, ...`).
+- `cli/agent_handlers.py` и `cli/agent_handlers_handle_agent_patch_apply.py` больше не вызывают `patch_apply.apply_patch_plan` напрямую; dry-run/apply маршруты переведены на `patch_engine` facade (`apply_patch_dry_run`, `apply_patch`).
+
+### Current intentional/legacy boundaries (tracked)
+
+- `patch_engine` по-прежнему использует `patch_apply` как execution backend (`apply_patch_plan`, `restore_backup`, `list_backups`) — это текущий совместимый контракт фасада patch-подсистемы.
+- В `eurika/reasoning/` остаются legacy compatibility shims с wildcard-реэкспортами (`planner.py`, `heuristics.py`, `advisor.py`); они поддерживают обратную совместимость, но не соответствуют целевому strict-layer стилю.
+
+### Next closure candidates
+
+- Минимизировать wildcard-compat shims в `eurika/reasoning` до явных экспортов/алиасов.
