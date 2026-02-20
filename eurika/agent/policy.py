@@ -42,6 +42,26 @@ def _expected_outcome(op: dict[str, Any]) -> str:
     return "Operation is applied and verified in the patch cycle."
 
 
+def _weak_pair_policy(
+    op: dict[str, Any],
+    *,
+    mode: str,
+) -> tuple[PolicyDecision | None, str | None]:
+    """Return policy override for historically weak smell|action pairs."""
+    kind = (op.get("kind") or "").strip()
+    smell = (op.get("smell_type") or "").strip()
+    weak_pairs = {
+        ("hub", "split_module"),
+        ("bottleneck", "introduce_facade"),
+        ("long_function", "extract_nested_function"),
+    }
+    if (smell, kind) not in weak_pairs:
+        return None, None
+    if mode == "hybrid":
+        return "review", f"historically weak pair requires manual approval: {smell}|{kind}"
+    return "deny", f"historically weak pair blocked in auto mode: {smell}|{kind}"
+
+
 def evaluate_operation(
     op: dict[str, Any],
     *,
@@ -72,6 +92,12 @@ def evaluate_operation(
             decision = "deny"
             reason = f"risk={risk} exceeds auto_apply_max_risk={config.auto_apply_max_risk}"
 
+    if decision in {"allow", "review"}:
+        weak_decision, weak_reason = _weak_pair_policy(op, mode=config.mode)
+        if weak_decision is not None and weak_reason is not None:
+            decision = weak_decision
+            reason = weak_reason
+
     explainability = {
         "why": str(op.get("description") or "No description provided."),
         "risk": risk,
@@ -86,3 +112,6 @@ def evaluate_operation(
         reason=reason,
         explainability=explainability,
     )
+
+
+# TODO (eurika): refactor deep_nesting 'evaluate_operation' — consider extracting nested block

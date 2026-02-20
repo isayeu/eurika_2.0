@@ -124,7 +124,8 @@ class LearningStore:
                 by_kind = stats.setdefault(kind, {"total": 0, "success": 0, "fail": 0})
                 by_kind["total"] += 1
                 if r.verify_success is True:
-                    by_kind["success"] += 1
+                    if _is_strong_refactor_code_smell_success(op):
+                        by_kind["success"] += 1
                 elif r.verify_success is False:
                     by_kind["fail"] += 1
         return stats
@@ -150,8 +151,19 @@ class LearningStore:
                 by_key = stats.setdefault(key, {"total": 0, "success": 0, "fail": 0})
                 by_key["total"] += 1
                 if r.verify_success is True:
-                    by_key["success"] += 1
+                    if _is_strong_refactor_code_smell_success(op):
+                        by_key["success"] += 1
                 elif r.verify_success is False:
                     by_key["fail"] += 1
         return stats
+
+
+def _is_strong_refactor_code_smell_success(op: Dict[str, Any]) -> bool:
+    """Do not treat TODO-marker smell ops as strong success."""
+    if (op.get("kind") or "") != "refactor_code_smell":
+        return True
+    diff = str(op.get("diff") or "")
+    if "# TODO (eurika): refactor " in diff:
+        return False
+    return True
 
