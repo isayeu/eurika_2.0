@@ -234,6 +234,37 @@ def _print_fix_summary(operations: list, modified: list, verify_success: bool | 
         print(f'Verify: {status}', file=sys.stderr)
     print(file=sys.stderr)
 
+def _print_verify_failure_help(
+    report: dict[str, Any],
+    *,
+    dry_run: bool,
+    verify_success: bool,
+) -> None:
+    """Print user-facing help when verify failed and changes were not rolled back automatically."""
+    if report.get("verify", {}).get("success") or dry_run or verify_success:
+        return
+    stderr = (report.get("verify") or {}).get("stderr") or ""
+    rollback_info = report.get("rollback") or {}
+    vm = report.get("verify_metrics") or {}
+    print(file=sys.stderr)
+    if rollback_info.get("reason") == "metrics_worsened":
+        print(
+            f"Metrics worsened (health {vm.get('before_score')} → {vm.get('after_score')}); changes rolled back.",
+            file=sys.stderr,
+        )
+    elif rollback_info.get("done"):
+        print("Tests failed; changes rolled back automatically.", file=sys.stderr)
+    else:
+        run_id = report.get("run_id")
+        print("Tests failed. To restore files from backup:", file=sys.stderr)
+        if run_id:
+            print(f"  eurika agent patch-rollback --run-id {run_id} .", file=sys.stderr)
+        else:
+            print("  eurika agent patch-rollback .", file=sys.stderr)
+    if "No module named pytest" in stderr or "pytest: command not found" in stderr:
+        print("To run verification after fix, install pytest: pip install pytest", file=sys.stderr)
+
+
 def _run_cycle_with_mode(args: Any, mode: str='fix') -> int:
     """Run cycle with given mode (fix or full) and print output."""
     import time
@@ -267,24 +298,9 @@ def _run_cycle_with_mode(args: Any, mode: str='fix') -> int:
                 print(json.dumps({'patch_plan': report.get('patch_plan', {})}, indent=2, ensure_ascii=False))
             else:
                 print(json.dumps(report, indent=2, ensure_ascii=False))
-            if not report.get('verify', {}).get('success') and (not dry_run) and (verify_success is False):
-                stderr = (report.get('verify') or {}).get('stderr') or ''
-                rollback_info = report.get('rollback') or {}
-                vm = report.get('verify_metrics') or {}
-                print(file=sys.stderr)
-                if rollback_info.get('reason') == 'metrics_worsened':
-                    print(f"Metrics worsened (health {vm.get('before_score')} → {vm.get('after_score')}); changes rolled back.", file=sys.stderr)
-                elif rollback_info.get('done'):
-                    print('Tests failed; changes rolled back automatically.', file=sys.stderr)
-                else:
-                    run_id = report.get('run_id')
-                    print('Tests failed. To restore files from backup:', file=sys.stderr)
-                    if run_id:
-                        print(f'  eurika agent patch-rollback --run-id {run_id} .', file=sys.stderr)
-                    else:
-                        print('  eurika agent patch-rollback .', file=sys.stderr)
-                if 'No module named pytest' in stderr or 'pytest: command not found' in stderr:
-                    print('To run verification after fix, install pytest: pip install pytest', file=sys.stderr)
+            _print_verify_failure_help(
+                report, dry_run=dry_run, verify_success=verify_success
+            )
             last_code = return_code
             if interval <= 0:
                 break
@@ -338,9 +354,3 @@ def handle_agent_learning_summary(args: Any) -> int:
 # - Identify distinct concerns and split this module into focused units.
 # - Reduce total degree (fan-in + fan-out) via extraction.
 # - Extract from imports: action_plan.py, agent_core.py, agent_core_arch_review.py.
-
-
-# TODO (eurika): refactor long_function '_run_cycle_with_mode' — consider extracting helper
-
-
-# TODO (eurika): refactor deep_nesting '_run_cycle_with_mode' — consider extracting nested block
