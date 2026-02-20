@@ -2,6 +2,50 @@
 
 All notable changes to this project will be documented in this file.
 
+## v2.9.1 — Architect рекомендации «как» (ROADMAP 2.9.1) (2026-02-20)
+
+### Features
+- **Architect Recommendation block:** при наличии рисков (god_module, bottleneck, hub, cyclic_dependency) — блок «Recommendation (how to fix)» с конкретными шагами (split modules, introduce facade, decompose, break cycle).
+- **Reference block:** отдельный блок «Reference (from documentation)» при наличии Knowledge; рекомендации ссылаются на него.
+- **Smell → how mapping:** _SMELL_HOW_MAP, _parse_smell_from_risk, _build_recommendation_how_block в architect.
+
+### Tests
+- test_recommendation_how_block_and_parse_smell; test_template_interpret_minimal обновлён.
+
+---
+
+## v2.9.0 — Фаза 2.9 в ROADMAP (углубление цикла) (2026-02-20)
+
+### Docs
+- **ROADMAP:** добавлена **Фаза 2.9 — Углубление цикла (LLM + Knowledge + Learning)** — приоритет над 3.0.
+- Шаги: 2.9.1 Architect → рекомендации «как»; 2.9.2 LLM в планировании; 2.9.3 Knowledge PEP/RFC; 2.9.4 Обучение в цикле; 2.9.5 Dogfooding.
+- Следующий горизонт: текущий приоритет — 2.9 (глубина) перед 3.0 (широта).
+
+---
+
+## v3.0.1 — Multi-Repo Scan (2026-02-20)
+
+### Features (ROADMAP 3.0.1)
+- **scan, doctor, fix, cycle:** принимают несколько путей: `eurika scan path1 [path2 ...]`; последовательное выполнение по каждому; при N>1 выводятся заголовки `--- Project N/M: path ---`.
+- Parser: `path` nargs="*", default [.]; handler `_paths_from_args` нормализует в список Path.
+
+### Tests
+- test_multi_repo_scan: два проекта, scan по обоим, проверка self_map.json.
+
+---
+
+## v2.7.1 — policy: refactor_code_smell in WEAK_SMELL_ACTION_PAIRS (2026-02-20)
+
+### Policy
+- **WEAK_SMELL_ACTION_PAIRS:** добавлены `long_function|refactor_code_smell` и `deep_nesting|refactor_code_smell` — по данным learning 0% success; в hybrid требуют manual approval, в auto блокируются; деприоритизированы в плане.
+
+### Docs (2.1.3)
+- ROADMAP: «Что по-прежнему не хватает» — Граф и Memory помечены выполненными (Фазы 3.1, 3.2); таблица «Версия 2.1» — замкнутый цикл, Event, Граф, операции обновлены; refactor_code_smell в таблице операций; ссылка review_vs_codebase заменена на WEAK_SMELL_ACTION_PAIRS.
+- ROADMAP: добавлена **Фаза 3.0 — Architectural AI Engineer** — дорожная карта с 3.0.1 (multi-repo), 3.0.2 (cross-project memory), 3.0.3 (online knowledge), 3.0.4 (team-mode); критерии готовности, зависимости, DoD.
+- eurika_cli/parser: версия 2.7.1.
+
+---
+
 ## v2.7.0 — native agent runtime + safety gates + Ollama coding fallback defaults (2026-02-19)
 
 ### Features

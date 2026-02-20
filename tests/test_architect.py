@@ -9,18 +9,43 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from eurika.reasoning.architect import (
+    _build_recommendation_how_block,
     _call_ollama_cli,
     _format_recent_events,
     _init_ollama_fallback_client,
     _llm_interpret,
+    _parse_smell_from_risk,
     _template_interpret,
     interpret_architecture,
 )
 from eurika.storage.events import Event
 
 
+def test_recommendation_how_block_and_parse_smell():
+    """ROADMAP 2.9.1: Recommendation block for god_module, bottleneck, hub; parse_smell_from_risk."""
+    assert _parse_smell_from_risk("god_module @ main.py") == "god_module"
+    assert _parse_smell_from_risk("bottleneck @ api.py (severity=7)") == "bottleneck"
+    assert _parse_smell_from_risk("hub @ core.py") == "hub"
+    assert _parse_smell_from_risk("unknown @ x.py") is None
+
+    block = _build_recommendation_how_block(
+        ["god_module @ main.py", "bottleneck @ api.py"],
+        knowledge_snippet="",
+    )
+    assert "Recommendation (how to fix)" in block
+    assert "god_module" in block and "Split into focused modules" in block
+    assert "bottleneck" in block and "facade" in block
+    assert "Reference block" not in block
+
+    block_with_ref = _build_recommendation_how_block(
+        ["god_module @ main.py"],
+        knowledge_snippet="architecture_refactor: Split god module...",
+    )
+    assert "Reference block" in block_with_ref
+
+
 def test_template_interpret_minimal():
-    """Template produces text from minimal summary and history."""
+    """Template produces text from minimal summary and history (ROADMAP 2.9.1: + Recommendation)."""
     summary = {
         "system": {"modules": 10, "dependencies": 12, "cycles": 0},
         "maturity": "medium",
@@ -38,6 +63,8 @@ def test_template_interpret_minimal():
     assert "medium" in text
     assert "god_module" in text or "Main risks" in text
     assert "complexity" in text or "smells" in text
+    assert "Recommendation (how to fix)" in text
+    assert "Split into focused modules" in text
 
 
 def test_interpret_architecture_no_llm():

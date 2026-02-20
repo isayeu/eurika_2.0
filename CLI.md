@@ -48,17 +48,19 @@ eurika agent <subcommand> [path] [options]
 
 ## Product modes
 
-### eurika scan [path]
+### eurika scan [path ...]
 
-Полный скан: обновление self_map, smells, summary, history. Основа для doctor/fix.
+Полный скан: обновление self_map, smells, summary, history. Основа для doctor/fix. **3.0.1:** несколько путей — последовательная обработка каждого.
 
 ```bash
 eurika scan .
+eurika scan . /other/project
+eurika scan proj1 proj2 proj3
 ```
 
 ---
 
-### eurika doctor [path] [--window N] [--no-llm]
+### eurika doctor [path ...] [--window N] [--no-llm]
 
 Только диагностика: report (summary + evolution) и интерпретация architect. Патчи не предлагаются и не применяются. **Отчёт сохраняется в `eurika_doctor_report.json`** (summary, history, architect, patch_plan).
 
@@ -71,7 +73,7 @@ eurika doctor . --no-llm
 
 ---
 
-### eurika fix [path] [--window N] [--dry-run] [--quiet] [--runtime-mode MODE] [--non-interactive] [--session-id ID] [--no-clean-imports] [--verify-cmd CMD]
+### eurika fix [path ...] [--window N] [--dry-run] [--quiet] [--runtime-mode MODE] [--non-interactive] [--session-id ID] [--no-clean-imports] [--verify-cmd CMD]
 
 Полный цикл: scan → arch-review → patch-apply --apply --verify. **По умолчанию** план fix включает операции **remove_unused_import** (clean-imports) для файлов с неиспользуемыми импортами; затем — архитектурные патчи (remove_cyclic_import, split_module и т.д.). Эквивалент `eurika agent cycle` с применением патчей и проверкой тестами. После apply запускается **pytest** (или `--verify-cmd` / `[tool.eurika] verify_cmd` в pyproject.toml); для верификации нужен установленный pytest: `pip install pytest` или `pip install -e ".[test]"`. **Отчёт сохраняется в `eurika_fix_report.json`** (при apply — полный; при `--dry-run` — `dry_run: true` + `patch_plan`).
 
@@ -86,7 +88,7 @@ eurika fix . --no-clean-imports
 
 ---
 
-### eurika cycle [path] [--window N] [--dry-run] [--quiet] [--runtime-mode MODE] [--non-interactive] [--session-id ID] [--no-llm] [--no-clean-imports] [--verify-cmd CMD]
+### eurika cycle [path ...] [--window N] [--dry-run] [--quiet] [--runtime-mode MODE] [--non-interactive] [--session-id ID] [--no-llm] [--no-clean-imports] [--verify-cmd CMD]
 
 Полный ритуал одной командой: **scan → doctor (report + architect) → fix**. Сначала scan, затем вывод полной диагностики (summary, evolution, architect), затем fix (patch-apply --apply --verify). Fix по умолчанию включает remove_unused_import; architect при cycle получает recent_events (последние patch/learn) в контексте.
 

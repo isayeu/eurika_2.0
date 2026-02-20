@@ -52,10 +52,11 @@
 ## Следующий горизонт (кратко)
 
 - **Фокус:** работа над собой — регулярный scan/doctor/fix по кодовой базе Eurika, добавление функций по запросу, багфиксы и актуализация документации.
+- **Текущий приоритет:** **Фаза 2.9** (углубление цикла: LLM + Knowledge + learning) — умнее в одном проекте перед масштабированием (3.0 multi-repo).
 - **Стабилизация:** тесты зелёные, доки соответствуют коду.
 - **Фазы 2.2 и 2.3:** выполнены (Knowledge: кэш, наполнение; Orchestrator: run_cycle).
 - **Фазы 3.1 и 3.2:** выполнены (граф как движок; единая модель памяти).
-- **Дальше:** повышать операционность (`fix` с реальными применяемыми изменениями), снижать noisy/unstable операции по learning-метрикам, держать документацию синхронной с кодом.
+- **Дальше:** повышать операционность и интеллект цикла (2.9); снижать noisy/unstable операции по learning-метрикам; держать документацию синхронной с кодом.
 
 ---
 
@@ -67,6 +68,7 @@
 
 - [x] Повысить долю реальных apply в `eurika fix` (уменьшить долю `skipped: diff already in content` за счёт более точных операций) — _drop_noop_append_ops в prepare
 - [x] Пересобрать policy для слабых пар learning (`hub|split_module`, `long_function|extract_nested_function`): фильтрация/понижение приоритета — WEAK_SMELL_ACTION_PAIRS, _deprioritize_weak_pairs
+- [x] Добавить `long_function|refactor_code_smell` и `deep_nesting|refactor_code_smell` в WEAK_SMELL_ACTION_PAIRS (learning 0% success) — hybrid: review, auto: deny
 - [x] Актуализировать артефакты после контрольных прогонов (`eurika_doctor_report.json`, `CYCLE_REPORT.md`) — `eurika report-snapshot .`, DOGFOODING
 - [x] Поддерживать “малые рефакторинги + тесты” для топ-long/deep функций в core CLI/pipeline — _append_default_refactor_operation, _early_exit, _apply_content_replacement
 
@@ -139,6 +141,41 @@
 - Импорт-контракт слоёв формализован и автоматически проверяется.
 - Runtime (assist/hybrid/auto) сохраняет поведение и тестовую стабильность после декомпозиции.
 - В dogfooding нет всплеска no-op/rollback-rate из-за структурных изменений.
+
+---
+
+### Фаза 2.9 — Углубление цикла (LLM + Knowledge + Learning) — **приоритет над 3.0**
+
+**Цель:** делать цикл «умнее» в рамках одного проекта: анализ → поиск решений (Ollama + документация) → рефакторинг → обучение. Глубина перед широтой (3.0 multi-repo).
+
+**Приоритет:** фаза 2.9 важнее 3.0 — сначала повысить качество и интеллект single-project цикла, затем масштабировать.
+
+| # | Шаг | Задача | Критерий готовности |
+|---|-----|--------|----------------------|
+| 2.9.1 | Architect → рекомендации «как» | Расширить architect: не только «что не так», но и «что делать и как» — на основе Knowledge Layer (PEP, docs.python.org, release notes) | Architect при god_module/bottleneck выдаёт конкретные подсказки с reference на доку; блок Reference в doctor расширен |
+| 2.9.2 | LLM в планировании | Для сложных smell (god_module, hub, bottleneck) — запрос к Ollama: «предложи точки разбиения»; результат в patch_plan как hints или уточнённые target/params | При наличии Ollama и high-risk smell: planner получает LLM-подсказки; fallback на эвристики без LLM |
+| 2.9.3 | Knowledge Layer — PEP/RFC | Добавить провайдеры PEP, RFC, What's New (docs.python.org); темы по smell_type (god_module → module_structure, long_function → extract_method) | eurika.knowledge: PEPProvider, WhatNewProvider; маппинг smell_type → knowledge_topic; architect и planner используют |
+| 2.9.4 | Обучение в цикле | Корректировка policy из telemetry; suggest_policy_from_telemetry выводится в doctor; опция применять suggested policy | doctor показывает блок «Suggested policy» при низком apply_rate; CLI или env для принятия suggestion |
+| 2.9.5 | Dogfooding 2.9 | 3 цикла с LLM + Knowledge на Eurika; сравнить качество плана (релевантность подсказок) и apply-rate | Отчёт в CYCLE_REPORT; architect даёт «как»; learning улучшает выбор ops |
+
+**Порядок внедрения (рекомендуемый):** 2.9.1 → 2.9.3 → 2.9.2 → 2.9.4 → 2.9.5. Architect и Knowledge — основа; LLM в planner — поверх; learning — замкнутый цикл.
+
+**Фактический прогресс (фаза 2.9):**
+- [x] 2.9.1 Architect рекомендации — блок «Recommendation (how to fix)» с конкретными шагами по smell (god_module, bottleneck, hub, cyclic_dependency); блок «Reference (from documentation)» при наличии Knowledge; LLM и template
+- [ ] 2.9.2 LLM в планировании — не начато
+- [ ] 2.9.3 Knowledge PEP/RFC — не начато
+- [ ] 2.9.4 Обучение в цикле — suggest_policy есть; вывод в doctor — в плане
+- [ ] 2.9.5 Dogfooding 2.9 — не начато
+
+**Метрики выхода из фазы 2.9 (DoD):**
+- Architect при god_module даёт «разбить по ответственностям X, Y, Z» с reference на доку.
+- При Ollama: planner для high-risk smell получает LLM-hints (опционально).
+- doctor выводит suggested policy при низком apply_rate.
+- Dogfooding: apply-rate не падает; релевантность рекомендаций растёт.
+
+**Связь с 3.0:** 2.9 углубляет single-project; 3.0 расширяет на multi-repo. Рекомендуется завершить 2.9.1–2.9.3 до активной работы над 3.0.2 (cross-project memory).
+
+---
 
 #### Детализация 2.8.3 — Orchestrator Split (план коммитов)
 
@@ -274,6 +311,37 @@
 | **v2.3** | Stability Phase | Метрики; priority engine ✓; CI-ready ✓ (CLI.md § CI/CD); CLI doctor/fix/explain ✓. |
 | **v2.6** | Semi-Autonomous Agent | auto-run ✓; continuous monitoring ✓; performance-based improvement ✓; event-based learning ✓. |
 | **v3.0** | Architectural AI Engineer | multi-repo; cross-project memory; online knowledge; team-mode. |
+
+---
+
+### Фаза 3.0 — Architectural AI Engineer (дорожная карта)
+
+**Цель v3.0:** Eurika работает с несколькими репозиториями, общей памятью между проектами, расширенным Knowledge Layer и режимом совместной работы.
+
+**Рекомендуемый порядок:** 3.0.1 → 3.0.2 → 3.0.3 → 3.0.4. Multi-repo — предпосылка для cross-project memory; online knowledge расширяет существующий Knowledge Layer; team-mode опирается на policy и session-memory.
+
+| # | Шаг | Задача | Критерий готовности |
+|---|-----|--------|----------------------|
+| 3.0.1 | Multi-Repo Scan | Поддержка `eurika scan <path1> <path2> ...` и `eurika cycle --paths path1,path2` для нескольких корней проектов | CLI принимает несколько путей; scan/doctor/fix выполняются последовательно или параллельно по каждому; отчёт агрегирует summary/risks по всем проектам |
+| 3.0.2 | Cross-Project Memory | Общая директория памяти (напр. `~/.eurika/` или `EURIKA_GLOBAL_MEMORY`) для learning/feedback между проектами | Learning/feedback из проекта A учитываются при fix проекта B (при совпадении smell\|action); формат агрегации и приоритет local vs global описан в spec |
+| 3.0.3 | Online Knowledge (расширение) | Расширить Knowledge Layer: актуальный fetch по запросу (не только кэш), провайдеры PEP/RFC, интеграция с architect при cross-repo | Новые провайдеры или опция `--online`; architect получает релевантные фрагменты при анализе нескольких проектов; TTL и rate-limit для сетевых запросов |
+| 3.0.4 | Team Mode | Роли, shared session, approvals между пользователями; интеграция с CI (отдельный approve-step) | `eurika fix --team-mode` или отдельная команда; policy учитывает "approved by" для high-risk ops; документация сценариев (один предлагает, другой применяет) |
+
+**Фактический прогресс (фаза 3.0):**
+- [x] 3.0.1 Multi-Repo Scan — `eurika scan/doctor/fix/cycle path1 [path2 ...]`; последовательное выполнение по каждому пути; заголовки "--- Project N/M ---"; агрегированный JSON-отчёт — в плане
+- [ ] 3.0.2 Cross-Project Memory — не начато
+- [ ] 3.0.3 Online Knowledge — базовый слой есть (KNOWLEDGE_LAYER.md); расширение — в плане
+- [ ] 3.0.4 Team Mode — не начато
+
+**Метрики выхода из фазы 3.0 (DoD):**
+- Один вызов `eurika cycle` может обработать несколько репозиториев с агрегированным отчётом.
+- Learning из одного проекта влияет на план fix в другом (при наличии cross-project memory).
+- Architect при multi-repo получает контекст из online knowledge.
+- Team-mode сценарий (propose → approve → apply) задокументирован и покрыт тестами.
+
+**Зависимости:** 3.0.1 не зависит от остальных; 3.0.2 требует 3.0.1 (multi-repo как источник проектов для memory); 3.0.3 можно вести параллельно; 3.0.4 опирается на policy/session-memory (2.7.5, 2.7.6).
+
+---
 
 ### Фаза 2.6 — Semi-Autonomous Agent (по review.md §v2.6)
 
@@ -428,12 +496,12 @@
 ## Что по-прежнему не хватает (по review.md)
 
 - ~~**Нет полноценного операционного цикла**~~ — **выполнено:** Scan → Diagnose → Plan → Patch → Verify → Log; apply_and_verify, auto_rollback, run_cycle.
-- **Граф недоиспользован:** строится и анализируется, но не генерирует архитектурные действия, не определяет приоритет рефакторинга, не запускает автоматические операции — аналитический слой, а не движок. → **Фаза 3.1** (подробные шаги выше).
-- **Memory концептуально раздроблена:** Event Engine есть, но логи, история, feedback хранятся по-разному. Нужна консолидация. → **Фаза 3.2** (подробные шаги выше).
+- ~~**Граф недоиспользован**~~ — **выполнено (Фаза 3.1):** priority_from_graph, SMELL_TYPE_TO_REFACTOR_KIND, targets_from_graph, metrics_from_graph — patch_plan формируется с опорой на граф.
+- ~~**Memory концептуально раздроблена**~~ — **выполнено (Фаза 3.2):** консолидация в .eurika/; EventStore; LearningView, FeedbackView; architect.recent_events.
 
 ### Причина низкой операционности (5/10): TODO vs реальные фиксы
 
-Цикл fix формально завершён, но **patch часто = append TODO-комментарий**, а не изменение кода. Детальный анализ — **review_vs_codebase.md**.
+Цикл fix формально завершён, но **patch часто = append TODO-комментарий**, а не изменение кода. По данным learning: refactor_code_smell — 0% success; добавлен в WEAK_SMELL_ACTION_PAIRS (hybrid: review, auto: deny).
 
 | Операция | Результат |
 |----------|-----------|
@@ -443,6 +511,7 @@
 | extract_class | ✓ Реальный фикс |
 | split_module (успех) | ✓ Реальный фикс |
 | split_module (fallback) | ✓ Часто реальный (by_function, infer imports, relaxed extraction) |
+| refactor_code_smell | TODO-маркер (long_function, deep_nesting); в WEAK_SMELL_ACTION_PAIRS — hybrid: review, auto: deny |
 | refactor_module | ✓ Пробует split_module chain, иначе TODO |
 
 **Приоритет:** стабилизация цикла, прогоны на других проектах.
@@ -457,10 +526,10 @@
 |--------|--------|--------|
 | **Patch Engine** | ✓ | `patch_engine.py`: **apply_patch**, **verify_patch**, **rollback_patch**; apply_and_verify(..., **auto_rollback=True**) при провале verify откатывает изменения |
 | **Verify stage** | ✓ | После patch: перескан, сравнение health score; при ухудшении — откат (verify_metrics + rollback reason) |
-| **Замкнутый цикл** | есть скелет | `eurika fix` = scan → diagnose → plan → patch → verify → learn (полноценно замкнуть) |
-| **Единая модель Event** | частично | event_engine есть; консолидация learning/feedback в единую память → **Фаза 3.2** |
-| **Граф как движок** | нет | Граф должен определять priority рефакторинга и запускать автоматические операции → **Фаза 3.1** |
-| **Архитектурные операции** | частично | 1) Remove unused imports 2) Detect and break cyclic imports 3) Split oversized module (по LOC) — создать реальную ценность |
+| **Замкнутый цикл** | ✓ | `eurika fix` = scan → diagnose → plan → patch → verify → learn; agent runtime (assist/hybrid/auto) |
+| **Единая модель Event** | ✓ | Фаза 3.2: .eurika/, EventStore, LearningView, FeedbackView, architect.recent_events |
+| **Граф как движок** | ✓ | Фаза 3.1: priority_from_graph, SMELL_TYPE_TO_REFACTOR_KIND, targets_from_graph |
+| **Архитектурные операции** | ✓ | Remove unused imports, remove_cyclic_import, split_module, introduce_facade, extract_class; refactor_code_smell в WEAK_SMELL_ACTION_PAIRS (hybrid/auto) |
 
 Детальный разбор — в **review.md**.
 

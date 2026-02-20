@@ -27,20 +27,20 @@ def build_parser(*, version: str) -> argparse.ArgumentParser:
 
 def _add_product_commands(subparsers: argparse._SubParsersAction) -> None:
     """Register product commands first (ROADMAP этап 5)."""
-    scan_parser = subparsers.add_parser("scan", help="Scan project, update artifacts, report")
-    scan_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
+    scan_parser = subparsers.add_parser("scan", help="Scan project(s), update artifacts, report (ROADMAP 3.0.1: multi-repo)")
+    scan_parser.add_argument("path", nargs="*", type=Path, default=[Path(".")], metavar="PATH", help="Project root(s); default: .")
     scan_parser.add_argument("--format", "-f", choices=["text", "markdown"], default="text", help="Output format (default: text)")
     scan_parser.add_argument("--color", action="store_true", default=None, dest="color", help="Force color output (default: auto from TTY)")
     scan_parser.add_argument("--no-color", action="store_false", dest="color", help="Disable color output")
 
-    doctor_parser = subparsers.add_parser("doctor", help="Diagnostics only: report + architect (no patches)")
-    doctor_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
+    doctor_parser = subparsers.add_parser("doctor", help="Diagnostics only: report + architect (no patches) (3.0.1: multi-repo)")
+    doctor_parser.add_argument("path", nargs="*", type=Path, default=[Path(".")], metavar="PATH", help="Project root(s); default: .")
     doctor_parser.add_argument("--window", type=int, default=5, help="History window (default: 5)")
     doctor_parser.add_argument("--no-llm", action="store_true", help="Architect: use template only")
     doctor_parser.add_argument("--runtime-mode", choices=["assist", "hybrid", "auto"], default="assist", help="Agent runtime mode (default: assist)")
 
-    fix_parser = subparsers.add_parser("fix", help="Full cycle: scan → plan → patch → verify")
-    fix_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
+    fix_parser = subparsers.add_parser("fix", help="Full cycle: scan → plan → patch → verify (3.0.1: multi-repo)")
+    fix_parser.add_argument("path", nargs="*", type=Path, default=[Path(".")], metavar="PATH", help="Project root(s); default: .")
     fix_parser.add_argument("--window", type=int, default=5, help="History window (default: 5)")
     fix_parser.add_argument("--dry-run", action="store_true", help="Only build patch plan, do not apply")
     fix_parser.add_argument("--quiet", "-q", action="store_true", help="Minimal output; final JSON only")
@@ -52,8 +52,8 @@ def _add_product_commands(subparsers: argparse._SubParsersAction) -> None:
     fix_parser.add_argument("--non-interactive", action="store_true", help="Do not prompt for approvals in hybrid mode")
     fix_parser.add_argument("--session-id", type=str, default=None, help="Session key for reusing approval/rejection memory")
 
-    cycle_parser = subparsers.add_parser("cycle", help="Full ritual: scan → doctor (report + architect) → fix. Single command.")
-    cycle_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
+    cycle_parser = subparsers.add_parser("cycle", help="Full ritual: scan → doctor → fix (3.0.1: multi-repo)")
+    cycle_parser.add_argument("path", nargs="*", type=Path, default=[Path(".")], metavar="PATH", help="Project root(s); default: .")
     cycle_parser.add_argument("--window", type=int, default=5, help="History window (default: 5)")
     cycle_parser.add_argument("--dry-run", action="store_true", help="Doctor + plan only; do not apply patches")
     cycle_parser.add_argument("--quiet", "-q", action="store_true", help="Minimal output; final JSON only")

@@ -46,7 +46,7 @@ _load_environment()
 
 def _build_parser() -> argparse.ArgumentParser:
     """Configure top-level parser via extracted wiring module."""
-    return build_parser(version="2.7.0")
+    return build_parser(version="3.0.1")
 
 
 def main() -> int:

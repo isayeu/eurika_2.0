@@ -1,11 +1,12 @@
 """
-Architect interpretation (ROADMAP §7 — мини-AI).
+Architect interpretation (ROADMAP §7 — мини-AI; §2.9.1 — рекомендации «как»).
 
 Produces a short "architect's take" on the codebase from summary + history + patch-plan.
 - Template-based by default (no API key, deterministic).
 - Optional LLM: set OPENAI_API_KEY; supports OpenAI and OpenRouter (OPENAI_BASE_URL, OPENAI_MODEL).
 - Optional Knowledge Layer: pass knowledge_provider + knowledge_topic to inject curated snippets into the prompt.
 - ROADMAP 3.2.3: recent_events (patch, learn) for context in prompt.
+- ROADMAP 2.9.1: Recommendation block with concrete "how to fix" per smell type (god_module, bottleneck, hub); Reference from Knowledge.
 - --no-llm: use template only (deterministic, no API key, faster; useful for CI or when LLM unavailable).
 """
 
@@ -115,6 +116,45 @@ def _template_structure_sentence(modules: int, deps: int, cycles: int) -> str:
     return f"The codebase has {modules} modules, {deps} dependencies and {cycles} cycles."
 
 
+# ROADMAP 2.9.1: smell type -> concrete "how to fix"; suffix when Knowledge available
+_SMELL_HOW_MAP: Dict[str, str] = {
+    "god_module": "Split into focused modules by responsibility (e.g. core, analysis, reporting, CLI).",
+    "bottleneck": "Introduce a facade so dependents use a stable interface instead of the concrete implementation.",
+    "hub": "Decompose and split responsibilities; extract sub-modules.",
+    "cyclic_dependency": "Break the cycle via dependency inversion or an abstraction layer that both sides depend on.",
+}
+_SMELL_REF_SUFFIX: str = " See Reference block for documentation."
+
+
+def _parse_smell_from_risk(risk: str) -> Optional[str]:
+    """Extract smell type from risk string (e.g. 'god_module @ patch_engine.py' -> 'god_module')."""
+    if not risk or not isinstance(risk, str):
+        return None
+    parts = risk.strip().split()
+    if not parts:
+        return None
+    first = parts[0].lower()
+    return first if first in _SMELL_HOW_MAP else None
+
+
+def _build_recommendation_how_block(risks: List[str], knowledge_snippet: str) -> str:
+    """Build concrete 'how to fix' block for top risks (ROADMAP 2.9.1)."""
+    seen: set[str] = set()
+    lines: List[str] = []
+    for r in (risks or [])[:5]:
+        smell = _parse_smell_from_risk(r)
+        if not smell or smell in seen:
+            continue
+        seen.add(smell)
+        how = _SMELL_HOW_MAP.get(smell)
+        if how:
+            lines.append(f"- {smell}: {how}")
+    if not lines:
+        return ""
+    ref_note = _SMELL_REF_SUFFIX if knowledge_snippet else ""
+    return "\n\nRecommendation (how to fix):\n" + "\n".join(lines) + ref_note
+
+
 def _template_risks_sentence(
     risks: List[str],
     central_modules: List[Dict[str, Any]],
@@ -149,19 +189,24 @@ def _template_context_sentences(
     knowledge_snippet: str,
     recent_events_snippet: str,
 ) -> List[str]:
-    """Optional sentences for patch-plan, recent events and knowledge."""
+    """Optional sentences for patch-plan and recent events. Reference shown in dedicated block (2.9.1)."""
     out: List[str] = []
     patch_sentence = _format_template_patch_plan_sentence(patch_plan)
     if patch_sentence:
         out.append(patch_sentence)
     if recent_events_snippet:
         out.append(f"Recent actions: {recent_events_snippet}.")
-    if knowledge_snippet:
-        out.append(
-            f"Reference: {knowledge_snippet[:300]}"
-            + ("..." if len(knowledge_snippet) > 300 else "")
-        )
     return out
+
+
+def _format_reference_block(knowledge_snippet: str, max_chars: int = 800) -> str:
+    """Format Knowledge snippets as a dedicated Reference block (ROADMAP 2.9.1)."""
+    if not knowledge_snippet or not knowledge_snippet.strip():
+        return ""
+    snip = knowledge_snippet.strip()
+    if len(snip) > max_chars:
+        snip = snip[:max_chars] + "..."
+    return "\n\nReference (from documentation):\n" + snip
 
 
 def _template_interpret(
@@ -171,7 +216,7 @@ def _template_interpret(
     knowledge_snippet: str = "",
     recent_events_snippet: str = "",
 ) -> str:
-    """Deterministic 2–4 sentence take from summary and history."""
+    """Deterministic 2–4 sentence take from summary and history (ROADMAP 2.9.1: + Recommendation + Reference)."""
     sys = summary.get("system") or {}
     modules = sys.get("modules", 0)
     deps = sys.get("dependencies", 0)
@@ -192,7 +237,15 @@ def _template_interpret(
         parts.append(risks_sentence)
     parts.extend(_template_trends_sentences(trend_complexity, trend_smells, regressions))
     parts.extend(_template_context_sentences(patch_plan, knowledge_snippet, recent_events_snippet))
-    return " ".join(parts)
+
+    out = " ".join(parts)
+    rec_block = _build_recommendation_how_block(risks, knowledge_snippet)
+    if rec_block:
+        out += rec_block
+    ref_block = _format_reference_block(knowledge_snippet)
+    if ref_block:
+        out += ref_block
+    return out
 
 
 def _build_openai_client(
@@ -459,6 +512,15 @@ def interpret_architecture(
             summary, history, patch_plan, knowledge_snippet, recent_snippet
         )
         if llm_text:
+            risks = summary.get("risks") or []
+            rec_block = _build_recommendation_how_block(risks, knowledge_snippet)
+            ref_block = _format_reference_block(knowledge_snippet)
+            if rec_block or ref_block:
+                llm_text = llm_text.rstrip()
+                if rec_block:
+                    llm_text += rec_block
+                if ref_block:
+                    llm_text += ref_block
             return llm_text
         if verbose and reason:
             print(f"eurika: architect: using template — {reason}", file=sys.stderr)

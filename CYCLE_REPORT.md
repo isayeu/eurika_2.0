@@ -97,6 +97,23 @@
 
 ---
 
+## 23. Policy update: refactor_code_smell в WEAK_SMELL_ACTION_PAIRS (2026-02-20)
+
+### Обоснование
+- Learning: `refactor_code_smell` — 0% success (0/41), только TODO-маркеры
+- `long_function|refactor_code_smell` и `deep_nesting|refactor_code_smell` добавлены в `WEAK_SMELL_ACTION_PAIRS`
+
+### Поведение
+- **hybrid:** требуют manual approval (review)
+- **auto:** блокируются (deny)
+- **assist:** без изменений (все ops apply)
+- Деприоритизация: слабые пары в конце плана, первыми отсекаются при max_ops
+
+### Файл
+`eurika/agent/policy.py` — WEAK_SMELL_ACTION_PAIRS
+
+---
+
 ## 1. Fix (`eurika fix . --quiet --no-code-smells`) — 2026-02-19
 
 | Поле | Значение |

@@ -128,6 +128,24 @@ def test_product_cycle_dry_run() -> None:
     assert "eurika cycle" in result.stderr or "patch_plan" in result.stdout
 
 
+def test_multi_repo_scan(tmp_path: Path) -> None:
+    """3.0.1: eurika scan accepts multiple paths and runs sequentially."""
+    p1 = tmp_path / "proj1"
+    p2 = tmp_path / "proj2"
+    p1.mkdir()
+    p2.mkdir()
+    (p1 / "a.py").write_text("x = 1\n", encoding="utf-8")
+    (p2 / "b.py").write_text("y = 2\n", encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, "-m", "eurika_cli", "scan", str(p1), str(p2)],
+        cwd=ROOT, capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    assert "Project 1/2" in result.stderr or "Project 2/2" in result.stderr
+    assert (p1 / "self_map.json").exists()
+    assert (p2 / "self_map.json").exists()
+
+
 def test_cycle_dry_run_on_minimal_project(tmp_path: Path) -> None:
     """
     Cycle --dry-run on minimal project may return empty operations (no smells).

@@ -39,13 +39,30 @@ def handle_help(parser: Any) -> int:
     parser.print_help()
     return 0
 
+def _paths_from_args(args: Any) -> list[Path]:
+    """Normalize path(s) from args (ROADMAP 3.0.1 multi-repo). Returns list of resolved Paths."""
+    raw = getattr(args, 'path', None)
+    if not raw:
+        return [Path(".").resolve()]
+    if isinstance(raw, Path):
+        return [raw.resolve()]
+    return [Path(p).resolve() for p in raw]
+
+
 def handle_scan(args: Any) -> int:
-    path = args.path.resolve()
-    if _check_path(path) != 0:
-        return 1
-    fmt = getattr(args, 'format', 'text')
-    color = getattr(args, 'color', None)
-    return run_scan(path, format=fmt, color=color)
+    paths = _paths_from_args(args)
+    exit_code = 0
+    for i, path in enumerate(paths):
+        if len(paths) > 1:
+            print(f"\n--- Project {i + 1}/{len(paths)}: {path} ---\n", file=sys.stderr)
+        if _check_path(path) != 0:
+            exit_code = 1
+            continue
+        fmt = getattr(args, 'format', 'text')
+        color = getattr(args, 'color', None)
+        if run_scan(path, format=fmt, color=color) != 0:
+            exit_code = 1
+    return exit_code
 
 def handle_self_check(args: Any) -> int:
     """Run full scan on the project (self-analysis ritual: Eurika analyzes itself)."""
@@ -373,60 +390,90 @@ def handle_explain(args: Any) -> int:
     return 0
 
 def handle_doctor(args: Any) -> int:
-    """Diagnostics only: report + architect (no patches). Saves to eurika_doctor_report.json."""
-    path = args.path.resolve()
-    if _check_path(path) != 0:
-        return 1
+    """Diagnostics only: report + architect (no patches). Saves to eurika_doctor_report.json (3.0.1: multi-repo)."""
+    paths = _paths_from_args(args)
+    exit_code = 0
     from cli.orchestrator import run_cycle
     from eurika.smells.rules import summary_to_text
-    data = run_cycle(path, mode='doctor', runtime_mode=getattr(args, 'runtime_mode', 'assist'), window=getattr(args, 'window', 5), no_llm=getattr(args, 'no_llm', False))
-    if data.get('error'):
-        _err(data['error'])
-        return 1
-    summary = data['summary']
-    history = data['history']
-    patch_plan = data['patch_plan']
-    architect_text = data['architect_text']
-    print(summary_to_text(summary))
-    print()
-    print(history.get('evolution_report', ''))
-    print()
-    print(architect_text)
-    report = {'summary': summary, 'history': history, 'architect': architect_text, 'patch_plan': patch_plan}
-    fix_path = path / 'eurika_fix_report.json'
-    if fix_path.exists():
+    for i, path in enumerate(paths):
+        if len(paths) > 1:
+            print(f"\n--- Project {i + 1}/{len(paths)}: {path} ---\n", file=sys.stderr)
+        if _check_path(path) != 0:
+            exit_code = 1
+            continue
+        data = run_cycle(path, mode='doctor', runtime_mode=getattr(args, 'runtime_mode', 'assist'), window=getattr(args, 'window', 5), no_llm=getattr(args, 'no_llm', False))
+        if data.get('error'):
+            _err(data['error'])
+            exit_code = 1
+            continue
+        summary = data['summary']
+        history = data['history']
+        patch_plan = data['patch_plan']
+        architect_text = data['architect_text']
+        print(summary_to_text(summary))
+        print()
+        print(history.get('evolution_report', ''))
+        print()
+        print(architect_text)
+        report = {'summary': summary, 'history': history, 'architect': architect_text, 'patch_plan': patch_plan}
+        fix_path = path / 'eurika_fix_report.json'
+        if fix_path.exists():
+            try:
+                fix = json.loads(fix_path.read_text(encoding='utf-8'))
+                if fix.get('telemetry'):
+                    report['last_fix_telemetry'] = fix['telemetry']
+            except Exception:
+                pass
         try:
-            fix = json.loads(fix_path.read_text(encoding='utf-8'))
-            if fix.get('telemetry'):
-                report['last_fix_telemetry'] = fix['telemetry']
+            report_path = path / 'eurika_doctor_report.json'
+            report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding='utf-8')
+            print(f'\neurika: eurika_doctor_report.json written to {report_path}', file=sys.stderr)
         except Exception:
             pass
-    try:
-        report_path = path / 'eurika_doctor_report.json'
-        report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding='utf-8')
-        print(f'\neurika: eurika_doctor_report.json written to {report_path}', file=sys.stderr)
-    except Exception:
-        pass
-    return 0
+    return exit_code
 
 def handle_fix(args: Any) -> int:
-    """Full cycle: scan → plan → patch-apply --apply --verify."""
+    """Full cycle: scan → plan → patch-apply --apply --verify (3.0.1: multi-repo)."""
     from types import SimpleNamespace
     from cli.agent_handlers import handle_agent_cycle
-    fix_args = SimpleNamespace(
-        path=args.path, window=getattr(args, 'window', 5), dry_run=getattr(args, 'dry_run', False),
-        quiet=getattr(args, 'quiet', False), no_clean_imports=getattr(args, 'no_clean_imports', False),
-        no_code_smells=getattr(args, 'no_code_smells', False), verify_cmd=getattr(args, 'verify_cmd', None), interval=getattr(args, 'interval', 0),
-        runtime_mode=getattr(args, 'runtime_mode', 'assist'),
-        non_interactive=getattr(args, 'non_interactive', False),
-        session_id=getattr(args, 'session_id', None),
-    )
-    return handle_agent_cycle(fix_args)
+    paths = _paths_from_args(args)
+    exit_code = 0
+    for i, path in enumerate(paths):
+        if len(paths) > 1:
+            print(f"\n--- Project {i + 1}/{len(paths)}: {path} ---\n", file=sys.stderr)
+        fix_args = SimpleNamespace(
+            path=path, window=getattr(args, 'window', 5), dry_run=getattr(args, 'dry_run', False),
+            quiet=getattr(args, 'quiet', False), no_clean_imports=getattr(args, 'no_clean_imports', False),
+            no_code_smells=getattr(args, 'no_code_smells', False), verify_cmd=getattr(args, 'verify_cmd', None), interval=getattr(args, 'interval', 0),
+            runtime_mode=getattr(args, 'runtime_mode', 'assist'),
+            non_interactive=getattr(args, 'non_interactive', False),
+            session_id=getattr(args, 'session_id', None),
+        )
+        if handle_agent_cycle(fix_args) != 0:
+            exit_code = 1
+    return exit_code
 
 def handle_cycle(args: Any) -> int:
-    """Full ritual: scan → doctor (report + architect) → fix. Single command."""
+    """Full ritual: scan → doctor → fix (3.0.1: multi-repo)."""
+    from types import SimpleNamespace
     from cli.agent_handlers import _run_cycle_with_mode
-    return _run_cycle_with_mode(args, mode='full')
+    paths = _paths_from_args(args)
+    exit_code = 0
+    for i, path in enumerate(paths):
+        if len(paths) > 1:
+            print(f"\n--- Project {i + 1}/{len(paths)}: {path} ---\n", file=sys.stderr)
+        cycle_args = SimpleNamespace(
+            path=path, window=getattr(args, 'window', 5), dry_run=getattr(args, 'dry_run', False),
+            quiet=getattr(args, 'quiet', False), no_llm=getattr(args, 'no_llm', False),
+            no_clean_imports=getattr(args, 'no_clean_imports', False), no_code_smells=getattr(args, 'no_code_smells', False),
+            verify_cmd=getattr(args, 'verify_cmd', None), interval=getattr(args, 'interval', 0),
+            runtime_mode=getattr(args, 'runtime_mode', 'assist'),
+            non_interactive=getattr(args, 'non_interactive', False),
+            session_id=getattr(args, 'session_id', None),
+        )
+        if _run_cycle_with_mode(cycle_args, mode='full') != 0:
+            exit_code = 1
+    return exit_code
 
 def handle_architect(args: Any) -> int:
     """Print architect's interpretation (template or optional LLM), with patch-plan context."""
