@@ -99,7 +99,7 @@
 - [x] 2.7.7 Safety & Rollback Gates — обязательный verify, auto_rollback при fail; backup=True; enrich_report_with_rescan → rollback при metrics_worsened; tests/test_safety_rollback_gates.py; policy max_ops/max_files
 - [x] 2.7.8 Telemetry & KPIs — apply-rate, rollback-rate, no-op-rate, median_verify_time_ms; telemetry в fix report; report-snapshot и doctor (last_fix_telemetry); suggest_policy_from_telemetry для корректировки policy
 - [x] 2.7.9 Dogfooding Campaign — 3 стабильных цикла подряд; verify ✓, тесты зелёные; split_module architecture_planner → build_plan, build_action_plan
-- [ ] 2.7.10 Docs & Migration — CLI.md, ROADMAP, DOGFOODING, CYCLE_REPORT; CYCLE_REPORT §20 добавлен
+- [x] 2.7.10 Docs & Migration — CLI.md, ROADMAP, DOGFOODING, CYCLE_REPORT обновлены; runtime-режимы и telemetry описаны
 
 **Метрики выхода из фазы 2.7 (DoD):**
 - apply-rate в `eurika fix` устойчиво растёт, а no-op-rate снижается относительно базовой линии.
