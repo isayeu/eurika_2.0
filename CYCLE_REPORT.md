@@ -255,3 +255,29 @@
 
 - `"/mnt/sdb2/project/.venv/bin/python" -m pytest -q tests/test_cli_runtime_mode.py tests/test_cycle.py`
 - Результат: **25 passed**.
+
+---
+
+## 13. Planner Boundary progress (ROADMAP 2.8.5, safe split)
+
+### До/после по facade-модулю
+
+- `architecture_planner.py`: **497 -> 88 LOC** (тонкий facade: `build_plan`, `build_action_plan`, `build_patch_plan`).
+- Вынесено в `eurika/reasoning/`:
+  - `planner_types.py` — модели `PlanStep`/`ArchitecturePlan`, **38 LOC**
+  - `planner_rules.py` — smell-action правила и env-фильтры, **92 LOC**
+  - `planner_patch_ops.py` — сборка patch-операций и фильтры применимости, **460 LOC**
+  - `planner_analysis.py` — индекс smells + сборка шагов плана, **77 LOC**
+  - `planner_actions.py` — конвертация шагов в `ActionPlan`, **83 LOC**
+
+### Что сохранено по контракту
+
+- Внешний API `architecture_planner` сохранен: `build_plan`, `build_action_plan`, `build_patch_plan`.
+- Семантика prefilter/fallback логики patch-планировщика не менялась; изменена только граница модулей.
+- Форматы `PatchPlan` и `ActionPlan` не изменялись.
+
+### Проверка после декомпозиции
+
+- `python -m pytest tests/test_graph_ops.py -q`
+- `python -m pytest tests/test_cycle.py -q`
+- Результат: **49 passed** (28 + 21).
