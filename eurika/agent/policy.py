@@ -46,6 +46,8 @@ WEAK_SMELL_ACTION_PAIRS: frozenset[tuple[str, str]] = frozenset({
     ("hub", "split_module"),
     ("bottleneck", "introduce_facade"),
     ("long_function", "extract_nested_function"),
+    ("long_function", "refactor_code_smell"),
+    ("deep_nesting", "refactor_code_smell"),
 })
 
 
