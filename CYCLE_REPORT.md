@@ -281,3 +281,35 @@
 - `python -m pytest tests/test_graph_ops.py -q`
 - `python -m pytest tests/test_cycle.py -q`
 - Результат: **49 passed** (28 + 21).
+
+---
+
+## 14. Patch Apply Boundary progress (ROADMAP 2.8.6, step 1)
+
+### До/после по фасаду apply
+
+- `patch_apply.py`: **489 -> 389 LOC** (сохранен API `apply_patch_plan`, `list_backups`, `restore_backup`).
+- Вынесено в новый модуль:
+  - `patch_apply_backup.py` — backup/restore и file-write helper-функции, **133 LOC**
+
+### Что сохранено по контракту
+
+- Поведение публичных функций `patch_apply` не менялось: внешние точки входа и формат отчетов те же.
+- `list_backups`/`restore_backup` остались доступными из `patch_apply` как фасадные вызовы.
+- Основная логика operation-kind обработки в `apply_patch_plan` сохранена без изменений.
+
+### Проверка шага
+
+- `python -m py_compile patch_apply.py patch_apply_backup.py`
+- `ReadLints` по `patch_apply.py` и `patch_apply_backup.py` — без ошибок.
+
+### Step 2: kind-dispatch extraction
+
+- `patch_apply.py`: **389 -> 209 LOC** (тонкий orchestrator apply-цикла с fallback append-путем).
+- Вынесено в новый модуль:
+  - `patch_apply_handlers.py` — обработчики operation-kind (`create_module_stub`, `fix_import`, `split_module`, `extract_class`, и др.), **271 LOC**
+
+### Проверка шага 2
+
+- `python -m py_compile patch_apply.py patch_apply_handlers.py patch_apply_backup.py`
+- `ReadLints` по `patch_apply.py`, `patch_apply_handlers.py`, `patch_apply_backup.py` — без ошибок.
