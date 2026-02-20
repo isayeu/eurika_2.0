@@ -411,3 +411,79 @@ def test_fix_cycle_all_rejected_includes_telemetry_and_no_verify_gate() -> None:
     assert telemetry.get("no_op_rate") == 1.0
     assert safety.get("verify_required") is False
     assert safety.get("verify_passed") is None
+
+
+def test_run_doctor_cycle_wrapper_delegates_to_orchestration_module() -> None:
+    """Thin orchestrator wrapper should delegate doctor-cycle execution."""
+    from cli.orchestrator import run_doctor_cycle
+
+    expected = {"ok": True}
+    with patch("cli.orchestrator._doctor_run_doctor_cycle", return_value=expected) as mock_doctor:
+        out = run_doctor_cycle(ROOT, window=7, no_llm=True)
+    assert out == expected
+    mock_doctor.assert_called_once_with(ROOT, window=7, no_llm=True)
+
+
+def test_run_full_cycle_wrapper_delegates_to_orchestration_module() -> None:
+    """Thin orchestrator wrapper should delegate full-cycle wiring."""
+    from cli.orchestrator import run_full_cycle
+
+    expected = {"ok": True}
+    with patch("cli.orchestrator._full_run_full_cycle", return_value=expected) as mock_full:
+        out = run_full_cycle(ROOT, quiet=True, no_llm=True)
+    assert out == expected
+    assert mock_full.call_count == 1
+    kwargs = mock_full.call_args.kwargs
+    assert callable(kwargs.get("run_doctor_cycle_fn"))
+    assert callable(kwargs.get("run_fix_cycle_fn"))
+
+
+def test_prepare_fix_cycle_operations_wrapper_delegates() -> None:
+    """Compatibility wrapper for prepare-stage should delegate unchanged."""
+    from cli.orchestrator import _prepare_fix_cycle_operations
+
+    expected = ({"early": True}, None, None, [])
+    with patch("cli.orchestrator._prepare_prepare_fix_cycle_operations", return_value=expected) as mock_prepare:
+        out = _prepare_fix_cycle_operations(
+            ROOT,
+            runtime_mode="assist",
+            session_id=None,
+            window=5,
+            quiet=True,
+            skip_scan=False,
+            no_clean_imports=False,
+            no_code_smells=False,
+            run_scan=lambda *_args, **_kwargs: 0,
+        )
+    assert out == expected
+    assert mock_prepare.call_count == 1
+
+
+def test_run_fix_cycle_impl_uses_apply_stage_facade() -> None:
+    """run_cycle(fix) should wire through delegated apply-stage builders."""
+    from cli.orchestrator import run_cycle
+
+    fake_result = MagicMock()
+    fake_result.output = {"policy_decisions": []}
+    ops = [{"target_file": "a.py", "kind": "split_module", "explainability": {"risk": "low"}}]
+    patch_plan = {"operations": ops}
+    deps = {
+        "run_scan": lambda *_args, **_kwargs: True,
+        "BACKUP_DIR": ".eurika_backups",
+        "apply_and_verify": object(),
+        "build_snapshot_from_self_map": object(),
+        "diff_architecture_snapshots": object(),
+        "metrics_from_graph": object(),
+        "rollback_patch": object(),
+    }
+    with (
+        patch("cli.orchestrator._fix_cycle_deps", return_value=deps),
+        patch("cli.orchestrator._prepare_fix_cycle_operations", return_value=(None, fake_result, patch_plan, ops)),
+        patch("cli.orchestrator._select_hybrid_operations", return_value=(ops, [])),
+        patch("cli.orchestrator._apply_execute_fix_apply_stage", return_value=({"verify": {"success": True}}, ["a.py"], True)) as mock_apply,
+        patch("cli.orchestrator._apply_build_fix_cycle_result", return_value={"ok": True}) as mock_build,
+    ):
+        out = run_cycle(ROOT, mode="fix", quiet=True)
+    assert out == {"ok": True}
+    assert mock_apply.call_count == 1
+    assert mock_build.call_count == 1
