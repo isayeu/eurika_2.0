@@ -324,3 +324,13 @@
 
 - `python -m py_compile patch_engine_apply_and_verify.py patch_engine_apply_and_verify_helpers.py`
 - `ReadLints` по `patch_engine_apply_and_verify.py` и `patch_engine_apply_and_verify_helpers.py` — без ошибок.
+
+### Step 4: patch_engine facade constant boundary
+
+- `patch_engine.py` теперь реэкспортирует `BACKUP_DIR`, чтобы внешние слои не зависели напрямую от `patch_apply`.
+- `cli/orchestration/deps.py` переключен на импорт `BACKUP_DIR` из `patch_engine` facade.
+
+### Проверка шага 4
+
+- `python -m py_compile patch_engine.py cli/orchestration/deps.py`
+- `ReadLints` по `patch_engine.py` и `cli/orchestration/deps.py` — без ошибок.

@@ -19,8 +19,7 @@ class FixCycleDeps(TypedDict):
 
 def load_fix_cycle_deps() -> FixCycleDeps:
     """Load runtime dependencies for fix apply/rescan stages."""
-    from patch_apply import BACKUP_DIR
-    from patch_engine import apply_and_verify, rollback_patch
+    from patch_engine import BACKUP_DIR, apply_and_verify, rollback_patch
     from runtime_scan import run_scan
     from eurika.core.pipeline import build_snapshot_from_self_map
     from eurika.evolution.diff import diff_architecture_snapshots

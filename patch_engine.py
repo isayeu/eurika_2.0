@@ -23,6 +23,7 @@ from patch_engine_apply_patch import apply_patch
 from patch_engine_apply_and_verify import apply_and_verify
 from patch_engine_rollback_patch import rollback_patch
 from patch_engine_verify_patch import verify_patch
+from patch_apply import BACKUP_DIR
 from patch_apply import list_backups as _list_backups
 
 
