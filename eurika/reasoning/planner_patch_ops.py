@@ -269,6 +269,38 @@ def _build_hints_and_params(
     return hints, split_params
 
 
+def _append_default_refactor_operation(
+    operations: List[PatchOperation],
+    name: str,
+    idx: int,
+    desc_lines: List[str],
+    smell_type: str,
+    action_kind: str,
+    node_smells: List[ArchSmell],
+    *,
+    graph: Optional["ProjectGraph"],
+) -> None:
+    """Build and append the default TODO refactor operation for a target."""
+    hints, split_params = _build_hints_and_params(
+        smell_type, action_kind, node_smells, name, graph=graph
+    )
+    hint_lines = "\n".join((f"# - {hint}" for hint in hints))
+    diff_hint = (
+        f"# TODO: Refactor {name} ({smell_type} -> {action_kind})\n"
+        f"# Suggested steps:\n{hint_lines}\n"
+    )
+    operations.append(
+        PatchOperation(
+            target_file=name,
+            kind=action_kind,
+            description=" ".join(desc_lines),
+            diff=diff_hint,
+            smell_type=smell_type,
+            params=split_params,
+        )
+    )
+
+
 def _operations_for_target(
     project_root: str,
     idx: int,
@@ -313,23 +345,8 @@ def _operations_for_target(
     _maybe_add_extract_class_operation(
         operations, project_root, name, idx, smell_type, action_kind
     )
-    hints, split_params = _build_hints_and_params(
-        smell_type, action_kind, node_smells, name, graph=graph
-    )
-    hint_lines = "\n".join((f"# - {hint}" for hint in hints))
-    diff_hint = (
-        f"# TODO: Refactor {name} ({smell_type} -> {action_kind})\n"
-        f"# Suggested steps:\n{hint_lines}\n"
-    )
-    operations.append(
-        PatchOperation(
-            target_file=name,
-            kind=action_kind,
-            description=" ".join(desc_lines),
-            diff=diff_hint,
-            smell_type=smell_type,
-            params=split_params,
-        )
+    _append_default_refactor_operation(
+        operations, name, idx, desc_lines, smell_type, action_kind, node_smells, graph=graph
     )
     return operations
 

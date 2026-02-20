@@ -104,6 +104,35 @@ def handle_fix_import(
     return True, backup_dir
 
 
+def _apply_content_replacement(
+    *,
+    root: Path,
+    path: Path,
+    target_file: str,
+    new_content: str | None,
+    run_id: str,
+    backup_dir: str | None,
+    do_backup: bool,
+    modified: List[str],
+    skip_cb: Callable[[str], None],
+    errors: List[str],
+    skip_reason: str,
+) -> tuple[bool, str | None]:
+    """Apply new content via write_single_file_change; skip if new_content is None."""
+    try:
+        if new_content is None:
+            skip_cb(skip_reason)
+            return True, backup_dir
+        backup_dir, changed = write_single_file_change(
+            root, path, target_file, new_content, run_id, backup_dir, do_backup
+        )
+        if changed:
+            modified.append(target_file)
+    except Exception as exc:
+        errors.append(f"{target_file}: {exc}")
+    return True, backup_dir
+
+
 def handle_non_default_kind(
     *,
     root: Path,
@@ -120,34 +149,34 @@ def handle_non_default_kind(
 ) -> tuple[bool, str | None]:
     """Handle non-default operation kinds after path checks and dry_run gate."""
     if kind == "remove_unused_import":
-        try:
-            new_content = remove_unused_imports(path)
-            if new_content is None:
-                skip_cb("remove_unused_import: no unused imports")
-                return True, backup_dir
-            backup_dir, changed = write_single_file_change(
-                root, path, target_file, new_content, run_id, backup_dir, do_backup
-            )
-            if changed:
-                modified.append(target_file)
-        except Exception as exc:
-            errors.append(f"{target_file}: {exc}")
-        return True, backup_dir
+        return _apply_content_replacement(
+            root=root,
+            path=path,
+            target_file=target_file,
+            new_content=remove_unused_imports(path),
+            run_id=run_id,
+            backup_dir=backup_dir,
+            do_backup=do_backup,
+            modified=modified,
+            skip_cb=skip_cb,
+            errors=errors,
+            skip_reason="remove_unused_import: no unused imports",
+        )
 
     if kind == "remove_cyclic_import" and params.get("target_module"):
-        try:
-            new_content = remove_import_from_file(path, params["target_module"])
-            if new_content is None:
-                skip_cb("remove_cyclic_import: import not found")
-                return True, backup_dir
-            backup_dir, changed = write_single_file_change(
-                root, path, target_file, new_content, run_id, backup_dir, do_backup
-            )
-            if changed:
-                modified.append(target_file)
-        except Exception as exc:
-            errors.append(f"{target_file}: {exc}")
-        return True, backup_dir
+        return _apply_content_replacement(
+            root=root,
+            path=path,
+            target_file=target_file,
+            new_content=remove_import_from_file(path, params["target_module"]),
+            run_id=run_id,
+            backup_dir=backup_dir,
+            do_backup=do_backup,
+            modified=modified,
+            skip_cb=skip_cb,
+            errors=errors,
+            skip_reason="remove_cyclic_import: import not found",
+        )
 
     if kind == "split_module":
         try:

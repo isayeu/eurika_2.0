@@ -189,6 +189,29 @@ def extract_patch_plan_from_result(
     return patch_plan, operations
 
 
+def _early_exit(
+    return_code: int,
+    report: dict[str, Any],
+    result: Any,
+    patch_plan: dict[str, Any] | None,
+    operations: list[dict[str, Any]],
+) -> tuple[dict[str, Any], Any, dict[str, Any] | None, list[dict[str, Any]]]:
+    """Build early-exit tuple for prepare_fix_cycle_operations."""
+    return (
+        {
+            "return_code": return_code,
+            "report": report,
+            "operations": report.get("operations", operations),
+            "modified": report.get("modified", []),
+            "verify_success": report.get("verify_success", return_code == 0),
+            "agent_result": result,
+        },
+        result,
+        patch_plan,
+        operations,
+    )
+
+
 def prepare_fix_cycle_operations(
     path: Path,
     *,
@@ -204,36 +227,25 @@ def prepare_fix_cycle_operations(
     """Prepare diagnose result, patch plan and operations; return early payload on stop conditions."""
     if not skip_scan:
         if not run_fix_scan_stage(path, quiet, run_scan):
-            return {
-                "return_code": 1,
-                "report": {},
-                "operations": [],
-                "modified": [],
-                "verify_success": False,
-                "agent_result": None,
-            }, None, None, []
+            return _early_exit(
+                1, {"operations": [], "modified": [], "verify_success": False},
+                None, None, [],
+            )
 
     result = run_fix_diagnose_stage(path, window, quiet)
     if not result.success:
-        return {
-            "return_code": 1,
-            "report": result.output,
-            "operations": [],
-            "modified": [],
-            "verify_success": False,
-            "agent_result": result,
-        }, result, None, []
+        return _early_exit(1, result.output, result, None, [])
 
     extracted = extract_patch_plan_from_result(result)
     if extracted == (None, None):
-        return {
-            "return_code": 0,
-            "report": {"message": "No suggest_patch_plan proposal. Cycle complete (nothing to apply)."},
-            "operations": [],
-            "modified": [],
-            "verify_success": True,
-            "agent_result": result,
-        }, result, None, []
+        return _early_exit(
+            0,
+            {
+                "message": "No suggest_patch_plan proposal. Cycle complete (nothing to apply).",
+                "operations": [], "modified": [], "verify_success": True,
+            },
+            result, None, [],
+        )
     patch_plan, operations = extracted
     patch_plan, operations = prepend_fix_operations(
         path, patch_plan, operations, no_clean_imports, no_code_smells
@@ -268,4 +280,3 @@ def prepare_fix_cycle_operations(
     return None, result, patch_plan, operations
 
 
-# TODO (eurika): refactor long_function 'prepare_fix_cycle_operations' — consider extracting helper
