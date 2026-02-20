@@ -20,6 +20,24 @@ def prepare_rescan_before(path: Path, backup_dir_name: str) -> Path:
     return rescan_before
 
 
+def _compute_rescan_metrics(
+    old_snap: Any,
+    new_snap: Any,
+    metrics_from_graph: Any,
+) -> dict[str, Any]:
+    """Compute verify_metrics dict from before/after snapshots."""
+    trends: dict[str, Any] = {}
+    metrics_before = metrics_from_graph(old_snap.graph, old_snap.smells, trends)
+    metrics_after = metrics_from_graph(new_snap.graph, new_snap.smells, trends)
+    before_score = metrics_before.get("score", 0)
+    after_score = metrics_after.get("score", 0)
+    return {
+        "success": after_score >= before_score,
+        "before_score": before_score,
+        "after_score": after_score,
+    }
+
+
 def enrich_report_with_rescan(
     path: Path,
     report: dict[str, Any],
@@ -51,17 +69,9 @@ def enrich_report_with_rescan(
             "maturity": diff["maturity"],
             "centrality_shifts": diff.get("centrality_shifts", [])[:10],
         }
-        trends = {}
-        metrics_before = metrics_from_graph(old_snap.graph, old_snap.smells, trends)
-        metrics_after = metrics_from_graph(new_snap.graph, new_snap.smells, trends)
-        before_score = {"score": metrics_before["score"]}.get("score", 0)
-        after_score = {"score": metrics_after["score"]}.get("score", 0)
-        report["verify_metrics"] = {
-            "success": after_score >= before_score,
-            "before_score": before_score,
-            "after_score": after_score,
-        }
-        if after_score < before_score and report.get("run_id"):
+        vm = _compute_rescan_metrics(old_snap, new_snap, metrics_from_graph)
+        report["verify_metrics"] = vm
+        if vm["after_score"] < vm["before_score"] and report.get("run_id"):
             rb = rollback_patch(path, report["run_id"])
             report["rollback"] = {
                 "done": True,
