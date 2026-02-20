@@ -65,7 +65,7 @@
 
 ### Активный бэклог (операционность, ближайший фокус)
 
-- [ ] Повысить долю реальных apply в `eurika fix` (уменьшить долю `skipped: diff already in content` за счёт более точных операций)
+- [x] Повысить долю реальных apply в `eurika fix` (уменьшить долю `skipped: diff already in content` за счёт более точных операций) — _drop_noop_append_ops в prepare
 - [ ] Пересобрать policy для слабых пар learning (`hub|split_module`, `long_function|extract_nested_function`): фильтрация/понижение приоритета + отдельные безопасные эвристики
 - [ ] Актуализировать артефакты после контрольных прогонов (`eurika_doctor_report.json`, `CYCLE_REPORT.md`) при изменении поведения/метрик
 - [ ] Поддерживать “малые рефакторинги + тесты” для топ-long/deep функций в core CLI/pipeline

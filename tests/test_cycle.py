@@ -459,6 +459,24 @@ def test_prepare_fix_cycle_operations_wrapper_delegates() -> None:
     assert mock_prepare.call_count == 1
 
 
+def test_drop_noop_append_ops(tmp_path: Path) -> None:
+    """_drop_noop_append_ops removes ops whose diff is already in the file."""
+    from cli.orchestration.prepare import _drop_noop_append_ops
+
+    todo = "\n# TODO (eurika): refactor long_function 'foo' — consider extracting helper\n"
+    (tmp_path / "a.py").write_text("def foo(): pass\n" + todo)
+    (tmp_path / "c.py").write_text("x = 1\n# TODO: Refactor c.py\n")
+    ops = [
+        {"target_file": "a.py", "kind": "refactor_code_smell", "diff": todo.strip()},
+        {"target_file": "b.py", "kind": "refactor_code_smell", "diff": "other todo"},
+        {"target_file": "c.py", "kind": "refactor_module", "diff": "# TODO: Refactor c.py"},
+    ]
+    (tmp_path / "b.py").write_text("x = 1\n")
+    kept = _drop_noop_append_ops(ops, tmp_path)
+    assert len(kept) == 1
+    assert kept[0]["target_file"] == "b.py"
+
+
 def test_run_fix_cycle_impl_uses_apply_stage_facade() -> None:
     """run_cycle(fix) should wire through delegated apply-stage builders."""
     from cli.orchestrator import run_cycle

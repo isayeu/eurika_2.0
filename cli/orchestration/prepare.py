@@ -47,6 +47,39 @@ def prepend_fix_operations(
     return patch_plan, operations
 
 
+def _drop_noop_append_ops(
+    operations: list[dict[str, Any]],
+    path: Path,
+) -> list[dict[str, Any]]:
+    """Drop ops whose diff is already in the target file (avoids skipped: diff already in content)."""
+    append_kinds = ("refactor_code_smell", "refactor_module", "split_module")
+    kept: list[dict[str, Any]] = []
+    for op in operations:
+        kind = op.get("kind") or ""
+        if kind not in append_kinds:
+            kept.append(op)
+            continue
+        target = str(op.get("target_file") or "").replace("\\", "/")
+        diff = (op.get("diff") or "").strip()
+        file_path = path / target
+        if not (file_path.exists() and file_path.is_file()):
+            kept.append(op)
+            continue
+        try:
+            content = file_path.read_text(encoding="utf-8")
+        except OSError:
+            kept.append(op)
+            continue
+        if diff and diff in content:
+            continue
+        if kind in ("refactor_module", "split_module"):
+            marker = f"# TODO: Refactor {target}"
+            if marker in content:
+                continue
+        kept.append(op)
+    return kept
+
+
 def apply_runtime_policy(
     patch_plan: dict[str, Any],
     operations: list[dict[str, Any]],
@@ -190,6 +223,8 @@ def prepare_fix_cycle_operations(
     patch_plan, operations = prepend_fix_operations(
         path, patch_plan, operations, no_clean_imports, no_code_smells
     )
+    operations = _drop_noop_append_ops(operations, path)
+    patch_plan = dict(patch_plan, operations=operations)
     patch_plan, operations, policy_decisions = apply_runtime_policy(
         patch_plan,
         operations,
@@ -215,3 +250,6 @@ def prepare_fix_cycle_operations(
         result.output["session_skipped"] = len(session_skipped)
     result.output["policy_decisions"] = policy_decisions
     return None, result, patch_plan, operations
+
+
+# TODO (eurika): refactor long_function 'prepare_fix_cycle_operations' — consider extracting helper
