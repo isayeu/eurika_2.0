@@ -12,7 +12,7 @@
 
 ---
 
-## Текущее состояние (v2.6.x, актуальная ветка)
+## Текущее состояние (v2.7.x, актуальная ветка)
 
 **Основная задача:** саморазвитие, анализ и исправление собственного кода, добавление новых функций по запросу. Инструмент применяется в первую очередь к своей кодовой базе (eurika).
 
@@ -94,6 +94,52 @@
 - В `hybrid` режиме пользователь контролирует medium/high-risk операции без потери воспроизводимости.
 - Каждый применённый патч имеет machine-readable rationale и rollback trail.
 - По итогам dogfooding новые режимы не ухудшают verify-success и не повышают шум в git diff.
+
+### Фаза 2.8 — Декомпозиция слоёв и анти-монолитный контур (по review v2.7.0)
+
+**Цель:** остановить рост монолитности в точках концентрации (`cli/orchestrator.py`, `eurika_cli.py`, `architecture_planner.py`, `patch_apply.py`), формализовать слои и зафиксировать импорт-контракт между подсистемами.
+
+| # | Шаг | Задача | Критерий готовности |
+|---|-----|--------|----------------------|
+| 2.8.1 | Layer Map | Формально зафиксировать слои в `ARCHITECTURE.md`: Infrastructure (IO/CLI/FS) → Core graph model → Analysis → Planning → Execution → Reporting | В документе есть карта слоёв, allowed deps и anti-pattern примеры; ссылки из ROADMAP/CLI |
+| 2.8.2 | Dependency Guard | Ввести проверку «запрещённых импортов» (no upward deps) как тест/линт-гейт | Есть автоматическая проверка в `tests/` или отдельный check-командлет; CI падает при нарушении |
+| 2.8.3 | Orchestrator Split | Разрезать `cli/orchestrator.py` на `cli/orchestration/` модули стадий + `cli/wiring/` + тонкий фасад `run_cycle` | `cli/orchestrator.py` остаётся тонким фасадом; ключевые stage-функции вынесены; поведение `doctor/fix/cycle` не изменено |
+| 2.8.4 | CLI Wiring Split | Декомпозировать `eurika_cli.py`: parser builders/command registration/wiring по модулям | Главный CLI-файл существенно уменьшается; тесты CLI-парсинга зелёные |
+| 2.8.5 | Planner Boundary | Разделить `architecture_planner.py` на анализ рисков, правила планирования и сборку операций (без смешения отчётности/форматирования) | Отдельные модули с явными интерфейсами; `get_patch_plan` остаётся совместимым |
+| 2.8.6 | Patch Subsystem | Эволюционировать `patch_apply.py` в подсистему (`patch/planner.py`, `patch/executor.py`, `patch/validator.py`, `patch/rollback.py`) с обратной совместимостью фасада | Публичный API не ломается (`patch_apply`/`patch_engine`), но реализация разделена по ролям |
+| 2.8.7 | Violation Audit | Найти и закрыть реальные нарушения слоёв (анализ ↔ execution ↔ reporting) | Есть список нарушений «до/после» и закрытые пункты в `CYCLE_REPORT.md` |
+| 2.8.8 | Dogfooding on New Boundaries | Провести 3 цикла `doctor + fix --dry-run + fix` после декомпозиции | Нет регресса в verify-success; telemetry и safety-gates остаются стабильными |
+
+**Порядок внедрения (рекомендуемый):** 2.8.1 -> 2.8.2 -> 2.8.3 -> 2.8.4 -> 2.8.5 -> 2.8.6 -> 2.8.7 -> 2.8.8.
+
+**Метрики выхода из фазы 2.8 (DoD):**
+- Уменьшение централизации по файлам: `cli/orchestrator.py`, `eurika_cli.py`, `architecture_planner.py`, `patch_apply.py` больше не являются top outliers по LOC/смешению ролей.
+- Импорт-контракт слоёв формализован и автоматически проверяется.
+- Runtime (assist/hybrid/auto) сохраняет поведение и тестовую стабильность после декомпозиции.
+- В dogfooding нет всплеска no-op/rollback-rate из-за структурных изменений.
+
+#### Детализация 2.8.3 — Orchestrator Split (план коммитов)
+
+**Идея:** делать «тонкий фасад + вынос по стадиям» без больших взрывных PR; каждый шаг сохраняет поведение и проходит тесты.
+
+| Коммит | Что переносим | Целевые файлы | Критерий |
+|--------|----------------|---------------|----------|
+| 2.8.3.a | Вынести общие модели/типы цикла (`FixCycleContext`, `FixCycleResult`, protocol-обёртки deps) | `cli/orchestration/models.py`, `cli/orchestration/deps.py` | `cli/orchestrator.py` компилируется, тесты без регресса |
+| 2.8.3.b | Вынести pre-stage (`scan/diagnose/plan/policy/session-filter`) | `cli/orchestration/prepare.py` | `_prepare_fix_cycle_operations` уходит из god-file, dry-run поведение идентично |
+| 2.8.3.c | Вынести apply-stage (`apply+verify`, rescan enrich, write report, memory append) | `cli/orchestration/apply_stage.py` | verify/rollback/telemetry контракты не меняются |
+| 2.8.3.d | Вынести doctor/full-flow wiring | `cli/orchestration/doctor.py`, `cli/orchestration/full_cycle.py` | `run_cycle(mode=doctor/full)` возвращает тот же payload |
+| 2.8.3.e | Оставить в `cli/orchestrator.py` только фасад (`run_cycle`, thin wrappers, compatibility imports) | `cli/orchestrator.py` | Размер файла заметно снижен; публичные функции сохранены |
+| 2.8.3.f | Добавить regression-тесты на эквивалентность stage-вывода и edge-cases | `tests/test_cycle.py`, `tests/test_cli_runtime_mode.py` | Старые + новые тесты зелёные |
+
+**Жёсткие ограничения при переносе:**
+- Не менять JSON-контракт `eurika_fix_report.json` и поля `telemetry/safety_gates/policy_decisions`.
+- Не ломать CLI-флаги (`--runtime-mode`, `--non-interactive`, `--session-id`, `--dry-run`, `--quiet`).
+- Сначала перенос кода 1:1, потом только точечные улучшения.
+
+**Критерий «2.8.3 завершена»:**
+- `cli/orchestrator.py` — фасадный слой (без тяжёлой бизнес-логики стадий).
+- Поведение `doctor/fix/cycle` эквивалентно до/после (по regression-тестам и dry-run снапшотам).
+- Документация (`CYCLE_REPORT.md`) содержит «до/после» по LOC и список вынесенных модулей.
 
 ### Фаза 2.1 — Саморазвитие и стабилизация (приоритет 1)
 

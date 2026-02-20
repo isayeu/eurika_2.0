@@ -209,3 +209,27 @@
   - `verify_ran=false`
   - `verify_passed=null`
   - `rollback_done=false`
+
+---
+
+## 11. Orchestrator Split progress (ROADMAP 2.8.3 a-d + facade thinning)
+
+### До/после по фасаду
+
+- `cli/orchestrator.py`: **798 → 383 LOC** (фасад значительно истончен).
+- Вынесено в слой `cli/orchestration/`:
+  - `prepare.py` — pre-stage (scan/diagnose/plan/policy/session-filter), **217 LOC**
+  - `apply_stage.py` — apply/verify/rescan/report/memory/telemetry, **223 LOC**
+  - `doctor.py` — doctor-cycle wiring + knowledge topics, **69 LOC**
+  - `full_cycle.py` — full-cycle wiring, **58 LOC**
+
+### Что сохранено по контракту
+
+- Публичные точки входа (`run_cycle`, `run_doctor_cycle`, `run_fix_cycle`, `run_full_cycle`) не менялись.
+- Тестируемые shim-точки в `cli/orchestrator.py` оставлены там, где это требуется для patch-моков.
+- Формат `eurika_fix_report.json` и поля `telemetry/safety_gates/policy_decisions` сохранены.
+
+### Проверка после декомпозиции
+
+- `"/mnt/sdb2/project/.venv/bin/python" -m pytest -q tests/test_cycle.py tests/test_cli_runtime_mode.py tests/test_architect.py tests/test_patch_engine.py`
+- Результат: **46 passed**.

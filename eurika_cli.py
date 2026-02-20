@@ -53,7 +53,7 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Eurika — architecture analysis and refactoring assistant",
         epilog="Product (5 modes): scan | doctor | fix | cycle | explain. Use eurika help for full list.",
     )
-    parser.add_argument("--version", "-V", action="version", version="%(prog)s 2.6.16")
+    parser.add_argument("--version", "-V", action="version", version="%(prog)s 2.7.0")
     subparsers = parser.add_subparsers(dest="command")
 
     _add_product_commands(subparsers)   # scan, doctor, fix, explain — ROADMAP этап 5

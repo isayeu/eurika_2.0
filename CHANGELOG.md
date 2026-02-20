@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## v2.7.0 — native agent runtime + safety gates + Ollama coding fallback defaults (2026-02-19)
+
+### Features
+- Добавлен нативный runtime-цикл с режимами `assist|hybrid|auto` для `fix/cycle/doctor` (policy engine, explainability, session-memory, hybrid approval).
+- В отчёт `eurika_fix_report.json` добавлены telemetry и safety gates: `apply_rate`, `no_op_rate`, `rollback_rate`, `verify_duration_ms`, `verify_required`, `verify_ran`, `verify_passed`, `rollback_done`.
+- Для edge-cases (`dry-run`, `patch plan has no operations`, `all operations rejected`) telemetry/safety теперь формируются детерминированно.
+
+### LLM/Ollama
+- Отключён автозапуск/перезапуск `ollama serve` из Eurika; daemon должен запускаться вручную.
+- Дефолт fallback-модели Ollama переключён на coding-профиль: `qwen2.5-coder:7b`.
+- Обновлены тесты fallback-веток и контрактов CLI/runtime.
+
+---
+
 ## v2.6.16 — architecture_planner: fix _apply_learning_bump nonlocal SyntaxError (2025-02-19)
 
 ### Bugfix

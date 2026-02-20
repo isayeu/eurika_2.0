@@ -7,13 +7,25 @@ EurikaOrchestrator — формальный класс (review.md Part 1), де�
 
 from __future__ import annotations
 
-import io
 import json
-import os
 import sys
-from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
+
+from cli.orchestration import FixCycleContext, load_fix_cycle_deps
+from cli.orchestration.apply_stage import (
+    attach_fix_telemetry as _apply_attach_fix_telemetry,
+    build_fix_cycle_result as _apply_build_fix_cycle_result,
+    execute_fix_apply_stage as _apply_execute_fix_apply_stage,
+)
+from cli.orchestration.doctor import (
+    knowledge_topics_from_env_or_summary as _doctor_knowledge_topics_from_env_or_summary,
+    run_doctor_cycle as _doctor_run_doctor_cycle,
+)
+from cli.orchestration.full_cycle import run_full_cycle as _full_run_full_cycle
+from cli.orchestration.prepare import (
+    prepare_fix_cycle_operations as _prepare_prepare_fix_cycle_operations,
+)
 
 
 class EurikaOrchestrator:
@@ -54,22 +66,8 @@ class EurikaOrchestrator:
 
 
 def _knowledge_topics_from_env_or_summary(summary: Any) -> list:
-    """Topics for Knowledge: from EURIKA_KNOWLEDGE_TOPIC or derived from summary."""
-    env = os.environ.get("EURIKA_KNOWLEDGE_TOPIC", "").strip()
-    if env:
-        return [t.strip() for t in env.split(",") if t.strip()]
-    # Default to the current Python line for knowledge lookups.
-    topics = ["python", "python_3_14"]
-    sys_info = summary.get("system") or {}
-    if (sys_info.get("cycles") or 0) > 0:
-        topics.append("cyclic_imports")
-    risks = summary.get("risks") or []
-    risk_str = " ".join(str(r) for r in risks).lower()
-    if "god" in risk_str or "hub" in risk_str or "bottleneck" in risk_str:
-        topics.append("architecture_refactor")
-    if "deprecated" in risk_str:
-        topics.append("version_migration")
-    return topics
+    """Compatibility wrapper; delegated to orchestration.doctor."""
+    return _doctor_knowledge_topics_from_env_or_summary(summary)
 
 
 def run_cycle(
@@ -122,41 +120,8 @@ def run_doctor_cycle(
     window: int = 5,
     no_llm: bool = False,
 ) -> dict[str, Any]:
-    """Run diagnostics cycle: summary + history + patch_plan + architect. No I/O to stdout/stderr."""
-    from eurika.api import get_summary, get_history, get_patch_plan, get_recent_events
-    from eurika.knowledge import (
-        CompositeKnowledgeProvider,
-        LocalKnowledgeProvider,
-        OfficialDocsProvider,
-        ReleaseNotesProvider,
-    )
-    from eurika.reasoning.architect import interpret_architecture
-
-    summary = get_summary(path)
-    if summary.get("error"):
-        return {"error": summary.get("error", "unknown")}
-    history = get_history(path, window=window)
-    patch_plan = get_patch_plan(path, window=window)
-    recent_events = get_recent_events(path, limit=5, types=("patch", "learn"))
-    use_llm = not no_llm
-    cache_dir = path / ".eurika" / "knowledge_cache"
-    knowledge_provider = CompositeKnowledgeProvider([
-        LocalKnowledgeProvider(path / "eurika_knowledge.json"),
-        OfficialDocsProvider(cache_dir=cache_dir, ttl_seconds=86400),
-        ReleaseNotesProvider(cache_dir=cache_dir, ttl_seconds=86400),
-    ])
-    knowledge_topic = _knowledge_topics_from_env_or_summary(summary)
-    architect_text = interpret_architecture(
-        summary, history, use_llm=use_llm, patch_plan=patch_plan,
-        knowledge_provider=knowledge_provider, knowledge_topic=knowledge_topic,
-        recent_events=recent_events,
-    )
-    return {
-        "summary": summary,
-        "history": history,
-        "patch_plan": patch_plan,
-        "architect_text": architect_text,
-    }
+    """Compatibility wrapper; delegated to orchestration.doctor."""
+    return _doctor_run_doctor_cycle(path, window=window, no_llm=no_llm)
 
 
 def run_full_cycle(
@@ -173,65 +138,22 @@ def run_full_cycle(
     no_code_smells: bool = False,
     verify_cmd: str | None = None,
 ) -> dict[str, Any]:
-    """Run scan → doctor (full report) → fix. Single command for the full ritual."""
-    from eurika.smells.rules import summary_to_text
-    from runtime_scan import run_scan
-
-    if not quiet:
-        print("eurika cycle: scan → doctor → fix", file=sys.stderr)
-    if run_scan(path) != 0:
-        return {"return_code": 1, "report": {}, "operations": [], "modified": [], "verify_success": False, "agent_result": None}
-    data = run_doctor_cycle(path, window=window, no_llm=no_llm)
-    if data.get("error"):
-        return {"return_code": 1, "report": data, "operations": [], "modified": [], "verify_success": False, "agent_result": None}
-    if not quiet:
-        print(summary_to_text(data["summary"]), file=sys.stderr)
-        print(file=sys.stderr)
-        print(data["history"].get("evolution_report", ""), file=sys.stderr)
-        print(file=sys.stderr)
-        print(data["architect_text"], file=sys.stderr)
-        print(file=sys.stderr)
-    out = run_fix_cycle(path, runtime_mode=runtime_mode, non_interactive=non_interactive, session_id=session_id, window=window, dry_run=dry_run, quiet=quiet, skip_scan=True, no_clean_imports=no_clean_imports, no_code_smells=no_code_smells, verify_cmd=verify_cmd)
-    out["doctor_report"] = data
-    return out
-
-
-def _run_fix_scan_stage(path: Path, quiet: bool, run_scan: Any) -> bool:
-    """Run scan stage for fix cycle. Returns True on success."""
-    if not quiet:
-        print("--- Step 1/4: scan ---", file=sys.stderr)
-        print("eurika fix: scan → diagnose → plan → patch → verify", file=sys.stderr)
-    if quiet:
-        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-            return run_scan(path) == 0
-    return run_scan(path) == 0
-
-
-def _prepend_fix_operations(
-    path: Path,
-    patch_plan: dict[str, Any],
-    operations: list[dict[str, Any]],
-    no_clean_imports: bool,
-    no_code_smells: bool,
-) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """Prepend clean-imports and code-smell operations to patch plan."""
-    if not no_clean_imports:
-        from eurika.api import get_clean_imports_operations
-
-        clean_ops = get_clean_imports_operations(path)
-        if clean_ops:
-            operations = clean_ops + operations
-            patch_plan = dict(patch_plan, operations=operations)
-
-    if not no_code_smells:
-        from eurika.api import get_code_smell_operations
-
-        code_smell_ops = get_code_smell_operations(path)
-        if code_smell_ops:
-            operations = code_smell_ops + operations
-            patch_plan = dict(patch_plan, operations=operations)
-
-    return patch_plan, operations
+    """Compatibility wrapper; delegated to orchestration.full_cycle."""
+    return _full_run_full_cycle(
+        path,
+        runtime_mode=runtime_mode,
+        non_interactive=non_interactive,
+        session_id=session_id,
+        window=window,
+        dry_run=dry_run,
+        quiet=quiet,
+        no_llm=no_llm,
+        no_clean_imports=no_clean_imports,
+        no_code_smells=no_code_smells,
+        verify_cmd=verify_cmd,
+        run_doctor_cycle_fn=run_doctor_cycle,
+        run_fix_cycle_fn=run_fix_cycle,
+    )
 
 
 def _build_fix_dry_run_result(path: Path, patch_plan: dict[str, Any], operations: list[dict[str, Any]], result: Any) -> dict[str, Any]:
@@ -253,68 +175,6 @@ def _build_fix_dry_run_result(path: Path, patch_plan: dict[str, Any], operations
         "agent_result": result,
         "dry_run": True,
     }
-
-
-def _apply_runtime_policy(
-    patch_plan: dict[str, Any],
-    operations: list[dict[str, Any]],
-    *,
-    runtime_mode: str,
-) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
-    """Evaluate operations via policy engine and attach explainability metadata."""
-    from eurika.agent import evaluate_operation, load_policy_config
-
-    cfg = load_policy_config(runtime_mode)  # assist|hybrid|auto
-    seen_files: set[str] = set()
-    kept: list[dict[str, Any]] = []
-    decisions: list[dict[str, Any]] = []
-    for idx, op in enumerate(operations, start=1):
-        target_file = str(op.get("target_file") or "")
-        res = evaluate_operation(op, config=cfg, index=idx, seen_files=seen_files)
-        op_with_meta = dict(op)
-        op_with_meta["explainability"] = res.explainability
-        decisions.append(
-            {
-                "index": idx,
-                "target_file": target_file,
-                "kind": op.get("kind"),
-                "decision": res.decision,
-                "reason": res.reason,
-                "risk": res.risk,
-            }
-        )
-        if res.decision == "allow" or runtime_mode == "assist":
-            kept.append(op_with_meta)
-            if target_file:
-                seen_files.add(target_file)
-    patch_plan = dict(patch_plan, operations=kept)
-    return patch_plan, kept, decisions
-
-
-def _apply_session_rejections(
-    path: Path,
-    patch_plan: dict[str, Any],
-    operations: list[dict[str, Any]],
-    *,
-    session_id: str | None,
-) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
-    """Skip operations that were explicitly rejected in this session earlier."""
-    if not session_id:
-        return patch_plan, operations, []
-    from eurika.storage import SessionMemory, operation_key
-
-    mem = SessionMemory(path)
-    rejected_keys = mem.rejected_keys(session_id)
-    if not rejected_keys:
-        return patch_plan, operations, []
-    kept: list[dict[str, Any]] = []
-    skipped: list[dict[str, Any]] = []
-    for op in operations:
-        if operation_key(op) in rejected_keys:
-            skipped.append(op)
-            continue
-        kept.append(op)
-    return dict(patch_plan, operations=kept), kept, skipped
 
 
 def _select_hybrid_operations(
@@ -358,187 +218,6 @@ def _select_hybrid_operations(
     return approved, rejected
 
 
-def _run_fix_diagnose_stage(path: Path, window: int, quiet: bool) -> Any:
-    """Run diagnose stage via ArchReviewAgentCore."""
-    from agent_core import InputEvent
-    from agent_core_arch_review import ArchReviewAgentCore
-
-    if not quiet:
-        print("--- Step 2/4: diagnose ---", file=sys.stderr)
-    agent = ArchReviewAgentCore(project_root=path)
-    event = InputEvent(
-        type="arch_review",
-        payload={"path": str(path), "window": window},
-        source="cli",
-    )
-    return agent.handle(event)
-
-
-def _extract_patch_plan_from_result(result: Any) -> tuple[dict[str, Any], list[dict[str, Any]]] | tuple[None, None]:
-    """Extract patch_plan and operations from agent result."""
-    proposals = result.output.get("proposals", [])
-    patch_proposal = next(
-        (p for p in proposals if p.get("action") == "suggest_patch_plan"),
-        None,
-    )
-    if not patch_proposal:
-        return None, None
-    patch_plan = patch_proposal.get("arguments", {}).get("patch_plan", {})
-    operations = patch_plan.get("operations", [])
-    return patch_plan, operations
-
-
-def _prepare_rescan_before(path: Path, backup_dir_name: str) -> Path:
-    """Persist self_map snapshot before apply stage."""
-    self_map_path = path / "self_map.json"
-    rescan_before = path / backup_dir_name / "self_map_before.json"
-    if self_map_path.exists():
-        (path / backup_dir_name).mkdir(parents=True, exist_ok=True)
-        rescan_before.write_text(self_map_path.read_text(encoding="utf-8"), encoding="utf-8")
-    return rescan_before
-
-
-def _enrich_report_with_rescan(
-    path: Path,
-    report: dict[str, Any],
-    rescan_before: Path,
-    quiet: bool,
-    run_scan: Any,
-    build_snapshot_from_self_map: Any,
-    diff_architecture_snapshots: Any,
-    metrics_from_graph: Any,
-    rollback_patch: Any,
-) -> None:
-    """Add rescan_diff and verify_metrics to report; rollback if metrics worsened."""
-    if not (report["verify"]["success"] and rescan_before.exists()):
-        return
-    if not quiet:
-        print("--- Step 4/4: rescan (compare before/after) ---", file=sys.stderr)
-    with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-        run_scan(path)
-    self_map_after = path / "self_map.json"
-    if not self_map_after.exists():
-        return
-    try:
-        old_snap = build_snapshot_from_self_map(rescan_before)
-        new_snap = build_snapshot_from_self_map(self_map_after)
-        diff = diff_architecture_snapshots(old_snap, new_snap)
-        report["rescan_diff"] = {
-            "structures": diff["structures"],
-            "smells": diff["smells"],
-            "maturity": diff["maturity"],
-            "centrality_shifts": diff.get("centrality_shifts", [])[:10],
-        }
-        trends = {}
-        metrics_before = metrics_from_graph(old_snap.graph, old_snap.smells, trends)
-        metrics_after = metrics_from_graph(new_snap.graph, new_snap.smells, trends)
-        before_score = {"score": metrics_before["score"]}.get("score", 0)
-        after_score = {"score": metrics_after["score"]}.get("score", 0)
-        report["verify_metrics"] = {
-            "success": after_score >= before_score,
-            "before_score": before_score,
-            "after_score": after_score,
-        }
-        if after_score < before_score and report.get("run_id"):
-            rb = rollback_patch(path, report["run_id"])
-            report["rollback"] = {
-                "done": True,
-                "run_id": report["run_id"],
-                "restored": rb.get("restored", []),
-                "errors": rb.get("errors", []),
-                "reason": "metrics_worsened",
-            }
-            report["verify"]["success"] = False
-    except Exception as e:
-        report["rescan_diff"] = {"error": "diff failed"}
-        report["verify_metrics"] = {"success": None, "error": str(e)}
-
-
-def _append_fix_cycle_memory(path: Path, result: Any, operations: list[dict[str, Any]], report: dict[str, Any], verify_success: Any) -> None:
-    """Append learning and patch events to memory."""
-    from eurika.storage import ProjectMemory
-
-    try:
-        memory = ProjectMemory(path)
-        summary = result.output.get("summary", {}) or {}
-        risks = list(summary.get("risks", []))
-        modified = report.get("modified", [])
-        # Only record learning when we actually modified files (skip inflates success for unapplied ops)
-        if modified:
-            memory.learning.append(
-                project_root=path,
-                modules=modified,
-                operations=operations,
-                risks=risks,
-                verify_success=verify_success,
-            )
-        memory.events.append_event(
-            type="patch",
-            input={"operations_count": len(operations)},
-            output={
-                "modified": modified,
-                "run_id": report.get("run_id"),
-                "verify_success": verify_success,
-            },
-            result=verify_success,
-        )
-    except Exception:
-        pass
-
-
-def _write_fix_report(path: Path, report: dict[str, Any], quiet: bool) -> None:
-    """Persist eurika_fix_report.json report."""
-    try:
-        report_path = path / "eurika_fix_report.json"
-        report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
-        if not quiet:
-            print(f"eurika_fix_report.json written to {report_path}", file=sys.stderr)
-    except Exception:
-        pass
-
-
-def _attach_fix_telemetry(report: dict[str, Any], operations: list[dict[str, Any]]) -> None:
-    """Attach operational telemetry and safety-gate summary to fix report."""
-    policy_total = len(report.get("policy_decisions", []) or [])
-    ops_total = len(operations) or policy_total
-    modified = report.get("modified", []) or []
-    skipped = report.get("skipped", []) or []
-    rollback_done = bool((report.get("rollback") or {}).get("done"))
-    verify_payload = report.get("verify")
-    verify_success_raw = (
-        verify_payload.get("success")
-        if isinstance(verify_payload, dict)
-        else None
-    )
-    verify_ran = verify_success_raw is not None
-    verify_required = verify_ran
-    verify_duration_ms = report.get("verify_duration_ms")
-    if verify_duration_ms is None:
-        verify_duration_ms = 0
-    if not skipped and isinstance(report.get("message"), str):
-        if report["message"].startswith("All operations rejected by user/policy."):
-            skipped = [d.get("target_file") for d in (report.get("policy_decisions") or []) if d.get("target_file")]
-    apply_rate = (len(modified) / ops_total) if ops_total else 0.0
-    no_op_rate = (len(skipped) / ops_total) if ops_total else 0.0
-    rollback_rate = (1.0 if rollback_done else 0.0) if verify_required else 0.0
-    report["telemetry"] = {
-        "operations_total": ops_total,
-        "modified_count": len(modified),
-        "skipped_count": len(skipped),
-        "apply_rate": round(apply_rate, 4),
-        "no_op_rate": round(no_op_rate, 4),
-        "rollback_rate": rollback_rate,
-        "verify_duration_ms": int(verify_duration_ms),
-    }
-    report["safety_gates"] = {
-        "verify_required": verify_required,
-        "auto_rollback_enabled": verify_required,
-        "verify_ran": verify_ran,
-        "verify_passed": (bool(verify_success_raw) if verify_ran else None),
-        "rollback_done": rollback_done,
-    }
-
-
 def _prepare_fix_cycle_operations(
     path: Path,
     *,
@@ -551,130 +230,23 @@ def _prepare_fix_cycle_operations(
     no_code_smells: bool,
     run_scan: Any,
 ) -> tuple[dict[str, Any] | None, Any, dict[str, Any] | None, list[dict[str, Any]]]:
-    """Prepare diagnose result, patch plan and operations; return early payload on stop conditions."""
-    if not skip_scan:
-        if not _run_fix_scan_stage(path, quiet, run_scan):
-            return {"return_code": 1, "report": {}, "operations": [], "modified": [], "verify_success": False, "agent_result": None}, None, None, []
-
-    result = _run_fix_diagnose_stage(path, window, quiet)
-    if not result.success:
-        return {
-            "return_code": 1,
-            "report": result.output,
-            "operations": [],
-            "modified": [],
-            "verify_success": False,
-            "agent_result": result,
-        }, result, None, []
-
-    extracted = _extract_patch_plan_from_result(result)
-    if extracted == (None, None):
-        return {
-            "return_code": 0,
-            "report": {"message": "No suggest_patch_plan proposal. Cycle complete (nothing to apply)."},
-            "operations": [],
-            "modified": [],
-            "verify_success": True,
-            "agent_result": result,
-        }, result, None, []
-    patch_plan, operations = extracted
-    patch_plan, operations = _prepend_fix_operations(
-        path, patch_plan, operations, no_clean_imports, no_code_smells
-    )
-    patch_plan, operations, policy_decisions = _apply_runtime_policy(
-        patch_plan,
-        operations,
+    """Compatibility wrapper; delegated to orchestration.prepare."""
+    return _prepare_prepare_fix_cycle_operations(
+        path,
         runtime_mode=runtime_mode,
+        session_id=session_id,
+        window=window,
+        quiet=quiet,
+        skip_scan=skip_scan,
+        no_clean_imports=no_clean_imports,
+        no_code_smells=no_code_smells,
+        run_scan=run_scan,
     )
-    patch_plan, operations, session_skipped = _apply_session_rejections(
-        path, patch_plan, operations, session_id=session_id
-    )
-    if not operations:
-        return {
-            "return_code": 0,
-            "report": {
-                "message": "Patch plan has no operations. Cycle complete.",
-                "policy_decisions": policy_decisions,
-                "session_skipped": len(session_skipped),
-            },
-            "operations": [],
-            "modified": [],
-            "verify_success": True,
-            "agent_result": result,
-        }, result, patch_plan, []
-    if session_skipped:
-        result.output["session_skipped"] = len(session_skipped)
-    result.output["policy_decisions"] = policy_decisions
-    return None, result, patch_plan, operations
-
-
-def _execute_fix_apply_stage(
-    path: Path,
-    patch_plan: dict[str, Any],
-    operations: list[dict[str, Any]],
-    *,
-    quiet: bool,
-    verify_cmd: str | None,
-    backup_dir: str,
-    apply_and_verify: Any,
-    run_scan: Any,
-    build_snapshot_from_self_map: Any,
-    diff_architecture_snapshots: Any,
-    metrics_from_graph: Any,
-    rollback_patch: Any,
-    result: Any,
-) -> tuple[dict[str, Any], list[str], Any]:
-    """Apply patch plan, enrich with rescan metrics, append memory, and persist report."""
-    if not quiet:
-        print("--- Step 3/4: patch & verify ---", file=sys.stderr)
-    rescan_before = _prepare_rescan_before(path, backup_dir)
-    report = apply_and_verify(path, patch_plan, backup=True, verify=True, verify_cmd=verify_cmd, auto_rollback=True)
-    report["operation_explanations"] = [op.get("explainability", {}) for op in operations]
-    report["policy_decisions"] = result.output.get("policy_decisions", [])
-    _attach_fix_telemetry(report, operations)
-    _enrich_report_with_rescan(
-        path, report, rescan_before, quiet, run_scan,
-        build_snapshot_from_self_map, diff_architecture_snapshots,
-        metrics_from_graph, rollback_patch,
-    )
-    modified = report.get("modified", [])
-    verify_success = report["verify"]["success"]
-    _append_fix_cycle_memory(path, result, operations, report, verify_success)
-    _write_fix_report(path, report, quiet)
-    return report, modified, verify_success
 
 
 def _fix_cycle_deps() -> dict[str, Any]:
-    """Load runtime dependencies for fix apply/rescan stages."""
-    from patch_apply import BACKUP_DIR
-    from patch_engine import apply_and_verify, rollback_patch
-    from runtime_scan import run_scan
-    from eurika.core.pipeline import build_snapshot_from_self_map
-    from eurika.evolution.diff import diff_architecture_snapshots
-    from eurika.reasoning.graph_ops import metrics_from_graph
-    return {
-        "BACKUP_DIR": BACKUP_DIR,
-        "apply_and_verify": apply_and_verify,
-        "rollback_patch": rollback_patch,
-        "run_scan": run_scan,
-        "build_snapshot_from_self_map": build_snapshot_from_self_map,
-        "diff_architecture_snapshots": diff_architecture_snapshots,
-        "metrics_from_graph": metrics_from_graph,
-    }
-
-
-def _build_fix_cycle_result(report: dict[str, Any], operations: list[dict[str, Any]], modified: list[str], verify_success: Any, result: Any) -> dict[str, Any]:
-    """Build final run_fix_cycle result payload."""
-    return_code = 1 if report.get("errors") or not report["verify"].get("success") else 0
-    return {
-        "return_code": return_code,
-        "report": report,
-        "operations": operations,
-        "modified": modified,
-        "verify_success": verify_success,
-        "agent_result": result,
-        "dry_run": False,
-    }
+    """Compatibility shim for tests; delegates to orchestration deps loader."""
+    return load_fix_cycle_deps()
 
 
 def run_fix_cycle(
@@ -722,6 +294,19 @@ def _run_fix_cycle_impl(
     verify_cmd: str | None = None,
 ) -> dict[str, Any]:
     """Implementation for run_fix_cycle. Persists report and memory events."""
+    _ = FixCycleContext(
+        path=path,
+        runtime_mode=runtime_mode,
+        non_interactive=non_interactive,
+        session_id=session_id,
+        window=window,
+        dry_run=dry_run,
+        quiet=quiet,
+        skip_scan=skip_scan,
+        no_clean_imports=no_clean_imports,
+        no_code_smells=no_code_smells,
+        verify_cmd=verify_cmd,
+    )
     deps = _fix_cycle_deps()
     run_scan = deps["run_scan"]
 
@@ -738,7 +323,7 @@ def _run_fix_cycle_impl(
     )
     if early is not None:
         if isinstance(early, dict) and isinstance(early.get("report"), dict):
-            _attach_fix_telemetry(early["report"], early.get("operations", []))
+            _apply_attach_fix_telemetry(early["report"], early.get("operations", []))
         return early
 
     approved_ops, rejected_ops = _select_hybrid_operations(
@@ -760,7 +345,7 @@ def _run_fix_cycle_impl(
             "operation_explanations": [],
             "skipped": rejected_files,
         }
-        _attach_fix_telemetry(report, approved_ops)
+        _apply_attach_fix_telemetry(report, approved_ops)
         return {
             "return_code": 0,
             "report": report,
@@ -777,9 +362,9 @@ def _run_fix_cycle_impl(
         out = _build_fix_dry_run_result(path, patch_plan, operations, result)
         out["report"]["operation_explanations"] = [op.get("explainability", {}) for op in operations]
         out["report"]["policy_decisions"] = result.output.get("policy_decisions", [])
-        _attach_fix_telemetry(out["report"], operations)
+        _apply_attach_fix_telemetry(out["report"], operations)
         return out
-    report, modified, verify_success = _execute_fix_apply_stage(
+    report, modified, verify_success = _apply_execute_fix_apply_stage(
         path, patch_plan, operations,
         quiet=quiet, verify_cmd=verify_cmd, backup_dir=deps["BACKUP_DIR"],
         apply_and_verify=deps["apply_and_verify"], run_scan=run_scan,
@@ -788,7 +373,7 @@ def _run_fix_cycle_impl(
         metrics_from_graph=deps["metrics_from_graph"], rollback_patch=deps["rollback_patch"],
         result=result,
     )
-    return _build_fix_cycle_result(report, operations, modified, verify_success, result)
+    return _apply_build_fix_cycle_result(report, operations, modified, verify_success, result)
 
 # TODO: Refactor cli/orchestrator.py (god_module -> split_module)
 # Suggested steps:
