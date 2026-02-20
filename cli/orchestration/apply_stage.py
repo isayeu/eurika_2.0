@@ -94,13 +94,15 @@ def append_fix_cycle_memory(
     verify_success: Any,
 ) -> None:
     """Append learning and patch events to memory."""
-    from eurika.storage import ProjectMemory
+    from eurika.storage import ProjectMemory, SessionMemory
 
     try:
         memory = ProjectMemory(path)
         summary = result.output.get("summary", {}) or {}
         risks = list(summary.get("risks", []))
         modified = report.get("modified", [])
+        if verify_success is False and operations:
+            SessionMemory(path).record_verify_failure(operations)
         # Only record learning when we actually modified files (skip inflates success for unapplied ops)
         if modified:
             memory.learning.append(
@@ -117,6 +119,7 @@ def append_fix_cycle_memory(
                 "modified": modified,
                 "run_id": report.get("run_id"),
                 "verify_success": verify_success,
+                "verify_duration_ms": report.get("verify_duration_ms"),
             },
             result=verify_success,
         )
@@ -135,8 +138,31 @@ def write_fix_report(path: Path, report: dict[str, Any], quiet: bool) -> None:
         pass
 
 
-def attach_fix_telemetry(report: dict[str, Any], operations: list[dict[str, Any]]) -> None:
-    """Attach operational telemetry and safety-gate summary to fix report."""
+def _median_verify_time_ms(path: Path, current_ms: int) -> int | None:
+    """Compute median verify_duration_ms from last 10 patch events (ROADMAP 2.7.8)."""
+    try:
+        from eurika.storage import ProjectMemory
+
+        memory = ProjectMemory(path)
+        events = memory.events.recent_events(limit=10, types=("patch",))
+        durations = []
+        for e in events:
+            out = (e.output or {}) if hasattr(e, "output") else {}
+            ms = out.get("verify_duration_ms")
+            if isinstance(ms, (int, float)) and ms is not None:
+                durations.append(int(ms))
+        durations.append(current_ms)
+        if not durations:
+            return None
+        durations.sort()
+        mid = len(durations) // 2
+        return int(durations[mid] if len(durations) % 2 else (durations[mid - 1] + durations[mid]) / 2)
+    except Exception:
+        return None
+
+
+def attach_fix_telemetry(report: dict[str, Any], operations: list[dict[str, Any]], path: Path | None = None) -> None:
+    """Attach operational telemetry and safety-gate summary to fix report (ROADMAP 2.7.8)."""
     policy_total = len(report.get("policy_decisions", []) or [])
     ops_total = len(operations) or policy_total
     modified = report.get("modified", []) or []
@@ -159,7 +185,7 @@ def attach_fix_telemetry(report: dict[str, Any], operations: list[dict[str, Any]
     apply_rate = (len(modified) / ops_total) if ops_total else 0.0
     no_op_rate = (len(skipped) / ops_total) if ops_total else 0.0
     rollback_rate = (1.0 if rollback_done else 0.0) if verify_required else 0.0
-    report["telemetry"] = {
+    telemetry = {
         "operations_total": ops_total,
         "modified_count": len(modified),
         "skipped_count": len(skipped),
@@ -168,6 +194,11 @@ def attach_fix_telemetry(report: dict[str, Any], operations: list[dict[str, Any]
         "rollback_rate": rollback_rate,
         "verify_duration_ms": int(verify_duration_ms),
     }
+    if path is not None:
+        median_ms = _median_verify_time_ms(path, int(verify_duration_ms))
+        if median_ms is not None:
+            telemetry["median_verify_time_ms"] = median_ms
+    report["telemetry"] = telemetry
     report["safety_gates"] = {
         "verify_required": verify_required,
         "auto_rollback_enabled": verify_required,
@@ -193,14 +224,24 @@ def execute_fix_apply_stage(
     rollback_patch: Any,
     result: Any,
 ) -> tuple[dict[str, Any], list[str], Any]:
-    """Apply patch plan, enrich with rescan metrics, append memory, and persist report."""
+    """Apply patch plan, enrich with rescan metrics, append memory, and persist report.
+
+    Safety (ROADMAP 2.7.7): mandatory verify-gate, auto_rollback on verify fail,
+    backup=True so no partially-applied invalid sessions.
+    """
     if not quiet:
         print("--- Step 3/4: patch & verify ---", file=sys.stderr)
     rescan_before = prepare_rescan_before(path, backup_dir)
     report = apply_and_verify(path, patch_plan, backup=True, verify=True, verify_cmd=verify_cmd, auto_rollback=True)
-    report["operation_explanations"] = [op.get("explainability", {}) for op in operations]
+    verify_outcome = report["verify"].get("success")
+    expls = []
+    for op in operations:
+        expl = dict(op.get("explainability") or {})
+        expl["verify_outcome"] = verify_outcome
+        expls.append(expl)
+    report["operation_explanations"] = expls
     report["policy_decisions"] = result.output.get("policy_decisions", [])
-    attach_fix_telemetry(report, operations)
+    attach_fix_telemetry(report, operations, path)
     enrich_report_with_rescan(
         path, report, rescan_before, quiet, run_scan,
         build_snapshot_from_self_map, diff_architecture_snapshots,

@@ -91,6 +91,13 @@
 
 **Фактический прогресс (фаза 2.7):**
 - [x] 2.7.1 Agent Runtime Core — цикл `observe→reason→propose→apply→verify→learn` в `eurika/agent/runtime.py`; режимы assist/hybrid/auto; unit-тесты на stop-on-error, exception handling, skip missing stages; CLI оркестратор использует runtime для hybrid/auto
+- [x] 2.7.2 Tool Contract Layer — типизированные адаптеры scan, patch, verify, rollback, tests, git_read в `eurika/agent/tool_contract.py`; единый ToolResult; ошибки нормализованы; dry-run воспроизводим; OrchestratorToolset получает contract; tests/test_tool_contract.py
+- [x] 2.7.3 Policy Engine — policy-конфиг: risk, max_ops, max_files, deny_patterns, api_breaking_guard; allow/deny/review для hybrid/auto; hybrid сохраняет review для HITL; тесты deny-правил и граничных кейсов в test_agent_policy.py
+- [x] 2.7.4 Explainability Record — why, risk, expected_outcome, rollback_plan, verify_outcome в operation_explanations; eurika_fix_report.json и dry-run; eurika explain показывает Runtime rationale из последнего fix; tests/test_explainability.py
+- [x] 2.7.5 Session Memory — campaign memory в SessionMemory: rejected_keys (из любой сессии), verify_fail_keys (2+ fail → skip); apply_campaign_memory в prepare; record_verify_failure при verify fail; tests
+- [x] 2.7.6 Human-in-the-loop CLI — approve/reject/A/R/s в hybrid; --non-interactive для CI (детерминировано, без stdin); tests/test_hitl_cli.py (non_interactive, isatty, mocked input)
+- [x] 2.7.7 Safety & Rollback Gates — обязательный verify, auto_rollback при fail; backup=True; enrich_report_with_rescan → rollback при metrics_worsened; tests/test_safety_rollback_gates.py; policy max_ops/max_files
+- [x] 2.7.8 Telemetry & KPIs — apply-rate, rollback-rate, no-op-rate, median_verify_time_ms; telemetry в fix report; report-snapshot и doctor (last_fix_telemetry); suggest_policy_from_telemetry для корректировки policy
 
 **Метрики выхода из фазы 2.7 (DoD):**
 - apply-rate в `eurika fix` устойчиво растёт, а no-op-rate снижается относительно базовой линии.

@@ -477,6 +477,26 @@ def test_drop_noop_append_ops(tmp_path: Path) -> None:
     assert kept[0]["target_file"] == "b.py"
 
 
+def test_apply_campaign_memory_filters_rejected_ops(tmp_path: Path) -> None:
+    """apply_campaign_memory skips ops rejected in prior sessions."""
+    from eurika.storage import SessionMemory, operation_key
+    from cli.orchestration.prepare import apply_campaign_memory
+
+    mem = SessionMemory(tmp_path)
+    rejected = [{"target_file": "foo.py", "kind": "split_module", "params": {"location": ""}}]
+    mem.record("prior", approved=[], rejected=rejected)
+    ops = [
+        {"target_file": "foo.py", "kind": "split_module", "params": {"location": ""}},
+        {"target_file": "bar.py", "kind": "remove_unused_import", "params": {}},
+    ]
+    patch_plan = {"operations": ops}
+    out_plan, out_ops, skipped = apply_campaign_memory(tmp_path, patch_plan, ops)
+    assert len(out_ops) == 1
+    assert out_ops[0].get("target_file") == "bar.py"
+    assert len(skipped) == 1
+    assert operation_key(skipped[0]) == operation_key(rejected[0])
+
+
 def test_deprioritize_weak_pairs_puts_weak_last(tmp_path: Path) -> None:
     """Weak-pair ops are moved to the end of the operation list."""
     from cli.orchestration.prepare import _deprioritize_weak_pairs
@@ -516,6 +536,54 @@ def test_report_snapshot_with_fix_report(tmp_path: Path) -> None:
     assert "## 1. Fix" in result.stdout
     assert "modified" in result.stdout
     assert "1" in result.stdout
+
+
+def test_attach_fix_telemetry_median_verify_time(tmp_path: Path) -> None:
+    """attach_fix_telemetry adds median_verify_time_ms when path has patch events (ROADMAP 2.7.8)."""
+    from eurika.storage import ProjectMemory
+    from cli.orchestration.apply_stage import attach_fix_telemetry
+
+    memory = ProjectMemory(tmp_path)
+    memory.events.append_event(
+        "patch",
+        {"operations_count": 1},
+        {"modified": ["a.py"], "verify_success": True, "verify_duration_ms": 100},
+        result=True,
+    )
+    memory.events.append_event(
+        "patch",
+        {"operations_count": 1},
+        {"modified": ["b.py"], "verify_success": True, "verify_duration_ms": 200},
+        result=True,
+    )
+    report = {
+        "modified": ["c.py"],
+        "skipped": [],
+        "verify": {"success": True},
+        "verify_duration_ms": 300,
+    }
+    attach_fix_telemetry(report, [{"target_file": "c.py"}], tmp_path)
+    assert "median_verify_time_ms" in report.get("telemetry", {})
+    # median of [100, 200, 300] = 200
+    assert report["telemetry"]["median_verify_time_ms"] == 200
+
+
+def test_report_snapshot_telemetry_block(tmp_path: Path) -> None:
+    """report-snapshot includes telemetry subsection when fix has telemetry (ROADMAP 2.7.8)."""
+    fix_report = {
+        "modified": ["a.py"],
+        "skipped": [],
+        "verify": {"success": True},
+        "telemetry": {"apply_rate": 1.0, "no_op_rate": 0.0, "rollback_rate": 0.0, "verify_duration_ms": 150},
+    }
+    (tmp_path / "eurika_fix_report.json").write_text(json.dumps(fix_report), encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, "-m", "eurika_cli", "report-snapshot", str(tmp_path)],
+        cwd=ROOT, capture_output=True, text=True, timeout=10
+    )
+    assert result.returncode == 0
+    assert "telemetry" in result.stdout
+    assert "1.0" in result.stdout or "apply_rate" in result.stdout
 
 
 def test_run_fix_cycle_impl_uses_apply_stage_facade() -> None:

@@ -152,6 +152,11 @@ def handle_report_snapshot(args: Any) -> int:
             if vm:
                 lines.append("")
                 lines.append(f"### verify_metrics: before={vm.get('before_score')}, after={vm.get('after_score')}")
+            telemetry = fix.get("telemetry") or {}
+            if telemetry:
+                lines.append("")
+                lines.append("### telemetry (ROADMAP 2.7.8)")
+                lines.append(f"apply_rate={telemetry.get('apply_rate')}, no_op_rate={telemetry.get('no_op_rate')}, rollback_rate={telemetry.get('rollback_rate')}, verify_duration_ms={telemetry.get('verify_duration_ms')}, median_verify_time_ms={telemetry.get('median_verify_time_ms', 'N/A')}")
             lines.append("")
         except Exception:
             pass
@@ -254,6 +259,41 @@ def _print_module_operations(path: Path, target: str, window: int) -> None:
         print(f'- [{kind}] {desc}')
 
 
+def _print_runtime_rationale(path: Path, target: str) -> None:
+    """Print rationale from last fix report (operation_explanations) for ops targeting this module."""
+    fix_path = path / "eurika_fix_report.json"
+    if not fix_path.exists():
+        return
+    try:
+        data = json.loads(fix_path.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    expls = data.get("operation_explanations") or []
+    policy = data.get("policy_decisions") or []
+    ops = (data.get("patch_plan") or {}).get("operations") or []
+    if policy and len(policy) == len(expls):
+        pairs = list(zip([d.get("target_file") for d in policy], expls))
+    elif ops and len(ops) == len(expls):
+        pairs = list(zip([o.get("target_file") for o in ops], expls))
+    else:
+        return
+    module_rationales = [(tf, expl) for tf, expl in pairs if tf == target]
+    if not module_rationales:
+        return
+    print()
+    print("Runtime rationale (from last fix):")
+    for _tf, expl in module_rationales[:5]:
+        why = expl.get("why", "")
+        risk = expl.get("risk", "?")
+        outcome = expl.get("expected_outcome", "")
+        rollback = expl.get("rollback_plan", "")
+        verify_out = expl.get("verify_outcome")
+        verify_str = f"verify={verify_out}" if verify_out is not None else "verify=not run"
+        print(f"- why: {_truncate_on_word_boundary(why, 120)}")
+        print(f"  risk={risk}, expected_outcome={_truncate_on_word_boundary(outcome, 80)}")
+        print(f"  rollback_plan={_truncate_on_word_boundary(rollback, 80)}, {verify_str}")
+
+
 def _collect_module_explain_context(snapshot: Any, target: str) -> tuple[int, int, bool, list[Any], list[str]]:
     """Collect fan metrics, central flag, smells and summary risks for target module."""
     graph = snapshot.graph
@@ -329,6 +369,7 @@ def handle_explain(args: Any) -> int:
     print()
     _print_module_risks(module_risks)
     _print_module_operations(path, target, getattr(args, 'window', 5))
+    _print_runtime_rationale(path, target)
     return 0
 
 def handle_doctor(args: Any) -> int:
@@ -352,6 +393,14 @@ def handle_doctor(args: Any) -> int:
     print()
     print(architect_text)
     report = {'summary': summary, 'history': history, 'architect': architect_text, 'patch_plan': patch_plan}
+    fix_path = path / 'eurika_fix_report.json'
+    if fix_path.exists():
+        try:
+            fix = json.loads(fix_path.read_text(encoding='utf-8'))
+            if fix.get('telemetry'):
+                report['last_fix_telemetry'] = fix['telemetry']
+        except Exception:
+            pass
     try:
         report_path = path / 'eurika_doctor_report.json'
         report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding='utf-8')
