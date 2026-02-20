@@ -313,3 +313,14 @@
 
 - `python -m py_compile patch_apply.py patch_apply_handlers.py patch_apply_backup.py`
 - `ReadLints` по `patch_apply.py`, `patch_apply_handlers.py`, `patch_apply_backup.py` — без ошибок.
+
+### Step 3: patch_engine verify/rollback orchestration extraction
+
+- `patch_engine_apply_and_verify.py`: **99 -> 67 LOC** (тонкий orchestrator apply+verify flow).
+- Вынесено в новый модуль:
+  - `patch_engine_apply_and_verify_helpers.py` — import-fix retry, `py_compile` fallback, auto-rollback flow, **108 LOC**
+
+### Проверка шага 3
+
+- `python -m py_compile patch_engine_apply_and_verify.py patch_engine_apply_and_verify_helpers.py`
+- `ReadLints` по `patch_engine_apply_and_verify.py` и `patch_engine_apply_and_verify_helpers.py` — без ошибок.

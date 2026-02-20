@@ -27,6 +27,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 from patch_apply_backup import (
+    BACKUP_DIR,
     list_backups as _list_backups_impl,
     restore_backup as _restore_backup_impl,
     write_single_file_change as _write_single_file_change,
