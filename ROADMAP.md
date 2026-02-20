@@ -89,6 +89,9 @@
 
 **Порядок внедрения (рекомендуемый):** 2.7.1 -> 2.7.2 -> 2.7.3 -> 2.7.4 -> 2.7.5 -> 2.7.6 -> 2.7.7 -> 2.7.8 -> 2.7.9 -> 2.7.10.
 
+**Фактический прогресс (фаза 2.7):**
+- [x] 2.7.1 Agent Runtime Core — цикл `observe→reason→propose→apply→verify→learn` в `eurika/agent/runtime.py`; режимы assist/hybrid/auto; unit-тесты на stop-on-error, exception handling, skip missing stages; CLI оркестратор использует runtime для hybrid/auto
+
 **Метрики выхода из фазы 2.7 (DoD):**
 - apply-rate в `eurika fix` устойчиво растёт, а no-op-rate снижается относительно базовой линии.
 - В `hybrid` режиме пользователь контролирует medium/high-risk операции без потери воспроизводимости.
