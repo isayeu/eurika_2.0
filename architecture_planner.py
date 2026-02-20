@@ -11,24 +11,18 @@ for concrete hints (cycle break edge, facade candidates, split hints).
 """
 from __future__ import annotations
 __all__ = ['build_plan', 'build_action_plan', 'build_patch_plan', 'ArchitecturePlan']
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
-from eurika.smells.detector import ArchSmell
-from eurika.reasoning.planner_actions import actions_from_arch_plan
-from eurika.reasoning.planner_analysis import build_steps_from_priorities, index_smells_by_node
+from typing import TYPE_CHECKING
 from eurika.reasoning.planner_types import ArchitecturePlan
 from architecture_planner_build_plan import build_plan
-from action_plan import ActionPlan
+from architecture_planner_build_action_plan import build_action_plan
 if TYPE_CHECKING:
     from eurika.analysis.graph import ProjectGraph
 from architecture_planner_build_patch_plan import build_patch_plan
 
-def build_action_plan(project_root: str, summary: Dict[str, Any], smells: List[ArchSmell], history_info: Dict[str, Any], priorities: List[Dict[str, Any]], learning_stats: Optional[Dict[str, Dict[str, Any]]]=None) -> ActionPlan:
-    """
-    Build an ActionPlan directly from diagnostics.
-
-    If learning_stats is provided (e.g. from LearningStore.aggregate_by_action_kind
-    with success_rate added), actions whose type has good past success get a small
-    expected_benefit bump.
-    """
-    arch_plan = build_plan(project_root, summary, smells, history_info, priorities)
-    return actions_from_arch_plan(arch_plan, learning_stats=learning_stats)
+# TODO: Refactor architecture_planner.py (god_module -> split_module)
+# Suggested steps:
+# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
+# - Identify distinct concerns and split this module into focused units.
+# - Reduce total degree (fan-in + fan-out) via extraction.
+# - Extract from imports: architecture_planner_build_plan.py, architecture_planner_build_action_plan.py, action_plan.py.
+# - Consider grouping callers: eurika/api/__init__.py, agent_core_arch_review_archreviewagentcore.py, tests/test_graph_ops.py.

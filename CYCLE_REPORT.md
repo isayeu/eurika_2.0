@@ -45,6 +45,58 @@
 
 ---
 
+## 21. Dogfooding cycle 2 — 2026-02-20
+
+### Fix результат
+| Поле | Значение |
+|------|----------|
+| **modified** | 2 |
+| **skipped** | 0 |
+| **verify** | success |
+| **tests** | 258 passed (33.38s) |
+| **rollback** | нет |
+
+### Операции применены
+- 2× remove_unused_import (architecture_planner.py, architecture_planner_build_action_plan.py)
+- 1× split_module (architecture_planner → build_action_plan в architecture_planner_build_action_plan.py)
+
+### Telemetry
+- apply_rate=0.67, no_op_rate=0, rollback_rate=0
+- verify_duration_ms=33846, median_verify_time_ms=34229
+
+### Rescan
+- verify_metrics: before_score=46, after_score=46
+- architecture_planner.py: fan_out 4→3; action_plan.py: fan_in 8→7
+
+### Итог
+- verify passed, rollback не потребовался
+- Цикл 2/3 для DoD 2.7.9
+
+---
+
+## 22. Dogfooding cycle 3 — 2026-02-20
+
+### Fix результат
+| Поле | Значение |
+|------|----------|
+| **modified** | 0 или минимально |
+| **verify** | success |
+| **rollback** | нет |
+
+### Learning (после 3 циклов)
+| action | success | fail | rate |
+|--------|---------|------|------|
+| split_module | 19 | 6 | **76%** |
+| extract_class | 4 | 1 | **80%** |
+| remove_unused_import | 8 | 3 | **73%** |
+| refactor_code_smell | 0 | 41 | 0% |
+
+### Итог
+- 3 стабильных цикла подряд ✓
+- DoD 2.7.9 выполнен
+
+---
+
 ## 1. Fix (`eurika fix . --quiet --no-code-smells`) — 2026-02-19
 
 | Поле | Значение |

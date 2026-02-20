@@ -1,6 +1,5 @@
 """Extracted from parent module to reduce complexity."""
-
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List
 from eurika.smells.detector import ArchSmell
 from eurika.reasoning.planner_analysis import build_steps_from_priorities, index_smells_by_node
 from eurika.reasoning.planner_types import ArchitecturePlan

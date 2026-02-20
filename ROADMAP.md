@@ -98,7 +98,7 @@
 - [x] 2.7.6 Human-in-the-loop CLI — approve/reject/A/R/s в hybrid; --non-interactive для CI (детерминировано, без stdin); tests/test_hitl_cli.py (non_interactive, isatty, mocked input)
 - [x] 2.7.7 Safety & Rollback Gates — обязательный verify, auto_rollback при fail; backup=True; enrich_report_with_rescan → rollback при metrics_worsened; tests/test_safety_rollback_gates.py; policy max_ops/max_files
 - [x] 2.7.8 Telemetry & KPIs — apply-rate, rollback-rate, no-op-rate, median_verify_time_ms; telemetry в fix report; report-snapshot и doctor (last_fix_telemetry); suggest_policy_from_telemetry для корректировки policy
-- [ ] 2.7.9 Dogfooding Campaign — 1/3 стабильных циклов; cycle 2026-02-20: verify ✓, 258 passed, split_module architecture_planner
+- [x] 2.7.9 Dogfooding Campaign — 3 стабильных цикла подряд; verify ✓, тесты зелёные; split_module architecture_planner → build_plan, build_action_plan
 - [ ] 2.7.10 Docs & Migration — CLI.md, ROADMAP, DOGFOODING, CYCLE_REPORT; CYCLE_REPORT §20 добавлен
 
 **Метрики выхода из фазы 2.7 (DoD):**
