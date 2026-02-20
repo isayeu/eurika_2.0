@@ -4,9 +4,11 @@
 
 ## Где venv
 
-**Venv для этого проекта:** `/mnt/storage/project/venv` (или `/mnt/storage/project/.venv`). Без него **LLM не работает** (doctor/architect с OPENAI_API_KEY). Для verify при `eurika fix` тоже нужен этот Python (pytest и зависимости проекта).
+**Venv для этого проекта:** `/mnt/storage/project/venv` (или `/mnt/storage/project/.venv`, `/mnt/sdb2/project/.venv`). Без него **LLM не работает** (doctor/architect с OPENAI_API_KEY). Для verify при `eurika fix` тоже нужен этот Python (pytest и зависимости проекта).
 
 Скан исключает каталоги `venv`, `.venv`, `node_modules` из анализа.
+
+**Runtime modes (ROADMAP 2.7):** `--runtime-mode assist` (default, все ops применяются), `hybrid` (approve/reject для review), `auto` (policy deny для high-risk). `--non-interactive` для CI (hybrid без stdin).
 
 ## Шаги
 
@@ -43,6 +45,13 @@ eurika fix . --dry-run
 ```
 
 После `eurika fix .` (без --dry-run) запускается **pytest** для верификации; при провале тестов выполняется автоматический откат.
+
+## Telemetry (ROADMAP 2.7.8)
+
+После `eurika fix .` (с apply) в `eurika_fix_report.json` появляются:
+- `telemetry`: apply_rate, no_op_rate, rollback_rate, verify_duration_ms, median_verify_time_ms
+- `safety_gates`: verify_required, verify_passed, rollback_done
+- `report-snapshot .` выводит эти блоки
 
 ## Обновление CYCLE_REPORT.md после контрольного прогона
 

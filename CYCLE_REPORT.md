@@ -1,6 +1,51 @@
-# Отчёт цикла Eurika — 2026-02-19
+# Отчёт цикла Eurika
 
-## 1. Fix (`eurika fix . --quiet --no-code-smells`)
+---
+
+## 20. Dogfooding cycle 2026-02-20 (ROADMAP 2.7.9)
+
+### Команда
+`eurika cycle .` (assist mode, с LLM fallback)
+
+### Fix результат
+| Поле | Значение |
+|------|----------|
+| **modified** | 7 |
+| **skipped** | 0 |
+| **verify** | success |
+| **tests** | 258 passed (37.03s) |
+| **rollback** | нет |
+
+### Операции применены
+- 3× refactor_code_smell (TODO long_function: handle_report_snapshot, prepare_fix_cycle_operations, handle_non_default_kind)
+- 2× remove_unused_import (architecture_planner_build_patch_plan, tests/test_hitl_cli)
+- 1× split_module (architecture_planner → architecture_planner_build_plan)
+
+### Telemetry (ROADMAP 2.7.8)
+- apply_rate=1.17, no_op_rate=0, rollback_rate=0
+- verify_duration_ms=37582, median_verify_time_ms=19497
+
+### Rescan
+- modules_added: architecture_planner_build_plan.py
+- verify_metrics: before_score=46, after_score=46
+- architecture_planner.py: fan_out 2→3
+
+### Learning (по циклу)
+| action | success | fail | rate |
+|--------|---------|------|------|
+| split_module | 22 | 11 | 67% |
+| extract_class | 5 | 2 | 71% |
+| remove_unused_import | 4 | 4 | 50% |
+| refactor_code_smell | 0 | 76 | 0% |
+
+### Итог
+- Verify passed, rollback не потребовался
+- architecture_planner — фасад: build_plan в architecture_planner_build_plan, build_patch_plan в architecture_planner_build_patch_plan
+- Цикл 1/3 для DoD 2.7.9
+
+---
+
+## 1. Fix (`eurika fix . --quiet --no-code-smells`) — 2026-02-19
 
 | Поле | Значение |
 |------|----------|
