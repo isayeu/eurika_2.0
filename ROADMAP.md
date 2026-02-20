@@ -113,8 +113,8 @@
 **Порядок внедрения (рекомендуемый):** 2.8.1 -> 2.8.2 -> 2.8.3 -> 2.8.4 -> 2.8.5 -> 2.8.6 -> 2.8.7 -> 2.8.8.
 
 **Фактический прогресс (актуально):**
-- [ ] 2.8.1 Layer Map — в работе
-- [ ] 2.8.2 Dependency Guard — в работе
+- [x] 2.8.1 Layer Map — выполнено (Architecture.md §0 Layer Map; allowed deps, anti-patterns, ссылки в CLI.md)
+- [x] 2.8.2 Dependency Guard — выполнено (tests/test_dependency_guard.py; CI падает при нарушении)
 - [x] 2.8.3 Orchestrator Split — выполнено
 - [x] 2.8.4 CLI Wiring Split — выполнено
 - [x] 2.8.5 Planner Boundary — выполнено

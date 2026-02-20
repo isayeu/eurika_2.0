@@ -1,5 +1,62 @@
 # Eurika Architecture v0.6
 
+---
+
+## 0. Layer Map (ROADMAP 2.8.1)
+
+Формальная карта слоёв и правил зависимостей. Ссылки: **ROADMAP.md** § Фаза 2.8, **CLI.md** § Рекомендуемый цикл.
+
+### 0.1 Слои (снизу вверх)
+
+```
+Layer 6: Reporting      ← отчёты, форматирование, JSON/Markdown
+Layer 5: Execution      ← patch apply, verify, rollback, refactor
+Layer 4: Planning       ← patch plan, action plan, architecture planner
+Layer 3: Analysis       ← smells, graph, metrics, scanner
+Layer 2: Core           ← graph model, snapshot, pipeline
+Layer 1: Infrastructure ← IO, CLI, FS, backup/restore
+```
+
+**Правило:** модуль слоя N может зависеть только от слоёв 1..N−1 (и от того же слоя). Зависимость «вверх» (N → N+k, k>0) запрещена.
+
+### 0.2 Allowed Dependencies
+
+| From layer | May import from |
+|------------|-----------------|
+| Infrastructure | stdlib, same layer |
+| Core | Infrastructure |
+| Analysis | Core, Infrastructure |
+| Planning | Analysis, Core, Infrastructure |
+| Execution | Planning, Analysis, Core, Infrastructure |
+| Reporting | Execution, Planning, Analysis, Core, Infrastructure |
+
+### 0.3 Mapping modules → layers (v2.7)
+
+| Layer | Модули / пакеты |
+|-------|-----------------|
+| Infrastructure | `eurika_cli`, `cli/` (wiring, handlers, orchestration), `eurika/utils/fs`, `patch_apply_backup`, `eurika/storage/paths` |
+| Core | `core/pipeline`, `core/snapshot`, `project_graph`, `project_graph_api`, `self_map_io` |
+| Analysis | `code_awareness*`, `eurika/analysis/*`, `eurika/smells/*`, `graph_analysis`, `semantic_architecture`, `system_topology` |
+| Planning | `architecture_planner*`, `eurika/reasoning/planner*`, `action_plan*`, `patch_plan` |
+| Execution | `patch_apply`, `patch_engine*`, `patch_apply_handlers`, `eurika/refactor/*`, `executor_sandbox` |
+| Reporting | `report/ux`, `eurika/reporting/*`, `architecture_*` (summary, history, diff, feedback, advisor и т.д.) |
+
+### 0.4 Anti-patterns (запрещённые зависимости)
+
+❌ **Analysis → Execution:** `eurika/smells/*` не должен импортировать `patch_apply` или `patch_engine`.
+
+❌ **Planning → Execution:** `architecture_planner` не должен вызывать `apply_patch_plan` напрямую; планирование и исполнение разделены.
+
+❌ **Infrastructure → Planning:** CLI-слой не должен импортировать `build_patch_plan` или `architecture_planner` напрямую; маршрут через orchestration/deps и фасады.
+
+❌ **Cross-layer facade bypass:** Вызов `patch_apply.apply_patch_plan` из CLI вместо `patch_engine.apply_patch` — нарушение; patch-подсистема доступна только через фасад `patch_engine`.
+
+### 0.5 Verification
+
+Автоматическая проверка: `tests/test_dependency_guard.py` (ROADMAP 2.8.2). Тест падает при нарушении правил; запускается в CI вместе с `pytest`. Команда: `pytest tests/test_dependency_guard.py -v`.
+
+---
+
 ## 1. Target Project Structure (v1.0)
 
 Целевой скелет проекта. Текущий код — плоская структура; миграция к этой layout — в ROADMAP.

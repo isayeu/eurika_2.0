@@ -24,6 +24,8 @@ Scan → Diagnose → Plan → Patch → Verify → Log
 
 **Продуктовые режимы (5):** **scan**, **doctor**, **fix**, **cycle**, **explain**. В `eurika help` выводятся первыми.
 
+Карта слоёв и правил зависимостей — **Architecture.md** § Layer Map (ROADMAP 2.8.1).
+
 ---
 
 ## Обзор

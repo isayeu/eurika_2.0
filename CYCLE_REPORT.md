@@ -400,3 +400,31 @@
 ### Вывод
 
 - Шаг ROADMAP `2.8.8 Dogfooding on New Boundaries` считается закрытым: декомпозиция границ не ухудшила verify-стабильность и не вызвала всплеска rollback/no-op метрик в контрольном прогоне.
+
+---
+
+## 18. Layer Map progress (ROADMAP 2.8.1)
+
+### Выполнено
+
+- Добавлен раздел **§0 Layer Map** в `Architecture.md`:
+  - Карта 6 слоёв (Infrastructure → Core → Analysis → Planning → Execution → Reporting)
+  - Таблица allowed dependencies (no upward deps)
+  - Маппинг модулей v2.7 по слоям
+  - Anti-pattern examples (Analysis→Execution, Planning→Execution, cross-layer bypass)
+  - Ссылка на 2.8.2 Dependency Guard для автоматической проверки
+- Добавлена ссылка в `CLI.md` § Рекомендуемый цикл
+- В `ROADMAP.md` шаг 2.8.1 отмечен как выполненный
+
+---
+
+## 19. Dependency Guard progress (ROADMAP 2.8.2)
+
+### Выполнено
+
+- Добавлен тест `tests/test_dependency_guard.py`:
+  - Проверка запрещённых импортов по Architecture.md §0.4
+  - Правила: CLI → patch_apply; architecture_planner* → patch_apply; eurika/smells/, eurika/analysis/, code_awareness, graph_analysis, semantic_architecture, system_topology → patch_apply, patch_engine
+  - Исключены: tests/, __pycache__/, .eurika_backups/, _shelved/
+  - Парсинг через `ast`; вывод нарушений в assertion
+- Обновлены Architecture.md §0.5 и ROADMAP.md (2.8.2 помечен как выполнено)
