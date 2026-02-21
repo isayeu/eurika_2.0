@@ -16,7 +16,12 @@ All notable changes to this project will be documented in this file.
 - **kind=extract_block_to_helper** — policy high risk; handler в patch_apply_handlers.
 - Условия: нет break/continue/return в блоке; ≤3 extra_params; ≥5 строк.
 
+### long_function extract_block fallback
+- **long_function без вложенных def:** когда extract_nested_function не находит вложенную def, пробуем suggest_extract_block (if/for/while 5+ строк) — реальный фикс без TODO.
+- extract_block срабатывает даже при allow_extract_nested=False (learning блокирует только extract_nested).
+
 ### Tests
+- test_get_code_smell_operations_long_function_extract_block_fallback
 - test_policy_god_class_extract_class_weak_pair_deny/review_in_hybrid
 - test_build_patch_plan_skips_extract_class_for_tool_contract_blocklist
 - test_suggest_extract_block_*, test_extract_block_to_helper_*

@@ -153,6 +153,29 @@ def test_get_code_smell_operations_skips_when_architectural_todo_exists(tmp_path
     )
 
 
+def test_get_code_smell_operations_long_function_extract_block_fallback(tmp_path: Path) -> None:
+    """long_function without nested def: fallback to extract_block when if/for block is extractable."""
+    # 50+ lines, no nested def, but has extractable if block (5+ lines, no break/return)
+    code = (
+        "def long_foo(x):\n"
+        "    result = 0\n"
+        "    if x > 0:\n"
+        "        a = x + 1\n"
+        "        b = a * 2\n"
+        "        c = b + x\n"
+        "        d = c * 2\n"
+        "        e = d + 1\n"
+        "        result = e\n"
+        + "    result += 1\n" * 45
+        + "    return result\n"
+    )
+    (tmp_path / "flat.py").write_text(code, encoding="utf-8")
+    ops = get_code_smell_operations(tmp_path)
+    block_ops = [o for o in ops if o.get("kind") == "extract_block_to_helper" and o.get("target_file") == "flat.py"]
+    assert len(block_ops) >= 1, "long_function with extractable block should get extract_block_to_helper"
+    assert block_ops[0].get("smell_type") == "long_function"
+
+
 def test_get_code_smell_operations_returns_extract_block_for_deep_nesting(tmp_path: Path) -> None:
     """With hybrid mode (default), deep_nesting gets extract_block_to_helper when block is extractable."""
     # Need depth > 4 for CodeAwareness to flag deep_nesting; 5 nested ifs

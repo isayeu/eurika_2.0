@@ -110,7 +110,7 @@
 **Дальнейшая доработка (long_function / deep_nesting):**
 - [x] refactor_code_smell — по умолчанию не эмитить при отсутствии реального фикса; `EURIKA_EMIT_CODE_SMELL_TODO=1` для старого поведения (TODO-маркеры)
 - [x] deep_nesting — гибрид: suggest_extract_block + extract_block_to_helper (эвристика для простых блоков); EURIKA_DEEP_NESTING_MODE=heuristic|hybrid|llm|skip; TODO/LLM при неудаче
-- [ ] long_function без вложенных def — extract_nested_function не срабатывает; требуется LLM или извлечение произвольного блока
+- [x] long_function без вложенных def — fallback на suggest_extract_block (if/for/while блок 5+ строк) когда extract_nested_function не срабатывает
 
 
 ---

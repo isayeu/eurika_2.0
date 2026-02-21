@@ -257,6 +257,8 @@ def _build_extract_block_op(
     block_start_line: int,
     line_count: int,
     extra_params: Optional[List[str]] = None,
+    *,
+    smell_type: str = "deep_nesting",
 ) -> Dict[str, Any]:
     """Build extract_block_to_helper operation payload."""
     params: Dict[str, Any] = {
@@ -271,7 +273,7 @@ def _build_extract_block_op(
         "kind": "extract_block_to_helper",
         "description": f"Extract nested block from {rel_path}:{location} (line {block_start_line}, {line_count} lines)",
         "diff": f"# Extracted block to {helper_name}",
-        "smell_type": "deep_nesting",
+        "smell_type": smell_type,
         "params": params,
     }
 
@@ -353,10 +355,9 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
     """
     Build patch operations for code-level smells (long_function, deep_nesting).
 
-    Uses CodeAwareness.find_smells. For long_function, tries extract_nested_function first;
-    if a nested function can be extracted, uses kind="extract_nested_function" (real fix).
-    Otherwise: if EURIKA_EMIT_CODE_SMELL_TODO=1, emits refactor_code_smell (TODO); else skips (no real fix).
-    For deep_nesting: no real fix implemented; skip unless EURIKA_EMIT_CODE_SMELL_TODO=1.
+    Uses CodeAwareness.find_smells. For long_function: tries extract_nested_function first;
+    if no nested def, tries suggest_extract_block (if/for/while body); else TODO if emit_todo.
+    For deep_nesting: suggest_extract_block when EURIKA_DEEP_NESTING_MODE in (heuristic, hybrid).
     """
     from code_awareness import CodeAwareness
     from eurika.refactor.extract_function import (
@@ -370,17 +371,30 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
     emit_todo = _emit_code_smell_todo()
     ops: List[Dict[str, Any]] = []
     deep_mode = _deep_nesting_mode()
+    fixed_locations: set[tuple[str, str]] = set()
     for file_path in analyzer.scan_python_files():
         rel = str(file_path.relative_to(root)).replace("\\", "/")
         for smell in analyzer.find_smells(file_path):
-            if smell.kind == "long_function" and allow_extract_nested:
-                suggestion = suggest_extract_nested_function(file_path, smell.location)
-                if suggestion:
-                    nested_name, line_count, extra_params = suggestion[0], suggestion[1], (suggestion[2] if len(suggestion) > 2 else [])
-                    ops.append(_build_extract_nested_op(rel, smell.location, nested_name, line_count, extra_params or None))
+            loc_key = (rel, smell.location)
+            if smell.kind == "long_function":
+                if allow_extract_nested:
+                    suggestion = suggest_extract_nested_function(file_path, smell.location)
+                    if suggestion:
+                        nested_name, line_count, extra_params = suggestion[0], suggestion[1], (suggestion[2] if len(suggestion) > 2 else [])
+                        ops.append(_build_extract_nested_op(rel, smell.location, nested_name, line_count, extra_params or None))
+                        fixed_locations.add(loc_key)
+                        continue
+                block_suggestion = suggest_extract_block(file_path, smell.location, min_lines=5)
+                if block_suggestion:
+                    helper_name, block_line, line_count, extra = block_suggestion
+                    ops.append(_build_extract_block_op(
+                        rel, smell.location, helper_name, block_line, line_count, extra or None,
+                        smell_type="long_function",
+                    ))
+                    fixed_locations.add(loc_key)
                     continue
             if smell.kind == "deep_nesting":
-                if deep_mode == "skip":
+                if deep_mode == "skip" or loc_key in fixed_locations:
                     continue
                 if deep_mode in ("heuristic", "hybrid"):
                     block_suggestion = suggest_extract_block(file_path, smell.location)
@@ -389,6 +403,7 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
                         ops.append(_build_extract_block_op(
                             rel, smell.location, helper_name, block_line, line_count, extra or None
                         ))
+                        fixed_locations.add(loc_key)
                         continue
             if not emit_todo:
                 continue
