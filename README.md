@@ -8,17 +8,18 @@
 
 ## Быстрый старт
 
-```bash
-python eurika_cli.py scan .
-```
-
-or, after `pip install -e .`:
+После `pip install -e .`:
 
 ```bash
-eurika scan .
+eurika scan .           # полный скан → self_map.json, smells, summary
+eurika doctor .         # диагностика (report + architect) без патчей
+eurika fix . --dry-run  # план рефакторинга без применения
+eurika serve .          # Web UI на http://127.0.0.1:8765/
 ```
 
-**Для LLM (doctor, architect, cycle):** используйте venv из `/mnt/storage/project/` — в нём установлены openai, pytest и зависимости. Иначе LLM не вызывается. Подробнее — **DOGFOODING.md**.
+Или напрямую: `python eurika_cli.py scan .`.
+
+**Для LLM (doctor, architect, cycle):** в venv установите `pip install -e ".[test]"` (включает openai, pytest). Без openai LLM не вызывается — вывод шаблонный. Подробнее — **DOGFOODING.md**.
 
 **Ollama (локальный LLM):** для architect/cycle с ollama запустите сервер, при необходимости с переменными для AMD GPU:
 ```bash
@@ -36,6 +37,7 @@ HSA_OVERRIDE_GFX_VERSION=10.3.0 ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 oll
 
 **CI:** `eurika fix . --quiet` — exit 0 при успехе, 1 при провале verify или ошибках. См. CLI.md § CI/CD.
 - **`eurika explain <module> [path]`** — роль и риски модуля.
+- **`eurika serve [path]`** — Web UI: Dashboard, Summary, History, Diff, Graph, Approve, Explain, Terminal, Ask Architect, Chat. См. **UI.md**.
 
 ## CLI commands
 
@@ -53,7 +55,8 @@ HSA_OVERRIDE_GFX_VERSION=10.3.0 ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 oll
 - **`eurika architect [path]`**: интерпретация в стиле «архитектор проекта» (2–4 предложения). По умолчанию — шаблон; при заданных переменных окружения вызывается LLM (OpenAI или OpenRouter). Опции: `--window N`, `--no-llm`.
 - **`eurika suggest-plan [path]`**: эвристический рефакторинг-план по summary и рискам (или по build_recommendations при наличии self_map). Опция: `--window N`.
 - **`eurika arch-diff old.json new.json`**: сравнивает два снапшота `self_map.json`. Опция `--json`.
-- **`eurika serve [path]`**: HTTP JSON API (GET /api/summary, /api/history, /api/diff). Опции: `--port`, `--host`.
+- **`eurika serve [path]`**: Web UI + JSON API (Dashboard, Chat, Graph, /api/summary, /api/history и др.). Опции: `--port`, `--host`.
+- **`eurika learn-github [path]`**: клонирует curated OSS (Django, FastAPI и др.) в `../curated_repos/` (рядом с проектом); `--scan` — scan после clone (ROADMAP 3.0.5.1).
 
 ### AgentCore (experimental)
 
@@ -105,6 +108,7 @@ HSA_OVERRIDE_GFX_VERSION=10.3.0 ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 oll
 
 ## Документация
 
+- **UI.md** — Web UI: запуск `eurika serve`, вкладки (Dashboard, Summary, History, Diff, Graph, Approve, Explain, Terminal, Ask Architect, Chat), JSON API
 - **review.md** — разбор, диагноз зрелости, план прорыва (5 этапов)
 - **ROADMAP.md** — план задач, оценка зрелости, «что не хватает», план прорыва, этапы до продуктовой 1.0
 - **REPORT.md** — текущий статус, оценка по review, следующий шаг

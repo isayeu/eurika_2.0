@@ -344,13 +344,14 @@ def handle_architect(args: Any) -> int:
     patch_plan = get_patch_plan(path, window=window)
     recent_events = get_recent_events(path, limit=5, types=('patch', 'learn'))
     use_llm = not getattr(args, 'no_llm', False)
-    from eurika.knowledge import CompositeKnowledgeProvider, LocalKnowledgeProvider, OfficialDocsProvider, PEPProvider, ReleaseNotesProvider
+    from eurika.knowledge import CompositeKnowledgeProvider, LocalKnowledgeProvider, OfficialDocsProvider, OSSPatternProvider, PEPProvider, ReleaseNotesProvider
     cache_dir = path / '.eurika' / 'knowledge_cache'
     online = getattr(args, 'online', False)
     ttl = float(os.environ.get('EURIKA_KNOWLEDGE_TTL', '86400'))
     rate_limit = float(os.environ.get('EURIKA_KNOWLEDGE_RATE_LIMIT', '1.0' if online else '0'))
     knowledge_provider = CompositeKnowledgeProvider([
         LocalKnowledgeProvider(path / 'eurika_knowledge.json'),
+        OSSPatternProvider(path / '.eurika' / 'pattern_library.json'),
         PEPProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=online, rate_limit_seconds=rate_limit),
         OfficialDocsProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=online, rate_limit_seconds=rate_limit),
         ReleaseNotesProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=online, rate_limit_seconds=rate_limit),
@@ -445,6 +446,67 @@ def handle_watch(args: Any) -> int:
         if not quiet:
             print("\neurika watch: stopped (Ctrl+C)", file=sys.stderr)
     return 0
+
+
+def handle_learn_github(args: Any) -> int:
+    """Clone curated OSS repos, optionally scan, build pattern library (ROADMAP 3.0.5.1, 3.0.5.2, 3.0.5.3)."""
+    path = args.path.resolve()
+    if _check_path(path) != 0:
+        return 1
+    from eurika.learning import load_curated_repos, ensure_repo_cloned, search_repositories
+    import os
+
+    search_query = getattr(args, "search", None)
+    search_limit = getattr(args, "search_limit", 5)
+    if search_query:
+        try:
+            token = os.environ.get("GITHUB_TOKEN", "")
+            repos = search_repositories(search_query, per_page=search_limit, token=token or None)
+            if not repos:
+                _err("no repositories found for search query")
+                return 1
+            q_preview = (search_query[:50] + "…") if len(search_query) > 50 else search_query
+            print(f"eurika learn-github: search '{q_preview}' -> {len(repos)} repos", file=sys.stderr)
+        except RuntimeError as e:
+            _err(str(e))
+            return 1
+    else:
+        config_path = getattr(args, "config", None)
+        if config_path is None:
+            cfg = path / "docs" / "curated_repos.example.json"
+            config_path = cfg if cfg.exists() else None
+        repos = load_curated_repos(config_path)
+    cache_dir = path.resolve().parent / "curated_repos"
+    do_scan = getattr(args, "scan", False)
+    do_patterns = getattr(args, "build_patterns", False)
+
+    if not repos:
+        _err("no curated repos found")
+        return 1
+    print(f"eurika learn-github: {len(repos)} repos, cache={cache_dir}", file=sys.stderr)
+    ok = 0
+    for repo in repos:
+        name = repo.get("name", "?")
+        dest, err = ensure_repo_cloned(repo, cache_dir)
+        if dest:
+            ok += 1
+            print(f"  {name}: {dest}", file=sys.stderr)
+            if do_scan:
+                from runtime_scan import run_scan
+                run_scan(dest)
+        else:
+            print(f"  {name}: clone failed — {err or 'unknown'}", file=sys.stderr)
+    if do_patterns or do_scan:
+        from eurika.learning.pattern_library import extract_patterns_from_repos, save_pattern_library
+        lib_path = path / ".eurika" / "pattern_library.json"
+        data = extract_patterns_from_repos(cache_dir)
+        save_pattern_library(data, lib_path)
+        total = sum(len(v) for v in data.values() if isinstance(v, list))
+        projects = {e.get("project") for v in data.values() if isinstance(v, list) for e in v if isinstance(e, dict)}
+        proj_str = ", ".join(sorted(projects)) if projects else "none"
+        print(f"eurika learn-github: pattern library written ({total} entries from {len(projects)} repo(s): {proj_str}) -> {lib_path}", file=sys.stderr)
+    print(f"eurika learn-github: {ok}/{len(repos)} repos available", file=sys.stderr)
+    return 0 if ok > 0 else 1
 
 
 def handle_serve(args: Any) -> int:

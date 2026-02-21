@@ -75,15 +75,35 @@ def _nested_uses_parent_locals(nested: ast.FunctionDef, parent: ast.FunctionDef)
     return bool(used & parent_locals)
 
 
+def _parent_param_names(parent: ast.FunctionDef) -> Set[str]:
+    """Names of parent function's parameters."""
+    names: Set[str] = set()
+    for a in parent.args.args:
+        names.add(a.arg)
+    if parent.args.vararg:
+        names.add(parent.args.vararg.arg or "")
+    if parent.args.kwarg:
+        names.add(parent.args.kwarg.arg or "")
+    return names
+
+
+def _used_from_parent(nested: ast.FunctionDef, parent: ast.FunctionDef) -> Set[str]:
+    """Names from parent scope that nested reads (excluding nested's own)."""
+    used = _names_used_in_node(nested)
+    used -= _names_assigned_in(nested)
+    return used & _parent_locals(parent)
+
+
 def suggest_extract_nested_function(
     file_path: Path,
     function_name: str,
-) -> Optional[Tuple[str, int]]:
+) -> Optional[Tuple[str, int, List[str]]]:
     """
     Find a nested function inside the given function that can be safely extracted.
 
-    Returns (nested_function_name, approximate_line_count) or None.
-    Prefers the largest self-contained nested function.
+    Returns (nested_function_name, approximate_line_count, extra_params) or None.
+    extra_params: list of parent var names to pass as args when nested uses them (max 3).
+    Prefers the largest self-contained nested function; then nested that uses only parent params.
     """
     try:
         content = file_path.read_text(encoding="utf-8")
@@ -109,33 +129,42 @@ def suggest_extract_nested_function(
                 return True
         return False
 
-    candidates: List[Tuple[ast.FunctionDef, int]] = []
+    parent_params = _parent_param_names(parent_func)
+
+    candidates: List[Tuple[ast.FunctionDef, int, List[str]]] = []
     for stmt in parent_func.body:
         if isinstance(stmt, ast.FunctionDef):
-            if _nested_uses_parent_locals(stmt, parent_func):
-                continue
             if _has_nonlocal_or_global(stmt):
+                continue
+            used_from = _used_from_parent(stmt, parent_func)
+            if not used_from:
+                extra_params: List[str] = []
+            elif used_from <= parent_params and len(used_from) <= 3:
+                extra_params = sorted(used_from)
+            else:
                 continue
             line_count = (stmt.end_lineno or stmt.lineno or 0) - (stmt.lineno or 0) + 1
             if line_count >= 3:
-                candidates.append((stmt, line_count))
+                candidates.append((stmt, line_count, extra_params))
 
     if not candidates:
         return None
     best = max(candidates, key=lambda x: x[1])
-    return (best[0].name, best[1])
+    return (best[0].name, best[1], best[2])
 
 
 def extract_nested_function(
     file_path: Path,
     parent_function_name: str,
     nested_function_name: str,
+    extra_params: Optional[List[str]] = None,
 ) -> Optional[str]:
     """
     Move the nested function to module level, placing it before the parent's container.
-
+    When extra_params is set, adds those parent vars as parameters and passes them at call sites.
     Returns new file content or None on failure.
     """
+    extra = list(extra_params or [])
     try:
         content = file_path.read_text(encoding="utf-8")
     except OSError:
@@ -163,8 +192,16 @@ def extract_nested_function(
                     return found
         return None
 
+    def add_extra_args_to_calls(node: ast.AST) -> None:
+        for n in ast.walk(node):
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name):
+                if n.func.id == nested_function_name and extra:
+                    for p in extra:
+                        n.args.append(ast.Name(id=p, ctx=ast.Load()))
+
     def remove_nested_from_parent(node: ast.AST) -> bool:
         if isinstance(node, ast.FunctionDef) and node.name == parent_function_name:
+            add_extra_args_to_calls(node)
             node.body = [
                 s for s in node.body
                 if not (isinstance(s, ast.FunctionDef) and s.name == nested_function_name)
@@ -182,11 +219,24 @@ def extract_nested_function(
     if not remove_nested_from_parent(tree):
         return None
 
-    # Build extracted function (standalone copy), preserve location for unparse
+    new_args_list = list(nested.args.args)
+    for p in extra:
+        if not any(a.arg == p for a in new_args_list):
+            new_args_list.append(ast.arg(arg=p))
+    extracted_args = ast.arguments(
+        posonlyargs=getattr(nested.args, "posonlyargs", []) or [],
+        args=new_args_list,
+        vararg=nested.args.vararg,
+        kwonlyargs=nested.args.kwonlyargs,
+        kw_defaults=nested.args.kw_defaults,
+        kwarg=nested.args.kwarg,
+        defaults=nested.args.defaults,
+    ) if extra else nested.args
+
     extracted = ast.copy_location(
         ast.FunctionDef(
             name=nested.name,
-            args=nested.args,
+            args=extracted_args,
             body=nested.body,
             decorator_list=list(nested.decorator_list),
             returns=nested.returns,

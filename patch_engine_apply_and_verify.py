@@ -95,3 +95,15 @@ def apply_and_verify(
         auto_rollback=auto_rollback,
     )
     return report
+
+# TODO: Refactor patch_engine_apply_and_verify.py (god_module -> split_module)
+# Suggested steps:
+# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
+# - Identify distinct concerns and split this module into focused units.
+# - Reduce total degree (fan-in + fan-out) via extraction.
+# - OSS (django): django/template/backends/django.py — Consider splitting into smaller modules; extract coherent sub-responsibilities.
+# - Extract from imports: patch_engine_apply_patch.py, patch_engine_apply_and_verify_helpers.py, patch_engine_rollback_patch.py.
+# - Consider grouping callers: patch_engine.py.
+# - Extract patch application logic into `patch_engine_apply_logic.py`
+# - Separate rollback functionality into `patch_engine_rollback_logic.py`
+# - Consolidate verification procedures into `patch_engine_verification_utils.py`

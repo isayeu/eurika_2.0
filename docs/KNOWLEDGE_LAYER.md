@@ -21,6 +21,7 @@ class KnowledgeProvider(ABC):
 | **OfficialDocsProvider** | Официальная документация по фиксированному allow-list URL (topic → url); запрос через stdlib urllib, без произвольного поиска. |
 | **ReleaseNotesProvider** | Release notes / What's New по фиксированному allow-list URL (topic → url), stdlib urllib. |
 | **StaticAnalyzerProvider** | Результаты mypy, pylint, flake8, AST-проверки |
+| **OSSPatternProvider** | Паттерны из curated OSS (Django, FastAPI и др.): god_module, hub, bottleneck, cyclic_dependency. Читает `.eurika/pattern_library.json` (ROADMAP 3.0.5.3). |
 
 StackOverflow — слабый источник для автономного агента. Официальная документация — сильный.
 

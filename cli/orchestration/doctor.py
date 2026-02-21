@@ -125,6 +125,7 @@ def run_doctor_cycle(
         CompositeKnowledgeProvider,
         LocalKnowledgeProvider,
         OfficialDocsProvider,
+        OSSPatternProvider,
         PEPProvider,
         ReleaseNotesProvider,
     )
@@ -140,8 +141,10 @@ def run_doctor_cycle(
     cache_dir = path / ".eurika" / "knowledge_cache"
     ttl = float(os.environ.get("EURIKA_KNOWLEDGE_TTL", "86400"))
     rate_limit = float(os.environ.get("EURIKA_KNOWLEDGE_RATE_LIMIT", "1.0" if online else "0"))
+    oss_path = path / ".eurika" / "pattern_library.json"
     knowledge_provider = CompositeKnowledgeProvider([
         LocalKnowledgeProvider(path / "eurika_knowledge.json"),
+        OSSPatternProvider(oss_path),
         PEPProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=online, rate_limit_seconds=rate_limit),
         OfficialDocsProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=online, rate_limit_seconds=rate_limit),
         ReleaseNotesProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=online, rate_limit_seconds=rate_limit),

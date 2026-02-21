@@ -43,7 +43,7 @@ eurika agent <subcommand> [path] [options]
 
 **Продуктовые команды (5 режимов):** `scan`, `doctor`, `fix`, `cycle`, `explain`. В `eurika help` они выводятся первыми; остальные команды — Other/Advanced (ROADMAP этап 5).
 
-**Для LLM (doctor, architect, cycle):** запускайте через venv из `/mnt/storage/project/` (см. DOGFOODING.md). Без него — только шаблонный вывод architect.
+**Для LLM (doctor, architect, cycle):** в venv установите `pip install -e ".[test]"` (openai, pytest). Без openai — только шаблонный вывод architect. См. DOGFOODING.md.
 
 ---
 
@@ -127,6 +127,7 @@ eurika cycle . --no-clean-imports
 | Применить фиксы и проверить | `eurika fix . --quiet` | scan → plan → apply → verify; минимум вывода; exit 1 при провале pytest или ухудшении метрик |
 | Только план (dry-run) | `eurika fix . --dry-run --quiet` | Построить план без применения; exit 0; для проверки «что было бы сделано» |
 | Полный ритуал без LLM | `eurika cycle . --quiet --no-llm` | scan → doctor (шаблон) → fix; не требует OPENAI_API_KEY |
+| Learning from GitHub | `eurika learn-github .` | Клонирует curated OSS (Django, FastAPI и др.) в `../curated_repos/` (рядом с проектом); `--scan` — scan после clone (ROADMAP 3.0.5.1) |
 
 **Требования:** `pip install pytest` для verify (или задать `--verify-cmd` / `[tool.eurika] verify_cmd` в pyproject.toml для Django и др.). При ModuleNotFoundError/NameError Eurika пробует авто-фикс (create stub или add constant) и повторяет verify. Артефакты: `eurika_fix_report.json`, `.eurika/`.
 
@@ -181,6 +182,26 @@ eurika arch-history . --window 10
 
 ```bash
 eurika arch-diff self_map_old.json self_map_new.json
+```
+
+---
+
+### eurika learn-github [path] (ROADMAP 3.0.5.1, 3.0.5.2)
+
+Клонирует curated OSS-проекты (Django, FastAPI, httpx, Flask) в `path/../curated_repos/` (рядом с каталогом проекта) для последующего извлечения паттернов (pattern library).
+
+**Опции:**
+- `--config PATH` — путь к JSON с репозиториями (по умолчанию `docs/curated_repos.example.json`)
+- `--scan` — запустить `eurika scan` для каждого клонированного репо
+- `--build-patterns` — построить pattern library из репо с `self_map.json`, сохранить в `.eurika/pattern_library.json` (ROADMAP 3.0.5.3). Architect использует OSS-примеры в блоке Reference.
+- `--search QUERY` — поиск репо через GitHub API (вместо curated list). Пример: `language:python stars:>1000`. Для большего rate limit задайте `GITHUB_TOKEN`.
+- `--search-limit N` — макс. число репо из --search (по умолчанию 5)
+
+```bash
+eurika learn-github .
+eurika learn-github . --scan
+eurika learn-github . --build-patterns   # после --scan: OSS-паттерны в architect
+eurika learn-github . --search "language:python stars:>5000" --scan --build-patterns   # топ Python-проекты
 ```
 
 ---

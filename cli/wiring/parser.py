@@ -145,6 +145,14 @@ def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
     serve_parser.add_argument("--port", type=int, default=8765, help="Port (default: 8765)")
     serve_parser.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
 
+    learn_github_parser = subparsers.add_parser("learn-github", help="Clone and scan curated OSS repos for pattern library (ROADMAP 3.0.5.1, 3.0.5.2)")
+    learn_github_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root; cache_dir = path/../curated_repos (default: .)")
+    learn_github_parser.add_argument("--config", type=Path, default=None, help="Path to curated_repos.json (default: docs/curated_repos.example.json)")
+    learn_github_parser.add_argument("--scan", action="store_true", help="Run eurika scan on each cloned repo")
+    learn_github_parser.add_argument("--build-patterns", action="store_true", help="Build pattern library from repos with self_map.json, save to .eurika/pattern_library.json")
+    learn_github_parser.add_argument("--search", type=str, default=None, metavar="QUERY", help="GitHub search query (e.g. 'language:python stars:>1000'). Replaces curated list (ROADMAP 3.0.5.2)")
+    learn_github_parser.add_argument("--search-limit", type=int, default=5, help="Max repos from --search (default: 5)")
+
 
 def _add_agent_commands(subparsers: argparse._SubParsersAction) -> None:
     """Register experimental AgentCore-related commands."""

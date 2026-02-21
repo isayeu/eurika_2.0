@@ -2,6 +2,193 @@
 
 ---
 
+## 34. Fix rollback (2026-02-22) — extract_class на tool_contract провалил verify
+
+### Что произошло
+`eurika fix .` из UI применил extract_class к `eurika/agent/tool_contract.py` (DefaultToolContract). Созданы файлы:
+- `tool_contract_defaulttoolcontractextracted.py` — сломанный код (undefined `kwargs`, `dry_run`, `_ok`/`_err`)
+- `tool_contract_defaulttoolcontract.py` — обёртка
+
+verify failed (pytest), auto_rollback не восстановил оригинал полностью (backup был перезаписан второй операцией).
+
+### Исправление
+1. `eurika agent patch-rollback --run-id 20260221_221321 .` — восстановлен tool_contract.py из backup
+2. `git restore eurika/agent/tool_contract.py` — полное восстановление из git
+3. Удалены созданные файлы: `tool_contract_defaulttoolcontract.py`, `tool_contract_defaulttoolcontractextracted.py`
+
+### Итог
+- 319 tests passed
+- extract_class для god_class нуждается в доработке: при извлечении статических методов теряются параметры и хелперы
+
+---
+
+## 33. Fix (2026-02-21) — eurika fix . после dry-run
+
+### Команда
+`eurika fix .` (assist mode)
+
+### Результат
+
+| Поле | Значение |
+|------|----------|
+| **modified** | 7 |
+| **skipped** | 0 |
+| **verify** | ✓ passed |
+
+### Операции
+- 4× remove_unused_import: cli/orchestrator_run_doctor_cycle.py, eurika/api/chat_intent.py, tests/test_chat_intent.py, tests/test_chat_rag.py
+- 3× refactor_code_smell (TODO): cli/wiring/dispatch.py (long_function), eurika/api/chat.py (long_function), eurika/api/chat_rag.py (deep_nesting)
+
+### telemetry
+apply_rate=1.0, no_op_rate=0.0, rollback_rate=0.0, verify_duration_ms=58098
+
+### verify_metrics
+before_score=46, after_score=46
+
+### Итог
+- 7 файлов изменены, verify ✓
+- Learning: +4 success remove_unused_import, +3 success refactor_code_smell (TODO-маркеры)
+
+---
+
+## 32. Snapshot (2026-02-21) — ритуал 2.1, после багфикса knowledge/base.py
+
+### Команда
+`eurika scan .` → `eurika doctor . --no-llm` → `eurika report-snapshot .`
+
+### Багфикс
+- `eurika/knowledge/base.py`: SyntaxError — закрыта скобка `}` для dict `meta` (строка 402)
+
+### 1. Fix (последний прогон из events)
+
+| Поле | Значение |
+|------|----------|
+| **modified** | 382 (curated_repos) / 3 (локальные) |
+| **skipped** | 16 |
+| **verify** | mixed |
+
+### 2. Doctor (`eurika_doctor_report.json`)
+
+| Метрика | Значение |
+|---------|----------|
+| **Модули** | 200 |
+| **Зависимости** | 108 |
+| **Risk score** | 33/100 |
+| **apply_rate** (last 10) | 0.3542 |
+| **median_verify_time** | 131199 ms |
+
+### 3. Learning
+
+**by_action_kind**
+- refactor_code_smell: 0 success, 1045 fail (0%)
+- split_module: 4 success, 4 fail (50%)
+- remove_unused_import: 10 success, 40 fail (20%)
+
+**by_smell_action**
+- long_function|refactor_code_smell: total=881, success=0, fail=860
+- god_module|split_module: total=8, success=4, fail=4
+- unknown|remove_unused_import: total=50, success=10, fail=40
+
+### Итог
+- Ритуал 2.1 выполнен; doctor падал на SyntaxError в knowledge/base.py — исправлено
+- Risk score 33/100; модули 200 (+13 vs §31)
+- refactor_code_smell 0% (WEAK_SMELL_ACTION_PAIRS)
+
+---
+
+## 31. Snapshot (2026-02-21) — ритуал 2.1, после B (продуктовая готовность) + 3.5.11.A Chat
+
+### Команда
+`eurika report-snapshot .`
+
+### 1. Fix (`eurika fix .`)
+
+| Поле | Значение |
+|------|----------|
+| **modified** | 3 |
+| **skipped** | 0 |
+| **verify** | True |
+
+### verify_metrics: before=46, after=46
+
+### telemetry (ROADMAP 2.7.8)
+apply_rate=1.0, no_op_rate=0.0, rollback_rate=0.0, verify_duration_ms=123701, median_verify_time_ms=123701
+
+### 2. Doctor (`eurika_doctor_report.json`)
+
+| Метрика | Значение |
+|---------|----------|
+| **Модули** | 187 |
+| **Зависимости** | 107 |
+| **Risk score** | 46/100 |
+
+### 3. Learning
+
+### by_action_kind
+- refactor_code_smell: 0 success, 7 fail (0%)
+- split_module: 4 success, 1 fail (80%)
+- remove_unused_import: 10 success, 3 fail (77%)
+
+### by_smell_action
+- long_function|refactor_code_smell: total=28, success=0, fail=7
+- deep_nesting|refactor_code_smell: total=2, success=0, fail=0
+- god_module|split_module: total=5, success=4, fail=1
+- unknown|remove_unused_import: total=13, success=10, fail=3
+
+### Итог
+- Ритуал 2.1 выполнен после направления B (продуктовая готовность) и 3.5.11.A (Chat)
+- Risk score 46/100, apply-rate=1.0
+- refactor_code_smell по-прежнему 0% (WEAK_SMELL_ACTION_PAIRS)
+
+---
+
+## 30. Snapshot (2026-02-21) — report-snapshot via Web UI (ритуал 2.1)
+
+### Команда
+`eurika report-snapshot .` (через Terminal tab Web UI)
+
+### 1. Fix (`eurika fix .`)
+
+| Поле | Значение |
+|------|----------|
+| **modified** | 3 |
+| **skipped** | 0 |
+| **verify** | True |
+
+### verify_metrics
+- before_score=46, after_score=46
+
+### telemetry (ROADMAP 2.7.8)
+- apply_rate=1.0, no_op_rate=0.0, rollback_rate=0
+- verify_duration_ms=123701, median_verify_time_ms=123701
+
+### 2. Doctor (`eurika_doctor_report.json`)
+
+| Метрика | Значение |
+|---------|----------|
+| **Модули** | 187 |
+| **Зависимости** | 107 |
+| **Risk score** | 46/100 |
+
+### 3. Learning
+
+**by_action_kind**
+- refactor_code_smell: 0 success, 7 fail (0%)
+- split_module: 4 success, 1 fail (80%)
+- remove_unused_import: 10 success, 3 fail (77%)
+
+**by_smell_action**
+- long_function|refactor_code_smell: total=28, success=0, fail=7
+- deep_nesting|refactor_code_smell: total=2, success=0, fail=0
+- god_module|split_module: total=5, success=4, fail=1
+- unknown|remove_unused_import: total=13, success=10, fail=3
+
+### Итог
+- Ритуал 2.1: report-snapshot выполнен через Web UI
+- Risk score стабилен (46/100), apply-rate=1.0
+
+---
+
 ## 20. Dogfooding cycle 2026-02-20 (ROADMAP 2.7.9)
 
 ### Команда

@@ -31,13 +31,15 @@ def build_patch_operations(
     learning_stats: Optional[Dict[str, Dict[str, Any]]] = None,
     graph: Optional["ProjectGraph"] = None,
     self_map: Optional[Dict[str, Any]] = None,
+    oss_patterns: Optional[Dict[str, Any]] = None,
 ) -> List[PatchOperation]:
-    """Build patch operations from diagnostics input."""
+    """Build patch operations from diagnostics input. ROADMAP 3.0.5.4: oss_patterns enriches hints."""
     operations: List[PatchOperation] = []
     cycles_handled: set[frozenset[str]] = set()
     plan_targets = _build_plan_targets(
         priorities, smells, smells_by_node, summary, graph=graph
     )
+    oss = oss_patterns or {}
     for idx, target in enumerate(plan_targets, start=1):
         operations.extend(
             _operations_for_target(
@@ -48,6 +50,7 @@ def build_patch_operations(
                 cycles_handled,
                 graph=graph,
                 self_map=self_map,
+                oss_patterns=oss,
             )
         )
     operations = _apply_smell_action_filters(project_root, operations, learning_stats)
@@ -240,9 +243,22 @@ def _build_hints_and_params(
     name: str,
     *,
     graph: Optional["ProjectGraph"],
+    oss_patterns: Optional[Dict[str, Any]] = None,
 ) -> tuple[List[str], Optional[Dict[str, Any]]]:
-    """Build diff hints and optional params for operation. ROADMAP 2.9.2: LLM hints for god_module/hub/bottleneck."""
+    """Build diff hints and optional params. ROADMAP 2.9.2: LLM hints. ROADMAP 3.0.5.4: OSS examples."""
     hints = list(diff_hints_for(smell_type, action_kind))
+    oss = oss_patterns or {}
+    entries = oss.get(smell_type, [])
+    if isinstance(entries, list):
+        for e in entries[:3]:
+            if isinstance(e, dict):
+                proj = e.get("project", "?")
+                mod = e.get("module", "?")
+                hint = e.get("hint", "")
+                if hint:
+                    h = f"OSS ({proj}): {mod} — {hint}"
+                    if h not in hints:
+                        hints.append(h)
     split_params: Optional[Dict[str, Any]] = None
     if not graph:
         return hints, split_params
@@ -301,10 +317,13 @@ def _append_default_refactor_operation(
     node_smells: List[ArchSmell],
     *,
     graph: Optional["ProjectGraph"],
+    oss_patterns: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Build and append the default TODO refactor operation for a target."""
     hints, split_params = _build_hints_and_params(
-        smell_type, action_kind, node_smells, name, graph=graph
+        smell_type, action_kind, node_smells, name,
+        graph=graph,
+        oss_patterns=oss_patterns or {},
     )
     hint_lines = "\n".join((f"# - {hint}" for hint in hints))
     diff_hint = (
@@ -332,6 +351,7 @@ def _operations_for_target(
     *,
     graph: Optional["ProjectGraph"],
     self_map: Optional[Dict[str, Any]],
+    oss_patterns: Optional[Dict[str, Any]] = None,
 ) -> List[PatchOperation]:
     """Build patch operations for a single target module."""
     from eurika.reasoning.graph_ops import refactor_kind_for_smells
@@ -368,7 +388,9 @@ def _operations_for_target(
         operations, project_root, name, idx, smell_type, action_kind
     )
     _append_default_refactor_operation(
-        operations, name, idx, desc_lines, smell_type, action_kind, node_smells, graph=graph
+        operations, name, idx, desc_lines, smell_type, action_kind, node_smells,
+        graph=graph,
+        oss_patterns=oss_patterns or {},
     )
     return operations
 
@@ -497,3 +519,9 @@ def _sort_and_reindex_by_learning(
         else:
             reindexed.append(op)
     return reindexed
+
+
+# TODO (eurika): refactor long_function '_build_hints_and_params' — consider extracting helper
+
+
+# TODO (eurika): refactor deep_nesting '_build_hints_and_params' — consider extracting nested block

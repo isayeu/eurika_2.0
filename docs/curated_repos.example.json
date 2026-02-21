@@ -1,0 +1,8 @@
+{
+  "repos": [
+    {"url": "https://github.com/django/django.git", "name": "django", "branch": "main"},
+    {"url": "https://github.com/tiangolo/fastapi.git", "name": "fastapi", "branch": "master"},
+    {"url": "https://github.com/encode/httpx.git", "name": "httpx", "branch": "master"},
+    {"url": "https://github.com/pallets/flask.git", "name": "flask", "branch": "main"}
+  ]
+}

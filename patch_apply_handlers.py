@@ -256,8 +256,10 @@ def handle_non_default_kind(
         and params.get("nested_function_name")
     ):
         try:
+            extra_params = params.get("extra_params")
             new_content = extract_nested_function(
-                path, params["location"], params["nested_function_name"]
+                path, params["location"], params["nested_function_name"],
+                extra_params=extra_params if isinstance(extra_params, list) else None,
             )
             if new_content is None:
                 skip_cb("extract_nested_function: extraction failed")

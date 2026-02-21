@@ -95,6 +95,30 @@
     .op-actions button.active { font-weight: 600; }
     .op-actions button.approve.active { background: rgba(107, 207, 125, 0.2); }
     .op-actions button.reject.active { background: rgba(217, 107, 107, 0.2); }
+    .terminal-output {
+      font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+      font-size: 12px;
+      background: #0a0c10;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.75rem;
+      min-height: 200px;
+      max-height: 50vh;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .terminal-input-row { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .terminal-input-row input { flex: 1; padding: 0.4rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: inherit; }
+    .run-cmd-btn { padding: 0.4rem 0.75rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); cursor: pointer; font-family: inherit; }
+    .run-cmd-btn:hover { border-color: var(--accent); }
+    .run-cycle-btn { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+    .run-cycle-btn:hover { opacity: 0.9; }
+    .diff-split { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; min-height: 200px; }
+    .diff-panel { background: #0a0c10; border: 1px solid var(--border); border-radius: 4px; padding: 0.5rem; overflow: auto; font-size: 12px; white-space: pre-wrap; }
+    .diff-panel.left .line-del { background: rgba(217,107,107,0.25); display: block; }
+    .diff-panel.right .line-add { background: rgba(107,207,125,0.25); display: block; }
+    .diff-line-num { color: var(--muted); margin-right: 0.5rem; user-select: none; }
   </style>
 </head>
 <body>
@@ -107,9 +131,32 @@
     <button data-tab="graph">Graph</button>
     <button data-tab="approve">Approve</button>
     <button data-tab="explain">Explain Module</button>
+    <button data-tab="terminal">Terminal</button>
+    <button data-tab="ask">Ask Architect</button>
+    <button data-tab="chat">Chat</button>
   </div>
 
   <div id="panel-dashboard" class="panel active">
+    <div class="card">
+      <h2>Commands</h2>
+      <div class="cmd-grid" style="display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem;">
+        <button id="run-scan-btn" class="run-cmd-btn">Scan</button>
+        <button id="run-doctor-btn" class="run-cmd-btn">Doctor</button>
+        <label style="display: inline-flex; align-items: center; gap: 0.35rem; margin-left: 0.25rem;">
+          <input type="checkbox" id="doctor-llm-cb"> Use LLM
+        </label>
+        <button id="run-fix-btn" class="run-cmd-btn">Fix</button>
+        <label style="display: inline-flex; align-items: center; gap: 0.35rem; margin-left: 0.5rem;">
+          <input type="checkbox" id="fix-dry-run-cb" checked> dry-run
+        </label>
+        <label style="display: inline-flex; align-items: center; gap: 0.35rem; margin-left: 0.25rem;">
+          <input type="checkbox" id="fix-approval-cb"> require approval
+        </label>
+        <button id="run-report-btn" class="run-cmd-btn">Report snapshot</button>
+        <button id="run-cycle-btn" class="run-cmd-btn run-cycle-btn">Cycle (dry-run)</button>
+      </div>
+      <p class="muted" style="font-size: 11px; margin: 0;">Output appears in Terminal tab. dry-run: show plan without applying. require approval: eurika fix . --team-mode.</p>
+    </div>
     <div id="dashboard-content" class="loading">Loading…</div>
   </div>
 
@@ -149,6 +196,39 @@
       <button id="explain-btn" style="margin-left: 0.5rem; padding: 0.35rem 0.75rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: inherit; cursor: pointer;">Explain</button>
     </div>
     <pre id="explain-result" class="card evolution" style="min-height: 4rem;">Enter a module path and click Explain.</pre>
+  </div>
+
+  <div id="panel-terminal" class="panel">
+    <div class="card">
+      <h2>Terminal</h2>
+      <p class="muted" style="margin-bottom: 0.5rem;">Run eurika commands (scan, doctor, fix, cycle, explain). Path is always project root.</p>
+      <div class="terminal-input-row">
+        <input id="terminal-input" type="text" placeholder="eurika scan ." value="eurika scan .">
+        <button id="terminal-run-btn" style="padding: 0.4rem 1rem; background: var(--accent); color: var(--bg); border: none; cursor: pointer; font-family: inherit;">Run</button>
+      </div>
+      <pre id="terminal-output" class="terminal-output">Output will appear here.</pre>
+    </div>
+  </div>
+
+  <div id="panel-ask" class="panel">
+    <div class="card">
+      <h2>Ask Architect</h2>
+      <p class="muted" style="margin-bottom: 0.5rem;">Get architect's interpretation of the codebase (summary + recommendations).</p>
+      <button id="ask-btn" style="padding: 0.5rem 1rem; background: var(--accent); color: var(--bg); border: none; cursor: pointer; font-family: inherit;">Ask Architect</button>
+      <pre id="ask-result" class="card evolution" style="min-height: 6rem; margin-top: 1rem;">Click Ask Architect to get the architect's take.</pre>
+    </div>
+  </div>
+
+  <div id="panel-chat" class="panel">
+    <div class="card">
+      <h2>Chat</h2>
+      <p class="muted" style="margin-bottom: 0.5rem;">Chat with Eurika (Ollama via Eurika layer). Context from project. Logged to .eurika/chat_history/.</p>
+      <div class="chat-input-row" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+        <input id="chat-input" type="text" placeholder="Ask anything about the project or request code…" style="flex: 1; padding: 0.4rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: inherit;">
+        <button id="chat-send-btn" style="padding: 0.4rem 1rem; background: var(--accent); color: var(--bg); border: none; cursor: pointer; font-family: inherit;">Send</button>
+      </div>
+      <div id="chat-messages" class="chat-messages" style="min-height: 200px; max-height: 50vh; overflow-y: auto; white-space: pre-wrap; font-size: 12px; border: 1px solid var(--border); border-radius: 4px; padding: 0.75rem; background: #0a0c10;">No messages yet.</div>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.2/standalone/umd/vis-network.min.js"></script>

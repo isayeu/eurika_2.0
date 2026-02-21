@@ -249,15 +249,19 @@ def _build_extract_nested_op(
     location: str,
     nested_name: str,
     line_count: int,
+    extra_params: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Build extract_nested_function operation payload."""
+    params: Dict[str, Any] = {"location": location, "nested_function_name": nested_name}
+    if extra_params:
+        params["extra_params"] = extra_params
     return {
         "target_file": rel_path,
         "kind": "extract_nested_function",
         "description": f"Extract nested function {nested_name} from {rel_path}:{location} ({line_count} lines)",
         "diff": f"# Extracted {nested_name} to module level",
         "smell_type": "long_function",
-        "params": {"location": location, "nested_function_name": nested_name},
+        "params": params,
     }
 
 
@@ -328,8 +332,8 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
             if smell.kind == "long_function" and allow_extract_nested:
                 suggestion = suggest_extract_nested_function(file_path, smell.location)
                 if suggestion:
-                    nested_name, line_count = suggestion
-                    ops.append(_build_extract_nested_op(rel, smell.location, nested_name, line_count))
+                    nested_name, line_count, extra_params = suggestion[0], suggestion[1], (suggestion[2] if len(suggestion) > 2 else [])
+                    ops.append(_build_extract_nested_op(rel, smell.location, nested_name, line_count, extra_params or None))
                     continue
             op = _build_refactor_smell_op(rel, smell)
             if _should_emit_refactor_smell_op(root, rel, op["diff"], smell.location, smell.kind):

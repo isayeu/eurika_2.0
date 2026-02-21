@@ -32,6 +32,7 @@ def dispatch_command(parser: argparse.ArgumentParser, args: Any) -> int:
         "clean-imports": lambda: handlers.handle_clean_imports(args),
         "watch": lambda: handlers.handle_watch(args),
         "serve": lambda: handlers.handle_serve(args),
+        "learn-github": lambda: handlers.handle_learn_github(args),
     }
     if args.command == "help":
         return dispatch["help"]()
@@ -58,3 +59,6 @@ def dispatch_command(parser: argparse.ArgumentParser, args: Any) -> int:
             return handler(args)
 
     return 0
+
+
+# TODO (eurika): refactor long_function 'dispatch_command' — consider extracting helper

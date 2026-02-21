@@ -20,7 +20,20 @@ def build_patch_plan(project_root: str, summary: Dict[str, Any], smells: List[Ar
     When graph is provided (ROADMAP 2.1 — Граф как инструмент), diff hints
     are enriched with graph-derived suggestions (cycle break edge, facade
     candidates, split hints).
+
+    ROADMAP 3.0.5.4: OSS pattern library enriches diff hints with examples from
+    curated repos (Django, FastAPI, etc.) when .eurika/pattern_library.json exists.
     """
+    from pathlib import Path
+
     smells_by_node = index_smells_by_node(smells)
-    operations = build_patch_operations(project_root=project_root, summary=summary, smells=smells, priorities=priorities, smells_by_node=smells_by_node, learning_stats=learning_stats, graph=graph, self_map=self_map)
+    oss_patterns = {}
+    try:
+        lib_path = Path(project_root) / ".eurika" / "pattern_library.json"
+        if lib_path.exists():
+            from eurika.learning.pattern_library import load_pattern_library
+            oss_patterns = load_pattern_library(lib_path)
+    except Exception:
+        pass
+    operations = build_patch_operations(project_root=project_root, summary=summary, smells=smells, priorities=priorities, smells_by_node=smells_by_node, learning_stats=learning_stats, graph=graph, self_map=self_map, oss_patterns=oss_patterns)
     return PatchPlan(project_root=project_root, operations=operations)

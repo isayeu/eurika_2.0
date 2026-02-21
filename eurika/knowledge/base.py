@@ -352,6 +352,57 @@ class StaticAnalyzerProvider(KnowledgeProvider):
         return StructuredKnowledge(topic=topic, source="static_analyzer", fragments=[], meta={})
 
 
+class OSSPatternProvider(KnowledgeProvider):
+    """Паттерны из curated OSS (ROADMAP 3.0.5.3). Читает pattern_library.json."""
+
+    def __init__(self, library_path: Path | None) -> None:
+        self.library_path = Path(library_path) if library_path else None
+        self._cache: dict[str, list] = {}
+
+    def _load(self) -> dict:
+        if not self.library_path or not self.library_path.exists():
+            return {}
+        try:
+            from eurika.learning.pattern_library import load_pattern_library
+            return load_pattern_library(self.library_path)
+        except Exception:
+            return {}
+
+    def query(self, topic: str) -> StructuredKnowledge:
+        key = _topic_key(topic)
+        if not key:
+            return StructuredKnowledge(topic=topic, source="oss_patterns", fragments=[], meta={})
+        data = self._load()
+        if not data:
+            return StructuredKnowledge(topic=topic, source="oss_patterns", fragments=[], meta={})
+        entries = data.get(key, data.get(topic, []))
+        if not isinstance(entries, list) or not entries:
+            if key == "architecture_refactor":
+                entries = []
+                for k in ("god_module", "hub", "bottleneck", "cyclic_dependency"):
+                    entries.extend(data.get(k, [])[:5])
+            else:
+                return StructuredKnowledge(topic=topic, source="oss_patterns", fragments=[], meta={})
+        fragments = []
+        for e in entries[:8]:
+            if isinstance(e, dict):
+                proj = e.get("project", "?")
+                mod = e.get("module", "?")
+                sev = e.get("severity")
+                hint = e.get("hint", "")
+                title = f"{proj}: {mod}"
+                content = hint
+                if sev is not None:
+                    content = f"Severity {sev}. " + content
+                fragments.append({"title": title, "content": content})
+        return StructuredKnowledge(
+            topic=topic,
+            source="oss_patterns",
+            fragments=fragments,
+            meta={"projects": len({e.get("project") for e in entries if isinstance(e, dict)})},
+        )
+
+
 class CompositeKnowledgeProvider(KnowledgeProvider):
     """Объединяет несколько провайдеров: по каждой теме запрашивает всех и склеивает фрагменты."""
 

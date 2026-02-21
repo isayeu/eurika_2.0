@@ -189,6 +189,169 @@ function initTabs() {
   });
 }
 
+function initTerminal() {
+  const input = document.getElementById('terminal-input');
+  const runBtn = document.getElementById('terminal-run-btn');
+  const output = document.getElementById('terminal-output');
+  if (!input || !runBtn || !output) return;
+  runBtn.addEventListener('click', async () => {
+    const cmd = input.value.trim() || 'eurika scan .';
+    output.textContent = 'Running…';
+    runBtn.disabled = true;
+    try {
+      const res = await APIPost('/exec', { command: cmd, timeout: 120 });
+      runBtn.disabled = false;
+      if (res.error) {
+        output.textContent = (res.stderr || res.error || '') + (res.stdout || '');
+      } else {
+        const out = (res.stdout || '') + (res.stderr ? '\n' + res.stderr : '');
+        output.textContent = out || '(no output)';
+      }
+    } catch (e) {
+      runBtn.disabled = false;
+      output.textContent = 'Request failed: ' + (e.message || 'unknown');
+    }
+  });
+}
+
+function initAskArchitect() {
+  const btn = document.getElementById('ask-btn');
+  const result = document.getElementById('ask-result');
+  if (!btn || !result) return;
+  btn.addEventListener('click', async () => {
+    result.textContent = 'Loading…';
+    btn.disabled = true;
+    try {
+      const res = await APIPost('/ask_architect', {});
+      btn.disabled = false;
+      if (res.error) {
+        result.textContent = 'Error: ' + res.error;
+      } else {
+        result.textContent = res.text || '(empty)';
+      }
+    } catch (e) {
+      btn.disabled = false;
+      result.textContent = 'Request failed: ' + (e.message || 'unknown');
+    }
+  });
+}
+
+let chatHistory = [];
+
+function appendChatMessage(role, content) {
+  const el = document.getElementById('chat-messages');
+  if (!el) return;
+  const div = document.createElement('div');
+  div.className = 'chat-msg chat-msg-' + role;
+  div.style.marginBottom = '0.75rem';
+  div.style.padding = '0.35rem 0';
+  div.style.borderBottom = role === 'user' ? '1px solid var(--border)' : 'none';
+  const label = document.createElement('strong');
+  label.textContent = role === 'user' ? 'You: ' : 'Eurika: ';
+  label.style.color = role === 'user' ? 'var(--accent)' : 'var(--ok)';
+  div.appendChild(label);
+  div.appendChild(document.createTextNode(content));
+  if (el.textContent === 'No messages yet.') el.textContent = '';
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+}
+
+function initChat() {
+  const input = document.getElementById('chat-input');
+  const btn = document.getElementById('chat-send-btn');
+  const messagesEl = document.getElementById('chat-messages');
+  if (!input || !btn || !messagesEl) return;
+  const send = async () => {
+    const msg = input.value.trim();
+    if (!msg) return;
+    input.value = '';
+    appendChatMessage('user', msg);
+    const historyToSend = chatHistory.slice(-10);
+    chatHistory.push({ role: 'user', content: msg });
+    const placeholder = document.createElement('div');
+    placeholder.className = 'chat-msg chat-msg-assistant';
+    placeholder.style.color = 'var(--muted)';
+    placeholder.textContent = 'Thinking…';
+    messagesEl.appendChild(placeholder);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    btn.disabled = true;
+    try {
+      const res = await APIPost('/chat', { message: msg, history: historyToSend });
+      placeholder.remove();
+      const text = res.text || '';
+      const err = res.error || '';
+      if (err) {
+        appendChatMessage('assistant', '[Error] ' + err);
+        chatHistory.push({ role: 'assistant', content: '[Error] ' + err });
+      } else {
+        appendChatMessage('assistant', text || '(empty)');
+        chatHistory.push({ role: 'assistant', content: text });
+      }
+    } catch (e) {
+      placeholder.remove();
+      appendChatMessage('assistant', '[Request failed] ' + (e.message || 'unknown'));
+      chatHistory.push({ role: 'assistant', content: '[Request failed] ' + (e.message || 'unknown') });
+    }
+    btn.disabled = false;
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  };
+  btn.addEventListener('click', send);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+}
+
+function runCommand(cmd, btn, btnText) {
+  const output = document.getElementById('terminal-output');
+  if (!btn || !output) return;
+  btn.disabled = true;
+  const orig = btn.textContent;
+  if (btnText) btn.textContent = 'Running…';
+  document.querySelector('.tabs button[data-tab="terminal"]')?.click();
+  output.textContent = 'Running ' + cmd + ' …';
+  return APIPost('/exec', { command: cmd, timeout: 180 })
+    .then(res => {
+      btn.disabled = false;
+      if (btnText) btn.textContent = orig;
+      const out = (res.stdout || '') + (res.stderr ? '\n' + res.stderr : '');
+      output.textContent = out || '(no output)';
+      if (res.error && res.stdout) output.textContent = (res.stdout || '') + (res.stderr ? '\n' + res.stderr : '');
+      load();
+    })
+    .catch(e => {
+      btn.disabled = false;
+      if (btnText) btn.textContent = orig;
+      output.textContent = 'Request failed: ' + (e.message || 'unknown');
+    });
+}
+
+function initRunCycle() {
+  const scanBtn = document.getElementById('run-scan-btn');
+  const doctorBtn = document.getElementById('run-doctor-btn');
+  const fixBtn = document.getElementById('run-fix-btn');
+  const reportBtn = document.getElementById('run-report-btn');
+  const cycleBtn = document.getElementById('run-cycle-btn');
+  const dryRunCb = document.getElementById('fix-dry-run-cb');
+  const approvalCb = document.getElementById('fix-approval-cb');
+  const doctorLlmCb = document.getElementById('doctor-llm-cb');
+
+  if (scanBtn) scanBtn.addEventListener('click', () => runCommand('eurika scan .', scanBtn, true));
+  if (doctorBtn) doctorBtn.addEventListener('click', () => {
+    const useLlm = doctorLlmCb && doctorLlmCb.checked;
+    const cmd = useLlm ? 'eurika doctor .' : 'eurika doctor . --no-llm';
+    runCommand(cmd, doctorBtn, true);
+  });
+  if (fixBtn) fixBtn.addEventListener('click', () => {
+    const dry = dryRunCb && dryRunCb.checked;
+    const team = approvalCb && approvalCb.checked;
+    let cmd = 'eurika fix .';
+    if (team) cmd += ' --team-mode';
+    else if (dry) cmd += ' --dry-run';
+    runCommand(cmd, fixBtn, true);
+    if (team) setTimeout(() => { document.querySelector('.tabs button[data-tab="approve"]')?.click(); loadApprove(); }, 2000);
+  });
+  if (reportBtn) reportBtn.addEventListener('click', () => runCommand('eurika report-snapshot .', reportBtn, true));
+  if (cycleBtn) cycleBtn.addEventListener('click', () => runCommand('eurika cycle . --dry-run', cycleBtn, true));
+}
+
 async function loadGraph() {
   const container = document.getElementById('graph-container');
   const hint = document.getElementById('graph-hint');
@@ -310,6 +473,126 @@ async function loadApprove() {
   }
 }
 
+/**
+ * Parse unified diff into synchronized rows: { leftRows, rightRows }.
+ * Each row: { lineNum, text, isDel/isAdd }. Both arrays same length for alignment.
+ */
+function parseUnifiedDiffToAlignedRows(oldLines, diffText) {
+  const diff = (diffText || '').split('\n');
+  const chunkRe = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))?/;
+  const ix = (n) => Math.max(0, n - 1);
+  const leftRows = [];
+  const rightRows = [];
+  let i = 0;
+  while (i < diff.length && !chunkRe.test(diff[i])) i++;
+  if (i >= diff.length) return null;
+  let oldNum = 1;
+  let newNum = 1;
+  while (i < diff.length) {
+    const m = diff[i].match(chunkRe);
+    if (m) {
+      const chunkOldStart = parseInt(m[1], 10);
+      const chunkNewStart = parseInt(m[3], 10);
+      for (; oldNum < chunkOldStart && oldNum <= oldLines.length; oldNum++, newNum++) {
+        const txt = oldLines[ix(oldNum)] || '';
+        leftRows.push({ lineNum: oldNum, text: txt, isDel: false });
+        rightRows.push({ lineNum: newNum, text: txt, isAdd: false });
+      }
+      oldNum = chunkOldStart;
+      newNum = chunkNewStart;
+      i++;
+      while (i < diff.length && !chunkRe.test(diff[i])) {
+        const line = diff[i];
+        const first = line.charAt(0);
+        const content = line.slice(1);
+        if (first === ' ') {
+          leftRows.push({ lineNum: oldNum, text: content, isDel: false });
+          rightRows.push({ lineNum: newNum, text: content, isAdd: false });
+          oldNum++;
+          newNum++;
+        } else if (first === '-') {
+          leftRows.push({ lineNum: oldNum, text: content, isDel: true });
+          rightRows.push({ lineNum: null, text: '', isAdd: false });
+          oldNum++;
+        } else if (first === '+') {
+          leftRows.push({ lineNum: null, text: '', isDel: false });
+          rightRows.push({ lineNum: newNum, text: content, isAdd: true });
+          newNum++;
+        }
+        i++;
+      }
+      continue;
+    }
+    i++;
+  }
+  for (; oldNum <= oldLines.length; oldNum++, newNum++) {
+    const txt = oldLines[ix(oldNum)] || '';
+    leftRows.push({ lineNum: oldNum, text: txt, isDel: false });
+    rightRows.push({ lineNum: newNum, text: txt, isAdd: false });
+  }
+  const hasEdits = leftRows.some(r => r.isDel) || rightRows.some(r => r.isAdd);
+  return hasEdits ? { leftRows, rightRows } : null;
+}
+
+function renderDiffPreview(leftRows, rightRows, leftLabel, rightLabel) {
+  const fmt = (rows, isLeft) => rows.map((r) => {
+    const num = (r.lineNum != null && r.lineNum > 0) ? String(r.lineNum) : '\u00A0';
+    const cls = isLeft ? (r.isDel ? ' class="line-del"' : '') : (r.isAdd ? ' class="line-add"' : '');
+    return '<span class="diff-line-num">' + escapeHtml(num) + '</span><span' + cls + '>' + escapeHtml(r.text || ' ') + '</span>';
+  }).join('\n');
+  const leftHtml = fmt(leftRows, true);
+  const rightHtml = fmt(rightRows, false);
+  return '<div class="diff-split" style="margin-top: 0.5rem;">' +
+    '<div class="diff-panel left"><strong class="muted">' + escapeHtml(leftLabel) + '</strong><br>' + leftHtml + '</div>' +
+    '<div class="diff-panel right"><strong class="muted">' + escapeHtml(rightLabel) + '</strong><br>' + rightHtml + '</div>' +
+    '</div>';
+}
+
+async function showOpDiff(targetFile, diff) {
+  const current = await API('/file', { path: targetFile });
+  if (current.error) {
+    return '(file not found: ' + escapeHtml(current.error) + ')';
+  }
+  const leftLines = (current.content || '').split('\n');
+  const diffText = diff || '';
+  const parsed = parseUnifiedDiffToAlignedRows(leftLines, diffText);
+  if (parsed && parsed.leftRows.length > 0) {
+    return renderDiffPreview(
+      parsed.leftRows,
+      parsed.rightRows,
+      targetFile + ' (current)',
+      targetFile + ' (new)'
+    );
+  }
+  const isTodoStyle = /^#\s*TODO:|^#\s*Suggested|^#\s*Refactor/i.test(diffText.trim());
+  if (isTodoStyle) {
+    const leftRows = leftLines.map((t, i) => ({ lineNum: i + 1, text: t, isDel: false }));
+    const rightRows = leftRows.map(r => ({ lineNum: r.lineNum, text: r.text, isAdd: false }));
+    return '<div class="diff-split" style="margin-top: 0.5rem;">' +
+      '<div class="diff-panel left"><strong class="muted">' + escapeHtml(targetFile) + ' (current)</strong><br>' +
+      leftRows.map(r => '<span class="diff-line-num">' + r.lineNum + '</span><span>' + escapeHtml(r.text) + '</span>').join('\n') + '</div>' +
+      '<div class="diff-panel right" style="background: var(--surface);"><strong class="muted">Preview</strong><br>' +
+      '<div class="muted" style="white-space: normal; margin-bottom: 0.75rem;">No patch preview. This operation uses a textual plan (split_module, refactor suggestion).</div>' +
+      '<pre style="white-space: pre-wrap; font-size: 11px; margin: 0; color: var(--muted);">' + escapeHtml(diffText.trim()) + '</pre></div></div>';
+  }
+  const leftRows = leftLines.map((t, i) => ({ lineNum: i + 1, text: t, isDel: false }));
+  const diffLines = diffText.split('\n');
+  let rightRows = diffLines.map((t, i) => ({
+    lineNum: (t.startsWith('+') || t.startsWith('-') || t.startsWith(' ')) ? i + 1 : null,
+    text: (t.startsWith('+') || t.startsWith('-') || t.startsWith(' ')) ? t.slice(1) : t,
+    isAdd: t.startsWith('+'),
+  }));
+  const maxLen = Math.max(leftRows.length, rightRows.length);
+  while (leftRows.length < maxLen) leftRows.push({ lineNum: null, text: '', isDel: false });
+  while (rightRows.length < maxLen) rightRows.push({ lineNum: null, text: '', isAdd: false });
+  return renderDiffPreview(
+    leftRows,
+    rightRows,
+    targetFile + ' (current)',
+    targetFile + ' (diff)'
+  );
+}
+
 function renderApprove(ops) {
   const content = document.getElementById('approve-content');
   if (!content) return;
@@ -321,29 +604,71 @@ function renderApprove(ops) {
   ops.forEach((op, i) => {
     const file = op.target_file || op.file || '?';
     const kind = op.refactor_kind || op.kind || '';
+    const diff = op.diff || '';
     const dec = (op.team_decision || 'pending').toLowerCase();
     const ap = dec === 'approve' ? ' active' : '';
     const rej = dec === 'reject' ? ' active' : '';
     html += '<div class="op-row" data-idx="' + i + '">';
     html += '<div class="op-desc">' + escapeHtml(file) + (kind ? ' <span class="muted">' + escapeHtml(kind) + '</span>' : '') + '</div>';
     html += '<div class="op-actions">';
+    html += '<button class="view-diff-btn" data-idx="' + i + '" style="padding: 0.25rem 0.5rem; font-size: 11px; cursor: pointer; background: var(--surface); border: 1px solid var(--border); color: var(--accent); font-family: inherit;">View</button>';
     html += '<button class="approve' + (dec === 'approve' ? ap : '') + '" data-action="approve">Approve</button>';
     html += '<button class="reject' + (dec === 'reject' ? rej : '') + '" data-action="reject">Reject</button>';
     html += '</div></div>';
+    html += '<div id="op-diff-' + i + '" class="op-diff-placeholder" style="display: none;"></div>';
   });
-  html += '<div style="margin-top: 1rem;"><button id="approve-save-btn" style="padding: 0.5rem 1rem; background: var(--accent); border: none; color: var(--bg); cursor: pointer; font-family: inherit;">Save decisions</button></div>';
+  html += '<div style="margin-top: 1rem; display: flex; gap: 0.5rem; align-items: center;">' +
+    '<button id="approve-save-btn" style="padding: 0.5rem 1rem; background: var(--accent); border: none; color: var(--bg); cursor: pointer; font-family: inherit;">Save decisions</button>' +
+    '<button id="approve-apply-btn" class="run-cmd-btn" style="padding: 0.5rem 1rem;">Apply approved</button></div>';
   html += '</div>';
   content.innerHTML = html;
   content.querySelectorAll('.op-actions button').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', async (e) => {
+      if (e.target.classList.contains('view-diff-btn')) {
+        const idx = parseInt(e.target.dataset.idx, 10);
+        const op = approveOps[idx] || {};
+        const file = op.target_file || op.file || '';
+        const diff = op.diff || '';
+        const placeholder = document.getElementById('op-diff-' + idx);
+        if (!placeholder) return;
+        if (placeholder.style.display === 'block') {
+          placeholder.style.display = 'none';
+          placeholder.innerHTML = '';
+          return;
+        }
+        placeholder.innerHTML = '<span class="loading">Loading…</span>';
+        placeholder.style.display = 'block';
+        try {
+          const html = await showOpDiff(file, diff);
+          placeholder.innerHTML = html;
+          const split = placeholder.querySelector('.diff-split');
+          if (split) {
+            const panels = split.querySelectorAll('.diff-panel');
+            if (panels.length === 2) {
+              const syncScroll = (from, to) => { to.scrollTop = from.scrollTop; to.scrollLeft = from.scrollLeft; };
+              panels[0].addEventListener('scroll', () => syncScroll(panels[0], panels[1]));
+              panels[1].addEventListener('scroll', () => syncScroll(panels[1], panels[0]));
+            }
+          }
+        } catch (err) {
+          placeholder.innerHTML = '<span class="error">' + escapeHtml(err.message || 'failed') + '</span>';
+        }
+        return;
+      }
       const row = e.target.closest('.op-row');
       const idx = parseInt(row.dataset.idx, 10);
       const action = e.target.dataset.action;
+      if (!action) return;
       approveOps[idx] = { ...approveOps[idx], team_decision: action, approved_by: action === 'approve' ? 'ui' : null };
       renderApprove(approveOps);
     });
   });
   document.getElementById('approve-save-btn')?.addEventListener('click', saveApprove);
+  const applyBtn = document.getElementById('approve-apply-btn');
+  if (applyBtn) applyBtn.addEventListener('click', () => {
+    runCommand('eurika fix . --apply-approved', applyBtn, true);
+    setTimeout(loadApprove, 3000);
+  });
 }
 
 async function saveApprove() {
@@ -427,4 +752,8 @@ async function load() {
 initTabs();
 initDiff();
 initExplain();
+initTerminal();
+initAskArchitect();
+initChat();
+initRunCycle();
 load();

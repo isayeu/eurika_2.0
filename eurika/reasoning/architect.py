@@ -350,7 +350,9 @@ def _build_ollama_cli_prompt(
     )
 
 
-def _call_llm_architect(client: Any, model: str, prompt: str) -> tuple[str | None, str | None]:
+def _call_llm_architect(
+    client: Any, model: str, prompt: str, max_tokens: int = 350
+) -> tuple[str | None, str | None]:
     """Call OpenAI chat completions and normalize response shape."""
     import os
 
@@ -359,7 +361,7 @@ def _call_llm_architect(client: Any, model: str, prompt: str) -> tuple[str | Non
         r = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=350,
+            max_tokens=max_tokens,
             timeout=timeout_sec,
         )
         if r.choices and r.choices[0].message.content:
@@ -472,6 +474,39 @@ def _llm_interpret(
     cli_model = fallback_model or "qwen2.5-coder:7b"
     cli_prompt = _build_ollama_cli_prompt(summary, history, patch_plan)
     cli_text, cli_reason = _call_ollama_cli(cli_model, cli_prompt)
+    if cli_text:
+        return cli_text, None
+    return None, (
+        f"primary LLM failed ({primary_reason or 'unknown'}); "
+        f"ollama HTTP fallback failed ({fallback_reason or 'unknown'}); "
+        f"ollama CLI fallback failed ({cli_reason or 'unknown'})"
+    )
+
+
+def call_llm_with_prompt(
+    prompt: str,
+    max_tokens: int = 1024,
+) -> tuple[str | None, str | None]:
+    """Call LLM with custom prompt. Same chain: primary -> ollama HTTP -> ollama CLI.
+    ROADMAP 3.5.11: chat_send uses this."""
+    primary_client, primary_model, init_reason = _init_primary_openai_client()
+    primary_reason = init_reason
+    if primary_client and primary_model:
+        text, err = _call_llm_architect(primary_client, primary_model, prompt, max_tokens=max_tokens)
+        if text:
+            return text, None
+        primary_reason = err
+    fallback_client, fallback_model, fallback_init_reason = _init_ollama_fallback_client()
+    fallback_reason = fallback_init_reason
+    if fallback_client and fallback_model:
+        text, err = _call_llm_architect(
+            fallback_client, fallback_model, prompt, max_tokens=max_tokens
+        )
+        if text:
+            return text, None
+        fallback_reason = err
+    cli_model = fallback_model or "qwen2.5-coder:7b"
+    cli_text, cli_reason = _call_ollama_cli(cli_model, prompt)
     if cli_text:
         return cli_text, None
     return None, (

@@ -2,6 +2,17 @@
 
 ---
 
+## Актуальное состояние v3.0.x (после v3.0.1)
+
+| Область | Статус |
+|---------|--------|
+| **3.1-arch** | Выполнено: формальные слои, API-границы, лимит размера файлов, domain vs presentation, облегчение CLI, разведение Planning/Execution |
+| **3.5 Web UI** | Dashboard, Summary, History, Diff, Graph, Approve, Explain, **Terminal** (exec), **Ask Architect**; Run cycle из Dashboard |
+| **Операционность** | WEAK_SMELL_ACTION_PAIRS; refactor_code_smell 0% → hybrid: review, auto: deny |
+| **Фазы 2.7–2.9, 3.0** | Закрыты (Agent Runtime, декомпозиция, LLM+Knowledge, multi-repo, team-mode) |
+
+---
+
 # 1️⃣ Общая картина
 
 По сравнению с 2.7:
