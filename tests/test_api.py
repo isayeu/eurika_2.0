@@ -84,18 +84,32 @@ def test_get_patch_plan_returns_dict_with_self_map(tmp_path: Path) -> None:
     json.dumps(data)
 
 
-def test_get_code_smell_operations_returns_ops_for_long_function(tmp_path: Path) -> None:
-    """get_code_smell_operations returns refactor_code_smell ops when file has long function (51+ lines)."""
+def test_get_code_smell_operations_skips_long_function_when_no_real_fix(tmp_path: Path) -> None:
+    """By default, skip (no ops) when long_function has no extractable nested (ROADMAP: не эмитить при отсутствии реального фикса)."""
     long_func = "def long_foo():\n" + "    x = 1\n" * 50 + "    return x\n"
     (tmp_path / "big.py").write_text(long_func, encoding="utf-8")
     ops = get_code_smell_operations(tmp_path)
-    long_ops = [o for o in ops if o.get("kind") == "refactor_code_smell" and o.get("target_file") == "big.py"]
-    assert len(long_ops) >= 1
-    assert any(o.get("smell_type") == "long_function" and o.get("params", {}).get("location") == "long_foo" for o in long_ops)
+    long_ops = [o for o in ops if o.get("target_file") == "big.py"]
+    assert len(long_ops) == 0
+
+
+def test_get_code_smell_operations_emits_todo_when_env_set(tmp_path: Path) -> None:
+    """With EURIKA_EMIT_CODE_SMELL_TODO=1, emit refactor_code_smell for long_function without extractable nested."""
+    import os
+    long_func = "def long_foo():\n" + "    x = 1\n" * 50 + "    return x\n"
+    (tmp_path / "big.py").write_text(long_func, encoding="utf-8")
+    os.environ["EURIKA_EMIT_CODE_SMELL_TODO"] = "1"
+    try:
+        ops = get_code_smell_operations(tmp_path)
+        long_ops = [o for o in ops if o.get("kind") == "refactor_code_smell" and o.get("target_file") == "big.py"]
+        assert len(long_ops) >= 1
+        assert any(o.get("smell_type") == "long_function" and o.get("params", {}).get("location") == "long_foo" for o in long_ops)
+    finally:
+        os.environ.pop("EURIKA_EMIT_CODE_SMELL_TODO", None)
 
 
 def test_get_code_smell_operations_skips_extract_nested_on_failed_learning(tmp_path: Path) -> None:
-    """When long_function|extract_nested_function history is 0-success, fallback to refactor_code_smell."""
+    """When long_function|extract_nested_function history is 0-success, skip extract_nested and skip refactor_code_smell (no real fix)."""
     lines = "\n".join(("    x = 1" for _ in range(48)))
     content = (
         "def long_foo():\n"
@@ -119,11 +133,8 @@ def test_get_code_smell_operations_skips_extract_nested_on_failed_learning(tmp_p
     )
 
     ops = get_code_smell_operations(tmp_path)
-    assert any(
-        o.get("kind") == "refactor_code_smell" and o.get("smell_type") == "long_function"
-        for o in ops
-    )
     assert not any(o.get("kind") == "extract_nested_function" for o in ops)
+    assert not any(o.get("kind") == "refactor_code_smell" and o.get("target_file") == "big.py" for o in ops)
 
 
 def test_get_code_smell_operations_skips_when_architectural_todo_exists(tmp_path: Path) -> None:

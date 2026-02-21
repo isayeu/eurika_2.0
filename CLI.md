@@ -275,6 +275,7 @@ eurika explain action_plan.py . --window 10
 - `--apply-suggested-policy` (fix, cycle) — применить suggested policy из последнего doctor/fix (ROADMAP 2.9.4)
 - `EURIKA_GLOBAL_MEMORY` — каталог глобальной памяти (ROADMAP 3.0.2); default `~/.eurika`
 - `EURIKA_DISABLE_GLOBAL_MEMORY` — отключить cross-project learning (`1`/`true`/`yes`)
+- `EURIKA_EMIT_CODE_SMELL_TODO` — при `1` эмитить refactor_code_smell (TODO) когда нет реального фикса; default `0` (не эмитить)
 
 Переменные можно задать в `.env` в корне проекта; тогда нужен `pip install python-dotenv` (или `eurika[env]`). При ошибке LLM в stderr выводится причина и используется шаблон.
 Важно: Eurika больше не запускает `ollama serve` автоматически — Ollama daemon должен быть поднят вручную до запуска команд.

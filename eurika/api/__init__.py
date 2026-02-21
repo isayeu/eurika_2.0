@@ -311,13 +311,20 @@ def _should_emit_refactor_smell_op(
     return True
 
 
+def _emit_code_smell_todo() -> bool:
+    """When True, emit refactor_code_smell (TODO) when no real fix. Default: False (ROADMAP: не эмитить при отсутствии реального фикса)."""
+    import os
+    return os.environ.get("EURIKA_EMIT_CODE_SMELL_TODO", "0").strip().lower() in ("1", "true", "yes")
+
+
 def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
     """
     Build patch operations for code-level smells (long_function, deep_nesting).
 
     Uses CodeAwareness.find_smells. For long_function, tries extract_nested_function first;
     if a nested function can be extracted, uses kind="extract_nested_function" (real fix).
-    Otherwise kind="refactor_code_smell" (TODO).
+    Otherwise: if EURIKA_EMIT_CODE_SMELL_TODO=1, emits refactor_code_smell (TODO); else skips (no real fix).
+    For deep_nesting: no real fix implemented; skip unless EURIKA_EMIT_CODE_SMELL_TODO=1.
     """
     from code_awareness import CodeAwareness
     from eurika.refactor.extract_function import suggest_extract_nested_function
@@ -325,6 +332,7 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
     root = Path(project_root).resolve()
     analyzer = CodeAwareness(root)
     allow_extract_nested = _should_try_extract_nested(_load_smell_action_learning_stats(root))
+    emit_todo = _emit_code_smell_todo()
     ops: List[Dict[str, Any]] = []
     for file_path in analyzer.scan_python_files():
         rel = str(file_path.relative_to(root)).replace("\\", "/")
@@ -335,6 +343,8 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
                     nested_name, line_count, extra_params = suggestion[0], suggestion[1], (suggestion[2] if len(suggestion) > 2 else [])
                     ops.append(_build_extract_nested_op(rel, smell.location, nested_name, line_count, extra_params or None))
                     continue
+            if not emit_todo:
+                continue
             op = _build_refactor_smell_op(rel, smell)
             if _should_emit_refactor_smell_op(root, rel, op["diff"], smell.location, smell.kind):
                 ops.append(op)

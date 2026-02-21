@@ -107,7 +107,7 @@
 - [x] long_function|extract_nested_function: extend suggest/extract — extract with params (1–3 parent vars) — повышение success rate
 
 **Дальнейшая доработка (long_function / deep_nesting):**
-- [ ] refactor_code_smell — по‑прежнему только TODO. Варианты: не эмитить при отсутствии реального фикса или LLM-based refactoring
+- [x] refactor_code_smell — по умолчанию не эмитить при отсутствии реального фикса; `EURIKA_EMIT_CODE_SMELL_TODO=1` для старого поведения (TODO-маркеры)
 - [ ] deep_nesting — аналог пока не реализован; возможна отдельная эвристика или LLM
 - [ ] long_function без вложенных def — extract_nested_function не срабатывает; требуется LLM или извлечение произвольного блока
 
