@@ -2,6 +2,15 @@
 
 ---
 
+## 36. Snapshot (2026-02-21) — v3.0.8: long_function extract_block fallback
+
+### Изменения
+- **long_function без вложенных def:** fallback на suggest_extract_block (if/for/while 5+ строк) когда extract_nested_function не срабатывает.
+- extract_block работает даже при allow_extract_nested=False (learning блокирует только extract_nested).
+- fixed_locations предотвращает дубли extract_block для одной функции с long_function и deep_nesting.
+
+---
+
 ## 35. Snapshot (2026-02-21) — v3.0.8: god_class WEAK, deep_nesting extract_block
 
 ### Изменения (CHANGELOG v3.0.8)
