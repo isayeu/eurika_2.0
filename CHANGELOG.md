@@ -2,6 +2,86 @@
 
 All notable changes to this project will be documented in this file.
 
+## v3.0.7 — Approve/reject UI (ROADMAP 3.5.6) (2026-02-21)
+
+### Features
+- **Approve tab** in Web UI — просмотр и approve/reject операций из pending_plan (team-mode).
+- **GET /api/pending_plan** — загрузка .eurika/pending_plan.json.
+- **POST /api/approve** — сохранение решений (team_decision, approved_by) в pending_plan.json.
+- Workflow: `eurika fix . --team-mode` → открыть Approve tab → Approve/Reject → Save → `eurika fix . --apply-approved`.
+
+### Files
+- `eurika/api/__init__.py` — get_pending_plan, save_approvals
+- `cli/orchestration/team_mode.py` — load_pending_plan, update_team_decisions
+- `eurika/api/serve.py` — do_POST, /api/pending_plan, /api/approve
+- `eurika/ui/index.html` — Approve tab
+- `eurika/ui/app.js` — loadApprove, renderApprove, saveApprove
+
+---
+
+## v3.0.6 — Operational metrics (ROADMAP 2.7.8) (2026-02-21)
+
+### Features
+- **aggregate_operational_metrics(path, window)** — rolling apply-rate, rollback-rate, median_verify_time_ms from patch events.
+- **doctor** — prints operational metrics (last 10 runs); saved in eurika_doctor_report.json as operational_metrics.
+- **report-snapshot** — includes operational_metrics in Doctor section when present.
+- **GET /api/operational_metrics?window=10** — API endpoint for rolling metrics.
+- **Dashboard** — Operational metrics card: apply rate %, rollback rate %, median verify time (when patch events exist).
+
+### Files
+- `eurika/storage/operational_metrics.py` — aggregate_operational_metrics
+- `eurika/api/__init__.py` — get_operational_metrics
+- `cli/orchestration/doctor.py` — _operational_metrics_from_events, operational_metrics in output
+- `cli/core_handlers.py` — print and save operational_metrics
+- `report/report_snapshot.py` — operational_metrics in Doctor table
+- `eurika/ui/app.js` — Dashboard fetches /api/operational_metrics
+
+---
+
+## v3.0.5 — Graph visualization (ROADMAP 3.5.7) (2026-02-21)
+
+### Features
+- **GET /api/graph** — dependency graph (nodes=modules, edges=imports); returns `{ nodes, edges }` for vis-network.
+- **Graph tab** in Web UI — интерактивная визуализация (vis-network): zoom, pan, double-click node → Explain.
+- `get_graph(project_root)` в `eurika.api` — строит граф из self_map.json, включает fan_in/fan_out в nodes.
+
+### Files
+- `eurika/api/__init__.py` — get_graph
+- `eurika/api/serve.py` — /api/graph route
+- `eurika/ui/index.html` — Graph tab, vis-network CDN
+- `eurika/ui/app.js` — loadGraph, initGraph on tab activation
+
+---
+
+## v3.0.4 — Team Mode (ROADMAP 3.0.4) (2026-02-21)
+
+### Features
+- **--team-mode** для fix/cycle — propose-only: scan, plan, policy; save to `.eurika/pending_plan.json`; exit.
+- **--apply-approved** — apply only ops with `team_decision=approve` from pending_plan.json.
+- **EURIKA_APPROVALS_FILE** — override path to approvals file (env).
+- Workflow: Person A runs `eurika fix . --team-mode`; Person B edits JSON (team_decision, approved_by); Person B runs `eurika fix . --apply-approved`.
+
+### Files
+- `cli/orchestration/team_mode.py` — save_pending_plan, load_approved_operations
+- `cli/orchestrator.py`, `cli/wiring/parser.py` — team_mode, apply_approved flags
+
+---
+
+## v3.0.3 — Web UI 3.5.2/3.5.4/3.5.5 (2026-02-21)
+
+### Features
+- **3.5.2 Static SPA:** `eurika/ui/` — index.html + app.js, вкладки Summary, History, Explain, Diff.
+- **3.5.3 Dashboard:** вкладка Dashboard — risk score bar, system metrics grid, trends (↑↓→), central modules, top risks.
+- **3.5.4 History & diff:** вкладка Diff — ввод путей old/new self_map.json, вызов `/api/diff`.
+- **3.5.5 Explain module:** вкладка Explain Module — интеграция с `/api/explain`.
+- `eurika serve` раздаёт статику из `eurika/ui/` для `GET /`, `GET /app.js`.
+
+### Files
+- `eurika/ui/index.html`, `eurika/ui/app.js` — vanilla JS, без сборки.
+- `eurika/api/serve.py` — _serve_static, маршрутизация UI.
+
+---
+
 ## v3.0.2 — Cross-Project Memory (ROADMAP 3.0.2) (2026-02-20)
 
 ### Features

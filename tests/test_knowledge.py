@@ -187,6 +187,28 @@ def test_official_docs_provider_uses_cache(tmp_path) -> None:
     assert 'Cached Python 3.12 summary' in k.fragments[0]['content']
     m.assert_not_called()
 
+
+def test_official_docs_provider_force_online_bypasses_cache(tmp_path) -> None:
+    """When force_online=True, provider fetches from network even if cache is fresh (ROADMAP 3.0.3)."""
+    from io import BytesIO
+    from urllib.response import addinfourl
+    from eurika.knowledge.base import _cache_key_for_url
+    url = 'https://docs.python.org/3/whatsnew/3.12.html'
+    cache_dir = tmp_path / '.eurika' / 'knowledge_cache'
+    cache_dir.mkdir(parents=True)
+    cache_file = cache_dir / _cache_key_for_url(url, 'official_docs')
+    import json
+    import time
+    cache_file.write_text(json.dumps({'content': 'Cached old summary', 'url': url, 'fetched_at': time.time()}), encoding='utf-8')
+    p = OfficialDocsProvider(topic_urls={'python_3_12': url}, cache_dir=cache_dir, ttl_seconds=3600, force_online=True)
+    body = b"<html><body><p>Fresh fetch content from network</p></body></html>"
+    with patch('eurika.knowledge.base.urllib.request.urlopen') as m:
+        m.return_value.__enter__.return_value = addinfourl(BytesIO(body), {}, 'https://example.com', 200)
+        k = p.query('python_3_12')
+    assert not k.is_empty()
+    assert 'Fresh fetch content' in k.fragments[0]['content']
+    m.assert_called()
+
 def test_fetch_html_cleanup() -> None:
     """HTML cleanup: drop script/style, trim leading boilerplate so content starts with body text."""
     from eurika.knowledge.base import _drop_script_style, _trim_doc_boilerplate

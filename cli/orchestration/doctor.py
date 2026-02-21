@@ -102,13 +102,24 @@ def _suggested_policy_from_last_fix(path: Path) -> dict[str, Any]:
         return {}
 
 
+def _operational_metrics_from_events(path: Path, window: int = 10) -> dict[str, Any] | None:
+    """Aggregate rolling metrics from patch events (ROADMAP 2.7.8)."""
+    try:
+        from eurika.storage import aggregate_operational_metrics
+
+        return aggregate_operational_metrics(path, window=window)
+    except Exception:
+        return None
+
+
 def run_doctor_cycle(
     path: Path,
     *,
     window: int = 5,
     no_llm: bool = False,
+    online: bool = False,
 ) -> dict[str, Any]:
-    """Run diagnostics cycle: summary + history + patch_plan + architect. No I/O to stdout/stderr. ROADMAP 2.9.4: suggested_policy."""
+    """Run diagnostics cycle: summary + history + patch_plan + architect. No I/O to stdout/stderr. ROADMAP 2.9.4, 3.0.3."""
     from eurika.api import get_summary, get_history, get_patch_plan, get_recent_events
     from eurika.knowledge import (
         CompositeKnowledgeProvider,
@@ -127,11 +138,13 @@ def run_doctor_cycle(
     recent_events = get_recent_events(path, limit=5, types=("patch", "learn"))
     use_llm = not no_llm
     cache_dir = path / ".eurika" / "knowledge_cache"
+    ttl = float(os.environ.get("EURIKA_KNOWLEDGE_TTL", "86400"))
+    rate_limit = float(os.environ.get("EURIKA_KNOWLEDGE_RATE_LIMIT", "1.0" if online else "0"))
     knowledge_provider = CompositeKnowledgeProvider([
         LocalKnowledgeProvider(path / "eurika_knowledge.json"),
-        PEPProvider(cache_dir=cache_dir, ttl_seconds=86400),
-        OfficialDocsProvider(cache_dir=cache_dir, ttl_seconds=86400),
-        ReleaseNotesProvider(cache_dir=cache_dir, ttl_seconds=86400),
+        PEPProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=online, rate_limit_seconds=rate_limit),
+        OfficialDocsProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=online, rate_limit_seconds=rate_limit),
+        ReleaseNotesProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=online, rate_limit_seconds=rate_limit),
     ])
     knowledge_topic = knowledge_topics_from_env_or_summary(summary)
     architect_text = interpret_architecture(
@@ -148,4 +161,7 @@ def run_doctor_cycle(
     suggested_info = _suggested_policy_from_last_fix(path)
     if suggested_info.get("suggested"):
         out["suggested_policy"] = suggested_info
+    ops_metrics = _operational_metrics_from_events(path, window=10)
+    if ops_metrics:
+        out["operational_metrics"] = ops_metrics
     return out

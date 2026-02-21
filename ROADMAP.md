@@ -57,6 +57,7 @@
 - **Фазы 2.2 и 2.3:** выполнены (Knowledge: кэш, наполнение; Orchestrator: run_cycle).
 - **Фазы 3.1 и 3.2:** выполнены (граф как движок; единая модель памяти).
 - **По review v3.0.1:** добавлена **Фаза 3.1-arch** (архитектурная дисциплина) — формализация слоёв, API-границы, лимиты размера файлов, разделение domain/presentation.
+- **Фаза 3.5 Web UI:** веб-интерфейс поверх `eurika serve` — dashboard, визуализация графа, просмотр отчётов и approve/reject (см. ниже).
 - **Дальше:** повышать операционность и интеллект цикла (2.9); снижать noisy/unstable операции по learning-метрикам; держать документацию синхронной с кодом.
 
 ---
@@ -100,7 +101,7 @@
 - [x] 2.7.5 Session Memory — campaign memory в SessionMemory: rejected_keys (из любой сессии), verify_fail_keys (2+ fail → skip); apply_campaign_memory в prepare; record_verify_failure при verify fail; tests
 - [x] 2.7.6 Human-in-the-loop CLI — approve/reject/A/R/s в hybrid; --non-interactive для CI (детерминировано, без stdin); tests/test_hitl_cli.py (non_interactive, isatty, mocked input)
 - [x] 2.7.7 Safety & Rollback Gates — обязательный verify, auto_rollback при fail; backup=True; enrich_report_with_rescan → rollback при metrics_worsened; tests/test_safety_rollback_gates.py; policy max_ops/max_files
-- [x] 2.7.8 Telemetry & KPIs — apply-rate, rollback-rate, no-op-rate, median_verify_time_ms; telemetry в fix report; report-snapshot и doctor (last_fix_telemetry); suggest_policy_from_telemetry для корректировки policy
+- [x] 2.7.8 Telemetry & KPIs — apply-rate, rollback-rate, no-op-rate, median_verify_time_ms; telemetry в fix report; report-snapshot и doctor (last_fix_telemetry); suggest_policy_from_telemetry; aggregate_operational_metrics (rolling); /api/operational_metrics; Dashboard card
 - [x] 2.7.9 Dogfooding Campaign — 3 стабильных цикла подряд; verify ✓, тесты зелёные; split_module architecture_planner → build_plan, build_action_plan
 - [x] 2.7.10 Docs & Migration — CLI.md, ROADMAP, DOGFOODING, CYCLE_REPORT обновлены; runtime-режимы и telemetry описаны
 
@@ -349,6 +350,7 @@
 | **v2.3** | Stability Phase | Метрики; priority engine ✓; CI-ready ✓ (CLI.md § CI/CD); CLI doctor/fix/explain ✓. |
 | **v2.6** | Semi-Autonomous Agent | auto-run ✓; continuous monitoring ✓; performance-based improvement ✓; event-based learning ✓. |
 | **v3.0** | Architectural AI Engineer | multi-repo; cross-project memory; online knowledge; team-mode. |
+| **v3.5** | Web UI | dashboard; summary/history/explain в браузере; опционально: approve/reject, граф зависимостей. |
 
 ---
 
@@ -368,8 +370,8 @@
 **Фактический прогресс (фаза 3.0):**
 - [x] 3.0.1 Multi-Repo Scan — `eurika scan/doctor/fix/cycle path1 [path2 ...]`; последовательное выполнение по каждому пути; заголовки "--- Project N/M ---"; агрегированный JSON-отчёт — в плане
 - [x] 3.0.2 Cross-Project Memory — общая память ~/.eurika/ или EURIKA_GLOBAL_MEMORY; append learn при fix; get_merged_learning_stats(local+global) при build patch plan; merge: sum total/success/fail per smell|action; EURIKA_DISABLE_GLOBAL_MEMORY для отключения
-- [ ] 3.0.3 Online Knowledge — базовый слой есть (KNOWLEDGE_LAYER.md); расширение — в плане
-- [ ] 3.0.4 Team Mode — не начато
+- [x] 3.0.3 Online Knowledge — `--online` в doctor/cycle/fix/architect; force_online, rate_limit; TTL/RATE_LIMIT env; KNOWLEDGE_LAYER.md
+- [x] 3.0.4 Team Mode — --team-mode (propose), --apply-approved; .eurika/pending_plan.json; EURIKA_APPROVALS_FILE
 
 **Метрики выхода из фазы 3.0 (DoD):**
 - Один вызов `eurika cycle` может обработать несколько репозиториев с агрегированным отчётом.
@@ -378,6 +380,42 @@
 - Team-mode сценарий (propose → approve → apply) задокументирован и покрыт тестами.
 
 **Зависимости:** 3.0.1 не зависит от остальных; 3.0.2 требует 3.0.1 (multi-repo как источник проектов для memory); 3.0.3 можно вести параллельно; 3.0.4 опирается на policy/session-memory (2.7.5, 2.7.6).
+
+---
+
+### Фаза 3.5 — Web UI (дашборд поверх JSON API)
+
+**Цель:** веб-интерфейс для просмотра архитектурного анализа, истории эволюции и (опционально) approve/reject операций в hybrid-режиме. Основа — существующий `eurika serve` (GET /api/summary, /api/history, /api/diff). UI не заменяет CLI, а дополняет для пользователей, предпочитающих браузер.
+
+**Предпосылки:** JSON API готов (eurika.api, eurika serve). Нужен только frontend.
+
+| # | Шаг | Задача | Критерий готовности |
+|---|-----|--------|----------------------|
+| 3.5.1 | API-расширение для UI | Добавить в `eurika serve` endpoints: `/api/doctor` (report), `/api/patch_plan` (operations), `/api/explain?module=...` | GET возвращает тот же JSON, что формируют handle_doctor, get_patch_plan, explain_module; project_root из query или default |
+| 3.5.2 | Static SPA или SSR | Создать frontend: React/Vue/Svelte или простой HTML+JS; отображение summary (модули, риски, health score), history (trends, evolution_report) | `eurika serve` раздаёт статику из `eurika/ui/` или отдельного каталога; одна точка входа для UI |
+| 3.5.3 | Dashboard | Страница дашборда: system metrics (modules, deps, cycles), central modules, top risks, health/risk score, trends | Визуально читаемый обзор; ASCII-чарты или простые bar/line (Chart.js, D3, или CSS-only) |
+| 3.5.4 | History & diff | Страницы: evolution history (окно window), diff между двумя self_map | Таблица/список points; diff в виде «добавлено/удалено/изменено» |
+| 3.5.5 | Explain module | Страница или модальное окно: ввод имени модуля → вывод role, risks, rationale из explain_module | Интеграция с /api/explain |
+| 3.5.6 | (Опционально) Approve/reject UI | При hybrid-режиме: UI для approve/reject/skip операций из patch_plan; POST /api/approve с op_index и decision | Требует WebSocket или long-polling для real-time; можно отложить в пользу CLI HITL |
+| 3.5.7 | Граф зависимостей (опционально) | Визуализация графа модулей (nodes = modules, edges = imports); библиотека (Cytoscape.js, vis.js, D3) | Интерактивный граф: zoom, pan, click на узел → explain |
+
+**Порядок внедрения (рекомендуемый):** 3.5.1 → 3.5.2 → 3.5.3 → 3.5.4 → 3.5.5. Шаги 3.5.6 и 3.5.7 — по мере надобности.
+
+**Фактический прогресс (фаза 3.5):**
+- [x] 3.5.1 API-расширение — eurika serve: /api/doctor, /api/patch_plan, /api/explain; CLI.md
+- [x] 3.5.2 Static SPA — eurika/ui/ (index.html + app.js), summary/history/explain tabs, serve static
+- [x] 3.5.3 Dashboard — вкладка Dashboard: risk bar, system grid, trends badges, central/risks
+- [x] 3.5.4 History & diff — вкладка Diff в UI: old/new paths → /api/diff
+- [x] 3.5.5 Explain module — вкладка Explain Module в UI (3.5.2)
+- [x] 3.5.6 Approve/reject UI — вкладка Approve; GET /api/pending_plan, POST /api/approve; approve/reject per op, Save; eurika fix . --apply-approved
+- [x] 3.5.7 Граф зависимостей — vis-network; GET /api/graph; вкладка Graph в UI; double-click → Explain
+
+**Метрики выхода из фазы 3.5 (DoD):**
+- Пользователь может открыть `http://localhost:8765` (или настроенный порт) и получить рабочий дашборд.
+- Summary, history, explain доступны через UI без CLI.
+- Документация: CLI.md или отдельный UI.md с инструкцией по запуску и настройке.
+
+**Зависимости:** 3.5 опирается на eurika serve и eurika.api; не зависит от 3.0.4 Team Mode. Можно вести параллельно с 3.0.4.
 
 ---
 

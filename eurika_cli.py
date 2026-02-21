@@ -10,6 +10,11 @@ import os
 import sys
 from pathlib import Path
 
+# Ensure project root is on path for root-level imports (architecture_pipeline, runtime_scan, etc.)
+_root = Path(__file__).resolve().parent
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
+
 from cli.wiring import build_parser, dispatch_command
 
 def _load_environment(env_path: Path | str = ".env") -> None:

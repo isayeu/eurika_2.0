@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Eurika — Architecture Dashboard</title>
+  <style>
+    :root {
+      --bg: #0f1216;
+      --surface: #1a1e26;
+      --border: #2a3140;
+      --text: #e2e6ed;
+      --muted: #8b95a5;
+      --accent: #5b9bd5;
+      --risk: #d96b6b;
+      --ok: #6bcf7d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      margin: 0;
+      padding: 1rem 1.5rem;
+      background: var(--bg);
+      color: var(--text);
+    }
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin: 0 0 1rem 0;
+      color: var(--accent);
+    }
+    .tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .tabs button {
+      padding: 0.5rem 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .tabs button:hover { border-color: var(--accent); }
+    .tabs button.active { border-color: var(--accent); color: var(--accent); }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .card h2 {
+      font-size: 1rem;
+      margin: 0 0 0.75rem 0;
+      color: var(--accent);
+    }
+    .metric { margin-bottom: 0.5rem; }
+    .metric strong { color: var(--muted); }
+    ul { margin: 0; padding-left: 1.25rem; }
+    .risk-item { color: var(--risk); margin-bottom: 0.25rem; }
+    .evolution { white-space: pre-wrap; font-size: 12px; color: var(--muted); }
+    .loading, .error, .muted { color: var(--muted); }
+    .error { color: var(--risk); }
+    .maturity { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 3px; }
+    .maturity.medium-high, .maturity.high { background: #1e3a2e; color: var(--ok); }
+    .maturity.medium, .maturity.medium-low { background: #3a3520; color: #d4c56a; }
+    .maturity.low { background: #3a2020; color: var(--risk); }
+    .bar-wrap { display: flex; align-items: center; gap: 0.5rem; margin: 0.25rem 0; }
+    .bar-track { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 4px; transition: width 0.2s; }
+    .bar-fill.risk-low { background: var(--ok); }
+    .bar-fill.risk-med { background: #d4c56a; }
+    .bar-fill.risk-high { background: var(--risk); }
+    .trend-badge { display: inline-block; padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 11px; }
+    .trend-up { background: #3a2020; color: var(--risk); }
+    .trend-down { background: #1e3a2e; color: var(--ok); }
+    .trend-stable { background: var(--border); color: var(--muted); }
+    .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+    .dashboard-stat { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 0.75rem; text-align: center; }
+    .dashboard-stat .val { font-size: 1.5rem; font-weight: 600; color: var(--accent); }
+    .dashboard-stat .lbl { font-size: 11px; color: var(--muted); }
+    .op-row { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+    .op-row:last-child { border-bottom: none; }
+    .op-desc { flex: 1; font-size: 12px; }
+    .op-actions { display: flex; gap: 0.35rem; }
+    .op-actions button { padding: 0.25rem 0.5rem; font-size: 11px; cursor: pointer; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: inherit; }
+    .op-actions button.approve { border-color: var(--ok); color: var(--ok); }
+    .op-actions button.reject { border-color: var(--risk); color: var(--risk); }
+    .op-actions button.active { font-weight: 600; }
+    .op-actions button.approve.active { background: rgba(107, 207, 125, 0.2); }
+    .op-actions button.reject.active { background: rgba(217, 107, 107, 0.2); }
+  </style>
+</head>
+<body>
+  <h1>Eurika — Architecture Dashboard</h1>
+  <div class="tabs">
+    <button class="active" data-tab="dashboard">Dashboard</button>
+    <button data-tab="summary">Summary</button>
+    <button data-tab="history">History</button>
+    <button data-tab="diff">Diff</button>
+    <button data-tab="graph">Graph</button>
+    <button data-tab="approve">Approve</button>
+    <button data-tab="explain">Explain Module</button>
+  </div>
+
+  <div id="panel-dashboard" class="panel active">
+    <div id="dashboard-content" class="loading">Loading…</div>
+  </div>
+
+  <div id="panel-summary" class="panel">
+    <div id="summary-content" class="loading">Loading…</div>
+  </div>
+
+  <div id="panel-history" class="panel">
+    <div id="history-content" class="loading">Loading…</div>
+  </div>
+
+  <div id="panel-graph" class="panel">
+    <div id="graph-container" style="height: 70vh; min-height: 400px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px;"></div>
+    <div id="graph-hint" class="card muted" style="margin-top: 0.5rem;">Loading graph… Run <code>eurika scan .</code> if self_map.json is missing.</div>
+  </div>
+
+  <div id="panel-approve" class="panel">
+    <div id="approve-content" class="loading">Loading…</div>
+    <div id="approve-hint" class="card muted" style="margin-top: 0.5rem;">Run <code>eurika fix . --team-mode</code> first to create a plan. Then approve/reject ops and click Save.</div>
+  </div>
+
+  <div id="panel-diff" class="panel">
+    <div class="card">
+      <label>Old self_map (e.g. self_map.json or .eurika/backups/...): </label>
+      <input id="diff-old" type="text" placeholder="self_map.json" style="width: 20rem; padding: 0.35rem; margin-right: 0.5rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: inherit;">
+      <label style="margin-left: 1rem;">New: </label>
+      <input id="diff-new" type="text" placeholder="self_map.json" style="width: 20rem; padding: 0.35rem; margin-right: 0.5rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: inherit;">
+      <button id="diff-btn" style="padding: 0.35rem 0.75rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: inherit; cursor: pointer;">Compare</button>
+    </div>
+    <div id="diff-content" class="card evolution" style="min-height: 4rem;">Enter paths to two self_map.json files (relative to project root) and click Compare.</div>
+  </div>
+
+  <div id="panel-explain" class="panel">
+    <div class="card">
+      <label>Module path (e.g. cli/handlers.py): </label>
+      <input id="explain-module" type="text" placeholder="eurika/api/serve.py" style="width: 24rem; padding: 0.35rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: inherit;">
+      <button id="explain-btn" style="margin-left: 0.5rem; padding: 0.35rem 0.75rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: inherit; cursor: pointer;">Explain</button>
+    </div>
+    <pre id="explain-result" class="card evolution" style="min-height: 4rem;">Enter a module path and click Explain.</pre>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.2/standalone/umd/vis-network.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

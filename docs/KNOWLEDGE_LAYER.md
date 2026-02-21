@@ -73,4 +73,10 @@ Verify stage
 
 При `eurika doctor` и `eurika architect` провайдеры OfficialDocs и ReleaseNotes сохраняют ответы по URL в `path/.eurika/knowledge_cache/`. TTL — 24 часа. При повторном запуске без сети или в пределах TTL используется сохранённый контент. Каталог `.eurika/` в `.gitignore`.
 
+### Online Knowledge (ROADMAP 3.0.3)
+
+- **`--online`** — в `eurika doctor`, `eurika cycle`, `eurika fix`, `eurika architect`: принудительный свежий fetch, bypass кэша. Используйте при обновлении документации или для актуальных PEP/Release Notes.
+- **EURIKA_KNOWLEDGE_TTL** — TTL кэша в секундах (по умолчанию 86400 = 24h).
+- **EURIKA_KNOWLEDGE_RATE_LIMIT** — минимальный интервал между сетевыми запросами в секундах. При `--online` по умолчанию 1.0; без `--online` — 0 (нет лимита).
+
 См. также **review.md** (блок «Онлайн-ресурсы / Knowledge Layer»), **ROADMAP.md** (§ После 1.0).

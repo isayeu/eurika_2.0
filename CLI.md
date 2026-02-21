@@ -18,6 +18,7 @@ Scan → Diagnose → Plan → Patch → Verify → Log
 | Scan | `eurika scan .` | Обновить self_map, smells, summary, history |
 | Diagnose | `eurika doctor .` или `eurika report .` + `eurika suggest-plan .` | Отчёт + интерпретация + план рефакторинга |
 | Plan | `eurika fix . --dry-run` или `eurika agent patch-plan .` | Построить план патчей без применения |
+| Propose (team) | `eurika fix . --team-mode` | Сохранить план в `.eurika/pending_plan.json`; reviewer редактирует team_decision; затем `--apply-approved` (ROADMAP 3.0.4) |
 | Patch | `eurika fix .` или `eurika agent patch-apply . --apply` | Применить патчи (с бэкапами) |
 | Verify | встроено в `eurika fix` (pytest после apply) | pytest; при провале — подсказка rollback; при ухудшении метрик — автоматический откат |
 | Log | автоматически (events, history) | Исходы записываются в `.eurika/events.json`, architect получает recent_events |
@@ -82,6 +83,8 @@ eurika doctor . --no-llm
 ```bash
 eurika fix .
 eurika fix . --dry-run
+eurika fix . --team-mode      # propose; plan saved to .eurika/pending_plan.json
+eurika fix . --apply-approved # apply only ops with team_decision=approve
 eurika fix . -q
 eurika fix . --no-clean-imports
 ```
@@ -278,7 +281,21 @@ eurika suggest-plan . --window 10
 
 ### eurika serve [path] [--port N] [--host HOST]
 
-HTTP-сервер JSON API для будущего UI: GET `/api/summary`, `/api/history`, `/api/diff`. По умолчанию порт 8765, хост 127.0.0.1.
+HTTP-сервер JSON API для будущего UI (ROADMAP §2.3, 3.5.1). По умолчанию порт 8765, хост 127.0.0.1.
+
+**UI:** `GET /` — web dashboard (ROADMAP 3.5.2–3.5.5) with Dashboard (risk bar, trends), Summary, History, Diff, Explain tabs.
+
+**Endpoints:**
+- `GET /api/summary` — architecture summary
+- `GET /api/history?window=5` — evolution history
+- `GET /api/diff?old=...&new=...` — diff двух self_map.json
+- `GET /api/doctor?window=5&no_llm=0` — full report + architect
+- `GET /api/patch_plan?window=5` — planned operations
+- `GET /api/explain?module=...&window=5` — role and risks модуля
+- `GET /api/graph` — dependency graph (nodes=modules, edges=imports) for UI
+- `GET /api/operational_metrics?window=10` — apply-rate, rollback-rate, median verify time (from patch events)
+- `GET /api/pending_plan` — pending plan for approve UI (team-mode)
+- `POST /api/approve` — save approve/reject decisions (body: `{ operations: [...] }`)
 
 ```bash
 eurika serve .

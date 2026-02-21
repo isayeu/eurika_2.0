@@ -37,6 +37,7 @@ def _add_product_commands(subparsers: argparse._SubParsersAction) -> None:
     doctor_parser.add_argument("path", nargs="*", type=Path, default=[Path(".")], metavar="PATH", help="Project root(s); default: .")
     doctor_parser.add_argument("--window", type=int, default=5, help="History window (default: 5)")
     doctor_parser.add_argument("--no-llm", action="store_true", help="Architect: use template only")
+    doctor_parser.add_argument("--online", action="store_true", help="Force fresh fetch of Knowledge (bypass cache) (ROADMAP 3.0.3)")
     doctor_parser.add_argument("--runtime-mode", choices=["assist", "hybrid", "auto"], default="assist", help="Agent runtime mode (default: assist)")
 
     fix_parser = subparsers.add_parser("fix", help="Full cycle: scan → plan → patch → verify (3.0.1: multi-repo)")
@@ -52,7 +53,10 @@ def _add_product_commands(subparsers: argparse._SubParsersAction) -> None:
     fix_parser.add_argument("--runtime-mode", choices=["assist", "hybrid", "auto"], default="assist", help="Agent runtime mode (default: assist)")
     fix_parser.add_argument("--non-interactive", action="store_true", help="Do not prompt for approvals in hybrid mode")
     fix_parser.add_argument("--session-id", type=str, default=None, help="Session key for reusing approval/rejection memory")
+    fix_parser.add_argument("--online", action="store_true", help="Force fresh Knowledge fetch in doctor stage (ROADMAP 3.0.3)")
     fix_parser.add_argument("--apply-suggested-policy", action="store_true", help="Apply suggested policy from last doctor/fix telemetry (ROADMAP 2.9.4)")
+    fix_parser.add_argument("--team-mode", action="store_true", help="Propose only: save plan to .eurika/pending_plan.json and exit (ROADMAP 3.0.4)")
+    fix_parser.add_argument("--apply-approved", action="store_true", help="Apply only ops with team_decision=approve from pending_plan.json (ROADMAP 3.0.4)")
 
     cycle_parser = subparsers.add_parser("cycle", help="Full ritual: scan → doctor → fix (3.0.1: multi-repo)")
     cycle_parser.add_argument("path", nargs="*", type=Path, default=[Path(".")], metavar="PATH", help="Project root(s); default: .")
@@ -68,7 +72,10 @@ def _add_product_commands(subparsers: argparse._SubParsersAction) -> None:
     cycle_parser.add_argument("--runtime-mode", choices=["assist", "hybrid", "auto"], default="assist", help="Agent runtime mode (default: assist)")
     cycle_parser.add_argument("--non-interactive", action="store_true", help="Do not prompt for approvals in hybrid mode")
     cycle_parser.add_argument("--session-id", type=str, default=None, help="Session key for reusing approval/rejection memory")
+    cycle_parser.add_argument("--online", action="store_true", help="Force fresh Knowledge fetch in doctor stage (ROADMAP 3.0.3)")
     cycle_parser.add_argument("--apply-suggested-policy", action="store_true", help="Apply suggested policy from last doctor/fix telemetry (ROADMAP 2.9.4)")
+    cycle_parser.add_argument("--team-mode", action="store_true", help="Propose only: save plan and exit (ROADMAP 3.0.4)")
+    cycle_parser.add_argument("--apply-approved", action="store_true", help="Apply only approved ops from pending_plan.json (ROADMAP 3.0.4)")
 
     explain_parser = subparsers.add_parser("explain", help="Explain role and risks of a module")
     explain_parser.add_argument("module", type=str, help="Module path or name (e.g. architecture_diff.py or cli/handlers.py)")
@@ -123,6 +130,7 @@ def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
     architect_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
     architect_parser.add_argument("--window", type=int, default=5, help="History window (default: 5)")
     architect_parser.add_argument("--no-llm", action="store_true", help="Use template only (no LLM call)")
+    architect_parser.add_argument("--online", action="store_true", help="Force fresh Knowledge fetch (bypass cache) (ROADMAP 3.0.3)")
 
     suggest_plan_parser = subparsers.add_parser("suggest-plan", help="Print heuristic refactoring plan from summary and risks (ROADMAP §7)")
     suggest_plan_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")

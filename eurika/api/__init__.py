@@ -25,6 +25,40 @@ def _to_json_safe(obj: Any) -> Any:
     return obj
 
 
+def get_graph(project_root: Path) -> Dict[str, Any]:
+    """
+    Build dependency graph for UI (ROADMAP 3.5.7).
+    Returns { nodes, edges } for vis-network format.
+    nodes: [{ id, label, title, fan_in, fan_out }]
+    edges: [{ from, to }]
+    """
+    from eurika.analysis.self_map import build_graph_from_self_map
+
+    root = Path(project_root).resolve()
+    self_map_path = root / "self_map.json"
+    if not self_map_path.exists():
+        return {"error": "self_map.json not found", "path": str(self_map_path)}
+
+    graph = build_graph_from_self_map(self_map_path)
+    fan = graph.fan_in_out()
+    nodes = []
+    for n in sorted(graph.nodes):
+        fi, fo = fan.get(n, (0, 0))
+        short = Path(n).name if "/" in n else n
+        nodes.append({
+            "id": n,
+            "label": short,
+            "title": n + f" (fan-in: {fi}, fan-out: {fo})",
+            "fan_in": fi,
+            "fan_out": fo,
+        })
+    edges = []
+    for src, dsts in graph.edges.items():
+        for dst in dsts:
+            edges.append({"from": src, "to": dst})
+    return {"nodes": nodes, "edges": edges}
+
+
 def get_summary(project_root: Path) -> Dict[str, Any]:
     """
     Build architecture summary from project_root/self_map.json.
@@ -44,6 +78,40 @@ def get_summary(project_root: Path) -> Dict[str, Any]:
     smells = detect_architecture_smells(graph)
     summary = build_summary(graph, smells)
     return summary
+
+
+def get_pending_plan(project_root: Path) -> Dict[str, Any]:
+    """Load pending plan from .eurika/pending_plan.json for approve UI (ROADMAP 3.5.6)."""
+    from cli.orchestration.team_mode import has_pending_plan, load_pending_plan
+
+    root = Path(project_root).resolve()
+    if not has_pending_plan(root):
+        return {"error": "no pending plan", "hint": "Run eurika fix . --team-mode first"}
+    data = load_pending_plan(root)
+    if data is None:
+        return {"error": "invalid pending plan", "hint": "Check .eurika/pending_plan.json"}
+    return data
+
+
+def save_approvals(project_root: Path, operations: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Update team_decision and approved_by in pending_plan.json (ROADMAP 3.5.6)."""
+    from cli.orchestration.team_mode import update_team_decisions
+
+    root = Path(project_root).resolve()
+    ok, msg = update_team_decisions(root, operations)
+    if ok:
+        approved = sum(1 for o in operations if str(o.get("team_decision", "")).lower() == "approve")
+        return {"ok": True, "saved": len(operations), "approved": approved}
+    return {"error": msg, "hint": "Run eurika fix . --team-mode first"}
+
+
+def get_operational_metrics(project_root: Path, window: int = 10) -> Dict[str, Any]:
+    """Aggregate apply-rate, rollback-rate, median verify time from patch events (ROADMAP 2.7.8)."""
+    from eurika.storage import aggregate_operational_metrics
+
+    root = Path(project_root).resolve()
+    metrics = aggregate_operational_metrics(root, window=window)
+    return metrics if metrics else {"error": "no patch events", "hint": "run eurika fix . at least once"}
 
 
 def get_history(project_root: Path, window: int = 5) -> Dict[str, Any]:

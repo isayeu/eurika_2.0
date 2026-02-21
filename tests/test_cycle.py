@@ -478,7 +478,7 @@ def test_run_doctor_cycle_wrapper_delegates_to_orchestration_module() -> None:
     with patch("cli.orchestrator._doctor_run_doctor_cycle", return_value=expected) as mock_doctor:
         out = run_doctor_cycle(ROOT, window=7, no_llm=True)
     assert out == expected
-    mock_doctor.assert_called_once_with(ROOT, window=7, no_llm=True)
+    mock_doctor.assert_called_once_with(ROOT, window=7, no_llm=True, online=False)
 
 
 def test_run_full_cycle_wrapper_delegates_to_orchestration_module() -> None:

@@ -20,6 +20,9 @@ test = ["pytest>=7.0"]
 [project.scripts]
 eurika = "eurika_cli:main"
 
+[tool.setuptools]
+py-modules = ["eurika_cli"]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["*"]

@@ -155,3 +155,6 @@ def _render_architecture_report_md(
     parts.append(_render_health_section_md(health))
 
     return "\n".join(parts)
+
+
+# TODO (eurika): refactor long_function '_render_architecture_report_md' — consider extracting helper

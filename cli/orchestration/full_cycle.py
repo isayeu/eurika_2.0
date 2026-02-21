@@ -21,10 +21,13 @@ def run_full_cycle(
     no_code_smells: bool = False,
     verify_cmd: str | None = None,
     verify_timeout: int | None = None,
+    online: bool = False,
+    team_mode: bool = False,
+    apply_approved: bool = False,
     run_doctor_cycle_fn: Callable[..., dict[str, Any]],
     run_fix_cycle_fn: Callable[..., dict[str, Any]],
 ) -> dict[str, Any]:
-    """Run scan → doctor (full report) → fix. Single command for the full ritual."""
+    """Run scan → doctor (full report) → fix. Single command for the full ritual (ROADMAP 3.0.3: --online)."""
     from eurika.smells.rules import summary_to_text
     from runtime_scan import run_scan
 
@@ -32,7 +35,7 @@ def run_full_cycle(
         print("eurika cycle: scan → doctor → fix", file=sys.stderr)
     if run_scan(path) != 0:
         return {"return_code": 1, "report": {}, "operations": [], "modified": [], "verify_success": False, "agent_result": None}
-    data = run_doctor_cycle_fn(path, window=window, no_llm=no_llm)
+    data = run_doctor_cycle_fn(path, window=window, no_llm=no_llm, online=online)
     if data.get("error"):
         return {"return_code": 1, "report": data, "operations": [], "modified": [], "verify_success": False, "agent_result": None}
     if not quiet:
@@ -55,6 +58,8 @@ def run_full_cycle(
         no_code_smells=no_code_smells,
         verify_cmd=verify_cmd,
         verify_timeout=verify_timeout,
+        team_mode=team_mode,
+        apply_approved=apply_approved,
     )
     out["doctor_report"] = data
     return out

@@ -209,7 +209,7 @@ def handle_doctor(args: Any) -> int:
         if _check_path(path) != 0:
             exit_code = 1
             continue
-        data = run_cycle(path, mode='doctor', runtime_mode=getattr(args, 'runtime_mode', 'assist'), window=getattr(args, 'window', 5), no_llm=getattr(args, 'no_llm', False))
+        data = run_cycle(path, mode='doctor', runtime_mode=getattr(args, 'runtime_mode', 'assist'), window=getattr(args, 'window', 5), no_llm=getattr(args, 'no_llm', False), online=getattr(args, 'online', False))
         if data.get('error'):
             _err(data['error'])
             exit_code = 1
@@ -224,6 +224,15 @@ def handle_doctor(args: Any) -> int:
         print(history.get('evolution_report', ''))
         print()
         print(architect_text)
+        ops_metrics = data.get('operational_metrics') or {}
+        if ops_metrics:
+            ar = ops_metrics.get('apply_rate', 'N/A')
+            rr = ops_metrics.get('rollback_rate', 'N/A')
+            med = ops_metrics.get('median_verify_time_ms')
+            med_str = f'{med} ms' if med is not None else 'N/A'
+            print()
+            print('Operational metrics (last 10 fix runs):')
+            print(f'  apply_rate={ar}, rollback_rate={rr}, median_verify_time={med_str}')
         if suggested_policy.get('suggested'):
             sugg = suggested_policy['suggested']
             telemetry = suggested_policy.get('telemetry') or {}
@@ -238,6 +247,8 @@ def handle_doctor(args: Any) -> int:
         report = {'summary': summary, 'history': history, 'architect': architect_text, 'patch_plan': patch_plan}
         if suggested_policy:
             report['suggested_policy'] = suggested_policy
+        if data.get('operational_metrics'):
+            report['operational_metrics'] = data['operational_metrics']
         fix_path = path / 'eurika_fix_report.json'
         if fix_path.exists():
             try:
@@ -277,6 +288,9 @@ def handle_fix(args: Any) -> int:
             runtime_mode=getattr(args, 'runtime_mode', 'assist'),
             non_interactive=getattr(args, 'non_interactive', False),
             session_id=getattr(args, 'session_id', None),
+            online=getattr(args, 'online', False),
+            team_mode=getattr(args, 'team_mode', False),
+            apply_approved=getattr(args, 'apply_approved', False),
         )
         if handle_agent_cycle(fix_args) != 0:
             exit_code = 1
@@ -306,6 +320,9 @@ def handle_cycle(args: Any) -> int:
             runtime_mode=getattr(args, 'runtime_mode', 'assist'),
             non_interactive=getattr(args, 'non_interactive', False),
             session_id=getattr(args, 'session_id', None),
+            online=getattr(args, 'online', False),
+            team_mode=getattr(args, 'team_mode', False),
+            apply_approved=getattr(args, 'apply_approved', False),
         )
         if _run_cycle_with_mode(cycle_args, mode='full') != 0:
             exit_code = 1
@@ -327,9 +344,17 @@ def handle_architect(args: Any) -> int:
     patch_plan = get_patch_plan(path, window=window)
     recent_events = get_recent_events(path, limit=5, types=('patch', 'learn'))
     use_llm = not getattr(args, 'no_llm', False)
-    from eurika.knowledge import CompositeKnowledgeProvider, LocalKnowledgeProvider, OfficialDocsProvider, ReleaseNotesProvider
+    from eurika.knowledge import CompositeKnowledgeProvider, LocalKnowledgeProvider, OfficialDocsProvider, PEPProvider, ReleaseNotesProvider
     cache_dir = path / '.eurika' / 'knowledge_cache'
-    knowledge_provider = CompositeKnowledgeProvider([LocalKnowledgeProvider(path / 'eurika_knowledge.json'), OfficialDocsProvider(cache_dir=cache_dir, ttl_seconds=86400), ReleaseNotesProvider(cache_dir=cache_dir, ttl_seconds=86400)])
+    online = getattr(args, 'online', False)
+    ttl = float(os.environ.get('EURIKA_KNOWLEDGE_TTL', '86400'))
+    rate_limit = float(os.environ.get('EURIKA_KNOWLEDGE_RATE_LIMIT', '1.0' if online else '0'))
+    knowledge_provider = CompositeKnowledgeProvider([
+        LocalKnowledgeProvider(path / 'eurika_knowledge.json'),
+        PEPProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=online, rate_limit_seconds=rate_limit),
+        OfficialDocsProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=online, rate_limit_seconds=rate_limit),
+        ReleaseNotesProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=online, rate_limit_seconds=rate_limit),
+    ])
     knowledge_topic = _knowledge_topics_from_env_or_summary(summary)
     text = interpret_architecture(summary, history, use_llm=use_llm, patch_plan=patch_plan, knowledge_provider=knowledge_provider, knowledge_topic=knowledge_topic, recent_events=recent_events)
     print(text)
@@ -427,3 +452,6 @@ def handle_serve(args: Any) -> int:
     from eurika.api.serve import run_server
     run_server(host=args.host, port=args.port, project_root=args.path)
     return 0
+
+
+# TODO (eurika): refactor long_function 'handle_doctor' — consider extracting helper

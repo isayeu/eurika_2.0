@@ -128,16 +128,32 @@ def _fetch_url(url: str, timeout: float = 5.0, max_chars: int = 8000) -> Optiona
     return text[:max_chars] if text else None
 
 
+# Rate limit: min seconds between network fetches (ROADMAP 3.0.3)
+_last_fetch_time: float = 0.0
+
+
+def _rate_limit_fetch(min_interval: float) -> None:
+    """Throttle network requests (ROADMAP 3.0.3)."""
+    global _last_fetch_time
+    now = time.time()
+    elapsed = now - _last_fetch_time
+    if min_interval > 0 and elapsed < min_interval and _last_fetch_time > 0:
+        time.sleep(min_interval - elapsed)
+    _last_fetch_time = time.time()
+
+
 def _fetch_url_cached(
     url: str,
     cache_path: Path,
     ttl_seconds: float = 86400.0,
     timeout: float = 5.0,
     max_chars: int = 8000,
+    force_online: bool = False,
+    rate_limit_seconds: float = 0.0,
 ) -> Optional[str]:
-    """Fetch URL; use cache if fresh (mtime within TTL), else fetch and write."""
+    """Fetch URL; use cache if fresh (within TTL) unless force_online; else fetch and write (ROADMAP 3.0.3)."""
     now = time.time()
-    if cache_path.exists():
+    if not force_online and cache_path.exists():
         try:
             data = json.loads(cache_path.read_text(encoding="utf-8"))
             fetched_at = data.get("fetched_at") or 0
@@ -145,6 +161,8 @@ def _fetch_url_cached(
                 return data.get("content")
         except (json.JSONDecodeError, OSError):
             pass
+    if rate_limit_seconds > 0:
+        _rate_limit_fetch(rate_limit_seconds)
     text = _fetch_url(url, timeout=timeout, max_chars=max_chars)
     if text is not None:
         try:
@@ -185,7 +203,7 @@ def _pep_topic_to_url(topic: str) -> Optional[str]:
 
 
 class PEPProvider(KnowledgeProvider):
-    """PEP (Python Enhancement Proposals) by number. Fetches from peps.python.org (ROADMAP 2.9.3)."""
+    """PEP (Python Enhancement Proposals) by number. Fetches from peps.python.org (ROADMAP 2.9.3, 3.0.3)."""
 
     def __init__(
         self,
@@ -193,11 +211,15 @@ class PEPProvider(KnowledgeProvider):
         timeout: float = 5.0,
         cache_dir: Optional[Path] = None,
         ttl_seconds: float = 86400.0,
+        force_online: bool = False,
+        rate_limit_seconds: float = 0.0,
     ) -> None:
         self.topic_urls = topic_urls if topic_urls is not None else dict(PEP_TOPIC_URLS)
         self.timeout = timeout
         self.cache_dir = Path(cache_dir) if cache_dir else None
         self.ttl_seconds = ttl_seconds
+        self.force_online = force_online
+        self.rate_limit_seconds = rate_limit_seconds
 
     def query(self, topic: str) -> StructuredKnowledge:
         url = self.topic_urls.get(_topic_key(topic)) or _pep_topic_to_url(topic)
@@ -205,7 +227,10 @@ class PEPProvider(KnowledgeProvider):
             return StructuredKnowledge(topic=topic, source="pep", fragments=[], meta={})
         if self.cache_dir:
             cache_path = self.cache_dir / _cache_key_for_url(url, "pep")
-            text = _fetch_url_cached(url, cache_path, self.ttl_seconds, self.timeout)
+            text = _fetch_url_cached(
+                url, cache_path, self.ttl_seconds, self.timeout,
+                force_online=self.force_online, rate_limit_seconds=self.rate_limit_seconds,
+            )
         else:
             text = _fetch_url(url, timeout=self.timeout)
         if not text:
@@ -228,7 +253,7 @@ OFFICIAL_DOCS_TOPIC_URLS: Dict[str, str] = {
 
 
 class OfficialDocsProvider(KnowledgeProvider):
-    """Официальная документация по фиксированным URL (allow-list). Сеть — только curated."""
+    """Официальная документация по фиксированным URL (allow-list). Сеть — только curated (ROADMAP 3.0.3)."""
 
     def __init__(
         self,
@@ -236,11 +261,15 @@ class OfficialDocsProvider(KnowledgeProvider):
         timeout: float = 5.0,
         cache_dir: Optional[Path] = None,
         ttl_seconds: float = 86400.0,
+        force_online: bool = False,
+        rate_limit_seconds: float = 0.0,
     ) -> None:
         self.topic_urls = OFFICIAL_DOCS_TOPIC_URLS if topic_urls is None else topic_urls
         self.timeout = timeout
         self.cache_dir = Path(cache_dir) if cache_dir else None
         self.ttl_seconds = ttl_seconds
+        self.force_online = force_online
+        self.rate_limit_seconds = rate_limit_seconds
 
     def query(self, topic: str) -> StructuredKnowledge:
         key = _topic_key(topic)
@@ -249,7 +278,10 @@ class OfficialDocsProvider(KnowledgeProvider):
             return StructuredKnowledge(topic=topic, source="official_docs", fragments=[], meta={})
         if self.cache_dir:
             cache_path = self.cache_dir / _cache_key_for_url(url, "official_docs")
-            text = _fetch_url_cached(url, cache_path, self.ttl_seconds, self.timeout)
+            text = _fetch_url_cached(
+                url, cache_path, self.ttl_seconds, self.timeout,
+                force_online=self.force_online, rate_limit_seconds=self.rate_limit_seconds,
+            )
         else:
             text = _fetch_url(url, timeout=self.timeout)
         if not text:
@@ -272,7 +304,7 @@ RELEASE_NOTES_TOPIC_URLS: Dict[str, str] = {
 
 
 class ReleaseNotesProvider(KnowledgeProvider):
-    """Release notes / What's New по фиксированным URL (allow-list). Сеть — только curated."""
+    """Release notes / What's New по фиксированным URL (allow-list). Сеть — только curated (ROADMAP 3.0.3)."""
 
     def __init__(
         self,
@@ -280,11 +312,15 @@ class ReleaseNotesProvider(KnowledgeProvider):
         timeout: float = 5.0,
         cache_dir: Optional[Path] = None,
         ttl_seconds: float = 86400.0,
+        force_online: bool = False,
+        rate_limit_seconds: float = 0.0,
     ) -> None:
         self.topic_urls = RELEASE_NOTES_TOPIC_URLS if topic_urls is None else topic_urls
         self.timeout = timeout
         self.cache_dir = Path(cache_dir) if cache_dir else None
         self.ttl_seconds = ttl_seconds
+        self.force_online = force_online
+        self.rate_limit_seconds = rate_limit_seconds
 
     def query(self, topic: str) -> StructuredKnowledge:
         key = _topic_key(topic)
@@ -293,7 +329,10 @@ class ReleaseNotesProvider(KnowledgeProvider):
             return StructuredKnowledge(topic=topic, source="release_notes", fragments=[], meta={})
         if self.cache_dir:
             cache_path = self.cache_dir / _cache_key_for_url(url, "release_notes")
-            text = _fetch_url_cached(url, cache_path, self.ttl_seconds, self.timeout)
+            text = _fetch_url_cached(
+                url, cache_path, self.ttl_seconds, self.timeout,
+                force_online=self.force_online, rate_limit_seconds=self.rate_limit_seconds,
+            )
         else:
             text = _fetch_url(url, timeout=self.timeout)
         if not text:

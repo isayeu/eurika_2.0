@@ -75,6 +75,15 @@ def format_report_snapshot(path: Path) -> str:
             lines.append(f"| **Модули** | {modules} |")
             lines.append(f"| **Зависимости** | {deps} |")
             lines.append(f"| **Risk score** | {risk_score}/100 |")
+            ops = doc.get("operational_metrics") or {}
+            if ops:
+                ar = ops.get("apply_rate", "N/A")
+                rr = ops.get("rollback_rate", "N/A")
+                med = ops.get("median_verify_time_ms")
+                med_str = f"{med} ms" if med is not None else "N/A"
+                lines.append(f"| **apply_rate** (last {ops.get('runs_count', 10)} runs) | {ar} |")
+                lines.append(f"| **rollback_rate** | {rr} |")
+                lines.append(f"| **median_verify_time** | {med_str} |")
             lines.append("")
         except Exception:
             pass
@@ -107,3 +116,6 @@ def format_report_snapshot(path: Path) -> str:
     if not lines:
         lines.append("(No eurika_doctor_report.json or eurika_fix_report.json found. Run doctor/fix first.)")
     return "\n".join(lines)
+
+
+# TODO (eurika): refactor long_function 'format_report_snapshot' — consider extracting helper
