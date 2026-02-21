@@ -168,7 +168,7 @@
 - [x] 3.1-arch.4 Domain vs presentation — report/architecture_report.py (rendering); core/pipeline делегирует; central_modules_for_topology в system_topology
 - [x] 3.1-arch.5 Облегчить CLI — report/report_snapshot.format_report_snapshot; eurika.api: explain_module, get_suggest_plan_text, clean_imports_scan_apply; handlers тонкие обёртки; test_handle_report_snapshot_delegates_to_format
 - [x] 3.1-arch.6 Развести Planning и Execution — eurika.reasoning.planner без patch_apply/patch_engine; Architecture.md §0.5 Planner–Executor Contract; dependency guard для eurika/reasoning/
-- [ ] 3.1-arch.7 Dogfooding — в плане
+- [x] 3.1-arch.7 Dogfooding — eurika fix . (6 modified), 3× eurika fix . --dry-run (0 ops fixpoint); verify ✓ 287 passed; CYCLE_REPORT §28
 
 **Связь с review v3.0.1:** пункты §6 «Что я рекомендую сделать в v3.1».
 

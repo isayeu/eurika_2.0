@@ -615,3 +615,47 @@
 - **handle_self_check** — выводит блок FILE SIZE LIMITS после scan
 - **python -m eurika.checks.file_size [path]** — standalone run
 - **tests/test_file_size_check.py** — 7 тестов
+
+---
+
+## 28. Dogfooding 3.1-arch (ROADMAP 3.1-arch.7) — 2026-02-21
+
+### Команды
+
+- `eurika fix .` (apply)
+- 3× `eurika fix . --dry-run` (fixpoint check)
+
+### Fix результат (apply run)
+
+| Поле | Значение |
+|------|----------|
+| **modified** | 6 |
+| **skipped** | 0 |
+| **verify** | success |
+| **tests** | 287 passed (138.14s) |
+| **rollback** | нет |
+| **run_id** | 20260221_092534 |
+
+### Операции применены
+
+- 3× remove_unused_import (architecture_pipeline.py, core/pipeline.py, tests/test_file_size_check.py)
+- 3× refactor_code_smell (TODO long_function: handle_doctor, _render_architecture_report_md, format_report_snapshot)
+
+### Dry-run × 3 (fixpoint)
+
+| Прогон | operations_total | Результат |
+|--------|------------------|-----------|
+| 1 | 0 | Patch plan has no operations. Cycle complete. |
+| 2 | 0 | Patch plan has no operations. Cycle complete. |
+| 3 | 0 | Patch plan has no operations. Cycle complete. |
+
+### Rescan / Architecture
+
+- modules: 187, dependencies: 107, cycles: 0
+- verify_metrics: before_score=46, after_score=46
+- Health score: 46/100 (medium)
+
+### Итог
+
+- DoD 3.1-arch.7 выполнен: нет регресса, verify стабилен, fixpoint достигнут после 1 apply + 3 dry-run
+- Policy: remove_unused_import allowed; refactor_code_smell (long_function) blocked in auto mode (WEAK_SMELL_ACTION_PAIRS)
