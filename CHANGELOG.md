@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## v3.0.8 — god_class WEAK, deep_nesting extract_block (2026-02-21)
+
+### god_class|extract_class protection (CYCLE_REPORT #34)
+- **WEAK_SMELL_ACTION_PAIRS:** добавлен `god_class|extract_class` — hybrid: review, auto: deny.
+- **EXTRACT_CLASS_SKIP_PATTERNS:** `*tool_contract*.py` — блоклист для известных проблемных файлов.
+- **eurika/reasoning/planner_rules.py** — EXTRACT_CLASS_SKIP_PATTERNS.
+- **eurika/reasoning/planner_patch_ops.py** — _matches_extract_class_skip, check перед _maybe_add_extract_class_operation.
+
+### deep_nesting: hybrid heuristic
+- **suggest_extract_block, extract_block_to_helper** — извлечение простых блоков (if/for/while/try/with) в хелпер-функцию.
+- **EURIKA_DEEP_NESTING_MODE:** `heuristic|hybrid|llm|skip` (default: hybrid).
+- **kind=extract_block_to_helper** — policy high risk; handler в patch_apply_handlers.
+- Условия: нет break/continue/return в блоке; ≤3 extra_params; ≥5 строк.
+
+### Tests
+- test_policy_god_class_extract_class_weak_pair_deny/review_in_hybrid
+- test_build_patch_plan_skips_extract_class_for_tool_contract_blocklist
+- test_suggest_extract_block_*, test_extract_block_to_helper_*
+- test_get_code_smell_operations_returns_extract_block_for_deep_nesting
+- test_apply_extract_block_to_helper
+- test_fix_no_code_smells_excludes_code_smell_ops — переведён на deep_nesting проект
+
+---
+
 ## v3.0.7 — Approve/reject UI (ROADMAP 3.5.6) (2026-02-21)
 
 ### Features

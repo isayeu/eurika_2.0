@@ -2,6 +2,21 @@
 
 ---
 
+## 35. Snapshot (2026-02-21) — v3.0.8: god_class WEAK, deep_nesting extract_block
+
+### Изменения (CHANGELOG v3.0.8)
+- **god_class|extract_class** в WEAK_SMELL_ACTION_PAIRS; EXTRACT_CLASS_SKIP_PATTERNS (*tool_contract*.py) — защита от повторения #34
+- **deep_nesting** — suggest_extract_block, extract_block_to_helper; EURIKA_DEEP_NESTING_MODE=hybrid
+
+### report-snapshot . (текущее состояние)
+
+| Блок | Значение |
+|------|----------|
+| **Doctor** | 204 модулей, Risk 46/100, apply_rate 0.358 |
+| **Learning** | god_class\|extract_class 1/2; deep_nesting\|refactor_code_smell 0% (теперь есть extract_block_to_helper) |
+
+---
+
 ## 34. Fix rollback (2026-02-22) — extract_class на tool_contract провалил verify
 
 ### Что произошло
