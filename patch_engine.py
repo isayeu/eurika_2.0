@@ -16,6 +16,17 @@ Usage:
 """
 from __future__ import annotations
 
+__all__ = [
+    "apply_patch",
+    "apply_and_verify",
+    "verify_patch",
+    "rollback_patch",
+    "rollback",
+    "list_backups",
+    "apply_patch_dry_run",
+    "BACKUP_DIR",
+]
+
 from pathlib import Path
 from typing import Any, Dict, Optional
 

@@ -54,7 +54,14 @@ def run_scan(
 
     return 0
 
-
 # TODO: Refactor runtime_scan.py (god_module -> split_module)
+# Suggested steps:
+# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
+# - Identify distinct concerns and split this module into focused units.
+# - Reduce total degree (fan-in + fan-out) via extraction.
 # - Extract from imports: code_awareness.py.
-# - Consider grouping callers: cli/agent_handlers.py, cli/core_handlers.py, tests.
+# - Consider grouping callers: cli/core_handlers.py, cli/orchestration/deps.py, tests/test_agent_core_arch_review.py.
+# - Introduce facade for callers: cli/core_handlers.py, cli/orchestration/deps.py, cli/orchestration/full_cycle.py....
+# - Extract database interaction logic into `module_db`.
+# - Separate user interface components into `module_ui`.
+# - Isolate networking functions into `module_net`.

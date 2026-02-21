@@ -7,3 +7,5 @@ changing behaviour.
 
 from . import pipeline, snapshot  # noqa: F401
 
+__all__ = ["pipeline", "snapshot"]
+

@@ -220,10 +220,10 @@ class ArchReviewAgentCore:
         learning_stats: Dict[str, Any] | None = None
         learned_signals: Dict[str, Any] = {}
         try:
-            memory = ProjectMemory(root)
-            raw = memory.learning.aggregate_by_smell_action()
+            from eurika.storage.global_memory import get_merged_learning_stats
+            raw = get_merged_learning_stats(root)
             if not raw:
-                raw = memory.learning.aggregate_by_action_kind()
+                raw = ProjectMemory(root).learning.aggregate_by_action_kind()
             if raw:
                 for key, d in raw.items():
                     total = d.get('total', 0)
@@ -251,8 +251,8 @@ class ArchReviewAgentCore:
         learning_stats: Dict[str, Any] | None = None
         self_map: Dict[str, Any] | None = None
         try:
-            memory = ProjectMemory(root)
-            learning_stats = memory.learning.aggregate_by_smell_action()
+            from eurika.storage.global_memory import get_merged_learning_stats
+            learning_stats = get_merged_learning_stats(root)
             if not learning_stats:
                 learning_stats = None
         except Exception:

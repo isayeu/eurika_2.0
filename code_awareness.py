@@ -273,4 +273,7 @@ class CodeAwareness:
 # - Identify distinct concerns and split this module into focused units.
 # - Reduce total degree (fan-in + fan-out) via extraction.
 # - Extract from imports: code_awareness_extracted.py, code_awareness_codeawarenessextracted.py.
-# - Consider grouping callers: tests/test_runtime_scan.py, runtime_scan.py, code_awareness_api.py.
+# - Consider grouping callers: cli/core_handlers.py, runtime_scan_run_scan.py, runtime_scan.py.
+# - Extract file parsing logic into a new module named `file_parser.py`.
+# - Isolate scanning algorithms into a new module called `scanner_algorithms.py`.
+# - Move API endpoints and related functions to a new module titled `api_endpoints.py`.

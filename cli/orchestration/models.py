@@ -21,3 +21,4 @@ class FixCycleContext:
     no_clean_imports: bool = False
     no_code_smells: bool = False
     verify_cmd: str | None = None
+    verify_timeout: int | None = None

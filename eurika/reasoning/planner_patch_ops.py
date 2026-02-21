@@ -241,7 +241,7 @@ def _build_hints_and_params(
     *,
     graph: Optional["ProjectGraph"],
 ) -> tuple[List[str], Optional[Dict[str, Any]]]:
-    """Build diff hints and optional params for operation."""
+    """Build diff hints and optional params for operation. ROADMAP 2.9.2: LLM hints for god_module/hub/bottleneck."""
     hints = list(diff_hints_for(smell_type, action_kind))
     split_params: Optional[Dict[str, Any]] = None
     if not graph:
@@ -263,10 +263,32 @@ def _build_hints_and_params(
             "imports_from": info.get("imports_from", []),
             "imported_by": info.get("imported_by", []),
         }
+        llm_hints = _llm_split_hints(smell_type, name, info)
+        for h in llm_hints:
+            if h and h not in hints:
+                hints.append(h)
     elif action_kind == "introduce_facade":
         callers = suggest_facade_candidates(graph, name, top_n=5)
         split_params = {"callers": callers} if callers else None
+        llm_hints = _llm_split_hints(smell_type, name, {"callers": callers or []})
+        for h in llm_hints:
+            if h and h not in hints:
+                hints.append(h)
     return hints, split_params
+
+
+def _llm_split_hints(
+    smell_type: str,
+    name: str,
+    graph_context: Dict[str, Any],
+) -> List[str]:
+    """Call Ollama for split hints when smell is god_module/hub/bottleneck (ROADMAP 2.9.2). Returns [] on failure."""
+    try:
+        from eurika.reasoning.planner_llm import ask_ollama_split_hints
+
+        return ask_ollama_split_hints(smell_type, name, graph_context)
+    except Exception:
+        return []
 
 
 def _append_default_refactor_operation(

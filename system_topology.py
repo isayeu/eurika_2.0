@@ -16,7 +16,18 @@ from __future__ import annotations
 from collections import deque
 from typing import Dict, List, Set
 
-from project_graph_api import ProjectGraph
+from project_graph_api import NodeMetrics, ProjectGraph
+
+
+def central_modules_for_topology(graph: ProjectGraph, top_n: int = 3) -> List[str]:
+    """Choose central modules (by degree) to act as cluster centers. ROADMAP 3.1-arch.4."""
+    metrics: Dict[str, NodeMetrics] = graph.metrics()
+    scored = sorted(
+        metrics.values(),
+        key=lambda m: (m.fan_in + m.fan_out),
+        reverse=True,
+    )
+    return [m.name for m in scored[:top_n]]
 
 
 def cluster_by_centers(graph: ProjectGraph, centers: List[str]) -> Dict[str, List[str]]:

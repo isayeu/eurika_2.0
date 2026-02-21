@@ -84,6 +84,7 @@ def run_cycle(
     no_clean_imports: bool = False,
     no_code_smells: bool = False,
     verify_cmd: str | None = None,
+    verify_timeout: int | None = None,
 ) -> dict[str, Any]:
     """Единая точка входа: mode='doctor' | 'fix' | 'full'."""
     path = Path(path).resolve()
@@ -94,9 +95,9 @@ def run_cycle(
         if mode == "doctor":
             return run_doctor_cycle(path, window=window, no_llm=no_llm)
         if mode == "fix":
-            return run_fix_cycle(path, runtime_mode=runtime_mode, non_interactive=non_interactive, session_id=session_id, window=window, dry_run=dry_run, quiet=quiet, no_clean_imports=no_clean_imports, no_code_smells=no_code_smells, verify_cmd=verify_cmd)
+            return run_fix_cycle(path, runtime_mode=runtime_mode, non_interactive=non_interactive, session_id=session_id, window=window, dry_run=dry_run, quiet=quiet, no_clean_imports=no_clean_imports, no_code_smells=no_code_smells, verify_cmd=verify_cmd, verify_timeout=verify_timeout)
         if mode == "full":
-            return run_full_cycle(path, runtime_mode=runtime_mode, non_interactive=non_interactive, session_id=session_id, window=window, dry_run=dry_run, quiet=quiet, no_llm=no_llm, no_clean_imports=no_clean_imports, no_code_smells=no_code_smells, verify_cmd=verify_cmd)
+            return run_full_cycle(path, runtime_mode=runtime_mode, non_interactive=non_interactive, session_id=session_id, window=window, dry_run=dry_run, quiet=quiet, no_llm=no_llm, no_clean_imports=no_clean_imports, no_code_smells=no_code_smells, verify_cmd=verify_cmd, verify_timeout=verify_timeout)
         return {"error": f"Unknown mode: {mode}. Use 'doctor', 'fix', or 'full'."}
 
     if runtime_mode == "assist":
@@ -141,6 +142,7 @@ def run_full_cycle(
     no_clean_imports: bool = False,
     no_code_smells: bool = False,
     verify_cmd: str | None = None,
+    verify_timeout: int | None = None,
 ) -> dict[str, Any]:
     """Compatibility wrapper; delegated to orchestration.full_cycle."""
     return _full_run_full_cycle(
@@ -155,6 +157,7 @@ def run_full_cycle(
         no_clean_imports=no_clean_imports,
         no_code_smells=no_code_smells,
         verify_cmd=verify_cmd,
+        verify_timeout=verify_timeout,
         run_doctor_cycle_fn=run_doctor_cycle,
         run_fix_cycle_fn=run_fix_cycle,
     )
@@ -272,6 +275,7 @@ def run_fix_cycle(
     no_clean_imports: bool = False,
     no_code_smells: bool = False,
     verify_cmd: str | None = None,
+    verify_timeout: int | None = None,
 ) -> dict[str, Any]:
     """Run full fix cycle: scan → diagnose → plan → patch → verify."""
     return _run_fix_cycle_impl(
@@ -286,6 +290,7 @@ def run_fix_cycle(
         no_clean_imports=no_clean_imports,
         no_code_smells=no_code_smells,
         verify_cmd=verify_cmd,
+        verify_timeout=verify_timeout,
     )
 
 
@@ -302,6 +307,7 @@ def _run_fix_cycle_impl(
     no_clean_imports: bool = False,
     no_code_smells: bool = False,
     verify_cmd: str | None = None,
+    verify_timeout: int | None = None,
 ) -> dict[str, Any]:
     """Implementation for run_fix_cycle. Persists report and memory events."""
     _ = FixCycleContext(
@@ -316,6 +322,7 @@ def _run_fix_cycle_impl(
         no_clean_imports=no_clean_imports,
         no_code_smells=no_code_smells,
         verify_cmd=verify_cmd,
+        verify_timeout=verify_timeout,
     )
     deps = _fix_cycle_deps()
     run_scan = deps["run_scan"]
@@ -374,7 +381,7 @@ def _run_fix_cycle_impl(
         return out
     report, modified, verify_success = _apply_execute_fix_apply_stage(
         path, patch_plan, operations,
-        quiet=quiet, verify_cmd=verify_cmd, backup_dir=deps["BACKUP_DIR"],
+        quiet=quiet, verify_cmd=verify_cmd, verify_timeout=verify_timeout, backup_dir=deps["BACKUP_DIR"],
         apply_and_verify=deps["apply_and_verify"], run_scan=run_scan,
         build_snapshot_from_self_map=deps["build_snapshot_from_self_map"],
         diff_architecture_snapshots=deps["diff_architecture_snapshots"],
@@ -383,9 +390,8 @@ def _run_fix_cycle_impl(
     )
     return _apply_build_fix_cycle_result(report, operations, modified, verify_success, result)
 
-# TODO: Refactor cli/orchestrator.py (god_module -> split_module)
-# Suggested steps:
-# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
-# - Identify distinct concerns and split this module into focused units.
-# - Reduce total degree (fan-in + fan-out) via extraction.
-# - Extract from imports: agent_core.py, agent_core_arch_review.py, patch_apply.py.
+
+# TODO (eurika): refactor deep_nesting '_select_hybrid_operations' — consider extracting nested block
+
+
+# TODO (eurika): refactor long_function '_run_fix_cycle_impl' — consider extracting helper

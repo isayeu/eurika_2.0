@@ -137,54 +137,13 @@ FORBIDDEN = [
 End of agent_core.py v0.1
 """
 
-# TODO: Refactor agent_core.py (bottleneck -> introduce_facade)
-# Suggested steps:
-# - Introduce a facade or boundary to reduce direct fan-in.
-# - Create a stable public API for this module; let internal structure evolve independently.
-# - Limit the number of modules that import this file directly.
-
-# TODO: Refactor agent_core.py (god_module -> refactor_module)
+# TODO: Refactor agent_core.py (god_module -> split_module)
 # Suggested steps:
 # - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
 # - Identify distinct concerns and split this module into focused units.
 # - Reduce total degree (fan-in + fan-out) via extraction.
-
-# TODO: Refactor agent_core.py (god_module -> refactor_module)
-# Suggested steps:
-# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
-# - Identify distinct concerns and split this module into focused units.
-# - Reduce total degree (fan-in + fan-out) via extraction.
-# - Consider grouping callers: eurika/reasoning/advisor.py, cli/agent_handlers.py, agent_core_arch_review.py.
-# - Introduce facade for callers: agent_core_arch_review.py, memory.py, cli/agent_handlers.py....
-
-# TODO: Refactor agent_core.py (god_module -> refactor_module)
-# Suggested steps:
-# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
-# - Identify distinct concerns and split this module into focused units.
-# - Reduce total degree (fan-in + fan-out) via extraction.
-# - Consider grouping callers: tests/test_agent_core_arch_review.py, agent_core_arch_review.py, cli/agent_handlers.py.
-# - Introduce facade for callers: agent_core_arch_review.py, memory.py, cli/agent_handlers.py....
-
-# TODO: Refactor agent_core.py (god_module -> refactor_module)
-# Suggested steps:
-# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
-# - Identify distinct concerns and split this module into focused units.
-# - Reduce total degree (fan-in + fan-out) via extraction.
-# - Consider grouping callers: memory.py, eurika/reasoning/advisor.py, cli/agent_handlers.py.
-# - Introduce facade for callers: agent_core_arch_review.py, memory.py, cli/agent_handlers.py....
-
-# TODO: Refactor agent_core.py (god_module -> refactor_module)
-# Suggested steps:
-# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
-# - Identify distinct concerns and split this module into focused units.
-# - Reduce total degree (fan-in + fan-out) via extraction.
-# - Consider grouping callers: agent_core_arch_review.py, memory.py, eurika/reasoning/advisor.py.
-# - Introduce facade for callers: agent_core_arch_review.py, memory.py, cli/agent_handlers.py....
-
-# TODO: Refactor agent_core.py (god_module -> refactor_module)
-# Suggested steps:
-# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
-# - Identify distinct concerns and split this module into focused units.
-# - Reduce total degree (fan-in + fan-out) via extraction.
-# - Consider grouping callers: memory.py, eurika/reasoning/advisor.py, agent_core_arch_review.py.
-# - Introduce facade for callers: agent_core_arch_review.py, memory.py, cli/agent_handlers.py....
+# - Consider grouping callers: tests/test_agent_core_arch_review.py, cli/agent_handlers.py, cli/agent_handlers_handle_agent_patch_apply.py.
+# - Introduce facade for callers: memory.py, agent_core_arch_review_archreviewagentcore.py, cli/agent_handlers.py....
+# - Extract communication handling into a separate module named `communication_handler`.
+# - Group all configuration and setup-related functions into `configurator.py`.
+# - Isolate the business logic into `business_logic_processor`.

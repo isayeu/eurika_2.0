@@ -247,6 +247,10 @@ eurika explain action_plan.py . --window 10
 - `OLLAMA_OPENAI_API_KEY` — ключ для локального endpoint (default: `ollama`)
 - `EURIKA_LLM_TIMEOUT_SEC` — таймаут HTTP LLM вызовов (default: `20`)
 - `EURIKA_OLLAMA_CLI_TIMEOUT_SEC` — таймаут CLI fallback `ollama run` (default: `45`)
+- `EURIKA_USE_LLM_HINTS` — включить LLM-подсказки в planner для god_module/hub/bottleneck (default: `1`; `0`/`false` — только эвристики графа)
+- `--apply-suggested-policy` (fix, cycle) — применить suggested policy из последнего doctor/fix (ROADMAP 2.9.4)
+- `EURIKA_GLOBAL_MEMORY` — каталог глобальной памяти (ROADMAP 3.0.2); default `~/.eurika`
+- `EURIKA_DISABLE_GLOBAL_MEMORY` — отключить cross-project learning (`1`/`true`/`yes`)
 
 Переменные можно задать в `.env` в корне проекта; тогда нужен `pip install python-dotenv` (или `eurika[env]`). При ошибке LLM в stderr выводится причина и используется шаблон.
 Важно: Eurika больше не запускает `ollama serve` автоматически — Ollama daemon должен быть поднят вручную до запуска команд.

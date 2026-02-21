@@ -6,6 +6,7 @@ Use json.dumps() on the return value to serve over HTTP or save to file.
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
@@ -104,13 +105,14 @@ def _build_patch_plan_inputs(
 
 
 def _optional_learning_and_self_map(memory: Any, self_map_path: Path) -> tuple[Any, Any]:
-    """Load optional learning stats and self_map; swallow parsing errors."""
+    """Load optional learning stats (local + global merged, ROADMAP 3.0.2) and self_map."""
     from eurika.analysis.self_map import load_self_map
+    from eurika.storage.global_memory import get_merged_learning_stats
 
     learning_stats = None
     self_map = None
     try:
-        learning_stats = memory.learning.aggregate_by_smell_action()
+        learning_stats = get_merged_learning_stats(Path(self_map_path).parent)
     except Exception:
         pass
     try:
@@ -165,11 +167,11 @@ def _should_try_extract_nested(stats: Optional[Dict[str, Dict[str, Any]]]) -> bo
 
 
 def _load_smell_action_learning_stats(root: Path) -> Optional[Dict[str, Dict[str, Any]]]:
-    """Return smell-action aggregates from memory; None on any storage/parsing error."""
-    from eurika.storage import ProjectMemory
+    """Return smell-action aggregates (local + global merged, ROADMAP 3.0.2); None on error."""
+    from eurika.storage.global_memory import get_merged_learning_stats
 
     try:
-        return ProjectMemory(root).learning.aggregate_by_smell_action()
+        return get_merged_learning_stats(root)
     except Exception:
         return None
 
@@ -336,6 +338,189 @@ def get_diff(old_self_map_path: Path, new_self_map_path: Path) -> Dict[str, Any]
     new_snap = build_snapshot(new_path)
     diff = diff_snapshots(old_snap, new_snap)
     return _to_json_safe(diff)
+
+
+def _truncate_on_word_boundary(raw: str, max_len: int = 200) -> str:
+    """Truncate text by word boundary for readable output."""
+    if len(raw) <= max_len:
+        return raw
+    truncated = raw[:max_len]
+    cut = truncated.rfind(" ")
+    return (truncated[:cut] if cut >= 0 else truncated) + "..."
+
+
+def explain_module(project_root: Path, module_arg: str, window: int = 5) -> tuple[str | None, str | None]:
+    """
+    Explain role and risks of a module (ROADMAP 3.1-arch.5).
+
+    Returns (formatted_text, error_message). If error_message is not None, use it for stderr and return 1.
+    """
+    from eurika.core.pipeline import run_full_analysis
+    from eurika.smells.detector import get_remediation_hint, severity_to_level
+
+    root = Path(project_root).resolve()
+    try:
+        snapshot = run_full_analysis(root, update_artifacts=False)
+    except Exception as exc:
+        return None, str(exc)
+    nodes = list(snapshot.graph.nodes)
+    target, resolve_error = _resolve_module_arg(module_arg, root, nodes)
+    if resolve_error:
+        return None, resolve_error
+    if not target:
+        return None, f"module '{module_arg}' not in graph"
+
+    graph = snapshot.graph
+    summary = snapshot.summary or {}
+    fan = graph.fan_in_out()
+    fi, fo = fan.get(target, (0, 0))
+    central = {c["name"] for c in summary.get("central_modules") or []}
+    is_central = target in central
+    module_smells = [s for s in snapshot.smells if target in s.nodes]
+    risks = summary.get("risks") or []
+    module_risks = [r for r in risks if target in r]
+
+    lines: list[str] = []
+    lines.append(f"MODULE EXPLANATION: {target}")
+    lines.append("")
+    lines.append("Role:")
+    lines.append(f"- fan-in : {fi}")
+    lines.append(f"- fan-out: {fo}")
+    lines.append(f"- central: {'yes' if is_central else 'no'}")
+    lines.append("")
+    lines.append("Smells:")
+    if not module_smells:
+        lines.append("- none detected for this module")
+    else:
+        for smell in module_smells:
+            level = severity_to_level(smell.severity)
+            lines.append(f"- [{smell.type}] ({level}) severity={smell.severity:.2f} — {smell.description}")
+            lines.append(f"  → {get_remediation_hint(smell.type)}")
+    lines.append("")
+    lines.append("Risks (from summary):")
+    if not module_risks:
+        lines.append("- none highlighted in summary")
+    else:
+        for risk in module_risks:
+            lines.append(f"- {risk}")
+
+    patch_plan = get_patch_plan(root, window=window)
+    if patch_plan and patch_plan.get("operations"):
+        module_ops = [o for o in patch_plan["operations"] if o.get("target_file") == target]
+        if module_ops:
+            lines.append("")
+            lines.append("Planned operations (from patch-plan):")
+            for op in module_ops[:5]:
+                kind = op.get("kind", "?")
+                desc = _truncate_on_word_boundary(op.get("description", ""))
+                lines.append(f"- [{kind}] {desc}")
+
+    fix_path = root / "eurika_fix_report.json"
+    if fix_path.exists():
+        try:
+            data = json.loads(fix_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+        else:
+            expls = data.get("operation_explanations") or []
+            policy = data.get("policy_decisions") or []
+            ops = (data.get("patch_plan") or {}).get("operations") or []
+            if policy and len(policy) == len(expls):
+                pairs = list(zip([d.get("target_file") for d in policy], expls))
+            elif ops and len(ops) == len(expls):
+                pairs = list(zip([o.get("target_file") for o in ops], expls))
+            else:
+                pairs = []
+            module_rationales = [(tf, expl) for tf, expl in pairs if tf == target]
+            if module_rationales:
+                lines.append("")
+                lines.append("Runtime rationale (from last fix):")
+                for _tf, expl in module_rationales[:5]:
+                    why = expl.get("why", "")
+                    risk = expl.get("risk", "?")
+                    outcome = expl.get("expected_outcome", "")
+                    rollback = expl.get("rollback_plan", "")
+                    verify_out = expl.get("verify_outcome")
+                    verify_str = f"verify={verify_out}" if verify_out is not None else "verify=not run"
+                    lines.append(f"- why: {_truncate_on_word_boundary(why, 120)}")
+                    lines.append(f"  risk={risk}, expected_outcome={_truncate_on_word_boundary(outcome, 80)}")
+                    lines.append(f"  rollback_plan={_truncate_on_word_boundary(rollback, 80)}, {verify_str}")
+
+    return "\n".join(lines), None
+
+
+def _resolve_module_arg(module_arg: str, path: Path, nodes: list[str]) -> tuple[str | None, str | None]:
+    """Resolve user module argument to a graph node. Returns (target, error)."""
+    mod = module_arg
+    m_path = Path(module_arg)
+    if m_path.is_absolute():
+        try:
+            mod = str(m_path.relative_to(path))
+        except ValueError:
+            mod = m_path.name
+    if mod in nodes:
+        return mod, None
+    candidates = [n for n in nodes if n.endswith("/" + mod) or n.endswith(mod)]
+    if len(candidates) == 1:
+        return candidates[0], None
+    if len(candidates) > 1:
+        return None, f"ambiguous module '{module_arg}'; candidates: {', '.join(candidates)}"
+    return None, f"module '{module_arg}' not in graph (run 'eurika scan .' to refresh self_map.json)"
+
+
+def get_suggest_plan_text(project_root: Path, window: int = 5) -> str:
+    """
+    Build suggest-plan text (ROADMAP 3.1-arch.5).
+
+    Encapsulates graph/smells/recommendations building; returns formatted plan string.
+    """
+    from eurika.analysis.self_map import build_graph_from_self_map
+    from eurika.reasoning.refactor_plan import suggest_refactor_plan
+    from eurika.smells.detector import detect_architecture_smells
+    from eurika.smells.advisor import build_recommendations
+
+    summary = get_summary(project_root)
+    if summary.get("error"):
+        return f"Error: {summary.get('error', 'unknown')}"
+    history = get_history(project_root, window=window)
+    recommendations = None
+    self_map_path = Path(project_root).resolve() / "self_map.json"
+    if self_map_path.exists():
+        try:
+            graph = build_graph_from_self_map(self_map_path)
+            smells = detect_architecture_smells(graph)
+            recommendations = build_recommendations(graph, smells)
+        except Exception:
+            pass
+    return suggest_refactor_plan(summary, recommendations=recommendations, history_info=history)
+
+
+def clean_imports_scan_apply(project_root: Path, apply_changes: bool) -> list[str]:
+    """
+    Scan for unused imports, optionally apply (ROADMAP 3.1-arch.5).
+
+    Returns list of modified file paths (relative to project_root).
+    """
+    from code_awareness import CodeAwareness
+    from eurika.refactor.remove_unused_import import remove_unused_imports
+
+    root = Path(project_root).resolve()
+    aw = CodeAwareness(root=root)
+    files = aw.scan_python_files()
+    files = [f for f in files if f.name != "__init__.py" and not f.name.endswith("_api.py")]
+    modified: list[str] = []
+    for fpath in files:
+        new_content = remove_unused_imports(fpath)
+        if new_content is None:
+            continue
+        rel = str(fpath.relative_to(root)) if root in fpath.parents else fpath.name
+        modified.append(rel)
+        if apply_changes:
+            try:
+                fpath.write_text(new_content, encoding="utf-8")
+            except OSError:
+                pass  # Caller handles reporting
+    return modified
 
 
 # TODO (eurika): refactor long_function 'get_patch_plan' — consider extracting helper

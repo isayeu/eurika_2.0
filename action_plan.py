@@ -77,63 +77,13 @@ class ActionPlan:
             expected_gain=float(d.get("expected_gain", 0)),
         )
 
-
-# TODO: Refactor action_plan.py (bottleneck -> introduce_facade)
-# Suggested steps:
-# - Introduce a facade or boundary to reduce direct fan-in.
-# - Create a stable public API for this module; let internal structure evolve independently.
-# - Limit the number of modules that import this file directly.
-
-# TODO: Refactor action_plan.py (god_module -> refactor_module)
+# TODO: Refactor action_plan.py (god_module -> split_module)
 # Suggested steps:
 # - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
 # - Identify distinct concerns and split this module into focused units.
 # - Reduce total degree (fan-in + fan-out) via extraction.
-
-# TODO: Refactor action_plan.py (god_module -> refactor_module)
-# Suggested steps:
-# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
-# - Identify distinct concerns and split this module into focused units.
-# - Reduce total degree (fan-in + fan-out) via extraction.
-# - Consider grouping callers: cli/agent_handlers.py, architecture_planner.py, agent_core_arch_review.py.
-# - Introduce facade for callers: agent_core_arch_review.py, architecture_planner.py, cli/agent_handlers.py....
-
-# TODO: Refactor action_plan.py (god_module -> refactor_module)
-# Suggested steps:
-# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
-# - Identify distinct concerns and split this module into focused units.
-# - Reduce total degree (fan-in + fan-out) via extraction.
-# - Consider grouping callers: eurika/reasoning/planner.py, cli/agent_handlers.py, agent_core_arch_review.py.
-# - Introduce facade for callers: agent_core_arch_review.py, architecture_planner.py, cli/agent_handlers.py....
-
-# TODO: Refactor action_plan.py (god_module -> refactor_module)
-# Suggested steps:
-# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
-# - Identify distinct concerns and split this module into focused units.
-# - Reduce total degree (fan-in + fan-out) via extraction.
-# - Consider grouping callers: tests/test_executor_sandbox.py, eurika/reasoning/planner.py, agent_core_arch_review.py.
-# - Introduce facade for callers: agent_core_arch_review.py, architecture_planner.py, cli/agent_handlers.py....
-
-# TODO: Refactor action_plan.py (god_module -> refactor_module)
-# Suggested steps:
-# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
-# - Identify distinct concerns and split this module into focused units.
-# - Reduce total degree (fan-in + fan-out) via extraction.
-# - Consider grouping callers: architecture_planner.py, eurika/reasoning/planner.py, tests/test_executor_sandbox.py.
-# - Introduce facade for callers: agent_core_arch_review.py, architecture_planner.py, cli/agent_handlers.py....
-
-# TODO: Refactor action_plan.py (god_module -> refactor_module)
-# Suggested steps:
-# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
-# - Identify distinct concerns and split this module into focused units.
-# - Reduce total degree (fan-in + fan-out) via extraction.
-# - Consider grouping callers: agent_core_arch_review.py, tests/test_executor_sandbox.py, cli/agent_handlers.py.
-# - Introduce facade for callers: agent_core_arch_review.py, architecture_planner.py, cli/agent_handlers.py....
-
-# TODO: Refactor action_plan.py (god_module -> refactor_module)
-# Suggested steps:
-# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
-# - Identify distinct concerns and split this module into focused units.
-# - Reduce total degree (fan-in + fan-out) via extraction.
-# - Consider grouping callers: eurika/reasoning/planner.py, tests/test_executor_sandbox.py, architecture_planner.py.
-# - Introduce facade for callers: agent_core_arch_review.py, architecture_planner.py, cli/agent_handlers.py....
+# - Consider grouping callers: tests/test_executor_sandbox.py, eurika/reasoning/planner_actions.py, cli/agent_handlers.py.
+# - Introduce facade for callers: agent_core_arch_review_archreviewagentcore.py, architecture_planner_build_action_plan.py, action_plan_api.py....
+# - Extract planning algorithms into module `planning_algorithms`
+# - Isolate user interface interactions into module `ui_actions`
+# - Separate data handling and persistence into module `data_handler`

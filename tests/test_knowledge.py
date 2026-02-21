@@ -2,8 +2,8 @@
 import json
 from pathlib import Path
 from unittest.mock import patch
-from eurika.knowledge import CompositeKnowledgeProvider, KnowledgeProvider, LocalKnowledgeProvider, OfficialDocsProvider, ReleaseNotesProvider, StaticAnalyzerProvider, StructuredKnowledge
-from eurika.knowledge.base import OFFICIAL_DOCS_TOPIC_URLS, RELEASE_NOTES_TOPIC_URLS
+from eurika.knowledge import CompositeKnowledgeProvider, KnowledgeProvider, LocalKnowledgeProvider, OfficialDocsProvider, PEPProvider, ReleaseNotesProvider, StaticAnalyzerProvider, StructuredKnowledge
+from eurika.knowledge.base import OFFICIAL_DOCS_TOPIC_URLS, PEP_TOPIC_URLS, RELEASE_NOTES_TOPIC_URLS
 
 def test_structured_knowledge_empty() -> None:
     k = StructuredKnowledge(topic='python_3_12', source='local', fragments=[], meta={})
@@ -46,6 +46,38 @@ def test_local_knowledge_provider_no_cache() -> None:
     k = p.query('x')
     assert k.is_empty() is True
     assert k.source == 'local'
+
+def test_pep_provider_unknown_topic_returns_empty() -> None:
+    """PEPProvider: topic not in allow-list returns empty (no network)."""
+    p = PEPProvider(topic_urls={})
+    k = p.query("unknown_topic")
+    assert k.source == "pep"
+    assert k.topic == "unknown_topic"
+    assert k.is_empty() is True
+
+
+def test_pep_provider_pep_8_fetch_mocked() -> None:
+    """PEPProvider: pep_8 fetches from peps.python.org (mocked)."""
+    from io import BytesIO
+    from urllib.response import addinfourl
+    body = b"<html><body><h1>PEP 8</h1><p>Style Guide for Python Code.</p></body></html>"
+    p = PEPProvider(topic_urls={"pep_8": "https://peps.python.org/pep-0008/"})
+    with patch("eurika.knowledge.base.urllib.request.urlopen") as m:
+        m.return_value.__enter__.return_value = addinfourl(BytesIO(body), {}, "https://peps.python.org", 200)
+        k = p.query("pep_8")
+    assert k.source == "pep"
+    assert not k.is_empty()
+    assert "pep" in k.fragments[0]["title"].lower() or "8" in k.fragments[0]["title"]
+    assert "Style" in k.fragments[0]["content"] or "PEP" in k.fragments[0]["content"]
+
+
+def test_pep_topic_urls_include_common_peps() -> None:
+    """PEP_TOPIC_URLS includes pep_8, pep_257, pep_484."""
+    assert "pep_8" in PEP_TOPIC_URLS
+    assert "pep_257" in PEP_TOPIC_URLS
+    assert "pep_484" in PEP_TOPIC_URLS
+    assert "peps.python.org" in PEP_TOPIC_URLS["pep_8"]
+
 
 def test_official_docs_provider_stub() -> None:
     p = OfficialDocsProvider()

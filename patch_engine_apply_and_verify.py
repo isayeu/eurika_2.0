@@ -56,7 +56,7 @@ def apply_and_verify(
     *,
     backup: bool = True,
     verify: bool = True,
-    verify_timeout: int = 120,
+    verify_timeout: int = 300,
     verify_cmd: Optional[str] = None,
     auto_rollback: bool = True,
     retry_on_import_error: bool = True,

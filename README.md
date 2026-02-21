@@ -20,6 +20,11 @@ eurika scan .
 
 **Для LLM (doctor, architect, cycle):** используйте venv из `/mnt/storage/project/` — в нём установлены openai, pytest и зависимости. Иначе LLM не вызывается. Подробнее — **DOGFOODING.md**.
 
+**Ollama (локальный LLM):** для architect/cycle с ollama запустите сервер, при необходимости с переменными для AMD GPU:
+```bash
+HSA_OVERRIDE_GFX_VERSION=10.3.0 ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 ollama serve
+```
+
 **Pipeline:** `cli → core/pipeline → code_awareness → scan → graph → smells → summary → history → report`
 
 ## Режимы (продуктовые)

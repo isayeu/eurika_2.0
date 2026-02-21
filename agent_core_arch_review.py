@@ -15,5 +15,8 @@ __all__ = ["ArchReviewAgentCore"]
 # - Identify distinct concerns and split this module into focused units.
 # - Reduce total degree (fan-in + fan-out) via extraction.
 # - Extract from imports: agent_core_arch_review_archreviewagentcore.py.
-# - Consider grouping callers: cli/agent_handlers.py, cli/orchestrator.py, tests/test_agent_core_arch_review.py.
-# - Introduce facade for callers: cli/agent_handlers.py, cli/orchestrator.py, eurika/reasoning/advisor.py....
+# - Consider grouping callers: tests/test_agent_core_arch_review.py, cli/agent_handlers.py, cli/agent_handlers_handle_agent_patch_apply.py.
+# - Introduce facade for callers: cli/agent_handlers.py, cli/agent_handlers_handle_agent_patch_apply.py, cli/orchestration/prepare.py....
+# - Extract orchestration logic into `module_orchestration`
+# - Group CLI handlers related to agent patching into `module_agent_patch_cli`
+# - Separate advisor and reasoning modules for better clarity

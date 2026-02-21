@@ -20,6 +20,8 @@ FORBIDDEN_RULES: list[tuple[str, list[str]]] = [
     # Main planner must not call apply; planning and execution are separate
     ("architecture_planner.py", ["patch_apply"]),
     ("architecture_planner_", ["patch_apply"]),
+    # Planning layer must not depend on Execution (ROADMAP 3.1-arch.6)
+    ("eurika/reasoning/", ["patch_apply", "patch_engine"]),
     # Analysis layer must not depend on Execution
     ("eurika/smells/", ["patch_apply", "patch_engine"]),
     ("eurika/analysis/", ["patch_apply", "patch_engine"]),

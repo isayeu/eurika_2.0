@@ -209,6 +209,45 @@ def test_knowledge_topics_derived_from_summary(monkeypatch: Any) -> None:
     assert "python" in topics and "python_3_14" in topics and "cyclic_imports" in topics
     topics = _knowledge_topics_from_env_or_summary({"system": {}, "risks": ["god_module @ a.py"]})
     assert "python" in topics and "python_3_14" in topics and "architecture_refactor" in topics
+    topics = _knowledge_topics_from_env_or_summary({"system": {}, "risks": ["long_function @ foo.py"]})
+    assert "pep_8" in topics
+
+
+def test_doctor_suggested_policy_block(tmp_path: Path) -> None:
+    """Doctor shows Suggested policy block when fix report has low apply_rate (ROADMAP 2.9.4)."""
+    (tmp_path / "eurika_fix_report.json").write_text(
+        json.dumps({"telemetry": {"apply_rate": 0.2, "rollback_rate": 0.0}}),
+        encoding="utf-8",
+    )
+    (tmp_path / "self_map.json").write_text(
+        json.dumps({
+            "modules": [{"path": "a.py", "lines": 10}],
+            "dependencies": {},
+            "system": {"modules": 1, "dependencies": 0, "cycles": 0},
+        }),
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        [sys.executable, "-m", "eurika_cli", "doctor", str(tmp_path)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert "Suggested policy" in result.stdout
+    assert "EURIKA_AGENT_MAX_OPS" in result.stdout or "export" in result.stdout
+
+
+def test_load_suggested_policy_for_apply(tmp_path: Path) -> None:
+    """load_suggested_policy_for_apply loads from fix report when doctor report absent."""
+    from cli.orchestration.doctor import load_suggested_policy_for_apply
+
+    (tmp_path / "eurika_fix_report.json").write_text(
+        json.dumps({"telemetry": {"apply_rate": 0.15, "rollback_rate": 0.0}}),
+        encoding="utf-8",
+    )
+    sugg = load_suggested_policy_for_apply(tmp_path)
+    assert sugg.get("EURIKA_AGENT_MAX_OPS") == "40"
 
 
 def _parse_final_json(stdout: str):
@@ -528,6 +567,23 @@ def test_deprioritize_weak_pairs_puts_weak_last(tmp_path: Path) -> None:
     assert reordered[0]["target_file"] == "b.py"
     assert reordered[1]["target_file"] in ("a.py", "c.py")
     assert reordered[2]["target_file"] in ("a.py", "c.py")
+
+
+def test_handle_report_snapshot_delegates_to_format(capsys: Any, tmp_path: Path) -> None:
+    """report-snapshot handler delegates to format_report_snapshot (3.1-arch.5 isolation)."""
+    from unittest.mock import patch
+    from types import SimpleNamespace
+
+    args = SimpleNamespace(path=tmp_path)
+    with patch("report.report_snapshot.format_report_snapshot", return_value="DELEGATED_OUTPUT") as mock_fmt:
+        from cli.core_handlers import handle_report_snapshot
+
+        code = handle_report_snapshot(args)
+    assert code == 0
+    assert mock_fmt.called
+    assert mock_fmt.call_args[0][0] == tmp_path
+    out, _ = capsys.readouterr()
+    assert "DELEGATED_OUTPUT" in out
 
 
 def test_report_snapshot_empty_project(tmp_path: Path) -> None:

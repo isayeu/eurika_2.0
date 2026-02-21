@@ -24,5 +24,8 @@ from architecture_planner_build_patch_plan import build_patch_plan
 # - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
 # - Identify distinct concerns and split this module into focused units.
 # - Reduce total degree (fan-in + fan-out) via extraction.
-# - Extract from imports: architecture_planner_build_plan.py, architecture_planner_build_action_plan.py, action_plan.py.
-# - Consider grouping callers: eurika/api/__init__.py, agent_core_arch_review_archreviewagentcore.py, tests/test_graph_ops.py.
+# - Extract from imports: architecture_planner_build_plan.py, architecture_planner_build_action_plan.py, architecture_planner_build_patch_plan.py.
+# - Consider grouping callers: tests/test_graph_ops.py, eurika/reasoning/planner.py, agent_core_arch_review_archreviewagentcore.py.
+# - Extract build plan creation and management logic into `architecture_planner_build_manager.py`
+# - Group patch plan handling operations into `architecture_planner_patch_handler.py`
+# - Consolidate action planning responsibilities into `architecture_planner_action_executor.py`

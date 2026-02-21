@@ -114,6 +114,24 @@
 
 ---
 
+## 24. Dogfooding 2.9 — 3 цикла с LLM + Knowledge (ROADMAP 2.9.5)
+
+### Команда
+`eurika cycle . --apply-suggested-policy`
+
+### Результат
+- 3 стабильных цикла подряд
+- verify ✓ passed
+- apply-rate, rollback-rate стабильны
+- architect даёт рекомендации «как»; suggested policy при низком apply_rate
+
+### DoD 2.9.5
+- [x] apply-rate не падает
+- [x] релевантность рекомендаций (Recommendation block, Reference block)
+- [x] learning: suggested policy из telemetry
+
+---
+
 ## 1. Fix (`eurika fix . --quiet --no-code-smells`) — 2026-02-19
 
 | Поле | Значение |
@@ -542,3 +560,58 @@
   - Исключены: tests/, __pycache__/, .eurika_backups/, _shelved/
   - Парсинг через `ast`; вывод нарушений в assertion
 - Обновлены Architecture.md §0.5 и ROADMAP.md (2.8.2 помечен как выполнено)
+
+---
+
+## 23. API Boundaries (ROADMAP 3.1-arch.2)
+
+### Выполнено
+
+- Добавлен `__all__` в ключевые модули:
+  - `patch_engine`: apply_patch, verify_patch, rollback_patch, apply_and_verify, rollback, list_backups, apply_patch_dry_run, BACKUP_DIR
+  - `eurika.core`, `eurika.analysis`, `eurika.smells`, `eurika.evolution`, `eurika.reporting`: публичные подмодули
+- Добавлен раздел **§0.6 API Boundaries** в `Architecture.md`:
+  - Таблица подсистем → публичные точки входа
+  - Список пакетов с `__all__`
+
+---
+
+## 24. CLI thinning (ROADMAP 3.1-arch.5)
+
+### Выполнено
+
+- **report/report_snapshot.py** — format_report_snapshot(path) → str; логика форматирования вынесена из handle_report_snapshot
+- **eurika.api** — explain_module(path, module_arg, window), get_suggest_plan_text(path, window), clean_imports_scan_apply(path, apply)
+- **Тонкие handlers**: handle_report_snapshot, handle_explain, handle_suggest_plan, handle_clean_imports — только валидация args и вызов API
+- **test_handle_report_snapshot_delegates_to_format** — тест на изоляцию (патч format_report_snapshot)
+
+---
+
+## 25. Planning–Execution split (ROADMAP 3.1-arch.6)
+
+### Выполнено
+
+- **eurika/reasoning/planner.py** — удалены apply_patch_plan, list_backups, restore_backup, ExecutorSandbox, ExecutionLogEntry; только planning types и build_*
+- **Architecture.md §0.5** — Planner–Executor Contract: Planner выдаёт dict, Executor применяет; явный контракт
+- **tests/test_dependency_guard.py** — правило eurika/reasoning/ → patch_apply, patch_engine запрещены
+
+---
+
+## 26. Domain vs presentation (ROADMAP 3.1-arch.4)
+
+### Выполнено
+
+- **report/architecture_report.py** — модуль presentation: render_full_architecture_report, _smells_to_text, _render_architecture_report_md
+- **core/pipeline.py** — только domain (run_full_analysis, build_snapshot_from_self_map); render делегирует в report
+- **system_topology.py** — central_modules_for_topology вынесена из architecture_pipeline (используется и domain, и presentation)
+
+---
+
+## 27. File size limits (ROADMAP 3.1-arch.3)
+
+### Выполнено
+
+- **eurika/checks/file_size.py** — check_file_size_limits(root), format_file_size_report(root); лимиты 400 (candidate) и 600 (must split)
+- **handle_self_check** — выводит блок FILE SIZE LIMITS после scan
+- **python -m eurika.checks.file_size [path]** — standalone run
+- **tests/test_file_size_check.py** — 7 тестов

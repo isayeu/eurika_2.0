@@ -167,7 +167,11 @@ def apply_campaign_memory(
     patch_plan: dict[str, Any],
     operations: list[dict[str, Any]],
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
-    """Skip ops rejected in any session or that failed verify 2+ times (ROADMAP 2.7.5)."""
+    """Skip ops rejected in any session or that failed verify 2+ times (ROADMAP 2.7.5).
+    Bypassed when EURIKA_IGNORE_CAMPAIGN=1 (e.g. --apply-suggested-policy)."""
+    import os
+    if os.environ.get("EURIKA_IGNORE_CAMPAIGN", "").strip() in {"1", "true", "yes"}:
+        return patch_plan, operations, []
     from eurika.storage import SessionMemory, operation_key
 
     mem = SessionMemory(path)

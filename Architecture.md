@@ -2,44 +2,49 @@
 
 ---
 
-## 0. Layer Map (ROADMAP 2.8.1)
+## 0. Layer Map (ROADMAP 2.8.1, 3.1-arch.1)
 
-Формальная карта слоёв и правил зависимостей. Ссылки: **ROADMAP.md** § Фаза 2.8, **CLI.md** § Рекомендуемый цикл.
+Формальная карта слоёв и правил зависимостей. Ссылки: **ROADMAP.md** § Фаза 2.8, § Фаза 3.1-arch, **CLI.md** § Рекомендуемый цикл, **review.md** §6.
 
-### 0.1 Слои (снизу вверх)
+Нотация L0–L6 соответствует рекомендациям review v3.0.1.
+
+### 0.1 Слои (снизу вверх, L0 → L6)
 
 ```
-Layer 6: Reporting      ← отчёты, форматирование, JSON/Markdown
-Layer 5: Execution      ← patch apply, verify, rollback, refactor
-Layer 4: Planning       ← patch plan, action plan, architecture planner
-Layer 3: Analysis       ← smells, graph, metrics, scanner
-Layer 2: Core           ← graph model, snapshot, pipeline
-Layer 1: Infrastructure ← IO, CLI, FS, backup/restore
+L0: Infrastructure  ← IO, FS, backup/restore, paths, low-level storage
+L1: Core            ← graph model, snapshot, pipeline
+L2: Analysis        ← smells, graph, metrics, scanner
+L3: Planning        ← patch plan, action plan, architecture planner
+L4: Execution       ← patch apply, verify, rollback, refactor
+L5: Reporting       ← отчёты, форматирование, JSON/Markdown
+L6: CLI             ← command parsing, dispatch, orchestration wiring
 ```
 
-**Правило:** модуль слоя N может зависеть только от слоёв 1..N−1 (и от того же слоя). Зависимость «вверх» (N → N+k, k>0) запрещена.
+**Правило:** модуль слоя N может зависеть только от слоёв 0..N−1 (и от того же слоя). Зависимость «вверх» (N → N+k, k>0) запрещена.
 
 ### 0.2 Allowed Dependencies
 
 | From layer | May import from |
 |------------|-----------------|
-| Infrastructure | stdlib, same layer |
-| Core | Infrastructure |
-| Analysis | Core, Infrastructure |
-| Planning | Analysis, Core, Infrastructure |
-| Execution | Planning, Analysis, Core, Infrastructure |
-| Reporting | Execution, Planning, Analysis, Core, Infrastructure |
+| L0 Infrastructure | stdlib, same layer |
+| L1 Core | L0 |
+| L2 Analysis | L1, L0 |
+| L3 Planning | L2, L1, L0 |
+| L4 Execution | L3, L2, L1, L0 |
+| L5 Reporting | L4..L0 |
+| L6 CLI | L5..L0 |
 
-### 0.3 Mapping modules → layers (v2.7)
+### 0.3 Mapping modules → layers (v3.1)
 
 | Layer | Модули / пакеты |
 |-------|-----------------|
-| Infrastructure | `eurika_cli`, `cli/` (wiring, handlers, orchestration), `eurika/utils/fs`, `patch_apply_backup`, `eurika/storage/paths` |
-| Core | `core/pipeline`, `core/snapshot`, `project_graph`, `project_graph_api`, `self_map_io` |
-| Analysis | `code_awareness*`, `eurika/analysis/*`, `eurika/smells/*`, `graph_analysis`, `semantic_architecture`, `system_topology` |
-| Planning | `architecture_planner*`, `eurika/reasoning/planner*`, `action_plan*`, `patch_plan` |
-| Execution | `patch_apply`, `patch_engine*`, `patch_apply_handlers`, `eurika/refactor/*`, `executor_sandbox` |
-| Reporting | `report/ux`, `eurika/reporting/*`, `architecture_*` (summary, history, diff, feedback, advisor и т.д.) |
+| L0 Infrastructure | `eurika/utils/fs`, `patch_apply_backup`, `eurika/storage/paths` |
+| L1 Core | `core/pipeline`, `core/snapshot`, `project_graph`, `project_graph_api`, `self_map_io` |
+| L2 Analysis | `code_awareness*`, `eurika/analysis/*`, `eurika/smells/*`, `graph_analysis`, `semantic_architecture`, `system_topology` |
+| L3 Planning | `architecture_planner*`, `eurika/reasoning/planner*`, `action_plan*`, `patch_plan` |
+| L4 Execution | `patch_apply`, `patch_engine*`, `patch_apply_handlers`, `eurika/refactor/*`, `executor_sandbox` |
+| L5 Reporting | `report/ux`, `eurika/reporting/*`, `architecture_*` (summary, history, diff, feedback, advisor) |
+| L6 CLI | `eurika_cli`, `cli/` (wiring, handlers, orchestration) |
 
 ### 0.4 Anti-patterns (запрещённые зависимости)
 
@@ -51,9 +56,43 @@ Layer 1: Infrastructure ← IO, CLI, FS, backup/restore
 
 ❌ **Cross-layer facade bypass:** Вызов `patch_apply.apply_patch_plan` из CLI вместо `patch_engine.apply_patch` — нарушение; patch-подсистема доступна только через фасад `patch_engine`.
 
-### 0.5 Verification
+### 0.5 Planner–Executor Contract (ROADMAP 3.1-arch.6)
+
+| Роль | Модули | Ответственность | Контракт |
+|------|--------|-----------------|----------|
+| **Planner** | architecture_planner*, eurika/reasoning/planner*, planner_patch_ops | Строит план (PatchPlan, dict) из summary/smells/graph | Не импортирует patch_apply, patch_engine. Выход: `plan.to_dict()` или `{"operations": [...]}` |
+| **Executor** | patch_engine, patch_apply, executor_sandbox | Применяет план, verify, rollback | Вход: dict с ключом `operations`; вызывает patch_engine.apply_patch или apply_and_verify |
+
+Планирование и исполнение не знают деталей друг друга: Planner выдаёт структурированный dict; Executor принимает его и выполняет.
+
+### 0.6 Verification
 
 Автоматическая проверка: `tests/test_dependency_guard.py` (ROADMAP 2.8.2). Тест падает при нарушении правил; запускается в CI вместе с `pytest`. Команда: `pytest tests/test_dependency_guard.py -v`.
+
+### 0.7 API Boundaries (ROADMAP 3.1-arch.2)
+
+Каждая подсистема экспортирует ограниченный публичный API через `__all__`. Остальное считается private.
+
+| Подсистема | Публичные точки входа |
+|------------|------------------------|
+| **Storage** | `ProjectMemory`, `event_engine`, `SessionMemory` |
+| **Agent** | `run_agent_cycle`, `DefaultToolContract` |
+| **Patch Engine** | `apply_and_verify`, `apply_patch`, `verify_patch`, `rollback_patch` |
+| **Planning** | `build_patch_plan`, `build_plan`, `build_action_plan` (architecture_planner) |
+| **Reasoning** | `advisor`, `architect`, `planner` |
+| **CLI orchestration** | `run_doctor_cycle`, `run_full_cycle`, `prepare_fix_cycle_operations`, `execute_fix_apply_stage` |
+| **CLI wiring** | `build_parser`, `dispatch_command` |
+
+Ключевые пакеты с `__all__`: `eurika.storage`, `eurika.agent`, `eurika.reasoning`, `eurika.refactor`, `eurika.knowledge`, `eurika.analysis`, `eurika.smells`, `eurika.evolution`, `eurika.reporting`, `eurika.core`, `patch_engine`, `cli.orchestration`, `cli.wiring`.
+
+### 0.8 File Size Limits (ROADMAP 3.1-arch.3)
+
+| Лимит | Правило |
+|-------|---------|
+| >400 LOC | Кандидат на разбиение |
+| >600 LOC | Обязательно делить |
+
+Проверка: `eurika self-check .` выводит блок FILE SIZE LIMITS; отдельно: `python -m eurika.checks.file_size [path]`.
 
 ---
 

@@ -27,7 +27,7 @@ from eurika.smells.rules import build_summary, summary_to_text
 from eurika.analysis.graph import NodeMetrics, ProjectGraph
 from eurika.analysis.scanner import semantic_summary
 from eurika.analysis.self_map import build_graph_from_self_map, load_self_map
-from eurika.analysis.topology import topology_summary
+from eurika.analysis.topology import central_modules_for_topology, topology_summary
 
 
 def run_architecture_pipeline(path: Path) -> None:
@@ -50,7 +50,7 @@ def run_architecture_pipeline(path: Path) -> None:
     print("\n" + semantic_summary(graph))
 
     # System topology view (heuristic clusters around central modules)
-    centers = _central_modules_for_topology(graph)
+    centers = central_modules_for_topology(graph)
     if centers:
         print("\n" + topology_summary(graph, centers))
 
@@ -114,17 +114,6 @@ def _build_graph_and_summary_from_self_map(self_map_path: Path) -> tuple[Project
     return graph, smells, summary
 
 
-def _central_modules_for_topology(graph: ProjectGraph, top_n: int = 3) -> List[str]:
-    """Choose central modules (by degree) to act as cluster centers."""
-    metrics: Dict[str, NodeMetrics] = graph.metrics()
-    scored = sorted(
-        metrics.values(),
-        key=lambda m: (m.fan_in + m.fan_out),
-        reverse=True,
-    )
-    return [m.name for m in scored[:top_n]]
-
-
 def _print_smells(smells: List[ArchSmell]) -> None:
     from eurika.smells.detector import get_remediation_hint, severity_to_level
 
@@ -138,28 +127,3 @@ def _print_smells(smells: List[ArchSmell]) -> None:
         print(f"  → {get_remediation_hint(s.type)}")
     if len(smells) > 5:
         print(f"  ... and {len(smells) - 5} more")
-
-
-# TODO: Refactor architecture_pipeline.py according to architecture plan.
-# Suggested steps:
-# - Split responsibilities or introduce a facade where appropriate.
-# - Reduce excessive fan-in/fan-out.
-# - Align with semantic roles and system topology.
-
-# TODO: Refactor architecture_pipeline.py according to architecture plan.
-# Suggested steps:
-# - Split responsibilities or introduce a facade where appropriate.
-# - Reduce excessive fan-in/fan-out.
-# - Align with semantic roles and system topology.
-
-# TODO: Refactor architecture_pipeline.py according to architecture plan.
-# Suggested steps:
-# - Split responsibilities or introduce a facade where appropriate.
-# - Reduce excessive fan-in/fan-out.
-# - Align with semantic roles and system topology.
-
-# TODO: Refactor architecture_pipeline.py (god_module -> refactor_module)
-# Suggested steps:
-# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
-# - Identify distinct concerns and split this module into focused units.
-# - Reduce total degree (fan-in + fan-out) via extraction.

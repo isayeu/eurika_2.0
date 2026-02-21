@@ -56,6 +56,7 @@
 - **Стабилизация:** тесты зелёные, доки соответствуют коду.
 - **Фазы 2.2 и 2.3:** выполнены (Knowledge: кэш, наполнение; Orchestrator: run_cycle).
 - **Фазы 3.1 и 3.2:** выполнены (граф как движок; единая модель памяти).
+- **По review v3.0.1:** добавлена **Фаза 3.1-arch** (архитектурная дисциплина) — формализация слоёв, API-границы, лимиты размера файлов, разделение domain/presentation.
 - **Дальше:** повышать операционность и интеллект цикла (2.9); снижать noisy/unstable операции по learning-метрикам; держать документацию синхронной с кодом.
 
 ---
@@ -144,6 +145,35 @@
 
 ---
 
+### Фаза 3.1-arch — Архитектурная дисциплина (по review v3.0.1)
+
+**Цель:** переход от «сложной утилиты» к «архитектурной платформе»; зафиксировать слои, ограничить зависимости, почистить центры тяжести. Диагноз review: зрелость выше средней, но риск монолитизации; нужен дисциплинированный этап.
+
+| # | Шаг | Задача | Критерий готовности |
+|---|-----|--------|----------------------|
+| 3.1-arch.1 | Формальные слои | Зафиксировать слои в документе: L0 Infrastructure → L1 Core model → L2 Analysis → L3 Planning → L4 Execution → L5 Reporting → L6 CLI; запретить зависимости вверх | ARCHITECTURE.md или LAYERS.md с картой слоёв; dependency guard проверяет no upward deps |
+| 3.1-arch.2 | API-границы подсистем | Каждая подсистема экспортирует 1–2 публичные точки входа; остальное private | Документ или `__all__` в ключевых модулях; рекомендации в CYCLE_REPORT |
+| 3.1-arch.3 | Лимит размера файлов | Правило: >400 строк — кандидат на разбиение; >600 строк — обязательно делить | Линт/скрипт или checklist; список файлов-нарушителей в self-check или report |
+| 3.1-arch.4 | Domain vs presentation | Модули, которые и вычисляют, и форматируют Markdown — разделить на domain + presentation | Аудит смешанных модулей; план разбиения и выполненные выносы |
+| 3.1-arch.5 | Облегчить CLI | CLI только принимает команды и передаёт оркестратору; убрать бизнес-логику и сложные пайплайны из CLI-слоя | CLI handlers — тонкие обёртки; тесты на изоляцию |
+| 3.1-arch.6 | Развести Planning и Execution | Planner строит план; Executor исполняет; убрать взаимное знание деталей | Аудит planner_* и patch_apply_*; явные контракты между ними |
+| 3.1-arch.7 | Dogfooding на новой дисциплине | 3 цикла scan → doctor → fix после внедрения ограничений | Нет регресса; verify стабилен; новые правила не ломают цикл |
+
+**Порядок внедрения (рекомендуемый):** 3.1-arch.1 → 3.1-arch.2 → 3.1-arch.5 → 3.1-arch.6 → 3.1-arch.4 → 3.1-arch.3 → 3.1-arch.7.
+
+**Фактический прогресс (фаза 3.1-arch):**
+- [x] 3.1-arch.1 Формальные слои — Architecture.md §0: нотация L0–L6 (Infra→Core→Analysis→Planning→Execution→Reporting→CLI); allowed deps; mapping модулей; no upward deps; dependency guard проверяет
+- [x] 3.1-arch.2 API-границы подсистем — Architecture.md §0.6; __all__ в patch_engine, eurika.core, eurika.analysis, eurika.smells, eurika.evolution, eurika.reporting; рекомендации в CYCLE_REPORT §23
+- [x] 3.1-arch.3 Лимит размера файлов — eurika.checks.file_size; >400 candidate, >600 must split; self-check выводит блок; python -m eurika.checks.file_size
+- [x] 3.1-arch.4 Domain vs presentation — report/architecture_report.py (rendering); core/pipeline делегирует; central_modules_for_topology в system_topology
+- [x] 3.1-arch.5 Облегчить CLI — report/report_snapshot.format_report_snapshot; eurika.api: explain_module, get_suggest_plan_text, clean_imports_scan_apply; handlers тонкие обёртки; test_handle_report_snapshot_delegates_to_format
+- [x] 3.1-arch.6 Развести Planning и Execution — eurika.reasoning.planner без patch_apply/patch_engine; Architecture.md §0.5 Planner–Executor Contract; dependency guard для eurika/reasoning/
+- [ ] 3.1-arch.7 Dogfooding — в плане
+
+**Связь с review v3.0.1:** пункты §6 «Что я рекомендую сделать в v3.1».
+
+---
+
 ### Фаза 2.9 — Углубление цикла (LLM + Knowledge + Learning) — **приоритет над 3.0**
 
 **Цель:** делать цикл «умнее» в рамках одного проекта: анализ → поиск решений (Ollama + документация) → рефакторинг → обучение. Глубина перед широтой (3.0 multi-repo).
@@ -162,10 +192,10 @@
 
 **Фактический прогресс (фаза 2.9):**
 - [x] 2.9.1 Architect рекомендации — блок «Recommendation (how to fix)» с конкретными шагами по smell (god_module, bottleneck, hub, cyclic_dependency); блок «Reference (from documentation)» при наличии Knowledge; LLM и template
-- [ ] 2.9.2 LLM в планировании — не начато
-- [ ] 2.9.3 Knowledge PEP/RFC — не начато
-- [ ] 2.9.4 Обучение в цикле — suggest_policy есть; вывод в doctor — в плане
-- [ ] 2.9.5 Dogfooding 2.9 — не начато
+- [x] 2.9.2 LLM в планировании — planner_llm.ask_ollama_split_hints для god_module/hub/bottleneck; hints в patch_plan; fallback на эвристики (EURIKA_USE_LLM_HINTS=0)
+- [x] 2.9.3 Knowledge PEP/RFC — PEPProvider в eurika.knowledge; SMELL_TO_KNOWLEDGE_TOPICS в doctor; architect/planner получают темы по smell (god_module→architecture_refactor, long_function→pep_8)
+- [x] 2.9.4 Обучение в цикле — doctor блок «Suggested policy» при низком apply_rate; load_suggested_policy_for_apply; --apply-suggested-policy в fix/cycle
+- [x] 2.9.5 Dogfooding 2.9 — 3 стабильных цикла с LLM + Knowledge на Eurika; verify ✓; apply-rate и learning стабильны
 
 **Метрики выхода из фазы 2.9 (DoD):**
 - Architect при god_module даёт «разбить по ответственностям X, Y, Z» с reference на доку.
@@ -258,7 +288,15 @@
 
 ---
 
-### Статус рекомендаций review.md §7
+### Статус рекомендаций review.md
+
+**review v3.0.1 (§6 — v3.1):**
+- Формализовать слои (L0–L6) → Фаза 3.1-arch.1
+- API-границы подсистем → 3.1-arch.2
+- Лимит размера файлов (>400/600 LOC) → 3.1-arch.3
+- Domain vs presentation → 3.1-arch.4
+
+**review §7 (ранее):**
 
 | Пункт review | Статус | Примечание |
 |--------------|--------|------------|
@@ -329,7 +367,7 @@
 
 **Фактический прогресс (фаза 3.0):**
 - [x] 3.0.1 Multi-Repo Scan — `eurika scan/doctor/fix/cycle path1 [path2 ...]`; последовательное выполнение по каждому пути; заголовки "--- Project N/M ---"; агрегированный JSON-отчёт — в плане
-- [ ] 3.0.2 Cross-Project Memory — не начато
+- [x] 3.0.2 Cross-Project Memory — общая память ~/.eurika/ или EURIKA_GLOBAL_MEMORY; append learn при fix; get_merged_learning_stats(local+global) при build patch plan; merge: sum total/success/fail per smell|action; EURIKA_DISABLE_GLOBAL_MEMORY для отключения
 - [ ] 3.0.3 Online Knowledge — базовый слой есть (KNOWLEDGE_LAYER.md); расширение — в плане
 - [ ] 3.0.4 Team Mode — не начато
 

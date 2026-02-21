@@ -149,10 +149,3 @@ class ProjectGraph:
         fan = self.fan_in_out()
         layers = self.layers()
         return {n: NodeMetrics(name=n, fan_in=fan[n][0], fan_out=fan[n][1], layer=layers[n]) for n in self.nodes}
-
-# TODO: Refactor project_graph.py (bottleneck -> introduce_facade)
-# Suggested steps:
-# - Introduce a facade or boundary to reduce direct fan-in.
-# - Create a stable public API for this module; let internal structure evolve independently.
-# - Limit the number of modules that import this file directly.
-# - Introduce facade for callers: project_graph_api.py, self_map_io.py, eurika/analysis/graph.py....

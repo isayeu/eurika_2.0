@@ -20,6 +20,7 @@ def run_full_cycle(
     no_clean_imports: bool = False,
     no_code_smells: bool = False,
     verify_cmd: str | None = None,
+    verify_timeout: int | None = None,
     run_doctor_cycle_fn: Callable[..., dict[str, Any]],
     run_fix_cycle_fn: Callable[..., dict[str, Any]],
 ) -> dict[str, Any]:
@@ -53,6 +54,10 @@ def run_full_cycle(
         no_clean_imports=no_clean_imports,
         no_code_smells=no_code_smells,
         verify_cmd=verify_cmd,
+        verify_timeout=verify_timeout,
     )
     out["doctor_report"] = data
     return out
+
+
+# TODO (eurika): refactor long_function 'run_full_cycle' — consider extracting helper

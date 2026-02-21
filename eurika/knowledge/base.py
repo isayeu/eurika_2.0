@@ -158,6 +158,66 @@ def _fetch_url_cached(
     return text
 
 
+def _cache_key_for_url(url: str, source: str) -> str:
+    """Stable cache filename from url and source."""
+    h = hashlib.sha256(url.encode()).hexdigest()[:16]
+    return f"{source}_{h}.json"
+
+
+# Curated PEP URLs for PEPProvider (topic key -> url). ROADMAP 2.9.3.
+PEP_TOPIC_URLS: Dict[str, str] = {
+    "pep_8": "https://peps.python.org/pep-0008/",
+    "pep_257": "https://peps.python.org/pep-0257/",
+    "pep_484": "https://peps.python.org/pep-0484/",
+}
+
+
+def _pep_topic_to_url(topic: str) -> Optional[str]:
+    """Resolve PEP topic (pep_8, pep_257, pep_484) to URL. Also accept pep_0008 style."""
+    key = _topic_key(topic)
+    if key in PEP_TOPIC_URLS:
+        return PEP_TOPIC_URLS[key]
+    m = re.match(r"pep[_\-]?(\d+)", key)
+    if m:
+        num = m.group(1).zfill(4)
+        return f"https://peps.python.org/pep-{num}/"
+    return None
+
+
+class PEPProvider(KnowledgeProvider):
+    """PEP (Python Enhancement Proposals) by number. Fetches from peps.python.org (ROADMAP 2.9.3)."""
+
+    def __init__(
+        self,
+        topic_urls: Optional[Dict[str, str]] = None,
+        timeout: float = 5.0,
+        cache_dir: Optional[Path] = None,
+        ttl_seconds: float = 86400.0,
+    ) -> None:
+        self.topic_urls = topic_urls if topic_urls is not None else dict(PEP_TOPIC_URLS)
+        self.timeout = timeout
+        self.cache_dir = Path(cache_dir) if cache_dir else None
+        self.ttl_seconds = ttl_seconds
+
+    def query(self, topic: str) -> StructuredKnowledge:
+        url = self.topic_urls.get(_topic_key(topic)) or _pep_topic_to_url(topic)
+        if not url:
+            return StructuredKnowledge(topic=topic, source="pep", fragments=[], meta={})
+        if self.cache_dir:
+            cache_path = self.cache_dir / _cache_key_for_url(url, "pep")
+            text = _fetch_url_cached(url, cache_path, self.ttl_seconds, self.timeout)
+        else:
+            text = _fetch_url(url, timeout=self.timeout)
+        if not text:
+            return StructuredKnowledge(topic=topic, source="pep", fragments=[], meta={"url": url})
+        return StructuredKnowledge(
+            topic=topic,
+            source="pep",
+            fragments=[{"title": f"PEP: {topic}", "content": text}],
+            meta={"url": url},
+        )
+
+
 # Curated URLs for OfficialDocsProvider (topic key -> url). No arbitrary search.
 OFFICIAL_DOCS_TOPIC_URLS: Dict[str, str] = {
     "python_3_14": "https://docs.python.org/3/whatsnew/3.14.html",
@@ -165,12 +225,6 @@ OFFICIAL_DOCS_TOPIC_URLS: Dict[str, str] = {
     "python_3_12": "https://docs.python.org/3/whatsnew/3.12.html",
     "python_3_11": "https://docs.python.org/3/whatsnew/3.11.html",
 }
-
-
-def _cache_key_for_url(url: str, source: str) -> str:
-    """Stable cache filename from url and source."""
-    h = hashlib.sha256(url.encode()).hexdigest()[:16]
-    return f"{source}_{h}.json"
 
 
 class OfficialDocsProvider(KnowledgeProvider):

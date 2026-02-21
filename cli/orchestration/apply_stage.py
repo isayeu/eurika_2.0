@@ -112,6 +112,8 @@ def append_fix_cycle_memory(
                 risks=risks,
                 verify_success=verify_success,
             )
+            from eurika.storage.global_memory import append_learn_to_global
+            append_learn_to_global(path, modified, operations, risks, verify_success)
         memory.events.append_event(
             type="patch",
             input={"operations_count": len(operations)},
@@ -215,6 +217,7 @@ def execute_fix_apply_stage(
     *,
     quiet: bool,
     verify_cmd: str | None,
+    verify_timeout: int | None,
     backup_dir: str,
     apply_and_verify: Any,
     run_scan: Any,
@@ -232,7 +235,10 @@ def execute_fix_apply_stage(
     if not quiet:
         print("--- Step 3/4: patch & verify ---", file=sys.stderr)
     rescan_before = prepare_rescan_before(path, backup_dir)
-    report = apply_and_verify(path, patch_plan, backup=True, verify=True, verify_cmd=verify_cmd, auto_rollback=True)
+    from patch_engine_verify_patch import get_verify_timeout
+
+    resolved_timeout = get_verify_timeout(path, override=verify_timeout)
+    report = apply_and_verify(path, patch_plan, backup=True, verify=True, verify_timeout=resolved_timeout, verify_cmd=verify_cmd, auto_rollback=True)
     verify_outcome = report["verify"].get("success")
     expls = []
     for op in operations:

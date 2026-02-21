@@ -2,6 +2,77 @@
 
 All notable changes to this project will be documented in this file.
 
+## v3.0.2 — Cross-Project Memory (ROADMAP 3.0.2) (2026-02-20)
+
+### Features
+- **Global learning store:** `~/.eurika/events.json` или `EURIKA_GLOBAL_MEMORY` — общая память между проектами.
+- **append_learn_to_global:** при fix с modified — learn event пишется в глобальный store.
+- **get_merged_learning_stats:** при build patch plan — local + global агрегируются (sum total/success/fail per smell|action).
+- **merge_learning_stats:** локальные и глобальные stats суммируются; больше данных улучшает приоритизацию.
+- **EURIKA_DISABLE_GLOBAL_MEMORY:** отключение cross-project learning.
+
+### Files
+- `eurika/storage/global_memory.py` — get_global_memory_root, append_learn_to_global, aggregate_global_by_smell_action, merge_learning_stats, get_merged_learning_stats
+- `cli/orchestration/apply_stage.py` — append_fix_cycle_memory вызывает append_learn_to_global
+- `eurika/api/__init__.py`, `agent_core_arch_review_archreviewagentcore.py` — используют get_merged_learning_stats
+
+### Tests
+- `tests/test_global_memory.py` — get_global_memory_root, merge, append+aggregate, disabled
+
+---
+
+## v2.9.6 — Dogfooding 2.9 (ROADMAP 2.9.5) (2026-02-20)
+
+### Completed
+- **2.9.5 Dogfooding 2.9:** 3 стабильных цикла с LLM + Knowledge на Eurika; architect «как»; suggested policy; apply-rate стабилен. Фаза 2.9 завершена.
+
+---
+
+## v2.9.5 — Verify timeout (2026-02-19)
+
+### Features
+- **verify_timeout:** дефолт 300 с (раньше 120); применяется при fix/cycle.
+- **--verify-timeout:** флаг для fix и cycle; приоритет: CLI > EURIKA_VERIFY_TIMEOUT > [tool.eurika] verify_timeout в pyproject > 300.
+- **get_verify_timeout:** в patch_engine_verify_patch — разрешение timeout по проекту и override.
+
+---
+
+## v2.9.4 — Обучение в цикле (ROADMAP 2.9.4) (2026-02-20)
+
+### Features
+- **Suggested policy block in doctor:** при наличии eurika_fix_report.json с telemetry и низком apply_rate (<0.3) или высоком rollback_rate (>0.5) — блок «Suggested policy» с export-командами.
+- **load_suggested_policy_for_apply:** загрузка из eurika_doctor_report.json или eurika_fix_report.json.
+- **--apply-suggested-policy:** флаг для fix и cycle — применяет suggested env vars перед запуском.
+
+### Tests
+- test_doctor_suggested_policy_block, test_load_suggested_policy_for_apply.
+
+---
+
+## v2.9.3 — LLM в планировании (ROADMAP 2.9.2) (2026-02-20)
+
+### Features
+- **planner_llm:** для god_module, hub, bottleneck — опциональный вызов Ollama с промптом «предложи точки разбиения»; результат в hints patch_plan.
+- **ask_ollama_split_hints:** промпт по контексту графа (imports_from, imported_by, callers); парсинг bullet-points; fallback [] при ошибке.
+- **EURIKA_USE_LLM_HINTS:** env для отключения (0/false) — fallback на эвристики графа.
+
+### Tests
+- test_planner_llm: _parse_llm_hints, _build_planner_prompt, ask_ollama_split_hints (disabled, unknown smell, success, failure).
+
+---
+
+## v2.9.2 — Knowledge PEP/RFC (ROADMAP 2.9.3) (2026-02-20)
+
+### Features
+- **PEPProvider:** новый провайдер в `eurika.knowledge`; темы pep_8, pep_257, pep_484; URL `https://peps.python.org/pep-XXXX/`.
+- **Smell→topic mapping:** `SMELL_TO_KNOWLEDGE_TOPICS` в `cli/orchestration/doctor.py` — god_module→architecture_refactor, module_structure; long_function/deep_nesting→pep_8; cyclic_dependency→cyclic_imports; bottleneck/hub→architecture_refactor.
+- **knowledge_topics_from_env_or_summary:** выводит темы по risks (parse smell, lookup mapping); PEPProvider в CompositeKnowledgeProvider doctor.
+
+### Tests
+- test_pep_provider_*, test_pep_topic_urls_include_common_peps; test_knowledge_topics_derived_from_summary (long_function→pep_8).
+
+---
+
 ## v2.9.1 — Architect рекомендации «как» (ROADMAP 2.9.1) (2026-02-20)
 
 ### Features

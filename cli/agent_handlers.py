@@ -285,7 +285,7 @@ def _run_cycle_with_mode(args: Any, mode: str='fix') -> int:
             run_count += 1
             if interval > 0 and run_count > 1 and not quiet:
                 print(f'\neurika: run #{run_count} (interval={interval}s)', file=sys.stderr)
-            out = run_cycle(path, mode=mode, runtime_mode=getattr(args, 'runtime_mode', 'assist'), non_interactive=getattr(args, 'non_interactive', False), session_id=getattr(args, 'session_id', None), window=getattr(args, 'window', 5), dry_run=getattr(args, 'dry_run', False), quiet=quiet, no_llm=getattr(args, 'no_llm', False), no_clean_imports=getattr(args, 'no_clean_imports', False), no_code_smells=getattr(args, 'no_code_smells', False), verify_cmd=getattr(args, 'verify_cmd', None))
+            out = run_cycle(path, mode=mode, runtime_mode=getattr(args, 'runtime_mode', 'assist'), non_interactive=getattr(args, 'non_interactive', False), session_id=getattr(args, 'session_id', None), window=getattr(args, 'window', 5), dry_run=getattr(args, 'dry_run', False), quiet=quiet, no_llm=getattr(args, 'no_llm', False), no_clean_imports=getattr(args, 'no_clean_imports', False), no_code_smells=getattr(args, 'no_code_smells', False), verify_cmd=getattr(args, 'verify_cmd', None), verify_timeout=getattr(args, 'verify_timeout', None))
             return_code = out['return_code']
             report = out['report']
             operations = out['operations']
@@ -347,10 +347,3 @@ def handle_agent_learning_summary(args: Any) -> int:
     out = {'by_action_kind': by_action, 'by_smell_action': by_smell_action}
     print(json.dumps(out, indent=2, ensure_ascii=False))
     return 0
-
-# TODO: Refactor cli/agent_handlers.py (god_module -> split_module)
-# Suggested steps:
-# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
-# - Identify distinct concerns and split this module into focused units.
-# - Reduce total degree (fan-in + fan-out) via extraction.
-# - Extract from imports: action_plan.py, agent_core.py, agent_core_arch_review.py.

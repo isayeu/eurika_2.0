@@ -24,7 +24,7 @@ def test_operation_explanations_include_verify_outcome(tmp_path: Path) -> None:
     }
     report, _, _ = execute_fix_apply_stage(
         tmp_path, patch_plan, ops,
-        quiet=True, verify_cmd=None, backup_dir=".eurika_backups",
+        quiet=True, verify_cmd=None, verify_timeout=None, backup_dir=".eurika_backups",
         apply_and_verify=fake_apply,
         run_scan=lambda *a: 0,
         build_snapshot_from_self_map=lambda *a: {},
