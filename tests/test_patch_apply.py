@@ -162,6 +162,42 @@ def test_apply_extract_nested_function(tmp_path: Path) -> None:
     assert "return inner()" in content
 
 
+def test_apply_extract_block_to_helper(tmp_path: Path) -> None:
+    """extract_block_to_helper: real extraction when deep_nesting block is extractable."""
+    code = """
+def foo(x):
+    if x > 0:
+        if x < 10:
+            a = x + 1
+            b = a * 2
+            c = b + x
+            d = c * 2
+            result = d
+    return 0
+"""
+    (tmp_path / "nested.py").write_text(code)
+    from eurika.refactor.extract_function import suggest_extract_block
+
+    r = suggest_extract_block(tmp_path / "nested.py", "foo", min_lines=3)
+    assert r is not None
+    helper_name, block_line, _, extra = r
+    plan = {"operations": [{
+        "target_file": "nested.py",
+        "kind": "extract_block_to_helper",
+        "params": {
+            "location": "foo",
+            "block_start_line": block_line,
+            "helper_name": helper_name,
+            "extra_params": extra,
+        },
+    }]}
+    report = apply_patch_plan(tmp_path, plan, dry_run=False, backup=False)
+    assert report["modified"] == ["nested.py"]
+    content = (tmp_path / "nested.py").read_text()
+    assert f"def {helper_name}" in content
+    assert f"{helper_name}(x)" in content or f"{helper_name}( x)" in content
+
+
 def test_apply_patch_plan_refactor_code_smell_not_skipped_by_architectural_todo(tmp_path: Path) -> None:
     """refactor_code_smell is applied even when file has architectural TODO (different op types)."""
     (tmp_path / 'x.py').write_text('def long_fn(): pass\n\n# TODO: Refactor x.py (god_module)\n')

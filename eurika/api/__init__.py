@@ -244,6 +244,38 @@ def _load_smell_action_learning_stats(root: Path) -> Optional[Dict[str, Dict[str
         return None
 
 
+def _deep_nesting_mode() -> str:
+    """heuristic|llm|hybrid|skip. Default: hybrid (heuristic first, fallback to TODO/LLM)."""
+    import os
+    return os.environ.get("EURIKA_DEEP_NESTING_MODE", "hybrid").strip().lower() or "hybrid"
+
+
+def _build_extract_block_op(
+    rel_path: str,
+    location: str,
+    helper_name: str,
+    block_start_line: int,
+    line_count: int,
+    extra_params: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """Build extract_block_to_helper operation payload."""
+    params: Dict[str, Any] = {
+        "location": location,
+        "block_start_line": block_start_line,
+        "helper_name": helper_name,
+    }
+    if extra_params:
+        params["extra_params"] = extra_params
+    return {
+        "target_file": rel_path,
+        "kind": "extract_block_to_helper",
+        "description": f"Extract nested block from {rel_path}:{location} (line {block_start_line}, {line_count} lines)",
+        "diff": f"# Extracted block to {helper_name}",
+        "smell_type": "deep_nesting",
+        "params": params,
+    }
+
+
 def _build_extract_nested_op(
     rel_path: str,
     location: str,
@@ -327,13 +359,17 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
     For deep_nesting: no real fix implemented; skip unless EURIKA_EMIT_CODE_SMELL_TODO=1.
     """
     from code_awareness import CodeAwareness
-    from eurika.refactor.extract_function import suggest_extract_nested_function
+    from eurika.refactor.extract_function import (
+    suggest_extract_block,
+    suggest_extract_nested_function,
+)
 
     root = Path(project_root).resolve()
     analyzer = CodeAwareness(root)
     allow_extract_nested = _should_try_extract_nested(_load_smell_action_learning_stats(root))
     emit_todo = _emit_code_smell_todo()
     ops: List[Dict[str, Any]] = []
+    deep_mode = _deep_nesting_mode()
     for file_path in analyzer.scan_python_files():
         rel = str(file_path.relative_to(root)).replace("\\", "/")
         for smell in analyzer.find_smells(file_path):
@@ -343,6 +379,17 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
                     nested_name, line_count, extra_params = suggestion[0], suggestion[1], (suggestion[2] if len(suggestion) > 2 else [])
                     ops.append(_build_extract_nested_op(rel, smell.location, nested_name, line_count, extra_params or None))
                     continue
+            if smell.kind == "deep_nesting":
+                if deep_mode == "skip":
+                    continue
+                if deep_mode in ("heuristic", "hybrid"):
+                    block_suggestion = suggest_extract_block(file_path, smell.location)
+                    if block_suggestion:
+                        helper_name, block_line, line_count, extra = block_suggestion
+                        ops.append(_build_extract_block_op(
+                            rel, smell.location, helper_name, block_line, line_count, extra or None
+                        ))
+                        continue
             if not emit_todo:
                 continue
             op = _build_refactor_smell_op(rel, smell)

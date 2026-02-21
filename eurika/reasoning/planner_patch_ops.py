@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from eurika.refactor.extract_class import suggest_extract_class
 from eurika.reasoning.planner_rules import (
+    EXTRACT_CLASS_SKIP_PATTERNS,
     FACADE_MODULES,
     SMELL_ACTION_SEP,
     STEP_KIND_TO_ACTION,
@@ -145,6 +146,14 @@ def _maybe_add_cycle_break_operation(
     return False
 
 
+def _matches_extract_class_skip(name: str) -> bool:
+    """True if file should never get extract_class (known to break, e.g. tool_contract)."""
+    from fnmatch import fnmatch
+
+    path = name.replace("\\", "/")
+    return any(fnmatch(path, p) for p in EXTRACT_CLASS_SKIP_PATTERNS)
+
+
 def _maybe_add_extract_class_operation(
     operations: List[PatchOperation],
     project_root: str,
@@ -155,6 +164,8 @@ def _maybe_add_extract_class_operation(
 ) -> None:
     """Add extract_class op for god_module split candidates when possible."""
     if not (smell_type == "god_module" and action_kind == "split_module"):
+        return
+    if _matches_extract_class_skip(name):
         return
     file_path = Path(project_root) / name
     if not (file_path.exists() and file_path.is_file()):

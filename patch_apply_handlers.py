@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from eurika.refactor.extract_class import extract_class
-from eurika.refactor.extract_function import extract_nested_function
+from eurika.refactor.extract_function import extract_block_to_helper, extract_nested_function
 from eurika.refactor.introduce_facade import introduce_facade
 from eurika.refactor.remove_import import remove_import_from_file
 from eurika.refactor.remove_unused_import import remove_unused_imports
@@ -249,6 +249,33 @@ def handle_non_default_kind(
             errors.append(f"{target_file}: {exc}")
             return True, backup_dir
         return False, backup_dir
+
+    if (
+        kind == "extract_block_to_helper"
+        and params.get("location")
+        and params.get("block_start_line") is not None
+        and params.get("helper_name")
+    ):
+        try:
+            extra_params = params.get("extra_params")
+            new_content = extract_block_to_helper(
+                path,
+                params["location"],
+                params["block_start_line"],
+                params["helper_name"],
+                extra_params=extra_params if isinstance(extra_params, list) else None,
+            )
+            if new_content is None:
+                skip_cb("extract_block_to_helper: extraction failed")
+                return True, backup_dir
+            backup_dir, changed = write_single_file_change(
+                root, path, target_file, new_content, run_id, backup_dir, do_backup
+            )
+            if changed:
+                modified.append(target_file)
+        except Exception as exc:
+            errors.append(f"{target_file}: {exc}")
+        return True, backup_dir
 
     if (
         kind == "extract_nested_function"

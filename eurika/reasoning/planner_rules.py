@@ -17,6 +17,9 @@ STEP_KIND_TO_ACTION: Dict[str, str] = {
 
 FACADE_MODULES = {"patch_engine.py", "patch_apply.py"}
 
+# Files that break with extract_class (CYCLE_REPORT #34: static methods lose kwargs, _ok/_err)
+EXTRACT_CLASS_SKIP_PATTERNS: tuple[str, ...] = ("*tool_contract*.py",)
+
 DIFF_HINTS: Dict[tuple[str, str], List[str]] = {
     ("god_module", "split_module"): [
         "Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).",

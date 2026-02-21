@@ -153,6 +153,33 @@ def test_get_code_smell_operations_skips_when_architectural_todo_exists(tmp_path
     )
 
 
+def test_get_code_smell_operations_returns_extract_block_for_deep_nesting(tmp_path: Path) -> None:
+    """With hybrid mode (default), deep_nesting gets extract_block_to_helper when block is extractable."""
+    # Need depth > 4 for CodeAwareness to flag deep_nesting; 5 nested ifs
+    code = """
+def deep_foo(x):
+    if x > 0:
+        if x < 10:
+            if x > 1:
+                if x < 9:
+                    if True:
+                        a = x + 1
+                        b = a * 2
+                        c = b + x
+                        d = c * 2
+                        result = d
+    return 0
+"""
+    (tmp_path / "nested.py").write_text(code, encoding="utf-8")
+    ops = get_code_smell_operations(tmp_path)
+    block_ops = [o for o in ops if o.get("kind") == "extract_block_to_helper" and o.get("target_file") == "nested.py"]
+    assert len(block_ops) >= 1
+    op = block_ops[0]
+    assert op.get("smell_type") == "deep_nesting"
+    assert "helper_name" in op.get("params", {})
+    assert "block_start_line" in op.get("params", {})
+
+
 def test_get_code_smell_operations_skips_test_files(tmp_path: Path) -> None:
     """Do not emit refactor_code_smell TODOs for tests/* files."""
     tests_dir = tmp_path / "tests"

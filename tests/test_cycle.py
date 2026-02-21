@@ -355,14 +355,28 @@ def test_fix_no_clean_imports_excludes_clean_ops(tmp_path: Path) -> None:
 
 
 def test_fix_no_code_smells_excludes_code_smell_ops(tmp_path: Path) -> None:
-    """Fix --no-code-smells: patch_plan has no refactor_code_smell ops when project has long function."""
+    """Fix --no-code-smells: patch_plan has no code-smell ops (extract_block, extract_nested, refactor_code_smell)."""
     proj = tmp_path / "proj"
     proj.mkdir()
-    long_func = "def long_foo():\n" + "    x = 1\n" * 50 + "    return x\n"
-    (proj / "big.py").write_text(long_func, encoding="utf-8")
+    # deep_nesting (depth>4) triggers extract_block_to_helper; long_function without nested def gets no real fix by default
+    deep_nesting = """
+def deep_foo(x):
+    if x > 0:
+        if x < 10:
+            if x > 1:
+                if x < 9:
+                    if True:
+                        a = x + 1
+                        b = a * 2
+                        c = b + x
+                        d = c * 2
+                        result = d
+    return 0
+"""
+    (proj / "nested.py").write_text(deep_nesting, encoding="utf-8")
     (proj / "tests").mkdir()
     (proj / "tests" / "__init__.py").write_text("", encoding="utf-8")
-    (proj / "tests" / "test_big.py").write_text("def test_big(): assert True\n", encoding="utf-8")
+    (proj / "tests" / "test_nested.py").write_text("def test_deep_foo(): assert True\n", encoding="utf-8")
     (proj / "pyproject.toml").write_text("[tool.pytest.ini_options]\ntestpaths=['tests']\n", encoding="utf-8")
     subprocess.run([sys.executable, "-m", "eurika_cli", "scan", str(proj)], cwd=ROOT, capture_output=True, timeout=30)
 
@@ -373,10 +387,11 @@ def test_fix_no_code_smells_excludes_code_smell_ops(tmp_path: Path) -> None:
     d2 = _parse_final_json(r2.stdout)
     ops1 = d1.get("patch_plan", {}).get("operations", []) if d1 else []
     ops2 = d2.get("patch_plan", {}).get("operations", []) if d2 else []
-    code_smell1 = [o for o in ops1 if o.get("kind") == "refactor_code_smell"]
-    code_smell2 = [o for o in ops2 if o.get("kind") == "refactor_code_smell"]
-    assert len(code_smell1) >= 1, "without --no-code-smells should have refactor_code_smell ops for long function"
-    assert len(code_smell2) == 0, "--no-code-smells should exclude refactor_code_smell ops"
+    code_smell_kinds = {"extract_block_to_helper", "extract_nested_function", "refactor_code_smell"}
+    code_smell1 = [o for o in ops1 if o.get("kind") in code_smell_kinds]
+    code_smell2 = [o for o in ops2 if o.get("kind") in code_smell_kinds]
+    assert len(code_smell1) >= 1, "without --no-code-smells should have code-smell ops (e.g. extract_block_to_helper for deep_nesting)"
+    assert len(code_smell2) == 0, "--no-code-smells should exclude code-smell ops"
 
 
 def test_learning_not_appended_when_all_skipped(tmp_path: Path) -> None:

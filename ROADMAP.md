@@ -96,6 +96,7 @@
 - [x] Повысить долю реальных apply в `eurika fix` — _drop_noop_append_ops в prepare
 - [x] WEAK_SMELL_ACTION_PAIRS, _deprioritize_weak_pairs
 - [x] refactor_code_smell в WEAK_SMELL_ACTION_PAIRS (hybrid: review, auto: deny)
+- [x] god_class|extract_class в WEAK_SMELL_ACTION_PAIRS + EXTRACT_CLASS_SKIP_PATTERNS (*tool_contract*.py) — защита от повторных ошибок (CYCLE_REPORT #34)
 - [x] report-snapshot, DOGFOODING
 - [x] Малые рефакторинги + тесты для топ-long/deep функций
 
@@ -108,7 +109,7 @@
 
 **Дальнейшая доработка (long_function / deep_nesting):**
 - [x] refactor_code_smell — по умолчанию не эмитить при отсутствии реального фикса; `EURIKA_EMIT_CODE_SMELL_TODO=1` для старого поведения (TODO-маркеры)
-- [ ] deep_nesting — аналог пока не реализован; возможна отдельная эвристика или LLM
+- [x] deep_nesting — гибрид: suggest_extract_block + extract_block_to_helper (эвристика для простых блоков); EURIKA_DEEP_NESTING_MODE=heuristic|hybrid|llm|skip; TODO/LLM при неудаче
 - [ ] long_function без вложенных def — extract_nested_function не срабатывает; требуется LLM или извлечение произвольного блока
 
 
@@ -684,10 +685,10 @@
 | remove_cyclic_import | ✓ Реальный фикс (AST) |
 | remove_unused_import | ✓ Реальный фикс (в fix cycle по умолчанию, фаза 2.4) |
 | introduce_facade | ✓ Реальный фикс (создаёт {stem}_api.py) |
-| extract_class | ✓ Реальный фикс |
+| extract_class | ✓ Реальный фикс; god_class\|extract_class в WEAK (hybrid: review, auto: deny); *tool_contract*.py в EXTRACT_CLASS_SKIP_PATTERNS |
 | split_module (успех) | ✓ Реальный фикс |
 | split_module (fallback) | ✓ Часто реальный (by_function, infer imports, relaxed extraction) |
-| refactor_code_smell | TODO-маркер (long_function, deep_nesting); в WEAK_SMELL_ACTION_PAIRS — hybrid: review, auto: deny |
+| refactor_code_smell | TODO-маркер когда нет реального фикса; deep_nesting: extract_block_to_helper (гибрид) или TODO; в WEAK_SMELL_ACTION_PAIRS — hybrid: review, auto: deny |
 | refactor_module | ✓ Пробует split_module chain, иначе TODO |
 
 **Приоритет:** стабилизация цикла, прогоны на других проектах.

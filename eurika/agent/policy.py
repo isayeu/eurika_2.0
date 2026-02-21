@@ -22,7 +22,7 @@ def _estimate_risk(op: dict[str, Any]) -> RiskLevel:
     kind = (op.get("kind") or "").strip()
     if kind in {"remove_unused_import", "remove_cyclic_import", "fix_import", "create_module_stub"}:
         return "low"
-    if kind in {"split_module", "extract_class", "refactor_module"}:
+    if kind in {"split_module", "extract_class", "extract_block_to_helper", "refactor_module"}:
         return "high"
     return "medium"
 
@@ -37,6 +37,8 @@ def _expected_outcome(op: dict[str, Any]) -> str:
         return "Oversized module is decomposed into a focused extracted module."
     if kind == "extract_class":
         return "Class responsibilities are extracted into a dedicated module."
+    if kind == "extract_block_to_helper":
+        return "Deeply nested block is extracted into a helper function."
     if kind == "refactor_code_smell":
         return "Code smell marker is applied as a refactoring TODO."
     return "Operation is applied and verified in the patch cycle."
@@ -45,6 +47,7 @@ def _expected_outcome(op: dict[str, Any]) -> str:
 WEAK_SMELL_ACTION_PAIRS: frozenset[tuple[str, str]] = frozenset({
     ("hub", "split_module"),
     ("bottleneck", "introduce_facade"),
+    ("god_class", "extract_class"),
     ("long_function", "extract_nested_function"),
     ("long_function", "refactor_code_smell"),
     ("deep_nesting", "refactor_code_smell"),

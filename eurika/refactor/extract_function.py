@@ -272,6 +272,226 @@ def extract_nested_function(
         return None
 
 
+def _block_has_control_flow_exit(block: List[ast.stmt]) -> bool:
+    """True if block contains break, continue, or return (not safely extractable)."""
+    for stmt in block:
+        for n in ast.walk(stmt):
+            if isinstance(n, (ast.Break, ast.Continue, ast.Return)):
+                return True
+    return False
+
+
+def _block_line_count(block: List[ast.stmt]) -> int:
+    """Approximate line count of block."""
+    if not block:
+        return 0
+    first = block[0]
+    last = block[-1]
+    return (last.end_lineno or last.lineno or 0) - (first.lineno or 0) + 1
+
+
+def _names_used_in_statements(stmts: List[ast.stmt]) -> Set[str]:
+    """Collect names loaded in statements."""
+    loaded: Set[str] = set()
+    for s in stmts:
+        loaded.update(_names_used_in_node(s))
+    return loaded
+
+
+def _names_assigned_in_statements(stmts: List[ast.stmt]) -> Set[str]:
+    """Collect names assigned in statements."""
+    assigned: Set[str] = set()
+    for s in stmts:
+        assigned.update(_names_assigned_in(s))
+    return assigned
+
+
+def suggest_extract_block(
+    file_path: Path,
+    function_name: str,
+    *,
+    min_lines: int = 5,
+    max_extra_params: int = 3,
+) -> Optional[Tuple[str, int, int, List[str]]]:
+    """
+    Find a deeply nested block (if/for/while/with body) that can be extracted to a helper.
+
+    Returns (helper_name, block_start_line, line_count, extra_params) or None.
+    extra_params: names from parent scope to pass as args (max max_extra_params).
+    Only considers blocks with no break/continue/return; uses only parent params.
+    """
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return None
+
+    parent_func: Optional[ast.FunctionDef] = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == function_name:
+            parent_func = node
+            break
+    if not parent_func:
+        return None
+
+    parent_params = _parent_param_names(parent_func)
+    parent_locals = _parent_locals(parent_func)
+
+    def _nesting_depth(n: ast.AST) -> int:
+        if isinstance(n, (ast.If, ast.For, ast.While, ast.Try, ast.With)):
+            children = list(ast.iter_child_nodes(n))
+            child_depths = [_nesting_depth(c) for c in children]
+            return 1 + (max(child_depths) if child_depths else 0)
+        return max((_nesting_depth(c) for c in ast.iter_child_nodes(n)), default=0)
+
+    block_types = (ast.If, ast.For, ast.While, ast.Try, ast.With)
+    candidates: List[Tuple[ast.AST, List[ast.stmt], int, int]] = []
+
+    def collect_blocks(node: ast.AST, depth: int) -> None:
+        if isinstance(node, block_types):
+            body = getattr(node, "body", None)
+            if body and isinstance(body, list):
+                if not _block_has_control_flow_exit(body):
+                    used = _names_used_in_statements(body)
+                    assigned = _names_assigned_in_statements(body)
+                    used_from_outer = (used - assigned) & parent_locals
+                    if used_from_outer <= parent_params and len(used_from_outer) <= max_extra_params:
+                        line_count = _block_line_count(body)
+                        if line_count >= min_lines:
+                            candidates.append((node, body, depth, line_count))
+            for child in ast.iter_child_nodes(node):
+                collect_blocks(child, depth + 1)
+        else:
+            for child in ast.iter_child_nodes(node):
+                collect_blocks(child, depth)
+
+    collect_blocks(parent_func, 0)
+
+    if not candidates:
+        return None
+
+    best = max(candidates, key=lambda x: (x[2], x[3]))
+    block_node, body, _, line_count = best
+    used = _names_used_in_statements(body)
+    assigned = _names_assigned_in_statements(body)
+    extra_params = sorted((used - assigned) & parent_params)
+    helper_name = f"_extracted_block_{block_node.lineno}"
+    return (helper_name, block_node.lineno, line_count, extra_params)
+
+
+def extract_block_to_helper(
+    file_path: Path,
+    parent_function_name: str,
+    block_start_line: int,
+    helper_name: str,
+    extra_params: Optional[List[str]] = None,
+) -> Optional[str]:
+    """
+    Extract a block (if/for/while/with body) into a new helper function.
+    Replaces the block with a call to the helper.
+    """
+    extra = list(extra_params or [])
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return None
+
+    block_types = (ast.If, ast.For, ast.While, ast.Try, ast.With)
+    target_block: Optional[Tuple[ast.AST, List[ast.stmt], ast.AST]] = None
+
+    def find_block(node: ast.AST) -> bool:
+        nonlocal target_block
+        if isinstance(node, block_types) and getattr(node, "lineno", None) == block_start_line:
+            body = getattr(node, "body", None)
+            if body and isinstance(body, list):
+                target_block = (node, body, node)
+                return True
+        for child in ast.iter_child_nodes(node):
+            if find_block(child):
+                return True
+        return False
+
+    for stmt in ast.walk(tree):
+        if isinstance(stmt, ast.FunctionDef) and stmt.name == parent_function_name:
+            if find_block(stmt):
+                break
+
+    if not target_block:
+        return None
+
+    block_node, body, _ = target_block
+
+    def replace_body_with_call(node: ast.AST) -> bool:
+        if node is block_node:
+            call_args = [ast.Name(id=p, ctx=ast.Load()) for p in extra]
+            call = ast.Expr(ast.Call(ast.Name(id=helper_name, ctx=ast.Load()), call_args, []))
+            if isinstance(node, ast.For):
+                node.body = [call]
+            elif isinstance(node, ast.While):
+                node.body = [call]
+            elif isinstance(node, ast.With):
+                node.body = [call]
+            elif isinstance(node, ast.If):
+                node.body = [call]
+            return True
+        for child in ast.iter_child_nodes(node):
+            if replace_body_with_call(child):
+                return True
+        return False
+
+    replace_body_with_call(tree)
+
+    args_list = [ast.arg(arg=p) for p in extra]
+    extracted = ast.FunctionDef(
+        name=helper_name,
+        args=ast.arguments(
+            posonlyargs=[],
+            args=args_list,
+            vararg=None,
+            kwonlyargs=[],
+            kw_defaults=[],
+            kwarg=None,
+            defaults=[],
+        ),
+        body=body,
+        decorator_list=[],
+        returns=None,
+    )
+    ast.copy_location(extracted, block_node)
+    ast.fix_missing_locations(extracted)
+
+    insert_idx: Optional[int] = None
+    for i, stmt in enumerate(tree.body):
+        if isinstance(stmt, ast.FunctionDef) and stmt.name == parent_function_name:
+            insert_idx = i
+            break
+        if isinstance(stmt, ast.ClassDef):
+            for m in stmt.body:
+                if isinstance(m, ast.FunctionDef) and m.name == parent_function_name:
+                    insert_idx = i
+                    break
+            if insert_idx is not None:
+                break
+    if insert_idx is None:
+        return None
+
+    new_body = list(tree.body)
+    new_body.insert(insert_idx, extracted)
+    tree.body = new_body
+
+    try:
+        return ast.unparse(tree)
+    except Exception:
+        return None
+
+
 # TODO (eurika): refactor deep_nesting '_names_assigned_in' — consider extracting nested block
 
 

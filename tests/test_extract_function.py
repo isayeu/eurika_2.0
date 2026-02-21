@@ -1,6 +1,12 @@
-"""Tests for eurika.refactor.extract_function (extract nested function to module level)."""
+"""Tests for eurika.refactor.extract_function (extract nested function, extract block to helper)."""
 from pathlib import Path
-from eurika.refactor.extract_function import extract_nested_function, suggest_extract_nested_function
+
+from eurika.refactor.extract_function import (
+    extract_block_to_helper,
+    extract_nested_function,
+    suggest_extract_block,
+    suggest_extract_nested_function,
+)
 
 def test_suggest_extract_nested_function_finds_self_contained(tmp_path: Path) -> None:
     """suggest_extract_nested_function returns nested function name when it doesn't use parent locals."""
@@ -66,3 +72,70 @@ def test_extract_nested_function_with_extra_params(tmp_path: Path) -> None:
     content = (tmp_path / 'mod.py').read_text()
     assert 'def inner(x):' in content or 'def inner(x ):' in content or 'def inner( x):' in content
     assert 'return inner(x)' in content
+
+
+# --- deep_nesting: extract_block_to_helper ---
+
+
+def test_suggest_extract_block_finds_deep_if(tmp_path: Path) -> None:
+    """suggest_extract_block returns helper_name, block_line, line_count, extra_params."""
+    code = """
+def foo(x):
+    if x > 0:
+        if x < 10:
+            a = x + 1
+            b = a * 2
+            c = b + x
+            d = c * 2
+            e = d + 1
+    return 0
+"""
+    (tmp_path / "mod.py").write_text(code)
+    r = suggest_extract_block(tmp_path / "mod.py", "foo")
+    assert r is not None
+    helper_name, block_line, line_count, extra = r
+    assert "_extracted_block_" in helper_name
+    assert block_line >= 1
+    assert line_count >= 5
+    assert extra == ["x"]
+
+
+def test_suggest_extract_block_skips_when_return_in_block(tmp_path: Path) -> None:
+    """suggest_extract_block returns None when block has return/break/continue."""
+    code = """
+def foo(x):
+    if x > 0:
+        if x < 10:
+            return x
+    return 0
+"""
+    (tmp_path / "mod.py").write_text(code)
+    r = suggest_extract_block(tmp_path / "mod.py", "foo")
+    assert r is None
+
+
+def test_extract_block_to_helper_reduces_nesting(tmp_path: Path) -> None:
+    """extract_block_to_helper moves block to helper and replaces with call."""
+    code = """
+def foo(x):
+    if x > 0:
+        if x < 10:
+            a = x + 1
+            b = a * 2
+            c = b + x
+            d = c * 2
+            result = d
+    return 0
+"""
+    (tmp_path / "mod.py").write_text(code)
+    r = suggest_extract_block(tmp_path / "mod.py", "foo", min_lines=3)
+    assert r is not None
+    helper_name, block_line, _, extra = r
+    out = extract_block_to_helper(
+        tmp_path / "mod.py", "foo", block_line, helper_name, extra
+    )
+    assert out is not None
+    (tmp_path / "mod.py").write_text(out)
+    content = (tmp_path / "mod.py").read_text()
+    assert f"def {helper_name}" in content
+    assert f"{helper_name}(x)" in content or f"{helper_name}( x)" in content

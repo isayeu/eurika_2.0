@@ -386,6 +386,34 @@ def test_build_patch_plan_god_module_with_god_class_produces_extract_class(tmp_p
     assert len(op.params["methods_to_extract"]) >= 6
 
 
+def test_build_patch_plan_skips_extract_class_for_tool_contract_blocklist(tmp_path: Path) -> None:
+    """EXTRACT_CLASS_SKIP_PATTERNS: do not emit extract_class for *tool_contract*.py (CYCLE_REPORT #34)."""
+    from architecture_planner import build_patch_plan
+    from eurika.smells.models import ArchSmell
+
+    target = tmp_path / "tool_contract.py"
+    methods = "\n".join(f"    def m{i}(self): return {i}" for i in range(6))
+    target.write_text(f"class DefaultToolContract:\n{methods}\n")
+
+    g = _make_graph(["tool_contract.py", "a", "b"], {"tool_contract.py": ["a", "b"]})
+    smells = [
+        ArchSmell(type="god_module", nodes=["tool_contract.py"], severity=6.0, description="High degree"),
+    ]
+    summary = {"risks": []}
+    history_info = {"trends": {}}
+    priorities = [{"name": "tool_contract.py", "reasons": ["god_module"]}]
+
+    plan = build_patch_plan(
+        project_root=str(tmp_path),
+        summary=summary,
+        smells=smells,
+        history_info=history_info,
+        priorities=priorities,
+        graph=g,
+    )
+    assert not any(o.kind == "extract_class" for o in plan.operations)
+
+
 def test_build_patch_plan_skips_extract_class_when_extracted_file_synced(tmp_path: Path) -> None:
     """Do not emit extract_class when extracted file already matches signature."""
     from architecture_planner import build_patch_plan

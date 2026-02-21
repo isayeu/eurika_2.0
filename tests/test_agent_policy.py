@@ -96,6 +96,26 @@ def test_policy_weak_pair_review_in_hybrid() -> None:
     assert "weak" in out.reason or "approval" in out.reason
 
 
+def test_policy_god_class_extract_class_weak_pair_deny_in_auto() -> None:
+    """god_class|extract_class in WEAK: deny in auto (CYCLE_REPORT #34 tool_contract)."""
+    cfg = PolicyConfig(
+        mode="auto", max_ops=100, max_files=100, allow_test_files=False, auto_apply_max_risk="high",
+    )
+    op = {"kind": "extract_class", "target_file": "x.py", "smell_type": "god_class", "description": "extract"}
+    out = evaluate_operation(op, config=cfg, index=1, seen_files=set())
+    assert out.decision == "deny"
+    assert "weak" in out.reason or "blocked" in out.reason
+
+
+def test_policy_god_class_extract_class_weak_pair_review_in_hybrid() -> None:
+    """god_class|extract_class in WEAK: review in hybrid."""
+    cfg = load_policy_config("hybrid")
+    op = {"kind": "extract_class", "target_file": "x.py", "smell_type": "god_class", "description": "extract"}
+    out = evaluate_operation(op, config=cfg, index=1, seen_files=set())
+    assert out.decision == "review"
+    assert "weak" in out.reason or "approval" in out.reason
+
+
 def test_policy_low_risk_allowed_in_auto() -> None:
     cfg = PolicyConfig(mode="auto", max_ops=100, max_files=100, allow_test_files=False, auto_apply_max_risk="medium")
     op = {"kind": "remove_unused_import", "target_file": "src/foo.py", "description": "cleanup"}
