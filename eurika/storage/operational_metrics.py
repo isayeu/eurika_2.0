@@ -64,3 +64,6 @@ def aggregate_operational_metrics(path: Path, window: int = 10) -> dict[str, Any
         "total_modified": total_modified,
         "total_ops": total_ops,
     }
+
+
+# TODO (eurika): refactor long_function 'aggregate_operational_metrics' — consider extracting helper

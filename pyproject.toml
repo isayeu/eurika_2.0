@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eurika"
-version = "3.0.1"
+version = "3.0.7"
 description = "Eurika — architecture analysis and refactoring assistant"
 readme = "README.md"
 requires-python = ">=3.9"

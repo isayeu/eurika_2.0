@@ -659,3 +659,64 @@
 
 - DoD 3.1-arch.7 выполнен: нет регресса, verify стабилен, fixpoint достигнут после 1 apply + 3 dry-run
 - Policy: remove_unused_import allowed; refactor_code_smell (long_function) blocked in auto mode (WEAK_SMELL_ACTION_PAIRS)
+
+---
+
+## 29. Cycle v3.0.7 (2026-02-21)
+
+### Команда
+
+`eurika cycle .` (assist mode, после коммита v3.0.7)
+
+### Fix результат
+
+| Поле | Значение |
+|------|----------|
+| **modified** | 3 |
+| **skipped** | 0 |
+| **verify** | True |
+| **tests** | 294 passed (123.19s) |
+| **rollback** | нет |
+| **run_id** | 20260221_131545 |
+
+### Операции применены
+
+- 3× refactor_code_smell (TODO long_function: run_doctor_cycle, _dispatch_api_get, aggregate_operational_metrics)
+- Policy: long_function|refactor_code_smell в WEAK_SMELL_ACTION_PAIRS (deny в auto); в assist применились
+
+### verify_metrics
+
+- before_score=46, after_score=46
+
+### telemetry (ROADMAP 2.7.8)
+
+- apply_rate=1.0, no_op_rate=0.0, rollback_rate=0
+- verify_duration_ms=123701, median_verify_time_ms=123701
+
+### Doctor (eurika_doctor_report.json)
+
+| Метрика | Значение |
+|---------|----------|
+| Модули | 187 |
+| Зависимости | 107 |
+| Risk score | 46/100 |
+
+### Learning
+
+**by_action_kind**
+
+- refactor_code_smell: 0 success, 7 fail (0%)
+- split_module: 4 success, 1 fail (80%)
+- remove_unused_import: 10 success, 3 fail (77%)
+
+**by_smell_action**
+
+- long_function|refactor_code_smell: total=28, success=0, fail=7
+- deep_nesting|refactor_code_smell: total=2, success=0, fail=0
+- god_module|split_module: total=5, success=4, fail=1
+- unknown|remove_unused_import: total=13, success=10, fail=3
+
+### Итог
+
+- Verify passed, rollback не потребовался
+- v3.0.7: Web UI 3.5.6/3.5.7 (Approve tab, Graph), operational metrics, team mode, refactor serve._run_handler

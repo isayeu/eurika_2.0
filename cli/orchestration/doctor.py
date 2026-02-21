@@ -165,3 +165,6 @@ def run_doctor_cycle(
     if ops_metrics:
         out["operational_metrics"] = ops_metrics
     return out
+
+
+# TODO (eurika): refactor long_function 'run_doctor_cycle' — consider extracting helper
