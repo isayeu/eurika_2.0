@@ -306,20 +306,34 @@ function runCommand(cmd, btn, btnText) {
   const orig = btn.textContent;
   if (btnText) btn.textContent = 'Running…';
   document.querySelector('.tabs button[data-tab="terminal"]')?.click();
-  output.textContent = 'Running ' + cmd + ' …';
+  const startedAt = Date.now();
+  const frames = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
+  let frame = 0;
+  output.textContent = 'Running ' + cmd + ' …\n';
+  const timer = setInterval(() => {
+    const sec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+    output.textContent =
+      'Running ' + cmd + ' …\n' +
+      frames[frame % frames.length] + ' elapsed: ' + sec + 's';
+    frame += 1;
+  }, 250);
   return APIPost('/exec', { command: cmd, timeout: 180 })
     .then(res => {
+      clearInterval(timer);
       btn.disabled = false;
       if (btnText) btn.textContent = orig;
       const out = (res.stdout || '') + (res.stderr ? '\n' + res.stderr : '');
-      output.textContent = out || '(no output)';
+      const sec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+      output.textContent = '[done in ' + sec + 's]\n' + (out || '(no output)');
       if (res.error && res.stdout) output.textContent = (res.stdout || '') + (res.stderr ? '\n' + res.stderr : '');
       load();
     })
     .catch(e => {
+      clearInterval(timer);
       btn.disabled = false;
       if (btnText) btn.textContent = orig;
-      output.textContent = 'Request failed: ' + (e.message || 'unknown');
+      const sec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+      output.textContent = '[failed in ' + sec + 's]\nRequest failed: ' + (e.message || 'unknown');
     });
 }
 

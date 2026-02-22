@@ -34,6 +34,15 @@ from cli.orchestration.prepare import (
     prepare_fix_cycle_operations as _prepare_fix_cycle_operations_impl,
 )
 
+# Public API exports (also protects re-exports from unused-import cleanup).
+__all__ = [
+    "EurikaOrchestrator",
+    "run_cycle",
+    "run_doctor_cycle",
+    "run_full_cycle",
+    "run_fix_cycle",
+]
+
 # Backward-compatible aliases for tests/monkeypatch hooks.
 _prepare_prepare_fix_cycle_operations = _prepare_fix_cycle_operations_impl
 _knowledge_topics_from_env_or_summary = _doctor_knowledge_topics_from_env_or_summary
