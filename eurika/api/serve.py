@@ -318,10 +318,51 @@ def _run_post_handler(
         _json_response(handler, {"text": text})
         return True
     if path == "/api/chat":
-        msg = (body or {}).get("message", "")
-        history = (body or {}).get("history")
-        if not isinstance(history, list):
-            history = None
+        if not body or "message" not in body:
+            _json_response(
+                handler,
+                {"error": "JSON body with 'message' required"},
+                status=400,
+            )
+            return True
+        msg = body.get("message")
+        if not isinstance(msg, str):
+            _json_response(
+                handler,
+                {"error": "invalid message payload", "hint": "Expected message: string"},
+                status=400,
+            )
+            return True
+        raw_history = body.get("history")
+        history: list[dict[str, str]] | None = None
+        if raw_history is not None:
+            if not isinstance(raw_history, list):
+                _json_response(
+                    handler,
+                    {"error": "invalid history payload", "hint": "Expected history: list[object]"},
+                    status=400,
+                )
+                return True
+            normalized: list[dict[str, str]] = []
+            for item in raw_history:
+                if not isinstance(item, dict):
+                    _json_response(
+                        handler,
+                        {"error": "invalid history payload", "hint": "Expected history: list[object]"},
+                        status=400,
+                    )
+                    return True
+                role = item.get("role", "user")
+                content = item.get("content", "")
+                if not isinstance(role, str) or not isinstance(content, str):
+                    _json_response(
+                        handler,
+                        {"error": "invalid history payload", "hint": "Expected role/content: string"},
+                        status=400,
+                    )
+                    return True
+                normalized.append({"role": role, "content": content})
+            history = normalized
         data = chat_send(project_root, msg, history=history)
         _json_response(handler, {"text": data.get("text", ""), "error": data.get("error")})
         return True
