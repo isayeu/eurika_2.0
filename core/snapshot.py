@@ -11,9 +11,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-from eurika.smells.detector import ArchSmell
 from project_graph_api import ProjectGraph
 
 
@@ -28,7 +27,7 @@ class ArchitectureSnapshot:
 
     root: Path
     graph: ProjectGraph
-    smells: List[ArchSmell]
+    smells: List[Any]
     summary: Dict[str, object]
     history: Optional[Dict[str, object]] = None
     diff: Optional[Dict[str, object]] = None

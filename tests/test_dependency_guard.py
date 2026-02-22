@@ -27,11 +27,6 @@ LAYER_FIREWALL_EXCEPTIONS: tuple[LayerException, ...] = (
         allowed_import_prefixes=("eurika.analysis", "report.architecture_report"),
         reason="core-pipeline orchestration still bridges analysis/reporting during migration",
     ),
-    LayerException(
-        path_pattern="core/snapshot.py",
-        allowed_import_prefixes=("eurika.smells",),
-        reason="snapshot currently reads smell detector output directly",
-    ),
 )
 
 
