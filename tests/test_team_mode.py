@@ -84,3 +84,57 @@ def test_load_missing_file(tmp_path: Path) -> None:
     assert approved == []
     assert payload is None
     assert not has_pending_plan(tmp_path)
+
+
+def test_load_pending_plan_invalid_operations_shape_returns_none(tmp_path: Path) -> None:
+    """load_pending_plan returns None when operations is not list[dict]."""
+    pending = tmp_path / ".eurika" / "pending_plan.json"
+    pending.parent.mkdir(parents=True, exist_ok=True)
+    pending.write_text(json.dumps({"operations": ["bad"]}), encoding="utf-8")
+    assert load_pending_plan(tmp_path) is None
+
+
+def test_update_team_decisions_count_mismatch_does_not_modify_file(tmp_path: Path) -> None:
+    """count mismatch should fail and keep existing pending plan unchanged."""
+    plan = {"project_root": str(tmp_path), "operations": []}
+    ops = [
+        {"target_file": "a.py", "kind": "split"},
+        {"target_file": "b.py", "kind": "clean"},
+    ]
+    decs = [{"index": 1, "decision": "allow"}, {"index": 2, "decision": "allow"}]
+    save_pending_plan(tmp_path, plan, ops, decs)
+    before = load_pending_plan(tmp_path)
+    ok, msg = update_team_decisions(tmp_path, [{"team_decision": "approve", "approved_by": "ui"}])
+    after = load_pending_plan(tmp_path)
+    assert not ok
+    assert "count mismatch" in msg
+    assert before == after
+
+
+def test_update_team_decisions_invalid_existing_item_returns_error(tmp_path: Path) -> None:
+    """Invalid pending operations shape should fail predictably and keep file untouched."""
+    pending = tmp_path / ".eurika" / "pending_plan.json"
+    pending.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"operations": ["bad"]}
+    pending.write_text(json.dumps(payload), encoding="utf-8")
+    before = pending.read_text(encoding="utf-8")
+    ok, msg = update_team_decisions(tmp_path, [{"team_decision": "approve", "approved_by": "ui"}])
+    after = pending.read_text(encoding="utf-8")
+    assert not ok
+    assert "invalid pending plan" in msg
+    assert before == after
+
+
+def test_update_team_decisions_invalid_input_item_returns_error(tmp_path: Path) -> None:
+    """Invalid incoming operations payload should fail and not rewrite pending plan."""
+    plan = {"project_root": str(tmp_path), "operations": []}
+    ops = [{"target_file": "a.py", "kind": "split"}]
+    decs = [{"index": 1, "decision": "allow"}]
+    save_pending_plan(tmp_path, plan, ops, decs)
+    pending = tmp_path / ".eurika" / "pending_plan.json"
+    before = pending.read_text(encoding="utf-8")
+    ok, msg = update_team_decisions(tmp_path, ["bad"])  # type: ignore[list-item]
+    after = pending.read_text(encoding="utf-8")
+    assert not ok
+    assert "invalid operations payload" in msg
+    assert before == after

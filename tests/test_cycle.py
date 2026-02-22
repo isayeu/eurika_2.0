@@ -594,6 +594,39 @@ def test_append_fix_cycle_memory_tolerates_memory_write_error(tmp_path: Path) ->
         append_fix_cycle_memory(tmp_path, result, operations, report, verify_success=True)
 
 
+def test_fix_apply_approved_missing_pending_plan_returns_error(tmp_path: Path) -> None:
+    """--apply-approved should fail predictably when pending_plan.json is missing."""
+    from cli.orchestrator import run_cycle
+
+    out = run_cycle(tmp_path, mode="fix", apply_approved=True, quiet=True)
+    assert out.get("return_code") == 1
+    assert "No pending plan" in ((out.get("report") or {}).get("error") or "")
+
+
+def test_fix_apply_approved_invalid_pending_plan_returns_error(tmp_path: Path) -> None:
+    """--apply-approved should fail predictably when pending_plan.json is invalid JSON."""
+    from cli.orchestrator import run_cycle
+
+    pending = tmp_path / ".eurika" / "pending_plan.json"
+    pending.parent.mkdir(parents=True, exist_ok=True)
+    pending.write_text("{invalid json", encoding="utf-8")
+    out = run_cycle(tmp_path, mode="fix", apply_approved=True, quiet=True)
+    assert out.get("return_code") == 1
+    assert "No pending plan" in ((out.get("report") or {}).get("error") or "")
+
+
+def test_fix_apply_approved_invalid_pending_plan_schema_returns_error(tmp_path: Path) -> None:
+    """--apply-approved should fail predictably when pending_plan has invalid schema."""
+    from cli.orchestrator import run_cycle
+
+    pending = tmp_path / ".eurika" / "pending_plan.json"
+    pending.parent.mkdir(parents=True, exist_ok=True)
+    pending.write_text(json.dumps({"operations": {"not": "a list"}}), encoding="utf-8")
+    out = run_cycle(tmp_path, mode="fix", apply_approved=True, quiet=True)
+    assert out.get("return_code") == 1
+    assert "No pending plan" in ((out.get("report") or {}).get("error") or "")
+
+
 def test_prepare_fix_cycle_operations_wrapper_delegates() -> None:
     """Compatibility wrapper for prepare-stage should delegate unchanged."""
     from cli.orchestrator import _prepare_fix_cycle_operations
@@ -709,6 +742,34 @@ def test_report_snapshot_with_fix_report(tmp_path: Path) -> None:
     assert "## 1. Fix" in result.stdout
     assert "modified" in result.stdout
     assert "1" in result.stdout
+
+
+def test_report_snapshot_invalid_fix_report_shows_warning(tmp_path: Path) -> None:
+    """report-snapshot should not crash on invalid eurika_fix_report.json and should warn."""
+    (tmp_path / "eurika_fix_report.json").write_text("{broken json", encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, "-m", "eurika_cli", "report-snapshot", str(tmp_path)],
+        cwd=ROOT, capture_output=True, text=True, timeout=10
+    )
+    assert result.returncode == 0
+    assert "No eurika_doctor_report" in result.stdout or "Run doctor/fix first" in result.stdout
+
+
+def test_report_snapshot_invalid_doctor_report_still_shows_fix_and_warning(tmp_path: Path) -> None:
+    """report-snapshot should keep valid fix section when doctor report is invalid."""
+    (tmp_path / "eurika_fix_report.json").write_text(
+        json.dumps({"modified": ["a.py"], "skipped": [], "verify": {"success": True}}),
+        encoding="utf-8",
+    )
+    (tmp_path / "eurika_doctor_report.json").write_text("{oops", encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, "-m", "eurika_cli", "report-snapshot", str(tmp_path)],
+        cwd=ROOT, capture_output=True, text=True, timeout=10
+    )
+    assert result.returncode == 0
+    assert "## 1. Fix" in result.stdout
+    assert "Snapshot warnings" in result.stdout
+    assert "invalid JSON in eurika_doctor_report.json" in result.stdout
 
 
 def test_attach_fix_telemetry_median_verify_time(tmp_path: Path) -> None:

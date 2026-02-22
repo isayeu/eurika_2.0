@@ -100,6 +100,8 @@ def save_approvals(project_root: Path, operations: List[Dict[str, Any]]) -> Dict
     from cli.orchestration.team_mode import update_team_decisions
 
     root = Path(project_root).resolve()
+    if not isinstance(operations, list) or any(not isinstance(o, dict) for o in operations):
+        return {"error": "invalid operations payload", "hint": "Expected operations: list[object]"}
     ok, msg = update_team_decisions(root, operations)
     if ok:
         approved = sum(1 for o in operations if str(o.get("team_decision", "")).lower() == "approve")

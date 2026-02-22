@@ -71,13 +71,18 @@ def load_approved_operations(project_root: Path) -> tuple[list[dict[str, Any]], 
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return [], None
+    if not isinstance(data, dict):
+        return [], None
 
-    ops = data.get("operations") or []
-    approved = [
-        dict(op)
-        for op in ops
-        if str(op.get("team_decision", "")).lower() == "approve"
-    ]
+    ops = data.get("operations")
+    if not isinstance(ops, list):
+        return [], None
+    approved: list[dict[str, Any]] = []
+    for op in ops:
+        if not isinstance(op, dict):
+            return [], None
+        if str(op.get("team_decision", "")).lower() == "approve":
+            approved.append(dict(op))
     # Strip team-specific fields from ops before apply
     for op in approved:
         op.pop("team_decision", None)
@@ -97,9 +102,19 @@ def load_pending_plan(project_root: Path) -> dict[str, Any] | None:
     if not path.exists():
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return None
+    if not isinstance(data, dict):
+        return None
+    ops = data.get("operations")
+    if ops is None:
+        return data
+    if not isinstance(ops, list):
+        return None
+    if any(not isinstance(op, dict) for op in ops):
+        return None
+    return data
 
 
 def update_team_decisions(
@@ -112,11 +127,19 @@ def update_team_decisions(
         return False, "no pending plan"
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        existing = data.get("operations") or []
+        if not isinstance(data, dict):
+            return False, "invalid pending plan"
+        existing = data.get("operations")
+        if not isinstance(existing, list):
+            return False, "invalid pending plan"
         if len(operations) != len(existing):
             return False, f"count mismatch: expected {len(existing)}, got {len(operations)}"
         merged = []
         for old, new in zip(existing, operations):
+            if not isinstance(old, dict):
+                return False, "invalid pending plan"
+            if not isinstance(new, dict):
+                return False, "invalid operations payload"
             m = dict(old)
             m["team_decision"] = str(new.get("team_decision", m.get("team_decision", "pending"))).lower()
             m["approved_by"] = new.get("approved_by")

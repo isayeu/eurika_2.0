@@ -109,6 +109,18 @@ def test_verify_patch_pyproject_verify_cmd(tmp_path: Path) -> None:
     assert out['success'] is True
 
 
+def test_verify_patch_timeout_returns_failure_payload(tmp_path: Path) -> None:
+    """verify_patch timeout should return deterministic failure payload, not raise."""
+    out = verify_patch(
+        tmp_path,
+        timeout=1,
+        verify_cmd="python -c \"import time; time.sleep(2)\"",
+    )
+    assert out["success"] is False
+    assert out["returncode"] == -1
+    assert "timed out" in (out.get("stderr") or "")
+
+
 def test_rollback_patch_same_as_rollback(tmp_path: Path) -> None:
     """rollback_patch is equivalent to rollback."""
     (tmp_path / '.eurika_backups' / 'r1').mkdir(parents=True)
@@ -157,3 +169,26 @@ def test_apply_and_verify_auto_rollback_on_failure(tmp_path: Path) -> None:
     assert report.get('rollback', {}).get('done') is True
     assert report.get('rollback', {}).get('trigger') == 'verify_failed'
     assert (tmp_path / 'bad.py').read_text(encoding='utf-8') == 'x = 1\n'
+
+
+def test_apply_and_verify_timeout_triggers_rollback(tmp_path: Path) -> None:
+    """Timeout in verify command should be treated as failure and trigger rollback."""
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    plan = {
+        "operations": [
+            {"target_file": "a.py", "diff": "\n# changed\n", "kind": "refactor_module"},
+        ]
+    }
+    report = apply_and_verify(
+        tmp_path,
+        plan,
+        backup=True,
+        verify=True,
+        auto_rollback=True,
+        verify_timeout=1,
+        verify_cmd="python -c \"import time; time.sleep(2)\"",
+    )
+    assert report["verify"]["success"] is False
+    assert report["verify"]["returncode"] == -1
+    assert report.get("rollback", {}).get("done") is True
+    assert (tmp_path / "a.py").read_text(encoding="utf-8") == "x = 1\n"

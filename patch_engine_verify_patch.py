@@ -77,7 +77,22 @@ def verify_patch(
     root = Path(project_root).resolve()
     cmd = _get_verify_cmd(root, override=verify_cmd)
     cmd = _expand_py_compile_args(cmd, root)
-    proc = subprocess.run(cmd, cwd=root, capture_output=True, text=True, timeout=timeout)
+    try:
+        proc = subprocess.run(cmd, cwd=root, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired as e:
+        stderr = (e.stderr or "") if isinstance(e.stderr, str) else ""
+        stdout = (e.stdout or "") if isinstance(e.stdout, str) else ""
+        msg = f"verify command timed out after {timeout}s"
+        if stderr:
+            stderr = f"{stderr}\n{msg}"
+        else:
+            stderr = msg
+        return {
+            "success": False,
+            "returncode": -1,
+            "stdout": stdout[-3000:],
+            "stderr": stderr[-3000:],
+        }
     return {
         "success": proc.returncode == 0,
         "returncode": proc.returncode,

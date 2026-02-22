@@ -8,7 +8,15 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from eurika.api import get_summary, get_history, get_diff, get_patch_plan, get_code_smell_operations
+from eurika.api import (
+    get_summary,
+    get_history,
+    get_diff,
+    get_patch_plan,
+    get_code_smell_operations,
+    get_pending_plan,
+    save_approvals,
+)
 
 
 def test_get_summary_returns_json_serializable(tmp_path: Path) -> None:
@@ -82,6 +90,53 @@ def test_get_patch_plan_returns_dict_with_self_map(tmp_path: Path) -> None:
     assert "operations" in data
     assert isinstance(data["operations"], list)
     json.dumps(data)
+
+
+def test_get_pending_plan_returns_error_when_schema_invalid(tmp_path: Path) -> None:
+    """get_pending_plan returns invalid-payload error for malformed operations schema."""
+    pending = tmp_path / ".eurika" / "pending_plan.json"
+    pending.parent.mkdir(parents=True, exist_ok=True)
+    pending.write_text(json.dumps({"operations": ["bad"]}), encoding="utf-8")
+    data = get_pending_plan(tmp_path)
+    assert data.get("error") == "invalid pending plan"
+    assert "pending_plan.json" in (data.get("hint") or "")
+
+
+def test_save_approvals_count_mismatch_returns_error(tmp_path: Path) -> None:
+    """save_approvals should return error payload on operations count mismatch."""
+    pending = tmp_path / ".eurika" / "pending_plan.json"
+    pending.parent.mkdir(parents=True, exist_ok=True)
+    pending.write_text(
+        json.dumps(
+            {
+                "operations": [
+                    {"target_file": "a.py", "kind": "split", "team_decision": "pending", "approved_by": None},
+                    {"target_file": "b.py", "kind": "clean", "team_decision": "pending", "approved_by": None},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    out = save_approvals(tmp_path, [{"team_decision": "approve", "approved_by": "ui"}])
+    assert "count mismatch" in (out.get("error") or "")
+    assert "team-mode" in (out.get("hint") or "")
+
+
+def test_save_approvals_invalid_pending_shape_returns_error(tmp_path: Path) -> None:
+    """save_approvals should return stable error for malformed pending operations."""
+    pending = tmp_path / ".eurika" / "pending_plan.json"
+    pending.parent.mkdir(parents=True, exist_ok=True)
+    pending.write_text(json.dumps({"operations": ["bad"]}), encoding="utf-8")
+    out = save_approvals(tmp_path, [{"team_decision": "approve", "approved_by": "ui"}])
+    assert "invalid pending plan" in (out.get("error") or "")
+    assert "team-mode" in (out.get("hint") or "")
+
+
+def test_save_approvals_invalid_payload_type_returns_error(tmp_path: Path) -> None:
+    """save_approvals should reject non-list payload deterministically."""
+    out = save_approvals(tmp_path, {"team_decision": "approve"})  # type: ignore[arg-type]
+    assert out.get("error") == "invalid operations payload"
+    assert "list" in (out.get("hint") or "")
 
 
 def test_get_code_smell_operations_skips_long_function_when_no_real_fix(tmp_path: Path) -> None:
