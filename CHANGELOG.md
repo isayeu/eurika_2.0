@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## v3.0.9 — runtime robustness: state + degraded mode visibility (2026-02-22)
+
+### Runtime state model (R2)
+- **AgentRuntimeState:** formal runtime states `idle|thinking|error|done` in `AgentCycleResult`.
+- **State transitions:** `run_agent_cycle` now records deterministic transitions and keeps `state_history`.
+- **Error semantics:** runtime switches to `error` on failed stage and remains observable in payload.
+
+### Degraded mode metadata (doctor/fix/cycle)
+- **architect metadata API:** `interpret_architecture_with_meta(...)` returns `(text, meta)` with `degraded_mode`, `degraded_reasons`, `llm_used`.
+- **doctor output:** `run_doctor_cycle` now includes `runtime` block with deterministic fallback/degraded reasons.
+- **fix/cycle output:** non-assist runtime now propagates degradation metadata into `report.runtime`; full-cycle carries doctor runtime into fix report.
+
+### Tests
+- `test_run_agent_cycle_state_transitions_success`
+- `test_run_agent_cycle_state_transitions_error`
+- `test_doctor_runtime_reports_degraded_mode_when_llm_disabled`
+- `test_run_cycle_non_assist_adds_runtime_block_to_report`
+- `test_full_cycle_propagates_doctor_runtime_to_fix_report`
+
+---
+
 ## v3.0.8 — god_class WEAK, deep_nesting extract_block (2026-02-21)
 
 ### god_class|extract_class protection (CYCLE_REPORT #34)

@@ -2,6 +2,24 @@
 
 ---
 
+## 37. Snapshot (2026-02-22) — v3.0.9: runtime robustness (state + degraded visibility)
+
+### Изменения
+- **R2 state-модель runtime:** `AgentCycleResult` теперь фиксирует `state` и `state_history` (`idle -> thinking -> done|error`).
+- **Детерминированные переходы:** `run_agent_cycle` переводит состояние в `error` при сбое стадии и в `done` при успешном завершении.
+- **Doctor degraded metadata:** `run_doctor_cycle` добавляет `runtime` блок (`degraded_mode`, `degraded_reasons`, `llm_used`, `use_llm`).
+- **Fix/Cycle degraded metadata:** для non-assist и full-cycle `report.runtime` теперь содержит причины деградации/fallback.
+
+### Тесты
+- runtime: `test_run_agent_cycle_state_transitions_success`, `test_run_agent_cycle_state_transitions_error`
+- doctor: `test_doctor_runtime_reports_degraded_mode_when_llm_disabled`
+- cycle/fix: `test_run_cycle_non_assist_adds_runtime_block_to_report`, `test_full_cycle_propagates_doctor_runtime_to_fix_report`
+
+### Проверка
+- `tests/test_agent_runtime.py tests/test_cli_runtime_mode.py tests/test_cycle.py` — green.
+
+---
+
 ## 36. Snapshot (2026-02-21) — v3.0.8: long_function extract_block fallback
 
 ### Изменения
