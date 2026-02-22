@@ -340,7 +340,7 @@
 **Фактический прогресс (актуально):**
 
 - 2.8.1 Layer Map — выполнено (Architecture.md §0 Layer Map; allowed deps, anti-patterns, ссылки в CLI.md)
-- 2.8.2 Dependency Guard — выполнено (tests/test_dependency_guard.py; CI падает при нарушении)
+- 2.8.2 Dependency Guard — выполнено (tests/test_dependency_guard.py + eurika.checks.dependency_firewall; strict mode: EURIKA_STRICT_LAYER_FIREWALL=1; baseline: 0 violations / 0 waivers)
 - 2.8.3 Orchestrator Split — выполнено
 - 2.8.4 CLI Wiring Split — выполнено
 - 2.8.5 Planner Boundary — выполнено
@@ -535,12 +535,12 @@
 
 **Фактический прогресс (фаза 3.1-arch):**
 
-- 3.1-arch.1 Формальные слои — Architecture.md §0: нотация L0–L6 (Infra→Core→Analysis→Planning→Execution→Reporting→CLI); allowed deps; mapping модулей; no upward deps; dependency guard проверяет
+- 3.1-arch.1 Формальные слои — Architecture.md §0: нотация L0–L6 (Infra→Core→Analysis→Planning→Execution→Reporting→CLI); allowed deps; mapping модулей; no upward deps; dependency guard + layer firewall (strict) проверяет
 - 3.1-arch.2 API-границы подсистем — Architecture.md §0.6; **all** в patch_engine, eurika.core, eurika.analysis, eurika.smells, eurika.evolution, eurika.reporting; рекомендации в CYCLE_REPORT §23
 - 3.1-arch.3 Лимит размера файлов — eurika.checks.file_size; >400 candidate, >600 must split; self-check выводит блок; python -m eurika.checks.file_size
-- 3.1-arch.4 Domain vs presentation — report/architecture_report.py (rendering); core/pipeline делегирует; central_modules_for_topology в system_topology
+- 3.1-arch.4 Domain vs presentation — report/architecture_report.py (rendering); runtime_scan импортирует rendering на верхнем слое (без core->report зависимости); central_modules_for_topology в system_topology
 - 3.1-arch.5 Облегчить CLI — report/report_snapshot.format_report_snapshot; eurika.api: explain_module, get_suggest_plan_text, clean_imports_scan_apply; handlers тонкие обёртки; test_handle_report_snapshot_delegates_to_format
-- 3.1-arch.6 Развести Planning и Execution — eurika.reasoning.planner без patch_apply/patch_engine; Architecture.md §0.5 Planner–Executor Contract; dependency guard для eurika/reasoning/
+- 3.1-arch.6 Развести Planning и Execution — eurika.reasoning.planner без patch_apply/patch_engine; planner_patch_ops без зависимости на eurika.refactor; Architecture.md §0.5 Planner–Executor Contract; dependency guard для eurika/reasoning/
 - 3.1-arch.7 Dogfooding — eurika fix . (6 modified), 3× eurika fix . --dry-run (0 ops fixpoint); verify ✓ 287 passed; CYCLE_REPORT §28
 
 **Связь с review v3.0.1:** пункты §6 «Что я рекомендую сделать в v3.1».
