@@ -210,7 +210,7 @@
 
 - Спринт 1 (3.6.1 + 3.6.2): ✅ выполнен (decision gate, critic pass, per-op approve/reject, decision summary).
 - Спринт 2 (3.6.3): ✅ выполнен (context_sources в JSON/API/doctor, UI Dashboard + top context hits + by-target breakdown, CYCLE_REPORT через report-snapshot context effect).
-- Следующий шаг: ▶️ Спринт 3 (3.6.4 Session checkpoint + campaign undo).
+- Спринт 3 (3.6.4): ⏳ в работе (MVP уже есть: pre-apply campaign checkpoint + `eurika campaign-undo`).
 
 #### Спринт 1 — инженерная декомпозиция (3.6.1 + 3.6.2)
 

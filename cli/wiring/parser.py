@@ -132,6 +132,11 @@ def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
     snapshot_parser = subparsers.add_parser("report-snapshot", help="Print CYCLE_REPORT-style markdown from doctor/fix artifacts (for updating CYCLE_REPORT.md)")
     snapshot_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
 
+    campaign_undo_parser = subparsers.add_parser("campaign-undo", help="Undo applied campaign from checkpoint (ROADMAP 3.6.4)")
+    campaign_undo_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
+    campaign_undo_parser.add_argument("--checkpoint-id", type=str, default=None, help="Undo a specific campaign checkpoint id")
+    campaign_undo_parser.add_argument("--list", action="store_true", help="List recent campaign checkpoints and exit")
+
     architect_parser = subparsers.add_parser("architect", help="Print architect's interpretation; LLM if OPENAI_API_KEY set (optional OPENAI_BASE_URL, OPENAI_MODEL for OpenRouter)")
     architect_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
     architect_parser.add_argument("--window", type=int, default=5, help="History window (default: 5)")

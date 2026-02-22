@@ -272,6 +272,7 @@ def execute_fix_apply_stage(
     patch_plan: dict[str, Any],
     operations: list[dict[str, Any]],
     *,
+    session_id: str | None,
     quiet: bool,
     verify_cmd: str | None,
     verify_timeout: int | None,
@@ -292,6 +293,18 @@ def execute_fix_apply_stage(
     if not quiet:
         _LOG.info("--- Step 3/4: patch & verify ---")
     rescan_before = prepare_rescan_before(path, backup_dir)
+    checkpoint = None
+    checkpoint_id = None
+    try:
+        from eurika.storage.campaign_checkpoint import create_campaign_checkpoint
+
+        checkpoint = create_campaign_checkpoint(path, operations=operations, session_id=session_id)
+        checkpoint_id = str((checkpoint or {}).get("checkpoint_id") or "")
+        if checkpoint_id:
+            _LOG.debug("campaign checkpoint created: %s", checkpoint_id)
+    except Exception:
+        checkpoint = None
+        checkpoint_id = None
     from patch_engine_verify_patch import get_verify_timeout
 
     resolved_timeout = get_verify_timeout(path, override=verify_timeout)
@@ -319,6 +332,11 @@ def execute_fix_apply_stage(
     report["critic_decisions"] = result.output.get("critic_decisions", [])
     report["context_sources"] = result.output.get("context_sources")
     report["llm_hint_runtime"] = result.output.get("llm_hint_runtime")
+    if checkpoint_id:
+        report["campaign_checkpoint"] = {
+            "checkpoint_id": checkpoint_id,
+            "reused": bool((checkpoint or {}).get("reused")),
+        }
     attach_fix_telemetry(report, operations, path)
     enrich_report_with_rescan(
         path, report, rescan_before, quiet, run_scan,
@@ -327,6 +345,26 @@ def execute_fix_apply_stage(
     )
     modified = report.get("modified", [])
     verify_success = report["verify"]["success"]
+    if checkpoint_id:
+        try:
+            from eurika.storage.campaign_checkpoint import attach_run_to_checkpoint
+
+            cp = attach_run_to_checkpoint(
+                path,
+                checkpoint_id,
+                run_id=report.get("run_id"),
+                verify_success=verify_success,
+                modified=modified,
+            )
+            if isinstance(cp, dict):
+                report["campaign_checkpoint"] = {
+                    "checkpoint_id": checkpoint_id,
+                    "status": cp.get("status"),
+                    "run_ids": cp.get("run_ids", []),
+                    "reused": bool(cp.get("reused")),
+                }
+        except Exception:
+            pass
     append_fix_cycle_memory(path, result, operations, report, verify_success)
     write_fix_report(path, report, quiet)
     return report, modified, verify_success

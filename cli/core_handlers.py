@@ -31,7 +31,7 @@ def handle_help(parser: Any) -> int:
     print('  fix [path]              full cycle: scan → plan → patch → verify')
     print('  explain <module> [path] role and risks of a module')
     print()
-    print('Other: report, architect, suggest-plan, arch-summary, arch-history, history, arch-diff, self-check, clean-imports, serve')
+    print('Other: report, report-snapshot, campaign-undo, architect, suggest-plan, arch-summary, arch-history, history, arch-diff, self-check, clean-imports, serve')
     print('Advanced: eurika agent <cmd>  (patch-plan, patch-apply, patch-rollback, cycle, ...)')
     print()
     print('  --help after any command for details.')
@@ -179,6 +179,22 @@ def handle_report_snapshot(args: Any) -> int:
     return 0
 
 
+def handle_campaign_undo(args: Any) -> int:
+    """Undo campaign checkpoint (ROADMAP 3.6.4)."""
+    path = args.path.resolve()
+    if _check_path(path) != 0:
+        return 1
+    from eurika.storage.campaign_checkpoint import list_campaign_checkpoints, undo_campaign_checkpoint
+
+    if getattr(args, "list", False):
+        info = list_campaign_checkpoints(path)
+        print(json.dumps(info, indent=2, ensure_ascii=False))
+        return 0
+    out = undo_campaign_checkpoint(path, checkpoint_id=getattr(args, "checkpoint_id", None))
+    print(json.dumps(out, indent=2, ensure_ascii=False))
+    return 1 if out.get("errors") else 0
+
+
 def handle_explain(args: Any) -> int:
     """Explain role and risks of a given module (3.1-arch.5 thin)."""
     module_arg = getattr(args, "module", None)
@@ -220,6 +236,7 @@ def handle_doctor(args: Any) -> int:
         architect_text = data['architect_text']
         suggested_policy = data.get('suggested_policy') or {}
         context_sources = data.get('context_sources') or {}
+        campaign_checkpoint = data.get('campaign_checkpoint') or {}
         print(summary_to_text(summary))
         print()
         print(history.get('evolution_report', ''))
@@ -242,6 +259,13 @@ def handle_doctor(args: Any) -> int:
             print()
             print('Operational metrics (last 10 fix runs):')
             print(f'  apply_rate={ar}, rollback_rate={rr}, median_verify_time={med_str}')
+        if campaign_checkpoint:
+            cp_id = campaign_checkpoint.get('checkpoint_id', 'N/A')
+            cp_status = campaign_checkpoint.get('status', 'unknown')
+            cp_runs = len(campaign_checkpoint.get('run_ids') or [])
+            print()
+            print('Campaign checkpoint (ROADMAP 3.6.4):')
+            print(f'  checkpoint_id={cp_id}, status={cp_status}, run_ids={cp_runs}')
         if suggested_policy.get('suggested'):
             sugg = suggested_policy['suggested']
             telemetry = suggested_policy.get('telemetry') or {}
@@ -260,6 +284,8 @@ def handle_doctor(args: Any) -> int:
             report['suggested_policy'] = suggested_policy
         if data.get('operational_metrics'):
             report['operational_metrics'] = data['operational_metrics']
+        if campaign_checkpoint:
+            report['campaign_checkpoint'] = campaign_checkpoint
         fix_path = path / 'eurika_fix_report.json'
         if fix_path.exists():
             try:

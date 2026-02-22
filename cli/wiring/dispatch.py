@@ -21,6 +21,7 @@ def dispatch_command(parser: argparse.ArgumentParser, args: Any) -> int:
         "history": lambda: handlers.handle_arch_history(args),
         "report": lambda: handlers.handle_report(args),
         "report-snapshot": lambda: handlers.handle_report_snapshot(args),
+        "campaign-undo": lambda: handlers.handle_campaign_undo(args),
         "explain": lambda: handlers.handle_explain(args),
         "arch-diff": lambda: handlers.handle_arch_diff(args),
         "self-check": lambda: handlers.handle_self_check(args),

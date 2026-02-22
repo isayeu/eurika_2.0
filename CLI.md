@@ -249,6 +249,22 @@ eurika report . --json --window 5
 
 ---
 
+### eurika campaign-undo [path] [--checkpoint-id ID] [--list]
+
+Откат кампании Sprint 3.6.4: восстанавливает файлы по run_id из checkpoint (`.eurika/campaign_checkpoints/*.json`) в обратном порядке.
+
+- `--list` — показать последние checkpoint-кампании;
+- без `--checkpoint-id` — откатить последнюю кампанию;
+- с `--checkpoint-id` — откатить конкретную кампанию.
+
+```bash
+eurika campaign-undo . --list
+eurika campaign-undo .                  # undo latest campaign
+eurika campaign-undo . --checkpoint-id 20260222_221530_123
+```
+
+---
+
 ### eurika explain <module> [path] [--window N]
 
 Роль и риски модуля в графе (fan-in/fan-out, central, smells). Planned operations берутся из patch-plan (get_patch_plan с заданным окном).
@@ -477,3 +493,4 @@ eurika agent feedback-summary .
 | `eurika_fix_report.json` | Отчёт fix (modified, skipped, skipped_reasons, operation_results, decision_summary, rescan_diff, verify, telemetry, safety_gates, policy_decisions, critic_decisions, operation_explanations) — по умолчанию |
 | `eurika_doctor_report.json` | Отчёт doctor (summary, history, architect, patch_plan) — по умолчанию |
 | `.eurika_backups/<run_id>/` | Бэкапы при patch-apply --apply |
+| `.eurika/campaign_checkpoints/*.json` | Checkpoint-метаданные кампаний apply (run_ids, status, targets) для `eurika campaign-undo` |

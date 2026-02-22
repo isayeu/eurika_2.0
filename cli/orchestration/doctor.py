@@ -174,6 +174,14 @@ def run_doctor_cycle(
     ops_metrics = _operational_metrics_from_events(path, window=10)
     if ops_metrics:
         out["operational_metrics"] = ops_metrics
+    try:
+        from eurika.storage.campaign_checkpoint import latest_campaign_checkpoint
+
+        checkpoint = latest_campaign_checkpoint(path)
+        if checkpoint:
+            out["campaign_checkpoint"] = checkpoint
+    except Exception:
+        pass
     return out
 
 
