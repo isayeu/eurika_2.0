@@ -537,16 +537,47 @@ def interpret_architecture(
     a single topic (str) or a list of topics; all fragments are merged and injected.
     recent_events: optional list of Event (patch, learn) for context (ROADMAP 3.2.3).
     """
+    text, meta = interpret_architecture_with_meta(
+        summary=summary,
+        history=history,
+        use_llm=use_llm,
+        verbose=verbose,
+        patch_plan=patch_plan,
+        knowledge_provider=knowledge_provider,
+        knowledge_topic=knowledge_topic,
+        recent_events=recent_events,
+    )
+    _ = meta
+    return text
+
+
+def interpret_architecture_with_meta(
+    summary: Dict[str, Any],
+    history: Dict[str, Any],
+    use_llm: bool = True,
+    verbose: bool = True,
+    patch_plan: Optional[Dict[str, Any]] = None,
+    knowledge_provider: Optional["KnowledgeProvider"] = None,
+    knowledge_topic: Optional[Union[str, List[str]]] = None,
+    recent_events: Optional[List["Event"]] = None,
+) -> tuple[str, Dict[str, Any]]:
+    """Return architect text with runtime metadata about degraded mode/fallbacks."""
     import sys
 
+    meta: Dict[str, Any] = {
+        "use_llm": bool(use_llm),
+        "llm_used": False,
+        "degraded_mode": False,
+        "degraded_reasons": [],
+    }
     knowledge_snippet = _resolve_knowledge_snippet(knowledge_provider, knowledge_topic)
-
     recent_snippet = _format_recent_events(recent_events) if recent_events else ""
     if use_llm:
         llm_text, reason = _llm_interpret(
             summary, history, patch_plan, knowledge_snippet, recent_snippet
         )
         if llm_text:
+            meta["llm_used"] = True
             risks = summary.get("risks") or []
             rec_block = _build_recommendation_how_block(risks, knowledge_snippet)
             ref_block = _format_reference_block(knowledge_snippet)
@@ -556,12 +587,21 @@ def interpret_architecture(
                     llm_text += rec_block
                 if ref_block:
                     llm_text += ref_block
-            return llm_text
-        if verbose and reason:
-            print(f"eurika: architect: using template — {reason}", file=sys.stderr)
+            return llm_text, meta
+        meta["degraded_mode"] = True
+        if reason:
+            if verbose:
+                print(f"eurika: architect: using template — {reason}", file=sys.stderr)
+            meta["degraded_reasons"].append(f"llm_unavailable:{reason}")
+        else:
+            meta["degraded_reasons"].append("llm_unavailable:unknown")
+    else:
+        meta["degraded_mode"] = True
+        meta["degraded_reasons"].append("llm_disabled")
+
     return _template_interpret(
         summary, history, patch_plan, knowledge_snippet, recent_snippet
-    )
+    ), meta
 
 
 # TODO (eurika): refactor long_function '_template_interpret' — consider extracting helper

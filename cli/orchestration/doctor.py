@@ -129,7 +129,7 @@ def run_doctor_cycle(
         PEPProvider,
         ReleaseNotesProvider,
     )
-    from eurika.reasoning.architect import interpret_architecture
+    from eurika.reasoning.architect import interpret_architecture_with_meta
 
     summary = get_summary(path)
     if summary.get("error"):
@@ -150,7 +150,7 @@ def run_doctor_cycle(
         ReleaseNotesProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=online, rate_limit_seconds=rate_limit),
     ])
     knowledge_topic = knowledge_topics_from_env_or_summary(summary)
-    architect_text = interpret_architecture(
+    architect_text, architect_meta = interpret_architecture_with_meta(
         summary, history, use_llm=use_llm, patch_plan=patch_plan,
         knowledge_provider=knowledge_provider, knowledge_topic=knowledge_topic,
         recent_events=recent_events,
@@ -160,6 +160,12 @@ def run_doctor_cycle(
         "history": history,
         "patch_plan": patch_plan,
         "architect_text": architect_text,
+        "runtime": {
+            "degraded_mode": bool((architect_meta or {}).get("degraded_mode")),
+            "degraded_reasons": list((architect_meta or {}).get("degraded_reasons", [])),
+            "llm_used": bool((architect_meta or {}).get("llm_used")),
+            "use_llm": bool(use_llm),
+        },
     }
     suggested_info = _suggested_policy_from_last_fix(path)
     if suggested_info.get("suggested"):

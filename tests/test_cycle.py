@@ -213,6 +213,19 @@ def test_knowledge_topics_derived_from_summary(monkeypatch: Any) -> None:
     assert "pep_8" in topics
 
 
+def test_doctor_runtime_reports_degraded_mode_when_llm_disabled(tmp_path: Path) -> None:
+    """Doctor reports deterministic degraded mode metadata when running with --no-llm."""
+    from cli.orchestration.doctor import run_doctor_cycle
+
+    _minimal_self_map(tmp_path / "self_map.json", ["a.py"], {})
+    out = run_doctor_cycle(tmp_path, window=3, no_llm=True, online=False)
+    runtime = out.get("runtime") or {}
+    assert runtime.get("degraded_mode") is True
+    assert "llm_disabled" in (runtime.get("degraded_reasons") or [])
+    assert runtime.get("llm_used") is False
+    assert runtime.get("use_llm") is False
+
+
 def test_doctor_suggested_policy_block(tmp_path: Path) -> None:
     """Doctor shows Suggested policy block when fix report has low apply_rate (ROADMAP 2.9.4)."""
     (tmp_path / "eurika_fix_report.json").write_text(
