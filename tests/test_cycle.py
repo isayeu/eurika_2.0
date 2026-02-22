@@ -717,6 +717,43 @@ def test_apply_campaign_memory_filters_rejected_ops(tmp_path: Path) -> None:
     assert operation_key(skipped[0]) == operation_key(rejected[0])
 
 
+def test_prepare_fix_cycle_reports_campaign_skipped_in_noop(tmp_path: Path) -> None:
+    """No-op report includes campaign_skipped count when campaign filter removes ops."""
+    from types import SimpleNamespace
+    from cli.orchestration.prepare import prepare_fix_cycle_operations
+
+    fake_result = SimpleNamespace(success=True, output={})
+    ops = [{"target_file": "foo.py", "kind": "split_module"}]
+    patch_plan = {"operations": ops}
+    with (
+        patch("cli.orchestration.prepare.run_fix_diagnose_stage", return_value=fake_result),
+        patch("cli.orchestration.prepare.extract_patch_plan_from_result", return_value=(patch_plan, ops)),
+        patch("cli.orchestration.prepare.prepend_fix_operations", return_value=(patch_plan, ops)),
+        patch("cli.orchestration.prepare._drop_noop_append_ops", return_value=ops),
+        patch("cli.orchestration.prepare._deprioritize_weak_pairs", return_value=ops),
+        patch("cli.orchestration.prepare.apply_runtime_policy", return_value=(patch_plan, ops, [])),
+        patch("cli.orchestration.prepare.apply_campaign_memory", return_value=(patch_plan, [], ops)),
+        patch("cli.orchestration.prepare.apply_session_rejections", return_value=(patch_plan, [], [])),
+    ):
+        early, _result, _plan, out_ops = prepare_fix_cycle_operations(
+            tmp_path,
+            runtime_mode="assist",
+            session_id=None,
+            window=5,
+            quiet=True,
+            skip_scan=True,
+            no_clean_imports=True,
+            no_code_smells=True,
+            run_scan=lambda _p: 0,
+        )
+    assert early is not None
+    report = early.get("report", {})
+    assert report.get("message") == "Patch plan has no operations. Cycle complete."
+    assert report.get("campaign_skipped") == 1
+    assert report.get("session_skipped") == 0
+    assert out_ops == []
+
+
 def test_deprioritize_weak_pairs_puts_weak_last(tmp_path: Path) -> None:
     """Weak-pair ops are moved to the end of the operation list."""
     from cli.orchestration.prepare import _deprioritize_weak_pairs

@@ -292,7 +292,7 @@ def prepare_fix_cycle_operations(
         operations,
         runtime_mode=runtime_mode,
     )
-    patch_plan, operations, _ = apply_campaign_memory(path, patch_plan, operations)
+    patch_plan, operations, campaign_skipped = apply_campaign_memory(path, patch_plan, operations)
     patch_plan, operations, session_skipped = apply_session_rejections(
         path, patch_plan, operations, session_id=session_id
     )
@@ -302,6 +302,7 @@ def prepare_fix_cycle_operations(
             "report": {
                 "message": "Patch plan has no operations. Cycle complete.",
                 "policy_decisions": policy_decisions,
+                "campaign_skipped": len(campaign_skipped),
                 "session_skipped": len(session_skipped),
             },
             "operations": [],
