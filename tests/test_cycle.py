@@ -774,6 +774,9 @@ def test_prepare_fix_cycle_reports_campaign_skipped_in_noop(tmp_path: Path) -> N
     assert report.get("message") == "Patch plan has no operations. Cycle complete."
     assert report.get("campaign_skipped") == 1
     assert report.get("session_skipped") == 0
+    llm_hint_runtime = report.get("llm_hint_runtime")
+    assert isinstance(llm_hint_runtime, dict)
+    assert "calls_used" in llm_hint_runtime
     assert out_ops == []
 
 

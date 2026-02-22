@@ -8,7 +8,18 @@ from eurika.reasoning.planner_llm import (
     _build_planner_prompt,
     _parse_llm_hints,
     ask_ollama_split_hints,
+    llm_hint_runtime_stats,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_llm_hint_runtime_state() -> None:
+    """Isolate module-level LLM hint state between tests."""
+    from eurika.reasoning import planner_llm
+
+    planner_llm._reset_hint_runtime_state()
+    yield
+    planner_llm._reset_hint_runtime_state()
 
 
 def test_parse_llm_hints_extracts_bullets() -> None:
@@ -109,3 +120,55 @@ def test_ask_ollama_failure_returns_empty() -> None:
                 {"imports_from": [], "imported_by": []},
             )
     assert result == []
+
+
+def test_ask_ollama_respects_max_calls_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Second module is skipped when max call budget is exhausted."""
+    monkeypatch.setenv("EURIKA_LLM_HINTS_MAX_CALLS", "1")
+    monkeypatch.setenv("EURIKA_LLM_HINTS_BUDGET_SEC", "999")
+    with patch("eurika.reasoning.planner_llm._use_llm_hints", return_value=True):
+        with patch("eurika.reasoning.architect._call_ollama_cli") as mock_cli:
+            mock_cli.return_value = ("- Extract one helper module", None)
+            r1 = ask_ollama_split_hints("god_module", "a.py", {"imports_from": [], "imported_by": []})
+            r2 = ask_ollama_split_hints("god_module", "b.py", {"imports_from": [], "imported_by": []})
+    assert len(r1) >= 1
+    assert r2 == []
+    assert mock_cli.call_count == 1
+
+
+def test_ask_ollama_caches_result_per_module() -> None:
+    """Repeated request for same smell/module should not re-call Ollama."""
+    with patch("eurika.reasoning.planner_llm._use_llm_hints", return_value=True):
+        with patch("eurika.reasoning.architect._call_ollama_cli") as mock_cli:
+            mock_cli.return_value = ("- Extract parser helpers", None)
+            r1 = ask_ollama_split_hints("god_module", "same.py", {"imports_from": [], "imported_by": []})
+            r2 = ask_ollama_split_hints("god_module", "same.py", {"imports_from": [], "imported_by": []})
+    assert r1 == r2
+    assert mock_cli.call_count == 1
+
+
+def test_ask_ollama_timeout_triggers_circuit_breaker() -> None:
+    """Timeout/connect failure disables further hint calls for the run."""
+    with patch("eurika.reasoning.planner_llm._use_llm_hints", return_value=True):
+        with patch("eurika.reasoning.architect._call_ollama_cli") as mock_cli:
+            mock_cli.return_value = (None, "timed out (cli timeout=45s)")
+            r1 = ask_ollama_split_hints("god_module", "first.py", {"imports_from": [], "imported_by": []})
+            r2 = ask_ollama_split_hints("god_module", "second.py", {"imports_from": [], "imported_by": []})
+    assert r1 == []
+    assert r2 == []
+    assert mock_cli.call_count == 1
+
+
+def test_llm_hint_runtime_stats_exposes_budget_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Runtime stats should expose usage counters and breaker flags."""
+    monkeypatch.setenv("EURIKA_LLM_HINTS_MAX_CALLS", "2")
+    monkeypatch.setenv("EURIKA_LLM_HINTS_BUDGET_SEC", "999")
+    with patch("eurika.reasoning.planner_llm._use_llm_hints", return_value=True):
+        with patch("eurika.reasoning.architect._call_ollama_cli") as mock_cli:
+            mock_cli.return_value = ("- Extract parser helpers", None)
+            _ = ask_ollama_split_hints("god_module", "stats.py", {"imports_from": [], "imported_by": []})
+    stats = llm_hint_runtime_stats()
+    assert stats["calls_used"] == 1
+    assert stats["max_calls"] == 2
+    assert stats["budget_exhausted"] is False
+    assert stats["circuit_breaker_triggered"] is False

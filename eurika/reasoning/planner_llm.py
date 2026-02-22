@@ -9,7 +9,13 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from typing import Any, Dict, List
+
+_HINT_CALLS = 0
+_HINT_BUDGET_START = 0.0
+_HINT_CACHE: Dict[tuple[str, str], List[str]] = {}
+_HINT_CIRCUIT_BROKEN = False
 
 
 def _use_llm_hints() -> bool:
@@ -20,6 +26,81 @@ def _use_llm_hints() -> bool:
 
 def _ollama_model() -> str:
     return os.environ.get("OLLAMA_OPENAI_MODEL", "qwen2.5-coder:7b")
+
+
+def _max_hint_calls() -> int:
+    """Per-run cap for planner LLM calls to avoid diagnose stalls."""
+    raw = os.environ.get("EURIKA_LLM_HINTS_MAX_CALLS", "3")
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 3
+
+
+def _hints_budget_sec() -> float:
+    """Per-run wall-clock budget for planner LLM calls (seconds)."""
+    raw = os.environ.get("EURIKA_LLM_HINTS_BUDGET_SEC", "20")
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return 20.0
+
+
+def _reset_hint_runtime_state() -> None:
+    """Reset in-process counters/cache (used by tests)."""
+    global _HINT_CALLS, _HINT_BUDGET_START, _HINT_CACHE, _HINT_CIRCUIT_BROKEN
+    _HINT_CALLS = 0
+    _HINT_BUDGET_START = 0.0
+    _HINT_CACHE = {}
+    _HINT_CIRCUIT_BROKEN = False
+
+
+def _llm_hint_allowed() -> bool:
+    """Runtime guard against long diagnose due to many/slow LLM hints."""
+    global _HINT_BUDGET_START
+    if _HINT_CALLS >= _max_hint_calls():
+        return False
+    budget = _hints_budget_sec()
+    if budget <= 0:
+        return False
+    now = time.monotonic()
+    if _HINT_BUDGET_START <= 0.0:
+        _HINT_BUDGET_START = now
+        return True
+    return (now - _HINT_BUDGET_START) <= budget
+
+
+def _register_llm_hint_call() -> None:
+    global _HINT_CALLS
+    _HINT_CALLS += 1
+
+
+def _disable_llm_hints_for_run() -> None:
+    """Circuit-breaker after hard timeout/connectivity failures."""
+    global _HINT_CALLS, _HINT_CIRCUIT_BROKEN
+    _HINT_CALLS = _max_hint_calls()
+    _HINT_CIRCUIT_BROKEN = True
+
+
+def llm_hint_runtime_stats() -> Dict[str, Any]:
+    """Runtime counters for diagnose observability."""
+    max_calls = _max_hint_calls()
+    budget_sec = _hints_budget_sec()
+    elapsed_sec = 0.0
+    if _HINT_BUDGET_START > 0.0:
+        elapsed_sec = max(0.0, time.monotonic() - _HINT_BUDGET_START)
+    budget_exhausted = bool(
+        (_HINT_CALLS >= max_calls)
+        or (budget_sec > 0 and _HINT_BUDGET_START > 0.0 and elapsed_sec > budget_sec)
+    )
+    return {
+        "calls_used": int(_HINT_CALLS),
+        "max_calls": int(max_calls),
+        "budget_sec": float(budget_sec),
+        "elapsed_sec": round(float(elapsed_sec), 3),
+        "budget_exhausted": budget_exhausted,
+        "circuit_breaker_triggered": bool(_HINT_CIRCUIT_BROKEN),
+    }
 
 
 def _build_planner_prompt(
@@ -96,12 +177,27 @@ def ask_ollama_split_hints(
     prompt = _build_planner_prompt(smell_type, module_name, graph_context)
     if not prompt:
         return []
+    cache_key = (smell_type, module_name)
+    cached = _HINT_CACHE.get(cache_key)
+    if cached is not None:
+        return list(cached)
+    if not _llm_hint_allowed():
+        _HINT_CACHE[cache_key] = []
+        return []
+    _register_llm_hint_call()
     try:
         from eurika.reasoning.architect import _call_ollama_cli
 
         text, reason = _call_ollama_cli(_ollama_model(), prompt)
         if text:
-            return _parse_llm_hints(text)
+            hints = _parse_llm_hints(text)
+            _HINT_CACHE[cache_key] = hints
+            return list(hints)
+        if reason and (
+            "timed out" in reason.lower() or "could not connect to ollama server" in reason.lower()
+        ):
+            _disable_llm_hints_for_run()
     except Exception:
         pass
+    _HINT_CACHE[cache_key] = []
     return []

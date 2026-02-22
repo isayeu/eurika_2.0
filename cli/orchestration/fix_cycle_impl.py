@@ -195,6 +195,7 @@ def run_fix_cycle_impl(
         report = {
             "message": "All operations rejected by user/policy. Cycle complete.",
             "policy_decisions": result.output.get("policy_decisions", []),
+            "llm_hint_runtime": result.output.get("llm_hint_runtime"),
             "operation_explanations": [],
             "skipped": rejected_files,
         }

@@ -225,6 +225,19 @@ def extract_patch_plan_from_result(
     return patch_plan, operations
 
 
+def _attach_llm_hint_runtime(result: Any) -> None:
+    """Attach planner LLM-hints runtime counters to diagnose result output."""
+    out = getattr(result, "output", None)
+    if not isinstance(out, dict):
+        return
+    try:
+        from eurika.reasoning.planner_llm import llm_hint_runtime_stats
+
+        out["llm_hint_runtime"] = llm_hint_runtime_stats()
+    except Exception:
+        pass
+
+
 def _early_exit(
     return_code: int,
     report: dict[str, Any],
@@ -272,6 +285,7 @@ def prepare_fix_cycle_operations(
     result = run_fix_diagnose_stage(path, window, quiet)
     if not result.success:
         return _early_exit(1, result.output, result, None, [])
+    _attach_llm_hint_runtime(result)
 
     extracted = extract_patch_plan_from_result(result)
     if extracted == (None, None):
@@ -312,6 +326,7 @@ def prepare_fix_cycle_operations(
                 "policy_decisions": policy_decisions,
                 "campaign_skipped": len(campaign_skipped),
                 "session_skipped": len(session_skipped),
+                "llm_hint_runtime": result.output.get("llm_hint_runtime"),
             },
             "operations": [],
             "modified": [],

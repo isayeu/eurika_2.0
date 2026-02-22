@@ -28,6 +28,7 @@ def build_fix_dry_run_result(
         "verify": {"success": None},
         "operation_explanations": expls,
         "policy_decisions": result.output.get("policy_decisions", []),
+        "llm_hint_runtime": result.output.get("llm_hint_runtime"),
     }
     try:
         (path / "eurika_fix_report.json").write_text(
@@ -287,6 +288,7 @@ def execute_fix_apply_stage(
         expls.append(expl)
     report["operation_explanations"] = expls
     report["policy_decisions"] = result.output.get("policy_decisions", [])
+    report["llm_hint_runtime"] = result.output.get("llm_hint_runtime")
     attach_fix_telemetry(report, operations, path)
     enrich_report_with_rescan(
         path, report, rescan_before, quiet, run_scan,
