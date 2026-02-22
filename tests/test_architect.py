@@ -17,6 +17,7 @@ from eurika.reasoning.architect import (
     _parse_smell_from_risk,
     _template_interpret,
     interpret_architecture,
+    interpret_architecture_with_meta,
 )
 from eurika.storage.events import Event
 
@@ -266,3 +267,42 @@ def test_call_ollama_cli_timeout_reports_missing_model_hint() -> None:
     assert reason is not None
     assert "ollama pull qwen2.5-coder:7b" in reason
     assert run_mock.call_count == 2
+
+
+def test_interpret_architecture_with_meta_llm_disabled_sets_degraded() -> None:
+    summary = {"system": {"modules": 2, "dependencies": 1, "cycles": 0}, "maturity": "low"}
+    history = {"trends": {}, "regressions": []}
+    text, meta = interpret_architecture_with_meta(summary, history, use_llm=False)
+    assert isinstance(text, str) and text
+    assert meta.get("degraded_mode") is True
+    assert "llm_disabled" in (meta.get("degraded_reasons") or [])
+    assert meta.get("llm_used") is False
+    assert meta.get("use_llm") is False
+
+
+def test_interpret_architecture_with_meta_llm_error_sets_reason() -> None:
+    summary = {"system": {"modules": 2, "dependencies": 1, "cycles": 0}, "maturity": "low"}
+    history = {"trends": {}, "regressions": []}
+    with patch(
+        "eurika.reasoning.architect._llm_interpret",
+        return_value=(None, "primary down; fallback down"),
+    ):
+        text, meta = interpret_architecture_with_meta(summary, history, use_llm=True, verbose=False)
+    assert isinstance(text, str) and text
+    assert meta.get("degraded_mode") is True
+    reasons = meta.get("degraded_reasons") or []
+    assert any("llm_unavailable:primary down; fallback down" in r for r in reasons)
+    assert meta.get("llm_used") is False
+    assert meta.get("use_llm") is True
+
+
+def test_interpret_architecture_with_meta_llm_success_not_degraded() -> None:
+    summary = {"system": {"modules": 2, "dependencies": 1, "cycles": 0}, "maturity": "low", "risks": []}
+    history = {"trends": {}, "regressions": []}
+    with patch("eurika.reasoning.architect._llm_interpret", return_value=("ok from llm", None)):
+        text, meta = interpret_architecture_with_meta(summary, history, use_llm=True, verbose=False)
+    assert text.startswith("ok from llm")
+    assert meta.get("degraded_mode") is False
+    assert meta.get("degraded_reasons") == []
+    assert meta.get("llm_used") is True
+    assert meta.get("use_llm") is True

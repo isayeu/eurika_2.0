@@ -226,6 +226,26 @@ def test_doctor_runtime_reports_degraded_mode_when_llm_disabled(tmp_path: Path) 
     assert runtime.get("use_llm") is False
 
 
+def test_doctor_handles_network_unavailable_without_crash(tmp_path: Path) -> None:
+    """Doctor should degrade gracefully when online knowledge fetch is unavailable."""
+    import urllib.error
+    from unittest.mock import patch
+
+    from cli.orchestration.doctor import run_doctor_cycle
+
+    _minimal_self_map(tmp_path / "self_map.json", ["a.py"], {})
+    with patch(
+        "eurika.knowledge.base.urllib.request.urlopen",
+        side_effect=urllib.error.URLError("network down"),
+    ):
+        out = run_doctor_cycle(tmp_path, window=3, no_llm=True, online=True)
+    assert "error" not in out
+    assert "summary" in out and "architect_text" in out
+    runtime = out.get("runtime") or {}
+    assert runtime.get("degraded_mode") is True
+    assert "llm_disabled" in (runtime.get("degraded_reasons") or [])
+
+
 def test_doctor_suggested_policy_block(tmp_path: Path) -> None:
     """Doctor shows Suggested policy block when fix report has low apply_rate (ROADMAP 2.9.4)."""
     (tmp_path / "eurika_fix_report.json").write_text(
@@ -558,6 +578,20 @@ def test_full_cycle_propagates_doctor_runtime_to_fix_report() -> None:
     assert runtime.get("degraded_mode") is True
     assert "llm_disabled" in (runtime.get("degraded_reasons") or [])
     assert runtime.get("source") == "doctor"
+
+
+def test_append_fix_cycle_memory_tolerates_memory_write_error(tmp_path: Path) -> None:
+    """Memory write failures must not break fix cycle flow (degraded but deterministic)."""
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from cli.orchestration.apply_stage import append_fix_cycle_memory
+
+    result = SimpleNamespace(output={"summary": {"risks": []}})
+    operations = [{"target_file": "a.py", "kind": "remove_unused_import"}]
+    report = {"modified": ["a.py"], "run_id": "r1", "verify_duration_ms": 10}
+    with patch("eurika.storage.ProjectMemory", side_effect=OSError("disk full")):
+        append_fix_cycle_memory(tmp_path, result, operations, report, verify_success=True)
 
 
 def test_prepare_fix_cycle_operations_wrapper_delegates() -> None:
