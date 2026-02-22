@@ -195,7 +195,7 @@
 | 3.6.1 | Approve per operation              | Подтверждение/отклонение по операциям (а не только whole-plan): risk, reason, target, diff-hint | Для high-risk ops доступен per-op approve/reject; `--apply-approved` применяет только approved ops |
 | 3.6.2 | Critic pass before apply           | Перед применением прогонять критический check плана (imports/API/tests impact)                  | План получает pre-apply verdict (`allow/review/deny`), deny-ops не применяются в auto режиме       |
 | 3.6.3 | Semantic context for planner       | Подмешивать в planner семантически релевантные модули/тесты/историю фейлов                       | ✅ Выполнено: context sources в planner/report/UI; в report-snapshot есть блок "Context effect" (apply/no-op delta) |
-| 3.6.4 | Session checkpoint + campaign undo | Снимок состояния перед серией apply; откат всей кампании одним действием                         | Есть restore для run/session; rollback по verify fail и manual undo работают предсказуемо           |
+| 3.6.4 | Session checkpoint + campaign undo | Снимок состояния перед серией apply; откат всей кампании одним действием                         | ✅ Выполнено: pre-apply checkpoint, `campaign-undo`, e2e rollback кампании (checkpoint -> run_id -> undo) |
 
 **DoD для пакета 3.6:** рост `apply_rate`, снижение `rollback_rate`, снижение доли TODO/no-op операций в dogfooding-циклах.
 
@@ -210,7 +210,7 @@
 
 - Спринт 1 (3.6.1 + 3.6.2): ✅ выполнен (decision gate, critic pass, per-op approve/reject, decision summary).
 - Спринт 2 (3.6.3): ✅ выполнен (context_sources в JSON/API/doctor, UI Dashboard + top context hits + by-target breakdown, CYCLE_REPORT через report-snapshot context effect).
-- Спринт 3 (3.6.4): ⏳ в работе (MVP уже есть: pre-apply campaign checkpoint + `eurika campaign-undo`).
+- Спринт 3 (3.6.4): ✅ выполнен (checkpoint + campaign-undo + e2e подтверждение на безопасном apply-сценарии).
 
 #### Спринт 1 — инженерная декомпозиция (3.6.1 + 3.6.2)
 

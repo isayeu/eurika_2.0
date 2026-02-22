@@ -2,6 +2,29 @@
 
 ---
 
+## 40. Snapshot (2026-02-23) — Sprint 3.6.4 e2e: checkpoint -> campaign-undo
+
+### Сценарий (безопасный mini-project)
+- создан временный проект `.tmp_campaign_demo` с `a.py` (unused import) и `tests/test_a.py`.
+- `eurika scan .tmp_campaign_demo`
+- `eurika fix .tmp_campaign_demo --quiet` (apply + verify)
+- `eurika campaign-undo .tmp_campaign_demo --list`
+- `eurika campaign-undo .tmp_campaign_demo --checkpoint-id <id>`
+
+### Результат
+- fix применил `remove_unused_import` для `a.py`; verify: `1 passed`.
+- в `eurika_fix_report.json` зафиксирован `campaign_checkpoint`:
+  - `checkpoint_id=20260223_004858_306`
+  - `status=completed`
+  - `run_ids=["20260222_214858"]`
+- `campaign-undo --list` показал checkpoint со статусом `completed`, после undo — `status=undone`.
+- после `campaign-undo` файл `a.py` восстановлен из backup (`import os` вернулся).
+
+### Итог
+- Контур Sprint 3.6.4 подтверждён end-to-end: checkpoint создаётся до apply, связывается с run_id, и откат кампании одним действием работает предсказуемо.
+
+---
+
 ## 39. Snapshot (2026-02-22) — ritual check after Sprint 3 push
 
 ### Команды
