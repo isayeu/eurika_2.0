@@ -17,6 +17,24 @@ const APIPost = (path, body) => {
   }).then(r => r.json());
 };
 
+const DEFAULT_EXEC_TIMEOUT_SEC = 180;
+
+function getExecTimeoutPayload() {
+  const unlimitedCb = document.getElementById('exec-timeout-unlimited-cb');
+  if (unlimitedCb && unlimitedCb.checked) return null;
+  const timeoutInput = document.getElementById('exec-timeout-input');
+  const raw = timeoutInput ? parseInt(String(timeoutInput.value || '').trim(), 10) : NaN;
+  if (Number.isFinite(raw) && raw >= 1 && raw <= 3600) return raw;
+  return DEFAULT_EXEC_TIMEOUT_SEC;
+}
+
+function syncExecTimeoutUi() {
+  const unlimitedCb = document.getElementById('exec-timeout-unlimited-cb');
+  const timeoutInput = document.getElementById('exec-timeout-input');
+  if (!timeoutInput) return;
+  timeoutInput.disabled = !!(unlimitedCb && unlimitedCb.checked);
+}
+
 function bar(value, maxVal, cls) {
   const pct = maxVal > 0 ? Math.round((value / maxVal) * 100) : 0;
   return '<div class="bar-wrap"><div class="bar-track"><div class="bar-fill ' + (cls || '') + '" style="width:' + pct + '%"></div></div><span>' + value + '/' + maxVal + '</span></div>';
@@ -193,13 +211,25 @@ function initTerminal() {
   const input = document.getElementById('terminal-input');
   const runBtn = document.getElementById('terminal-run-btn');
   const output = document.getElementById('terminal-output');
+  const timeoutInput = document.getElementById('exec-timeout-input');
+  const timeoutUnlimitedCb = document.getElementById('exec-timeout-unlimited-cb');
   if (!input || !runBtn || !output) return;
+  if (timeoutInput) {
+    timeoutInput.addEventListener('change', () => {
+      const n = parseInt(String(timeoutInput.value || '').trim(), 10);
+      if (!Number.isFinite(n) || n < 1) timeoutInput.value = '1';
+      else if (n > 3600) timeoutInput.value = '3600';
+    });
+  }
+  if (timeoutUnlimitedCb) timeoutUnlimitedCb.addEventListener('change', syncExecTimeoutUi);
+  syncExecTimeoutUi();
   runBtn.addEventListener('click', async () => {
     const cmd = input.value.trim() || 'eurika scan .';
+    const timeout = getExecTimeoutPayload();
     output.textContent = 'Running…';
     runBtn.disabled = true;
     try {
-      const res = await APIPost('/exec', { command: cmd, timeout: 120 });
+      const res = await APIPost('/exec', { command: cmd, timeout: timeout });
       runBtn.disabled = false;
       if (res.error) {
         output.textContent = (res.stderr || res.error || '') + (res.stdout || '');
@@ -302,6 +332,8 @@ function initChat() {
 function runCommand(cmd, btn, btnText) {
   const output = document.getElementById('terminal-output');
   if (!btn || !output) return;
+  const timeout = getExecTimeoutPayload();
+  const timeoutLabel = timeout == null ? 'unlimited' : (timeout + 's');
   btn.disabled = true;
   const orig = btn.textContent;
   if (btnText) btn.textContent = 'Running…';
@@ -314,10 +346,11 @@ function runCommand(cmd, btn, btnText) {
     const sec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
     output.textContent =
       'Running ' + cmd + ' …\n' +
+      'timeout: ' + timeoutLabel + '\n' +
       frames[frame % frames.length] + ' elapsed: ' + sec + 's';
     frame += 1;
   }, 250);
-  return APIPost('/exec', { command: cmd, timeout: 180 })
+  return APIPost('/exec', { command: cmd, timeout: timeout })
     .then(res => {
       clearInterval(timer);
       btn.disabled = false;

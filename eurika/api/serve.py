@@ -77,7 +77,7 @@ def _read_json_body(handler: BaseHTTPRequestHandler) -> dict | None:
         return None
 
 
-def _exec_eurika_command(project_root: Path, command: str, timeout: int = 120) -> dict:
+def _exec_eurika_command(project_root: Path, command: str, timeout: int | None = 120) -> dict:
     """Execute a whitelisted eurika command in project_root. ROADMAP 3.5.8."""
     cmd_str = (command or "").strip()
     if not cmd_str:
@@ -301,25 +301,28 @@ def _run_post_handler(
             )
             return True
         raw_timeout = body.get("timeout", 120)
-        try:
-            timeout = int(raw_timeout)
-        except (TypeError, ValueError):
-            _json_response(
-                handler,
-                {"error": "invalid timeout payload", "hint": "Expected timeout: integer"},
-                status=400,
-            )
-            return True
-        if timeout < EXEC_TIMEOUT_MIN or timeout > EXEC_TIMEOUT_MAX:
-            _json_response(
-                handler,
-                {
-                    "error": "invalid timeout range",
-                    "hint": f"Expected timeout: {EXEC_TIMEOUT_MIN}..{EXEC_TIMEOUT_MAX} seconds",
-                },
-                status=400,
-            )
-            return True
+        if raw_timeout is None:
+            timeout = None
+        else:
+            try:
+                timeout = int(raw_timeout)
+            except (TypeError, ValueError):
+                _json_response(
+                    handler,
+                    {"error": "invalid timeout payload", "hint": "Expected timeout: integer or null"},
+                    status=400,
+                )
+                return True
+            if timeout < EXEC_TIMEOUT_MIN or timeout > EXEC_TIMEOUT_MAX:
+                _json_response(
+                    handler,
+                    {
+                        "error": "invalid timeout range",
+                        "hint": f"Expected timeout: {EXEC_TIMEOUT_MIN}..{EXEC_TIMEOUT_MAX} seconds (or null for unlimited)",
+                    },
+                    status=400,
+                )
+                return True
         data = _exec_eurika_command(project_root, command, timeout=timeout)
         _json_response(handler, data)
         return True

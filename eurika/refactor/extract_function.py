@@ -9,6 +9,7 @@ variables from the parent's scope (no closure dependency).
 from __future__ import annotations
 
 import ast
+import builtins
 from pathlib import Path
 from typing import List, Optional, Set, Tuple
 
@@ -306,6 +307,28 @@ def _names_assigned_in_statements(stmts: List[ast.stmt]) -> Set[str]:
     return assigned
 
 
+def _module_level_bound_names(tree: ast.AST) -> Set[str]:
+    """Collect names bound at module scope (globals accessible to extracted helper)."""
+    names: Set[str] = set()
+    if not isinstance(tree, ast.Module):
+        return names
+    for stmt in tree.body:
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(stmt.name)
+        elif isinstance(stmt, (ast.Assign, ast.AnnAssign)):
+            targets = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
+            for t in targets:
+                if isinstance(t, ast.Name):
+                    names.add(t.id)
+        elif isinstance(stmt, ast.Import):
+            for a in stmt.names:
+                names.add((a.asname or a.name.split(".")[0]).strip())
+        elif isinstance(stmt, ast.ImportFrom):
+            for a in stmt.names:
+                names.add((a.asname or a.name).strip())
+    return names
+
+
 def suggest_extract_block(
     file_path: Path,
     function_name: str,
@@ -339,6 +362,8 @@ def suggest_extract_block(
 
     parent_params = _parent_param_names(parent_func)
     parent_locals = _parent_locals(parent_func)
+    module_bound = _module_level_bound_names(tree)
+    builtin_names = set(dir(builtins))
 
     def _nesting_depth(n: ast.AST) -> int:
         if isinstance(n, (ast.If, ast.For, ast.While, ast.Try, ast.With)):
@@ -357,8 +382,10 @@ def suggest_extract_block(
                 if not _block_has_control_flow_exit(body):
                     used = _names_used_in_statements(body)
                     assigned = _names_assigned_in_statements(body)
-                    used_from_outer = (used - assigned) & parent_locals
-                    if used_from_outer <= parent_params and len(used_from_outer) <= max_extra_params:
+                    free_names = used - assigned
+                    used_from_outer = free_names & parent_locals
+                    unresolved = free_names - parent_locals - module_bound - builtin_names
+                    if not unresolved and used_from_outer <= parent_params and len(used_from_outer) <= max_extra_params:
                         line_count = _block_line_count(body)
                         if line_count >= min_lines:
                             candidates.append((node, body, depth, line_count))

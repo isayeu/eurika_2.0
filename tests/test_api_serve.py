@@ -346,6 +346,32 @@ def test_run_post_handler_exec_accepts_timeout_max_boundary(tmp_path: Path, monk
     assert called.get("timeout") == api_serve.EXEC_TIMEOUT_MAX
 
 
+def test_run_post_handler_exec_accepts_unlimited_timeout_null(tmp_path: Path, monkeypatch) -> None:
+    """POST /api/exec should accept timeout=null as unlimited."""
+    captured: dict[str, object] = {}
+    called: dict[str, object] = {}
+
+    def _fake_json_response(_handler, data: dict, status: int = 200) -> None:
+        captured["status"] = status
+        captured["data"] = data
+
+    def _fake_exec(_project_root, _command, timeout=120):
+        called["timeout"] = timeout
+        return {"stdout": "", "stderr": "", "exit_code": 0}
+
+    monkeypatch.setattr(api_serve, "_json_response", _fake_json_response)
+    monkeypatch.setattr(api_serve, "_exec_eurika_command", _fake_exec)
+    handled = api_serve._run_post_handler(
+        _DummyHandler(),
+        tmp_path,
+        "/api/exec",
+        {"command": "eurika scan .", "timeout": None},
+    )
+    assert handled is True
+    assert captured.get("status") == 200
+    assert called.get("timeout") is None
+
+
 def test_run_post_handler_exec_ignores_extra_payload_fields(tmp_path: Path, monkeypatch) -> None:
     """POST /api/exec should ignore unknown fields and still run."""
     captured: dict[str, object] = {}

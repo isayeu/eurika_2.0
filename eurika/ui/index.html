@@ -202,10 +202,18 @@
     <div class="card">
       <h2>Terminal</h2>
       <p class="muted" style="margin-bottom: 0.5rem;">Run eurika commands (scan, doctor, fix, cycle, explain). Path is always project root.</p>
+      <div class="terminal-input-row" style="align-items: center; margin-bottom: 0.5rem;">
+        <label for="exec-timeout-input" class="muted">Timeout (sec):</label>
+        <input id="exec-timeout-input" type="number" min="1" max="3600" value="180" style="width: 8rem; flex: 0 0 8rem;" title="1..3600">
+        <label style="display: inline-flex; align-items: center; gap: 0.35rem; margin-left: 0.25rem;">
+          <input type="checkbox" id="exec-timeout-unlimited-cb"> Unlimited
+        </label>
+      </div>
       <div class="terminal-input-row">
         <input id="terminal-input" type="text" placeholder="eurika scan ." value="eurika scan .">
         <button id="terminal-run-btn" style="padding: 0.4rem 1rem; background: var(--accent); color: var(--bg); border: none; cursor: pointer; font-family: inherit;">Run</button>
       </div>
+      <p class="muted" style="margin-top: 0; margin-bottom: 0.5rem;">Limit applies to commands started from UI buttons and Terminal tab.</p>
       <pre id="terminal-output" class="terminal-output">Output will appear here.</pre>
     </div>
   </div>

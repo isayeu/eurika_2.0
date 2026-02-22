@@ -166,3 +166,25 @@ def outer():
     content = (tmp_path / "mod.py").read_text()
     assert f"def {helper_name}" in content
     assert f"{helper_name}(depth, node)" in content or f"{helper_name}(node, depth)" in content
+
+
+def test_suggest_extract_block_skips_nested_parent_with_closure_dependencies(tmp_path: Path) -> None:
+    """suggest_extract_block returns None when block depends on outer-scope closure vars."""
+    code = """
+def outer():
+    parent_locals = {"x"}
+    min_lines = 5
+    def collect_blocks(node, depth):
+        if isinstance(node, int):
+            body = [node]
+            used = set(body)
+            assigned = set()
+            used_from_outer = used - assigned & parent_locals
+            if len(used_from_outer) >= min_lines:
+                return True
+        return False
+    return collect_blocks(1, 0)
+"""
+    (tmp_path / "mod.py").write_text(code)
+    out = suggest_extract_block(tmp_path / "mod.py", "collect_blocks", min_lines=3)
+    assert out is None
