@@ -351,6 +351,60 @@ def test_build_patch_plan_god_module_produces_split_module():
     assert "imported_by" in op.params
 
 
+def test_build_patch_plan_clears_stale_split_import_hints(tmp_path: Path) -> None:
+    """Planner should clear stale graph imports_from when they don't exist in file imports."""
+    from architecture_planner import build_patch_plan
+    from eurika.smells.models import ArchSmell
+
+    target = tmp_path / "mod.py"
+    target.write_text("import os\n\n\ndef f():\n    return os.path.basename('x')\n", encoding="utf-8")
+    g = _make_graph(["mod.py", "stale_dep.py"], {"mod.py": ["stale_dep.py"]})
+    smells = [ArchSmell(type="god_module", nodes=["mod.py"], severity=6.0, description="")]
+    summary = {"risks": []}
+    history_info = {"trends": {}}
+    priorities = [{"name": "mod.py", "reasons": ["god_module"]}]
+
+    plan = build_patch_plan(
+        project_root=str(tmp_path),
+        summary=summary,
+        smells=smells,
+        history_info=history_info,
+        priorities=priorities,
+        graph=g,
+    )
+    split_ops = [o for o in plan.operations if o.kind == "split_module"]
+    assert split_ops, "expected split_module op"
+    assert split_ops[0].params is not None
+    assert split_ops[0].params.get("imports_from") == []
+
+
+def test_build_patch_plan_skips_split_for_thin_reexport_module(tmp_path: Path) -> None:
+    """Thin re-export modules should not receive split_module operations."""
+    from architecture_planner import build_patch_plan
+    from eurika.smells.models import ArchSmell
+
+    target = tmp_path / "runtime_scan.py"
+    target.write_text(
+        '"""Facade."""\nfrom runtime_scan_run_scan import run_scan\n\n__all__ = ["run_scan"]\n',
+        encoding="utf-8",
+    )
+    g = _make_graph(["runtime_scan.py", "x.py"], {"runtime_scan.py": ["x.py"]})
+    smells = [ArchSmell(type="god_module", nodes=["runtime_scan.py"], severity=6.0, description="")]
+    summary = {"risks": []}
+    history_info = {"trends": {}}
+    priorities = [{"name": "runtime_scan.py", "reasons": ["god_module"]}]
+
+    plan = build_patch_plan(
+        project_root=str(tmp_path),
+        summary=summary,
+        smells=smells,
+        history_info=history_info,
+        priorities=priorities,
+        graph=g,
+    )
+    assert not any(o.kind == "split_module" for o in plan.operations)
+
+
 def test_build_patch_plan_god_module_with_god_class_produces_extract_class(tmp_path: Path) -> None:
     """When god_module has a class with 6+ extractable methods, add extract_class op."""
     from architecture_planner import build_patch_plan

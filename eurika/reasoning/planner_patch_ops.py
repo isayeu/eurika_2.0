@@ -61,6 +61,147 @@ def _suggest_extract_class(file_path: Path, min_methods: int = 6) -> Optional[tu
     return best
 
 
+def _import_stems_in_file(file_path: Path) -> set[str]:
+    """Collect import stems present in a file."""
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except OSError:
+        return set()
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return set()
+    stems: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                stems.add(alias.name.split(".")[0])
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            stems.add(node.module.split(".")[-1])
+    return stems
+
+
+def _collect_import_bindings(tree: ast.AST) -> Dict[str, str]:
+    """Map bound symbol -> import stem for import usage analysis."""
+    out: Dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                name = alias.asname or alias.name.split(".")[0]
+                out[name] = alias.name.split(".")[0]
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            stem = node.module.split(".")[-1]
+            for alias in node.names:
+                if alias.name != "*":
+                    out[alias.asname or alias.name] = stem
+    return out
+
+
+def _root_name(node: ast.AST) -> Optional[str]:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return _root_name(node.value)
+    return None
+
+
+def _used_import_stems_in_def(node: ast.AST, bindings: Dict[str, str]) -> set[str]:
+    used: set[str] = set()
+    for child in ast.walk(node):
+        if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load):
+            stem = bindings.get(child.id)
+            if stem:
+                used.add(stem)
+        elif isinstance(child, ast.Attribute) and isinstance(child.ctx, ast.Load):
+            root = _root_name(child.value)
+            if root and root in bindings:
+                used.add(bindings[root])
+    return used
+
+
+def _has_split_candidates_for_hinted_stems(file_path: Path, hinted_stems: set[str]) -> bool:
+    """Planner-side preflight: does hinted import set produce any clean split candidate?"""
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return False
+    bindings = _collect_import_bindings(tree)
+    builtins_ = {"True", "False", "None", "bool", "int", "str", "list", "dict", "set", "self"}
+    for node in ast.iter_child_nodes(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+            continue
+        used = _used_import_stems_in_def(node, bindings)
+        relevant = used & hinted_stems
+        others = used - hinted_stems - builtins_
+        if relevant and not others:
+            return True
+    return False
+
+
+def _sanitize_split_params(project_root: str, target_file: str, split_params: Dict[str, Any]) -> Dict[str, Any]:
+    """Drop stale graph-driven imports_from when they don't map to file imports.
+
+    This keeps split_module actionable: when graph hints are outdated, apply side
+    can infer import stems directly from file content.
+    """
+    imports_from = split_params.get("imports_from") or []
+    if not imports_from:
+        return split_params
+    stems_in_file = _import_stems_in_file(Path(project_root) / target_file)
+    if not stems_in_file:
+        return split_params
+    hinted_stems = {Path(str(p)).stem for p in imports_from if str(p).strip()}
+    file_path = Path(project_root) / target_file
+    if hinted_stems and hinted_stems.isdisjoint(stems_in_file):
+        adjusted = dict(split_params)
+        adjusted["imports_from"] = []
+        return adjusted
+    if hinted_stems and not _has_split_candidates_for_hinted_stems(file_path, hinted_stems):
+        adjusted = dict(split_params)
+        adjusted["imports_from"] = []
+        return adjusted
+    return split_params
+
+
+def _is_thin_reexport_module(file_path: Path) -> bool:
+    """Heuristic: facade-like re-export module should not get split_module TODO."""
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return False
+    if any(isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) for n in tree.body):
+        return False
+    has_reexport = False
+    for node in tree.body:
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            has_reexport = True
+            continue
+        if (
+            isinstance(node, ast.Assign)
+            and any(isinstance(t, ast.Name) and t.id == "__all__" for t in node.targets)
+        ):
+            has_reexport = True
+            continue
+        if (
+            isinstance(node, ast.Expr)
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+        ):
+            continue
+        if isinstance(node, ast.Pass):
+            continue
+        return False
+    return has_reexport
+
+
 def build_patch_operations(
     project_root: str,
     summary: Dict[str, Any],
@@ -287,6 +428,7 @@ def _existing_extracted_class_is_synced(
 
 
 def _build_hints_and_params(
+    project_root: str,
     smell_type: str,
     action_kind: str,
     node_smells: List[ArchSmell],
@@ -329,6 +471,7 @@ def _build_hints_and_params(
             "imports_from": info.get("imports_from", []),
             "imported_by": info.get("imported_by", []),
         }
+        split_params = _sanitize_split_params(project_root, name, split_params)
         llm_hints = _llm_split_hints(smell_type, name, info)
         for h in llm_hints:
             if h and h not in hints:
@@ -359,6 +502,7 @@ def _llm_split_hints(
 
 def _append_default_refactor_operation(
     operations: List[PatchOperation],
+    project_root: str,
     name: str,
     idx: int,
     desc_lines: List[str],
@@ -371,7 +515,7 @@ def _append_default_refactor_operation(
 ) -> None:
     """Build and append the default TODO refactor operation for a target."""
     hints, split_params = _build_hints_and_params(
-        smell_type, action_kind, node_smells, name,
+        project_root, smell_type, action_kind, node_smells, name,
         graph=graph,
         oss_patterns=oss_patterns or {},
     )
@@ -433,12 +577,16 @@ def _operations_for_target(
         return operations
     if name in FACADE_MODULES and action_kind in ("split_module", "refactor_module"):
         return operations
+    if action_kind == "split_module":
+        path = Path(project_root) / name
+        if _is_thin_reexport_module(path):
+            return operations
 
     _maybe_add_extract_class_operation(
         operations, project_root, name, idx, smell_type, action_kind
     )
     _append_default_refactor_operation(
-        operations, name, idx, desc_lines, smell_type, action_kind, node_smells,
+        operations, project_root, name, idx, desc_lines, smell_type, action_kind, node_smells,
         graph=graph,
         oss_patterns=oss_patterns or {},
     )
