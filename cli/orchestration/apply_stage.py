@@ -221,13 +221,16 @@ def attach_fix_telemetry(report: dict[str, Any], operations: list[dict[str, Any]
     if not skipped and isinstance(report.get("message"), str):
         if report["message"].startswith("All operations rejected by user/policy."):
             skipped = [d.get("target_file") for d in (report.get("policy_decisions") or []) if d.get("target_file")]
+    campaign_skipped = int(report.get("campaign_skipped") or 0)
+    session_skipped = int(report.get("session_skipped") or 0)
+    skipped_count = len(skipped) + campaign_skipped + session_skipped
     apply_rate = (len(modified) / ops_total) if ops_total else 0.0
-    no_op_rate = (len(skipped) / ops_total) if ops_total else 0.0
+    no_op_rate = (skipped_count / ops_total) if ops_total else 0.0
     rollback_rate = (1.0 if rollback_done else 0.0) if verify_required else 0.0
     telemetry = {
         "operations_total": ops_total,
         "modified_count": len(modified),
-        "skipped_count": len(skipped),
+        "skipped_count": skipped_count,
         "apply_rate": round(apply_rate, 4),
         "no_op_rate": round(no_op_rate, 4),
         "rollback_rate": rollback_rate,

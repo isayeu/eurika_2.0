@@ -870,6 +870,26 @@ def test_attach_fix_telemetry_median_verify_time(tmp_path: Path) -> None:
     assert report["telemetry"]["median_verify_time_ms"] == 200
 
 
+def test_attach_fix_telemetry_counts_campaign_session_skips() -> None:
+    """Telemetry no-op metrics include campaign/session-filtered operations."""
+    from cli.orchestration.apply_stage import attach_fix_telemetry
+
+    report = {
+        "message": "Patch plan has no operations. Cycle complete.",
+        "policy_decisions": [
+            {"index": 1, "target_file": "eurika/agent/tool_contract.py", "kind": "split_module"}
+        ],
+        "campaign_skipped": 1,
+        "session_skipped": 0,
+    }
+    attach_fix_telemetry(report, [])
+    telemetry = report.get("telemetry", {})
+    assert telemetry.get("operations_total") == 1
+    assert telemetry.get("skipped_count") == 1
+    assert telemetry.get("no_op_rate") == 1.0
+    assert telemetry.get("apply_rate") == 0.0
+
+
 def test_report_snapshot_telemetry_block(tmp_path: Path) -> None:
     """report-snapshot includes telemetry subsection when fix has telemetry (ROADMAP 2.7.8)."""
     fix_report = {
