@@ -12,6 +12,7 @@
 **Стабилизация → Архитектурное укрепление → Платформизация → Интеллектуализация → Продуктовый уровень**
 
 > Update (R3 runtime hardening): no-op сценарии теперь явно показывают причины через `campaign_skipped`/`session_skipped`, telemetry синхронизирован (`skipped_count`, `no_op_rate`), а для безопасного точечного ретрая добавлен CLI-флаг `--allow-campaign-retry` (без глобального bypass campaign memory).
+> Update (R4 planner stability): в планировщике добавлен предикат, который блокирует `split_module` для уже extracted-файлов (`*_extracted.py`), чтобы исключить шумовые артефакты вида `*_extracted_extracted.py` и снизить риск повторных no-op/регрессионных операций.
 
 ---
 

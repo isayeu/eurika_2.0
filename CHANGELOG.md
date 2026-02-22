@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## v3.0.10 — planner split guard for extracted modules (2026-02-22)
+
+### Fixes
+- **split_module anti-loop guard:** planner now skips `split_module` for files already matching `*_extracted.py`.
+- **Noise prevention:** avoids generating repeated artifacts like `*_extracted_extracted.py` during repeated fix/cycle runs.
+
+### Tests
+- `test_build_patch_plan_skips_split_for_already_extracted_module`
+
+---
+
 ## v3.0.9 — runtime robustness: state + degraded mode visibility (2026-02-22)
 
 ### Runtime state model (R2)

@@ -347,6 +347,7 @@
 - 2.8.6 Patch Subsystem — выполнено (рефакторинг через фасады и выделенные модули `patch_apply_`*, `patch_engine_*`, API сохранен)
 - 2.8.7 Violation Audit — выполнено (закрыты прямые cross-layer вызовы patch_apply из CLI и wildcard-shims в `eurika/reasoning/*`)
 - 2.8.8 Dogfooding on New Boundaries — выполнено (контур `doctor -> fix --dry-run -> fix` пройден; verify стабилен, rollback/no-op без всплеска)
+- Доп. стабилизация planner (R4): для `split_module` добавлен guard на уже extracted-модули (`*_extracted.py`), чтобы не порождать повторные split-цепочки (`*_extracted_extracted.py`); покрыто тестом `test_build_patch_plan_skips_split_for_already_extracted_module`
 
 **Метрики выхода из фазы 2.8 (DoD):**
 
