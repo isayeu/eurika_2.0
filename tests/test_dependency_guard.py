@@ -22,11 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # Soft-start allowlist for known temporary upward-layer imports.
 # Keep this list explicit and short; remove entries as code is migrated.
 LAYER_FIREWALL_EXCEPTIONS: tuple[LayerException, ...] = (
-    LayerException(
-        path_pattern="core/pipeline.py",
-        allowed_import_prefixes=("eurika.analysis", "report.architecture_report"),
-        reason="core-pipeline orchestration still bridges analysis/reporting during migration",
-    ),
+    # No active exceptions; keep tuple for explicit future waivers.
 )
 
 

@@ -3,8 +3,9 @@
 from pathlib import Path
 from typing import Optional
 from code_awareness import CodeAwareness
-from eurika.core.pipeline import run_full_analysis, render_full_architecture_report
+from eurika.core.pipeline import run_full_analysis
 from eurika.storage import ProjectMemory
+from report.architecture_report import render_full_architecture_report
 from report.ux import format_observation, format_observation_md, should_use_color
 
 def run_scan(path: Path, *, format: str='text', color: Optional[bool]=None) -> int:

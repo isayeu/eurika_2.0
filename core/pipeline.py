@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any, Dict
 from eurika.storage import ProjectMemory
 from architecture_pipeline import _build_graph_and_summary, _build_graph_and_summary_from_self_map
-from eurika.analysis.scanner import CodeAwareness
 from eurika.core.snapshot import ArchitectureSnapshot
 
 def run_full_analysis(path: Path, *, history_window: int=5, update_artifacts: bool=True) -> ArchitectureSnapshot:
@@ -25,9 +24,10 @@ def run_full_analysis(path: Path, *, history_window: int=5, update_artifacts: bo
     - attaches trend info and evolution report to snapshot.
     """
     root = Path(path).resolve()
-    if update_artifacts:
-        analyzer = CodeAwareness(root)
-        analyzer.write_self_map(root)
+    if update_artifacts and not (root / "self_map.json").exists():
+        raise FileNotFoundError(
+            "self_map.json not found. Run scan first (or call run_full_analysis(..., update_artifacts=False))."
+        )
     graph, smells, summary = _build_graph_and_summary(root)
     memory = ProjectMemory(root)
     history = memory.history
@@ -51,8 +51,3 @@ def build_snapshot_from_self_map(self_map_path: Path) -> ArchitectureSnapshot:
     root = path.parent
     graph, smells, summary = _build_graph_and_summary_from_self_map(path)
     return ArchitectureSnapshot(root=root, graph=graph, smells=smells, summary=summary, history=None, diff=None)
-
-def render_full_architecture_report(snapshot: ArchitectureSnapshot, *, top_smells: int=5, top_recs: int=10, format: str='text', use_color: bool=False) -> str:
-    """Render the full architecture report from a snapshot (ROADMAP 3.1-arch.4: delegates to report layer)."""
-    from report.architecture_report import render_full_architecture_report as _render
-    return _render(snapshot, top_smells=top_smells, top_recs=top_recs, format=format, use_color=use_color)
