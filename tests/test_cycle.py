@@ -518,6 +518,37 @@ def test_fix_cycle_all_rejected_includes_telemetry_and_no_verify_gate() -> None:
     assert safety.get("verify_passed") is None
 
 
+def test_fix_cycle_noop_writes_fresh_fix_report(tmp_path: Path) -> None:
+    """No-op fix cycle should overwrite eurika_fix_report.json with current report."""
+    from cli.orchestrator import run_cycle
+
+    report_path = tmp_path / "eurika_fix_report.json"
+    report_path.write_text(json.dumps({"verify": {"success": False}, "message": "stale"}), encoding="utf-8")
+    fake_result = MagicMock()
+    fake_result.output = {"policy_decisions": []}
+    early = {
+        "return_code": 0,
+        "report": {
+            "message": "Patch plan has no operations. Cycle complete.",
+            "policy_decisions": [],
+            "session_skipped": 0,
+        },
+        "operations": [],
+        "modified": [],
+        "verify_success": True,
+        "agent_result": fake_result,
+    }
+    with (
+        patch("cli.orchestrator._fix_cycle_deps", return_value={"run_scan": lambda *_args, **_kwargs: True}),
+        patch("cli.orchestrator._prepare_fix_cycle_operations", return_value=(early, fake_result, {"operations": []}, [])),
+    ):
+        out = run_cycle(tmp_path, mode="fix", quiet=True)
+    assert out.get("report", {}).get("message") == "Patch plan has no operations. Cycle complete."
+    saved = json.loads(report_path.read_text(encoding="utf-8"))
+    assert saved.get("message") == "Patch plan has no operations. Cycle complete."
+    assert saved.get("telemetry", {}).get("operations_total") == 0
+
+
 def test_run_doctor_cycle_wrapper_delegates_to_orchestration_module() -> None:
     """Thin orchestrator wrapper should delegate doctor-cycle execution."""
     from cli.orchestrator import run_doctor_cycle

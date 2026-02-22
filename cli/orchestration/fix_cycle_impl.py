@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
+from .apply_stage import write_fix_report
 from .logging import get_logger
 from .models import FixCycleContext
 
@@ -145,6 +146,7 @@ def run_fix_cycle_impl(
             }
         if isinstance(early, dict) and isinstance(early.get("report"), dict):
             attach_fix_telemetry(early["report"], early.get("operations", []))
+            write_fix_report(path, early["report"], quiet)
         return early
 
     if team_mode:
@@ -194,6 +196,7 @@ def run_fix_cycle_impl(
             "skipped": rejected_files,
         }
         attach_fix_telemetry(report, approved_ops)
+        write_fix_report(path, report, quiet)
         return {
             "return_code": 0,
             "report": report,
