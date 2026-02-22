@@ -70,9 +70,12 @@ L6: CLI             ← command parsing, dispatch, orchestration wiring
 Автоматическая проверка: `tests/test_dependency_guard.py` (ROADMAP 2.8.2).
 - `test_no_forbidden_imports` — строгий guard для явных запрещённых импортов.
 - `test_layer_firewall_contract_soft_start` — проверка layer-контракта L0–L6 в soft-start режиме.
-  Для строгого режима в CI включить `EURIKA_STRICT_LAYER_FIREWALL=1`.
-- Временные допуски фиксируются только в `LAYER_FIREWALL_EXCEPTIONS` (там же обязательное `reason`).
-Команда: `pytest tests/test_dependency_guard.py -v`.
+  Для hard-gate режима в CI включить `EURIKA_STRICT_LAYER_FIREWALL=1`.
+- Текущее состояние R4: **0 нарушений / 0 waiver-исключений** в baseline.
+- Временные допуски (если появятся) фиксируются только в `LAYER_FIREWALL_EXCEPTIONS` (обязателен `reason`).
+Команды:
+- `pytest tests/test_dependency_guard.py -v`
+- `EURIKA_STRICT_LAYER_FIREWALL=1 pytest tests/test_dependency_guard.py -v`
 
 ### 0.7 API Boundaries (ROADMAP 3.1-arch.2)
 
@@ -160,7 +163,7 @@ eurika/
 | smells/ | **реализация в пакете:** eurika.smells.detector, models, health, advisor, summary (из architecture_diagnostics, architecture_smells, architecture_health, architecture_advisor, architecture_summary); плоские файлы — реэкспорты |
 | evolution/ | **реализация в пакете:** eurika.evolution.history, diff (из architecture_history, architecture_diff); плоские файлы — реэкспорты |
 | reasoning/ | agent_core*.py, architecture_planner.py, action_plan.py, patch_plan.py, patch_apply.py, executor_sandbox.py, memory, reasoner_dummy, selector; **eurika.reasoning.architect** (интерпретация в стиле архитектора; опционально LLM: OpenAI или OpenRouter через OPENAI_BASE_URL, OPENAI_MODEL) |
-| reporting/ | report/ux.py |
+| reporting/ | report/ux.py, report/architecture_report.py |
 | api/ | eurika.api (get_summary, get_history, get_diff); eurika serve — HTTP JSON API для UI (ROADMAP §2.3) |
 | storage/ | **ProjectMemory** (eurika.storage) — единая точка входа: .feedback, .learning, .observations, .history; реализации: observation_memory.py, architecture_feedback.py, architecture_learning.py, eurika.evolution.history |
 | utils/ | (пока нет) |
@@ -221,9 +224,9 @@ CLI (eurika_cli)  →  parser + dispatch only
    ↓
 cli/handlers      →  command logic
    ↓
-core/pipeline     →  run_full_analysis(), build_snapshot_from_self_map()
+runtime_scan      →  CodeAwareness writes self_map.json
    ↓
-CodeAwareness     →  self_map.json
+core/pipeline     →  run_full_analysis(), build_snapshot_from_self_map()
    ↓
 _project_graph    →  граф зависимостей
    ↓
@@ -235,7 +238,7 @@ ArchitectureAdvisor
    ↓
 ArchitectureHistory  →  version, git_commit (opt), risk_score, trends
    ↓
-render_full_architecture_report()
+report/architecture_report.render_full_architecture_report()
 ```
 
 ### 3.2 ArchitectureSnapshot (центральный объект)
@@ -245,7 +248,7 @@ render_full_architecture_report()
 class ArchitectureSnapshot:
     root: Path
     graph: ProjectGraph
-    smells: List[ArchSmell]
+    smells: List[object]   # слой Core не зависит от concrete smell-типа
     summary: Dict
     history: Optional[Dict]  # trends, regressions, evolution_report
     diff: Optional[Dict]
@@ -453,4 +456,4 @@ Jarvis IS:
 
 ---
 
-End of Architecture v0.1
+End of Architecture v0.6
