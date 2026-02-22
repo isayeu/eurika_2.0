@@ -10,6 +10,40 @@ from pathlib import Path
 from typing import Any
 
 
+def build_fix_dry_run_result(
+    path: Path,
+    patch_plan: dict[str, Any],
+    operations: list[dict[str, Any]],
+    result: Any,
+) -> dict[str, Any]:
+    """Build and persist dry-run report/result payload."""
+    expls = [dict(op.get("explainability") or {}, verify_outcome=None) for op in operations]
+    report = {
+        "dry_run": True,
+        "patch_plan": patch_plan,
+        "modified": [],
+        "verify": {"success": None},
+        "operation_explanations": expls,
+        "policy_decisions": result.output.get("policy_decisions", []),
+    }
+    try:
+        (path / "eurika_fix_report.json").write_text(
+            json.dumps(report, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+    return {
+        "return_code": 0,
+        "report": report,
+        "operations": operations,
+        "modified": [],
+        "verify_success": None,
+        "agent_result": result,
+        "dry_run": True,
+    }
+
+
 def prepare_rescan_before(path: Path, backup_dir_name: str) -> Path:
     """Persist self_map snapshot before apply stage."""
     self_map_path = path / "self_map.json"

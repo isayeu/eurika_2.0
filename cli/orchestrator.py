@@ -7,13 +7,12 @@ EurikaOrchestrator — формальный класс (review.md Part 1), де�
 
 from __future__ import annotations
 
-import json
-import sys
 from pathlib import Path
 from typing import Any
 
-from cli.orchestration import FixCycleContext, load_fix_cycle_deps
+from cli.orchestration import load_fix_cycle_deps
 from cli.orchestration.apply_stage import (
+    build_fix_dry_run_result as _apply_build_fix_dry_run_result,
     attach_fix_telemetry as _apply_attach_fix_telemetry,
     build_fix_cycle_result as _apply_build_fix_cycle_result,
     execute_fix_apply_stage as _apply_execute_fix_apply_stage,
@@ -22,56 +21,25 @@ from cli.orchestration.doctor import (
     knowledge_topics_from_env_or_summary as _doctor_knowledge_topics_from_env_or_summary,
     run_doctor_cycle as _doctor_run_doctor_cycle,
 )
-from cli.orchestration.full_cycle import run_full_cycle as _full_run_full_cycle
+from cli.orchestration.full_cycle import (
+    run_cycle_entry as _full_run_cycle_entry,
+    run_full_cycle as _full_run_full_cycle,
+)
+from cli.orchestration.fix_cycle_impl import run_fix_cycle_impl as _fix_impl_run_fix_cycle_impl
+from cli.orchestration.facade import EurikaOrchestrator
+from cli.orchestration.hybrid_approval import (
+    select_hybrid_operations as _hybrid_select_hybrid_operations,
+)
 from cli.orchestration.prepare import (
-    prepare_fix_cycle_operations as _prepare_prepare_fix_cycle_operations,
+    prepare_fix_cycle_operations as _prepare_fix_cycle_operations_impl,
 )
 
-
-class EurikaOrchestrator:
-    """Formal orchestrator (review.md Part 1). Single responsibility for Scan → Diagnose → Plan → Patch → Verify → Log.
-
-    Wraps run_cycle; provides OOP interface. LLM=strategist, PatchEngine=executor, Orchestrator=center.
-    """
-
-    def run(
-        self,
-        target_path: Path,
-        mode: str = "fix",
-        *,
-        runtime_mode: str = "assist",
-        non_interactive: bool = False,
-        session_id: str | None = None,
-        window: int = 5,
-        dry_run: bool = False,
-        quiet: bool = False,
-        no_llm: bool = False,
-        no_clean_imports: bool = False,
-        no_code_smells: bool = False,
-        team_mode: bool = False,
-        apply_approved: bool = False,
-    ) -> dict[str, Any]:
-        """Execute cycle. mode: 'doctor' | 'fix' | 'full'."""
-        return run_cycle(
-            target_path,
-            mode=mode,
-            runtime_mode=runtime_mode,
-            non_interactive=non_interactive,
-            session_id=session_id,
-            window=window,
-            dry_run=dry_run,
-            quiet=quiet,
-            no_llm=no_llm,
-            no_clean_imports=no_clean_imports,
-            no_code_smells=no_code_smells,
-            team_mode=team_mode,
-            apply_approved=apply_approved,
-        )
-
-
-def _knowledge_topics_from_env_or_summary(summary: Any) -> list:
-    """Compatibility wrapper; delegated to orchestration.doctor."""
-    return _doctor_knowledge_topics_from_env_or_summary(summary)
+# Backward-compatible aliases for tests/monkeypatch hooks.
+_prepare_prepare_fix_cycle_operations = _prepare_fix_cycle_operations_impl
+_knowledge_topics_from_env_or_summary = _doctor_knowledge_topics_from_env_or_summary
+_build_fix_dry_run_result = _apply_build_fix_dry_run_result
+_select_hybrid_operations = _hybrid_select_hybrid_operations
+_fix_cycle_deps = load_fix_cycle_deps
 
 
 def run_cycle(
@@ -94,36 +62,27 @@ def run_cycle(
     apply_approved: bool = False,
 ) -> dict[str, Any]:
     """Единая точка входа: mode='doctor' | 'fix' | 'full'."""
-    path = Path(path).resolve()
-    if runtime_mode not in {"assist", "hybrid", "auto"}:
-        return {"error": f"Unknown runtime_mode: {runtime_mode}. Use 'assist', 'hybrid', or 'auto'."}
-
-    def _run_cycle_impl() -> dict[str, Any]:
-        if mode == "doctor":
-            return run_doctor_cycle(path, window=window, no_llm=no_llm, online=online)
-        if mode == "fix":
-            return run_fix_cycle(path, runtime_mode=runtime_mode, non_interactive=non_interactive, session_id=session_id, window=window, dry_run=dry_run, quiet=quiet, no_clean_imports=no_clean_imports, no_code_smells=no_code_smells, verify_cmd=verify_cmd, verify_timeout=verify_timeout, team_mode=team_mode, apply_approved=apply_approved)
-        if mode == "full":
-            return run_full_cycle(path, runtime_mode=runtime_mode, non_interactive=non_interactive, session_id=session_id, window=window, dry_run=dry_run, quiet=quiet, no_llm=no_llm, no_clean_imports=no_clean_imports, no_code_smells=no_code_smells, verify_cmd=verify_cmd, verify_timeout=verify_timeout, online=online, team_mode=team_mode, apply_approved=apply_approved)
-        return {"error": f"Unknown mode: {mode}. Use 'doctor', 'fix', or 'full'."}
-
-    if runtime_mode == "assist":
-        return _run_cycle_impl()
-
-    from eurika.agent.runtime import run_agent_cycle
-    from eurika.agent.tool_contract import DefaultToolContract
-    from eurika.agent.tools import OrchestratorToolset
-
-    contract = DefaultToolContract()
-    cycle = run_agent_cycle(
-        mode=runtime_mode,
-        tools=OrchestratorToolset(
-            path=path, mode=mode, cycle_runner=_run_cycle_impl, contract=contract
-        ),
+    return _full_run_cycle_entry(
+        path,
+        mode=mode,
+        runtime_mode=runtime_mode,
+        non_interactive=non_interactive,
+        session_id=session_id,
+        window=window,
+        dry_run=dry_run,
+        quiet=quiet,
+        no_llm=no_llm,
+        no_clean_imports=no_clean_imports,
+        no_code_smells=no_code_smells,
+        verify_cmd=verify_cmd,
+        verify_timeout=verify_timeout,
+        online=online,
+        team_mode=team_mode,
+        apply_approved=apply_approved,
+        run_doctor_cycle_fn=run_doctor_cycle,
+        run_fix_cycle_fn=run_fix_cycle,
+        run_full_cycle_fn=run_full_cycle,
     )
-    out = cycle.payload if isinstance(cycle.payload, dict) else {"error": "agent runtime returned invalid payload"}
-    out.setdefault("agent_runtime", {"mode": runtime_mode, "stages": cycle.stages})
-    return out
 
 
 def run_doctor_cycle(
@@ -177,74 +136,6 @@ def run_full_cycle(
     )
 
 
-def _build_fix_dry_run_result(path: Path, patch_plan: dict[str, Any], operations: list[dict[str, Any]], result: Any) -> dict[str, Any]:
-    """Build and persist dry-run report/result payload."""
-    expls = [dict(op.get("explainability") or {}, verify_outcome=None) for op in operations]
-    report = {
-        "dry_run": True, "patch_plan": patch_plan, "modified": [],
-        "verify": {"success": None},
-        "operation_explanations": expls,
-        "policy_decisions": result.output.get("policy_decisions", []),
-    }
-    try:
-        (path / "eurika_fix_report.json").write_text(
-            json.dumps(report, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
-    except Exception:
-        pass
-    return {
-        "return_code": 0,
-        "report": report,
-        "operations": operations,
-        "modified": [],
-        "verify_success": None,
-        "agent_result": result,
-        "dry_run": True,
-    }
-
-
-def _select_hybrid_operations(
-    operations: list[dict[str, Any]],
-    *,
-    quiet: bool,
-    non_interactive: bool,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Interactive approval flow for hybrid mode."""
-    if non_interactive or not operations or quiet or not sys.stdin.isatty():
-        return operations, []
-    approved: list[dict[str, Any]] = []
-    rejected: list[dict[str, Any]] = []
-    for idx, op in enumerate(operations, start=1):
-        kind = op.get("kind", "?")
-        target = op.get("target_file", "?")
-        risk = (op.get("explainability") or {}).get("risk", "unknown")
-        prompt = (
-            f"[{idx}/{len(operations)}] {kind} -> {target} (risk={risk}) "
-            "[a]pprove/[r]eject/[A]ll approve/[R]eject rest/[s]kip prompt: "
-        )
-        while True:
-            choice = input(prompt).strip() or "a"
-            if choice in {"a", "r", "A", "R", "s"}:
-                break
-            print("Use one of: a, r, A, R, s", file=sys.stderr)
-        if choice == "a":
-            approved.append(op)
-        elif choice == "r":
-            rejected.append(op)
-        elif choice == "A":
-            approved.append(op)
-            approved.extend(operations[idx:])
-            break
-        elif choice == "R":
-            rejected.append(op)
-            rejected.extend(operations[idx:])
-            break
-        elif choice == "s":
-            approved.append(op)
-    return approved, rejected
-
-
 def _prepare_fix_cycle_operations(
     path: Path,
     *,
@@ -271,47 +162,6 @@ def _prepare_fix_cycle_operations(
     )
 
 
-def _fix_cycle_deps() -> dict[str, Any]:
-    """Compatibility shim for tests; delegates to orchestration deps loader."""
-    return load_fix_cycle_deps()
-
-
-def run_fix_cycle(
-    path: Path,
-    *,
-    runtime_mode: str = "assist",
-    non_interactive: bool = False,
-    session_id: str | None = None,
-    window: int = 5,
-    dry_run: bool = False,
-    quiet: bool = False,
-    skip_scan: bool = False,
-    no_clean_imports: bool = False,
-    no_code_smells: bool = False,
-    verify_cmd: str | None = None,
-    verify_timeout: int | None = None,
-    team_mode: bool = False,
-    apply_approved: bool = False,
-) -> dict[str, Any]:
-    """Run full fix cycle: scan → diagnose → plan → patch → verify."""
-    return _run_fix_cycle_impl(
-        path,
-        runtime_mode=runtime_mode,
-        non_interactive=non_interactive,
-        session_id=session_id,
-        window=window,
-        dry_run=dry_run,
-        quiet=quiet,
-        skip_scan=skip_scan,
-        no_clean_imports=no_clean_imports,
-        no_code_smells=no_code_smells,
-        verify_cmd=verify_cmd,
-        verify_timeout=verify_timeout,
-        team_mode=team_mode,
-        apply_approved=apply_approved,
-    )
-
-
 def _run_fix_cycle_impl(
     path: Path,
     *,
@@ -330,8 +180,8 @@ def _run_fix_cycle_impl(
     apply_approved: bool = False,
 ) -> dict[str, Any]:
     """Implementation for run_fix_cycle. Persists report and memory events."""
-    _ = FixCycleContext(
-        path=path,
+    return _fix_impl_run_fix_cycle_impl(
+        path,
         runtime_mode=runtime_mode,
         non_interactive=non_interactive,
         session_id=session_id,
@@ -343,148 +193,18 @@ def _run_fix_cycle_impl(
         no_code_smells=no_code_smells,
         verify_cmd=verify_cmd,
         verify_timeout=verify_timeout,
+        team_mode=team_mode,
+        apply_approved=apply_approved,
+        fix_cycle_deps=_fix_cycle_deps,
+        prepare_fix_cycle_operations=_prepare_fix_cycle_operations,
+        select_hybrid_operations=_select_hybrid_operations,
+        build_fix_dry_run_result=_build_fix_dry_run_result,
+        attach_fix_telemetry=_apply_attach_fix_telemetry,
+        build_fix_cycle_result=_apply_build_fix_cycle_result,
+        execute_fix_apply_stage=_apply_execute_fix_apply_stage,
     )
-    deps = _fix_cycle_deps()
-    run_scan = deps["run_scan"]
-
-    if apply_approved:
-        from cli.orchestration.team_mode import load_approved_operations
-
-        approved, payload = load_approved_operations(path)
-        if not payload:
-            return {
-                "return_code": 1,
-                "report": {"error": "No pending plan. Run eurika fix . --team-mode first."},
-                "operations": [],
-                "modified": [],
-                "verify_success": False,
-                "agent_result": None,
-            }
-        if not approved:
-            return {
-                "return_code": 0,
-                "report": {"message": "No operations approved. Edit .eurika/pending_plan.json and set team_decision='approve'."},
-                "operations": [],
-                "modified": [],
-                "verify_success": True,
-                "agent_result": None,
-            }
-        patch_plan = dict(payload.get("patch_plan") or {}, operations=approved)
-        result = type("R", (), {"output": {"policy_decisions": [{"decision": "allow"} for _ in approved], "summary": {"risks": []}}})()
-
-        report, modified, verify_success = _apply_execute_fix_apply_stage(
-            path, patch_plan, approved,
-            quiet=quiet, verify_cmd=verify_cmd, verify_timeout=verify_timeout, backup_dir=deps["BACKUP_DIR"],
-            apply_and_verify=deps["apply_and_verify"], run_scan=run_scan,
-            build_snapshot_from_self_map=deps["build_snapshot_from_self_map"],
-            diff_architecture_snapshots=deps["diff_architecture_snapshots"],
-            metrics_from_graph=deps["metrics_from_graph"], rollback_patch=deps["rollback_patch"],
-            result=result,
-        )
-        return _apply_build_fix_cycle_result(report, approved, modified, verify_success, result)
-
-    early, result, patch_plan, operations = _prepare_fix_cycle_operations(
-        path,
-        runtime_mode=runtime_mode,
-        session_id=session_id,
-        window=window,
-        quiet=quiet,
-        skip_scan=skip_scan,
-        no_clean_imports=no_clean_imports,
-        no_code_smells=no_code_smells,
-        run_scan=run_scan,
-    )
-    if early is not None:
-        if team_mode:
-            from cli.orchestration.team_mode import save_pending_plan
-
-            ops_early = early.get("operations", [])
-            patch_early = patch_plan or {"operations": ops_early}
-            policy_dec = (early.get("report") or {}).get("policy_decisions", [])
-            saved = save_pending_plan(path, patch_early, ops_early, policy_dec, session_id)
-            if not quiet:
-                print(f"Team mode: plan saved to {saved}", file=sys.stderr)
-                print("Edit team_decision='approve' for desired ops, then run: eurika fix . --apply-approved", file=sys.stderr)
-            return {
-                "return_code": early.get("return_code", 0),
-                "report": dict(early.get("report", {}), message=f"Plan saved to {saved}. Run eurika fix . --apply-approved after review."),
-                "operations": ops_early,
-                "modified": [],
-                "verify_success": None,
-                "agent_result": early.get("agent_result"),
-                "dry_run": True,
-            }
-        if isinstance(early, dict) and isinstance(early.get("report"), dict):
-            _apply_attach_fix_telemetry(early["report"], early.get("operations", []))
-        return early
-
-    if team_mode:
-        from cli.orchestration.team_mode import save_pending_plan
-
-        policy_decisions = result.output.get("policy_decisions", [])
-        saved = save_pending_plan(path, patch_plan, operations, policy_decisions, session_id)
-        if not quiet:
-            print(f"Team mode: plan saved to {saved}", file=sys.stderr)
-            print("Edit team_decision='approve' and approved_by for desired ops, then run: eurika fix . --apply-approved", file=sys.stderr)
-        return {
-            "return_code": 0,
-            "report": {"message": f"Plan saved to {saved}. Run eurika fix . --apply-approved after review.", "policy_decisions": policy_decisions},
-            "operations": operations,
-            "modified": [],
-            "verify_success": None,
-            "agent_result": result,
-            "dry_run": True,
-        }
-
-    approved_ops, rejected_ops = _select_hybrid_operations(
-        operations,
-        quiet=quiet,
-        non_interactive=non_interactive or runtime_mode != "hybrid",
-    )
-    if rejected_ops and session_id:
-        from eurika.storage import SessionMemory
-
-        SessionMemory(path).record(session_id, approved=approved_ops, rejected=rejected_ops)
-    operations = approved_ops
-    patch_plan = dict(patch_plan, operations=operations)
-    if not operations:
-        rejected_files = [str(op.get("target_file", "")) for op in rejected_ops if op.get("target_file")]
-        report = {
-            "message": "All operations rejected by user/policy. Cycle complete.",
-            "policy_decisions": result.output.get("policy_decisions", []),
-            "operation_explanations": [],
-            "skipped": rejected_files,
-        }
-        _apply_attach_fix_telemetry(report, approved_ops)
-        return {
-            "return_code": 0,
-            "report": report,
-            "operations": [],
-            "modified": [],
-            "verify_success": True,
-            "agent_result": result,
-            "dry_run": dry_run,
-        }
-
-    if dry_run:
-        if not quiet:
-            print("--- Step 3/3: plan (dry-run, no apply) ---", file=sys.stderr)
-        out = _build_fix_dry_run_result(path, patch_plan, operations, result)
-        _apply_attach_fix_telemetry(out["report"], operations)
-        return out
-    report, modified, verify_success = _apply_execute_fix_apply_stage(
-        path, patch_plan, operations,
-        quiet=quiet, verify_cmd=verify_cmd, verify_timeout=verify_timeout, backup_dir=deps["BACKUP_DIR"],
-        apply_and_verify=deps["apply_and_verify"], run_scan=run_scan,
-        build_snapshot_from_self_map=deps["build_snapshot_from_self_map"],
-        diff_architecture_snapshots=deps["diff_architecture_snapshots"],
-        metrics_from_graph=deps["metrics_from_graph"], rollback_patch=deps["rollback_patch"],
-        result=result,
-    )
-    return _apply_build_fix_cycle_result(report, operations, modified, verify_success, result)
 
 
-# TODO (eurika): refactor deep_nesting '_select_hybrid_operations' — consider extracting nested block
+# Public compatibility alias.
+run_fix_cycle = _run_fix_cycle_impl
 
-
-# TODO (eurika): refactor long_function '_run_fix_cycle_impl' — consider extracting helper

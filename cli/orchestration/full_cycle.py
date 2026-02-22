@@ -7,6 +7,98 @@ from pathlib import Path
 from typing import Any, Callable
 
 
+def run_cycle_entry(
+    path: Path,
+    *,
+    mode: str = "fix",
+    runtime_mode: str = "assist",
+    non_interactive: bool = False,
+    session_id: str | None = None,
+    window: int = 5,
+    dry_run: bool = False,
+    quiet: bool = False,
+    no_llm: bool = False,
+    no_clean_imports: bool = False,
+    no_code_smells: bool = False,
+    verify_cmd: str | None = None,
+    verify_timeout: int | None = None,
+    online: bool = False,
+    team_mode: bool = False,
+    apply_approved: bool = False,
+    run_doctor_cycle_fn: Callable[..., dict[str, Any]],
+    run_fix_cycle_fn: Callable[..., dict[str, Any]],
+    run_full_cycle_fn: Callable[..., dict[str, Any]],
+) -> dict[str, Any]:
+    """Run doctor/fix/full mode with optional agent runtime wrapper."""
+    path = Path(path).resolve()
+    if runtime_mode not in {"assist", "hybrid", "auto"}:
+        return {"error": f"Unknown runtime_mode: {runtime_mode}. Use 'assist', 'hybrid', or 'auto'."}
+
+    def _run_cycle_impl() -> dict[str, Any]:
+        if mode == "doctor":
+            return run_doctor_cycle_fn(path, window=window, no_llm=no_llm, online=online)
+        if mode == "fix":
+            return run_fix_cycle_fn(
+                path,
+                runtime_mode=runtime_mode,
+                non_interactive=non_interactive,
+                session_id=session_id,
+                window=window,
+                dry_run=dry_run,
+                quiet=quiet,
+                no_clean_imports=no_clean_imports,
+                no_code_smells=no_code_smells,
+                verify_cmd=verify_cmd,
+                verify_timeout=verify_timeout,
+                team_mode=team_mode,
+                apply_approved=apply_approved,
+            )
+        if mode == "full":
+            return run_full_cycle_fn(
+                path,
+                runtime_mode=runtime_mode,
+                non_interactive=non_interactive,
+                session_id=session_id,
+                window=window,
+                dry_run=dry_run,
+                quiet=quiet,
+                no_llm=no_llm,
+                no_clean_imports=no_clean_imports,
+                no_code_smells=no_code_smells,
+                verify_cmd=verify_cmd,
+                verify_timeout=verify_timeout,
+                online=online,
+                team_mode=team_mode,
+                apply_approved=apply_approved,
+            )
+        return {"error": f"Unknown mode: {mode}. Use 'doctor', 'fix', or 'full'."}
+
+    if runtime_mode == "assist":
+        return _run_cycle_impl()
+
+    from eurika.agent.runtime import run_agent_cycle
+    from eurika.agent.tool_contract import DefaultToolContract
+    from eurika.agent.tools import OrchestratorToolset
+
+    contract = DefaultToolContract()
+    cycle = run_agent_cycle(
+        mode=runtime_mode,
+        tools=OrchestratorToolset(
+            path=path,
+            mode=mode,
+            cycle_runner=_run_cycle_impl,
+            contract=contract,
+        ),
+    )
+    out = (
+        cycle.payload
+        if isinstance(cycle.payload, dict)
+        else {"error": "agent runtime returned invalid payload"}
+    )
+    out.setdefault("agent_runtime", {"mode": runtime_mode, "stages": cycle.stages})
+    return out
+
+
 def run_full_cycle(
     path: Path,
     *,
