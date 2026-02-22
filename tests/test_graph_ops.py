@@ -405,6 +405,33 @@ def test_build_patch_plan_skips_split_for_thin_reexport_module(tmp_path: Path) -
     assert not any(o.kind == "split_module" for o in plan.operations)
 
 
+def test_build_patch_plan_skips_split_for_already_extracted_module(tmp_path: Path) -> None:
+    """Already extracted modules should not receive nested split_module operations."""
+    from architecture_planner import build_patch_plan
+    from eurika.smells.models import ArchSmell
+
+    target = tmp_path / "tool_contract_extracted.py"
+    target.write_text(
+        "import os\n\n\ndef helper():\n    return os.getcwd()\n",
+        encoding="utf-8",
+    )
+    g = _make_graph(["tool_contract_extracted.py", "x.py"], {"tool_contract_extracted.py": ["x.py"]})
+    smells = [ArchSmell(type="god_module", nodes=["tool_contract_extracted.py"], severity=6.0, description="")]
+    summary = {"risks": []}
+    history_info = {"trends": {}}
+    priorities = [{"name": "tool_contract_extracted.py", "reasons": ["god_module"]}]
+
+    plan = build_patch_plan(
+        project_root=str(tmp_path),
+        summary=summary,
+        smells=smells,
+        history_info=history_info,
+        priorities=priorities,
+        graph=g,
+    )
+    assert not any(o.kind == "split_module" for o in plan.operations)
+
+
 def test_build_patch_plan_god_module_with_god_class_produces_extract_class(tmp_path: Path) -> None:
     """When god_module has a class with 6+ extractable methods, add extract_class op."""
     from architecture_planner import build_patch_plan

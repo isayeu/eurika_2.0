@@ -202,6 +202,13 @@ def _is_thin_reexport_module(file_path: Path) -> bool:
     return has_reexport
 
 
+def _is_extracted_module_name(path_like: str) -> bool:
+    """True for already-extracted modules to avoid repeated split chains."""
+    p = Path(path_like)
+    stem = p.stem.lower()
+    return stem.endswith("_extracted")
+
+
 def build_patch_operations(
     project_root: str,
     summary: Dict[str, Any],
@@ -579,6 +586,8 @@ def _operations_for_target(
         return operations
     if action_kind == "split_module":
         path = Path(project_root) / name
+        if _is_extracted_module_name(name):
+            return operations
         if _is_thin_reexport_module(path):
             return operations
 
