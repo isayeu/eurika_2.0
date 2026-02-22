@@ -21,7 +21,23 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # Soft-start allowlist for known temporary upward-layer imports.
 # Keep this list explicit and short; remove entries as code is migrated.
-LAYER_FIREWALL_EXCEPTIONS: tuple[LayerException, ...] = ()
+LAYER_FIREWALL_EXCEPTIONS: tuple[LayerException, ...] = (
+    LayerException(
+        path_pattern="core/pipeline.py",
+        allowed_import_prefixes=("eurika.analysis", "report.architecture_report"),
+        reason="core-pipeline orchestration still bridges analysis/reporting during migration",
+    ),
+    LayerException(
+        path_pattern="core/snapshot.py",
+        allowed_import_prefixes=("eurika.smells",),
+        reason="snapshot currently reads smell detector output directly",
+    ),
+    LayerException(
+        path_pattern="eurika/reasoning/planner_patch_ops.py",
+        allowed_import_prefixes=("eurika.refactor",),
+        reason="planner-patch bridge still uses extract_class helper",
+    ),
+)
 
 
 def test_no_forbidden_imports() -> None:
