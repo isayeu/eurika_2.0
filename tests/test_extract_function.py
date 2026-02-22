@@ -139,3 +139,30 @@ def foo(x):
     content = (tmp_path / "mod.py").read_text()
     assert f"def {helper_name}" in content
     assert f"{helper_name}(x)" in content or f"{helper_name}( x)" in content
+
+
+def test_extract_block_to_helper_supports_nested_parent_function(tmp_path: Path) -> None:
+    """extract_block_to_helper works when parent function is nested inside another function."""
+    code = """
+def outer():
+    def inner(node, depth):
+        if depth > 0:
+            if isinstance(node, int):
+                a = node + 1
+                b = a * 2
+                c = b + depth
+                d = c * 2
+                value = d
+        return 0
+    return inner(1, 2)
+"""
+    (tmp_path / "mod.py").write_text(code)
+    s = suggest_extract_block(tmp_path / "mod.py", "inner", min_lines=3)
+    assert s is not None
+    helper_name, block_line, _, extra = s
+    out = extract_block_to_helper(tmp_path / "mod.py", "inner", block_line, helper_name, extra)
+    assert out is not None
+    (tmp_path / "mod.py").write_text(out)
+    content = (tmp_path / "mod.py").read_text()
+    assert f"def {helper_name}" in content
+    assert f"{helper_name}(depth, node)" in content or f"{helper_name}(node, depth)" in content

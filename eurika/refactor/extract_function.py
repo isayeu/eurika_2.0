@@ -467,18 +467,18 @@ def extract_block_to_helper(
     ast.copy_location(extracted, block_node)
     ast.fix_missing_locations(extracted)
 
+    def _contains_function_named(node: ast.AST, target_name: str) -> bool:
+        for n in ast.walk(node):
+            if isinstance(n, ast.FunctionDef) and n.name == target_name:
+                return True
+        return False
+
     insert_idx: Optional[int] = None
     for i, stmt in enumerate(tree.body):
-        if isinstance(stmt, ast.FunctionDef) and stmt.name == parent_function_name:
+        # If parent function is nested, insert helper before the top-level container.
+        if _contains_function_named(stmt, parent_function_name):
             insert_idx = i
             break
-        if isinstance(stmt, ast.ClassDef):
-            for m in stmt.body:
-                if isinstance(m, ast.FunctionDef) and m.name == parent_function_name:
-                    insert_idx = i
-                    break
-            if insert_idx is not None:
-                break
     if insert_idx is None:
         return None
 
