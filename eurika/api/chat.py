@@ -205,6 +205,19 @@ def append_chat_history(
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
+def _append_chat_history_safe(
+    project_root: Path,
+    role: str,
+    content: str,
+    context_snapshot: Optional[str] = None,
+) -> None:
+    """Best-effort history append: never break chat flow on write errors."""
+    try:
+        append_chat_history(project_root, role, content, context_snapshot)
+    except Exception:
+        pass
+
+
 def chat_send(
     project_root: Path,
     message: str,
@@ -235,8 +248,8 @@ def chat_send(
         dry = "dry-run" in msg.lower() or "dry run" in msg.lower() or "без применения" in msg.lower()
         output = _run_eurika_fix(root, dry_run=dry)
         text = f"Запустил `eurika fix .`" + (" (dry-run)" if dry else "") + f":\n\n{output}"
-        append_chat_history(root, "user", msg, None)
-        append_chat_history(root, "assistant", text, None)
+        _append_chat_history_safe(root, "user", msg, None)
+        _append_chat_history_safe(root, "assistant", text, None)
         return {"text": text, "error": None}
 
     # ROADMAP 3.5.11.C: delete -> remove file, skip LLM
@@ -247,8 +260,8 @@ def chat_send(
             text = f"Удалён файл {res} ({full})"
         else:
             text = f"Не удалось удалить: {res}"
-        append_chat_history(root, "user", msg, None)
-        append_chat_history(root, "assistant", text, None)
+        _append_chat_history_safe(root, "user", msg, None)
+        _append_chat_history_safe(root, "assistant", text, None)
         return {"text": text, "error": None}
 
     # ROADMAP 3.5.11.C: create -> create empty file, skip LLM
@@ -259,8 +272,8 @@ def chat_send(
             text = f"Создан пустой файл {res} ({full})"
         else:
             text = f"Не удалось создать: {res}"
-        append_chat_history(root, "user", msg, None)
-        append_chat_history(root, "assistant", text, None)
+        _append_chat_history_safe(root, "user", msg, None)
+        _append_chat_history_safe(root, "assistant", text, None)
         return {"text": text, "error": None}
 
     # ROADMAP 3.5.11.C: recall -> answer from user context, skip LLM
@@ -271,8 +284,8 @@ def chat_send(
             text = f"Тебя зовут {name}."
         else:
             text = "Я не знаю, как тебя зовут. Скажи «Меня зовут X» или «My name is X», и я запомню."
-        append_chat_history(root, "user", msg, None)
-        append_chat_history(root, "assistant", text, None)
+        _append_chat_history_safe(root, "user", msg, None)
+        _append_chat_history_safe(root, "assistant", text, None)
         return {"text": text, "error": None}
 
     # ROADMAP 3.5.11.C: remember -> save to user context, skip LLM
@@ -282,15 +295,18 @@ def chat_send(
         if key and val:
             uc = _load_user_context(root)
             uc[key] = val
-            _save_user_context(root, uc)
+            try:
+                _save_user_context(root, uc)
+            except Exception:
+                pass
             if key == "name":
                 text = f"Запомнил: тебя зовут {val}."
             else:
                 text = f"Запомнил: {key}={val}"
         else:
             text = "Не удалось распознать, что запомнить."
-        append_chat_history(root, "user", msg, None)
-        append_chat_history(root, "assistant", text, None)
+        _append_chat_history_safe(root, "user", msg, None)
+        _append_chat_history_safe(root, "assistant", text, None)
         return {"text": text, "error": None}
 
     context = _build_chat_context(root)
@@ -310,8 +326,8 @@ def chat_send(
 
     text, err = call_llm_with_prompt(prompt, max_tokens=1024)
     if err:
-        append_chat_history(root, "user", msg, context)
-        append_chat_history(root, "assistant", f"[Error] {err}", None)
+        _append_chat_history_safe(root, "user", msg, context)
+        _append_chat_history_safe(root, "assistant", f"[Error] {err}", None)
         return {"text": "", "error": err}
 
     # ROADMAP 3.5.11.C: save -> extract code block, write file
@@ -328,8 +344,8 @@ def chat_send(
         except Exception:
             pass
 
-    append_chat_history(root, "user", msg, context)
-    append_chat_history(root, "assistant", text or "", None)
+    _append_chat_history_safe(root, "user", msg, context)
+    _append_chat_history_safe(root, "assistant", text or "", None)
     return {"text": text or "", "error": None}
 
 
