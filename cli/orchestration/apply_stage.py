@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import io
 import json
-import sys
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
+
+from .logging import get_logger
+
+_LOG = get_logger("orchestration.apply_stage")
 
 
 def build_fix_dry_run_result(
@@ -87,7 +90,7 @@ def enrich_report_with_rescan(
     if not (report["verify"]["success"] and rescan_before.exists()):
         return
     if not quiet:
-        print("--- Step 4/4: rescan (compare before/after) ---", file=sys.stderr)
+        _LOG.info("--- Step 4/4: rescan (compare before/after) ---")
     with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
         run_scan(path)
     self_map_after = path / "self_map.json"
@@ -169,7 +172,7 @@ def write_fix_report(path: Path, report: dict[str, Any], quiet: bool) -> None:
         report_path = path / "eurika_fix_report.json"
         report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
         if not quiet:
-            print(f"eurika_fix_report.json written to {report_path}", file=sys.stderr)
+            _LOG.info(f"eurika_fix_report.json written to {report_path}")
     except Exception:
         pass
 
@@ -267,7 +270,7 @@ def execute_fix_apply_stage(
     backup=True so no partially-applied invalid sessions.
     """
     if not quiet:
-        print("--- Step 3/4: patch & verify ---", file=sys.stderr)
+        _LOG.info("--- Step 3/4: patch & verify ---")
     rescan_before = prepare_rescan_before(path, backup_dir)
     from patch_engine_verify_patch import get_verify_timeout
 

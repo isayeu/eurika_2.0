@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import Any, Callable
+
+from .logging import get_logger
+
+_LOG = get_logger("orchestration.full_cycle")
 
 
 def _build_agent_runtime_payload(mode: str, cycle: Any) -> dict[str, Any]:
@@ -163,19 +166,19 @@ def run_full_cycle(
     from runtime_scan import run_scan
 
     if not quiet:
-        print("eurika cycle: scan → doctor → fix", file=sys.stderr)
+        _LOG.info("eurika cycle: scan -> doctor -> fix")
     if run_scan(path) != 0:
         return {"return_code": 1, "report": {}, "operations": [], "modified": [], "verify_success": False, "agent_result": None}
     data = run_doctor_cycle_fn(path, window=window, no_llm=no_llm, online=online)
     if data.get("error"):
         return {"return_code": 1, "report": data, "operations": [], "modified": [], "verify_success": False, "agent_result": None}
     if not quiet:
-        print(summary_to_text(data["summary"]), file=sys.stderr)
-        print(file=sys.stderr)
-        print(data["history"].get("evolution_report", ""), file=sys.stderr)
-        print(file=sys.stderr)
-        print(data["architect_text"], file=sys.stderr)
-        print(file=sys.stderr)
+        _LOG.info(summary_to_text(data["summary"]))
+        _LOG.info("")
+        _LOG.info(data["history"].get("evolution_report", ""))
+        _LOG.info("")
+        _LOG.info(data["architect_text"])
+        _LOG.info("")
     out = run_fix_cycle_fn(
         path,
         runtime_mode=runtime_mode,

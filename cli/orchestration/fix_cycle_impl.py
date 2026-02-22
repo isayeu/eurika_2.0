@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-import sys
 from typing import Any, Callable
 
+from .logging import get_logger
 from .models import FixCycleContext
+
+_LOG = get_logger("orchestration.fix_cycle")
 
 
 def run_fix_cycle_impl(
@@ -125,10 +127,9 @@ def run_fix_cycle_impl(
             policy_dec = (early.get("report") or {}).get("policy_decisions", [])
             saved = save_pending_plan(path, patch_early, ops_early, policy_dec, session_id)
             if not quiet:
-                print(f"Team mode: plan saved to {saved}", file=sys.stderr)
-                print(
-                    "Edit team_decision='approve' for desired ops, then run: eurika fix . --apply-approved",
-                    file=sys.stderr,
+                _LOG.info(f"Team mode: plan saved to {saved}")
+                _LOG.info(
+                    "Edit team_decision='approve' for desired ops, then run: eurika fix . --apply-approved"
                 )
             return {
                 "return_code": early.get("return_code", 0),
@@ -152,10 +153,9 @@ def run_fix_cycle_impl(
         policy_decisions = result.output.get("policy_decisions", [])
         saved = save_pending_plan(path, patch_plan, operations, policy_decisions, session_id)
         if not quiet:
-            print(f"Team mode: plan saved to {saved}", file=sys.stderr)
-            print(
+            _LOG.info(f"Team mode: plan saved to {saved}")
+            _LOG.info(
                 "Edit team_decision='approve' and approved_by for desired ops, then run: eurika fix . --apply-approved",
-                file=sys.stderr,
             )
         return {
             "return_code": 0,
@@ -206,7 +206,7 @@ def run_fix_cycle_impl(
 
     if dry_run:
         if not quiet:
-            print("--- Step 3/3: plan (dry-run, no apply) ---", file=sys.stderr)
+            _LOG.info("--- Step 3/3: plan (dry-run, no apply) ---")
         out = build_fix_dry_run_result(path, patch_plan, operations, result)
         attach_fix_telemetry(out["report"], operations)
         return out

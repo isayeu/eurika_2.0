@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import io
-import sys
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
+
+from .logging import get_logger
+
+_LOG = get_logger("orchestration.prepare")
 
 
 def run_fix_scan_stage(path: Path, quiet: bool, run_scan: Any) -> bool:
     """Run scan stage for fix cycle. Returns True on success."""
     if not quiet:
-        print("--- Step 1/4: scan ---", file=sys.stderr)
-        print("eurika fix: scan → diagnose → plan → patch → verify", file=sys.stderr)
+        _LOG.info("--- Step 1/4: scan ---")
+        _LOG.info("eurika fix: scan -> diagnose -> plan -> patch -> verify")
     if quiet:
         with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
             return run_scan(path) == 0
@@ -194,7 +197,7 @@ def run_fix_diagnose_stage(path: Path, window: int, quiet: bool) -> Any:
     from agent_core_arch_review import ArchReviewAgentCore
 
     if not quiet:
-        print("--- Step 2/4: diagnose ---", file=sys.stderr)
+        _LOG.info("--- Step 2/4: diagnose ---")
     agent = ArchReviewAgentCore(project_root=path)
     event = InputEvent(
         type="arch_review",

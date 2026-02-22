@@ -5,6 +5,10 @@ from __future__ import annotations
 import sys
 from typing import Any
 
+from .logging import get_logger
+
+_LOG = get_logger("orchestration.hybrid_approval")
+
 
 def read_hybrid_choice(prompt: str) -> str:
     """Read one valid interactive choice for hybrid approve/reject flow."""
@@ -13,7 +17,7 @@ def read_hybrid_choice(prompt: str) -> str:
         choice = input(prompt).strip() or "a"
         if choice in allowed:
             return choice
-        print("Use one of: a, r, A, R, s", file=sys.stderr)
+        _LOG.warning("Use one of: a, r, A, R, s")
 
 
 def select_hybrid_operations(
