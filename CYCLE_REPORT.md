@@ -2,6 +2,23 @@
 
 ---
 
+## 38. Snapshot (2026-02-22) — 3.6.3 closed: context visibility + context effect
+
+### Изменения
+- **UI Dashboard / Context sources:** добавлена карточка с агрегатами (`targets with context`, `recent verify-fail`, `campaign rejected`, `recent patch-modified`).
+- **Top context hits:** в UI отображаются top-3 `context_hits` по текущим операциям для объяснения приоритизации.
+- **By-target breakdown:** в UI добавлен компактный блок `target -> related_tests / neighbor_modules / hits`.
+- **CYCLE_REPORT effect:** `report-snapshot` теперь пишет блок `2.1 Context effect (ROADMAP 3.6.3)` с `apply_rate/no_op_rate` (current vs baseline, delta in pp).
+
+### Тесты
+- `tests/test_cycle.py::test_report_snapshot_context_effect_block`
+- `tests/test_cycle.py::test_report_snapshot_telemetry_block`
+
+### Проверка
+- `../.venv/bin/python -m pytest -q tests/test_cycle.py -k "report_snapshot_telemetry_block or report_snapshot_context_effect_block"` → `2 passed`
+
+---
+
 ## 37. Snapshot (2026-02-22) — v3.0.9: runtime robustness (state + degraded visibility)
 
 ### Изменения

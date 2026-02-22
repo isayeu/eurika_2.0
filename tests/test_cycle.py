@@ -1047,6 +1047,37 @@ def test_report_snapshot_telemetry_block(tmp_path: Path) -> None:
     assert "1.0" in result.stdout or "apply_rate" in result.stdout
 
 
+def test_report_snapshot_context_effect_block(tmp_path: Path) -> None:
+    """report-snapshot includes context effect section with no-op/apply deltas."""
+    fix_report = {
+        "modified": ["a.py"],
+        "skipped": [],
+        "verify": {"success": True},
+        "telemetry": {"apply_rate": 1.0, "no_op_rate": 0.0, "rollback_rate": 0.0, "verify_duration_ms": 120},
+        "context_sources": {
+            "recent_verify_fail_targets": ["a.py", "b.py"],
+            "campaign_rejected_targets": ["c.py"],
+            "recent_patch_modified": ["a.py"],
+            "by_target": {"a.py": {"related_tests": ["tests/test_a.py"], "neighbor_modules": ["b.py"]}},
+        },
+    }
+    doctor_report = {
+        "summary": {"system": {"modules": 2, "dependencies": 1}},
+        "history": {"points": [{"risk_score": 40}]},
+        "operational_metrics": {"runs_count": 10, "apply_rate": 0.5, "rollback_rate": 0.1},
+    }
+    (tmp_path / "eurika_fix_report.json").write_text(json.dumps(fix_report), encoding="utf-8")
+    (tmp_path / "eurika_doctor_report.json").write_text(json.dumps(doctor_report), encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, "-m", "eurika_cli", "report-snapshot", str(tmp_path)],
+        cwd=ROOT, capture_output=True, text=True, timeout=10
+    )
+    assert result.returncode == 0
+    assert "## 2.1 Context effect (ROADMAP 3.6.3)" in result.stdout
+    assert "apply_rate: current=1.0, baseline=0.5" in result.stdout
+    assert "no_op_rate: current=0.0" in result.stdout
+
+
 def test_run_fix_cycle_impl_uses_apply_stage_facade() -> None:
     """run_cycle(fix) should wire through delegated apply-stage builders."""
     from cli.orchestrator import run_cycle

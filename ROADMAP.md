@@ -194,7 +194,7 @@
 | ----- | ---------------------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
 | 3.6.1 | Approve per operation              | Подтверждение/отклонение по операциям (а не только whole-plan): risk, reason, target, diff-hint | Для high-risk ops доступен per-op approve/reject; `--apply-approved` применяет только approved ops |
 | 3.6.2 | Critic pass before apply           | Перед применением прогонять критический check плана (imports/API/tests impact)                  | План получает pre-apply verdict (`allow/review/deny`), deny-ops не применяются в auto режиме       |
-| 3.6.3 | Semantic context for planner       | Подмешивать в planner семантически релевантные модули/тесты/историю фейлов                       | В отчёте есть "context sources"; снижается доля no-op/TODO операций по long/deep сценариям         |
+| 3.6.3 | Semantic context for planner       | Подмешивать в planner семантически релевантные модули/тесты/историю фейлов                       | ✅ Выполнено: context sources в planner/report/UI; в report-snapshot есть блок "Context effect" (apply/no-op delta) |
 | 3.6.4 | Session checkpoint + campaign undo | Снимок состояния перед серией apply; откат всей кампании одним действием                         | Есть restore для run/session; rollback по verify fail и manual undo работают предсказуемо           |
 
 **DoD для пакета 3.6:** рост `apply_rate`, снижение `rollback_rate`, снижение доли TODO/no-op операций в dogfooding-циклах.
@@ -205,6 +205,12 @@
 - **Спринт 2 (качество планирования):** 3.6.3. Добавить семантический контекст в planner и наблюдать снижение no-op/TODO по long/deep сценариям.
 - **Спринт 3 (безопасность кампаний):** 3.6.4. Ввести session checkpoint и понятный campaign undo для длинных серий apply.
 - **Стабилизация после каждого спринта:** dogfooding + `report-snapshot` + обновление CYCLE_REPORT/ROADMAP по фактическим метрикам.
+
+**Статус спринтов (факт):**
+
+- Спринт 1 (3.6.1 + 3.6.2): ✅ выполнен (decision gate, critic pass, per-op approve/reject, decision summary).
+- Спринт 2 (3.6.3): ✅ выполнен (context_sources в JSON/API/doctor, UI Dashboard + top context hits + by-target breakdown, CYCLE_REPORT через report-snapshot context effect).
+- Следующий шаг: ▶️ Спринт 3 (3.6.4 Session checkpoint + campaign undo).
 
 #### Спринт 1 — инженерная декомпозиция (3.6.1 + 3.6.2)
 

@@ -47,7 +47,7 @@ function trendBadge(v) {
   return '<span class="trend-badge trend-stable">→</span>';
 }
 
-function renderDashboard(summary, history, opsMetrics) {
+function renderDashboard(summary, history, opsMetrics, patchPlan) {
   const el = document.getElementById('dashboard-content');
   if (summary.error) {
     el.innerHTML = '<span class="error">' + escapeHtml(summary.error) + '</span>';
@@ -84,6 +84,67 @@ function renderDashboard(summary, history, opsMetrics) {
     html += '<div class="dashboard-stat"><div class="val">' + rr + '%</div><div class="lbl">Rollback rate</div></div>';
     html += '<div class="dashboard-stat"><div class="val">' + medStr + '</div><div class="lbl">Median verify time</div></div>';
     html += '</div></div>';
+  }
+  const ctx = (patchPlan && !patchPlan.error && patchPlan.context_sources) ? patchPlan.context_sources : null;
+  if (ctx) {
+    const recentFail = (ctx.recent_verify_fail_targets || []).length;
+    const campaignRejected = (ctx.campaign_rejected_targets || []).length;
+    const recentModified = (ctx.recent_patch_modified || []).length;
+    const byTarget = ctx.by_target || {};
+    const targetCtxCount = Object.keys(byTarget).length;
+    const hitCounts = {};
+    const targetHitCounts = {};
+    ((patchPlan.operations || []).slice(0, 20)).forEach(op => {
+      const target = String(op.target_file || '');
+      if (target) {
+        targetHitCounts[target] = targetHitCounts[target] || {};
+      }
+      (op.context_hits || []).forEach(h => {
+        hitCounts[h] = (hitCounts[h] || 0) + 1;
+        if (target) {
+          targetHitCounts[target][h] = (targetHitCounts[target][h] || 0) + 1;
+        }
+      });
+    });
+    const topHits = Object.entries(hitCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([k, v]) => k + '×' + v);
+    html += '<div class="card"><h2>Context sources</h2>';
+    html += '<div class="dashboard-grid">';
+    html += '<div class="dashboard-stat"><div class="val">' + targetCtxCount + '</div><div class="lbl">Targets with context</div></div>';
+    html += '<div class="dashboard-stat"><div class="val">' + recentFail + '</div><div class="lbl">Recent verify-fail targets</div></div>';
+    html += '<div class="dashboard-stat"><div class="val">' + campaignRejected + '</div><div class="lbl">Campaign rejected targets</div></div>';
+    html += '<div class="dashboard-stat"><div class="val">' + recentModified + '</div><div class="lbl">Recent patch-modified targets</div></div>';
+    html += '</div>';
+    if (topHits.length) {
+      html += '<div class="metric muted">Top context hits in current operations: ' + escapeHtml(topHits.join(', ')) + '</div>';
+    } else {
+      html += '<div class="metric muted">No context hits in current operations (plan may be empty).</div>';
+    }
+    const targetRows = Object.entries(byTarget).slice(0, 8);
+    if (targetRows.length) {
+      html += '<div class="metric"><strong>By target (sample):</strong></div><ul>';
+      targetRows.forEach(([target, info]) => {
+        const tests = (info && info.related_tests) ? info.related_tests : [];
+        const neighbors = (info && info.neighbor_modules) ? info.neighbor_modules : [];
+        const topForTarget = Object.entries(targetHitCounts[target] || {})
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 2)
+          .map(([k, v]) => k + '×' + v)
+          .join(', ');
+        const testsLabel = tests.length ? ('tests: ' + tests.slice(0, 2).join(', ')) : 'tests: none';
+        const neighLabel = neighbors.length ? ('neighbors: ' + neighbors.slice(0, 2).join(', ')) : 'neighbors: none';
+        const hitsLabel = topForTarget ? (' | hits: ' + topForTarget) : '';
+        html += '<li><span class="muted">' + escapeHtml(target) + '</span> — ' +
+          escapeHtml(testsLabel) + '; ' + escapeHtml(neighLabel) + escapeHtml(hitsLabel) + '</li>';
+      });
+      html += '</ul>';
+      if (Object.keys(byTarget).length > targetRows.length) {
+        html += '<div class="metric muted">Showing ' + targetRows.length + ' of ' + Object.keys(byTarget).length + ' targets.</div>';
+      }
+    }
+    html += '</div>';
   }
   if (Object.keys(trends).length) {
     html += '<div class="card"><h2>Trends</h2>';
@@ -780,12 +841,13 @@ function initExplain() {
 
 async function load() {
   try {
-    const [summary, history, opsMetrics] = await Promise.all([
+    const [summary, history, opsMetrics, patchPlan] = await Promise.all([
       API('/summary'),
       API('/history', { window: 5 }),
       API('/operational_metrics', { window: 10 }).catch(() => ({ error: true })),
+      API('/patch_plan', { window: 5 }).catch(() => ({ error: true })),
     ]);
-    renderDashboard(summary, history, opsMetrics);
+    renderDashboard(summary, history, opsMetrics, patchPlan);
     renderSummary(summary);
     renderHistory(history);
   } catch (e) {
