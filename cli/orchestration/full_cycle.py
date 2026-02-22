@@ -7,6 +7,34 @@ from pathlib import Path
 from typing import Any, Callable
 
 
+def _build_agent_runtime_payload(mode: str, cycle: Any) -> dict[str, Any]:
+    """Normalize agent runtime metadata for API/report surfaces."""
+    stage_outputs = (
+        cycle.stage_outputs
+        if isinstance(getattr(cycle, "stage_outputs", None), dict)
+        else {}
+    )
+    degraded_reasons = [
+        str(v.get("message") or f"{k}:error")
+        for k, v in stage_outputs.items()
+        if isinstance(v, dict) and v.get("status") == "error"
+    ]
+    state = getattr(cycle, "state", None)
+    state_history = getattr(cycle, "state_history", None)
+    state_value = str(getattr(state, "value", state)) if state is not None else None
+    history_values = []
+    if isinstance(state_history, list):
+        history_values = [str(getattr(s, "value", s)) for s in state_history]
+    return {
+        "mode": mode,
+        "stages": list(getattr(cycle, "stages", []) or []),
+        "state": state_value,
+        "state_history": history_values,
+        "degraded_mode": bool(state_value == "error"),
+        "degraded_reasons": degraded_reasons,
+    }
+
+
 def run_cycle_entry(
     path: Path,
     *,
@@ -95,7 +123,18 @@ def run_cycle_entry(
         if isinstance(cycle.payload, dict)
         else {"error": "agent runtime returned invalid payload"}
     )
-    out.setdefault("agent_runtime", {"mode": runtime_mode, "stages": cycle.stages})
+    out.setdefault("agent_runtime", _build_agent_runtime_payload(runtime_mode, cycle))
+    report = out.get("report")
+    if isinstance(report, dict):
+        report.setdefault(
+            "runtime",
+            {
+                "degraded_mode": bool(out["agent_runtime"].get("degraded_mode")),
+                "degraded_reasons": list(out["agent_runtime"].get("degraded_reasons", [])),
+                "state": out["agent_runtime"].get("state"),
+                "mode": runtime_mode,
+            },
+        )
     return out
 
 
@@ -154,6 +193,19 @@ def run_full_cycle(
         apply_approved=apply_approved,
     )
     out["doctor_report"] = data
+    report = out.get("report")
+    doctor_runtime = data.get("runtime")
+    if isinstance(report, dict) and isinstance(doctor_runtime, dict):
+        report.setdefault(
+            "runtime",
+            {
+                "degraded_mode": bool(doctor_runtime.get("degraded_mode")),
+                "degraded_reasons": list(doctor_runtime.get("degraded_reasons", [])),
+                "llm_used": doctor_runtime.get("llm_used"),
+                "use_llm": doctor_runtime.get("use_llm"),
+                "source": "doctor",
+            },
+        )
     return out
 
 

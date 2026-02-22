@@ -10,7 +10,7 @@ if str(ROOT) not in sys.path:
 
 import eurika_cli
 from cli.orchestrator import run_cycle
-from eurika.agent.models import AgentCycleResult
+from eurika.agent.models import AgentCycleResult, AgentRuntimeState
 
 
 def test_cli_fix_accepts_runtime_mode_flag() -> None:
@@ -39,3 +39,19 @@ def test_run_cycle_rejects_unknown_runtime_mode() -> None:
     out = run_cycle(ROOT, mode="doctor", runtime_mode="wrong-mode", no_llm=True)
     assert "error" in out
     assert "Unknown runtime_mode" in out["error"]
+
+
+def test_run_cycle_non_assist_adds_runtime_block_to_report() -> None:
+    fake = AgentCycleResult(
+        mode="hybrid",
+        payload={"report": {}},
+        state=AgentRuntimeState.ERROR,
+        state_history=[AgentRuntimeState.IDLE, AgentRuntimeState.THINKING, AgentRuntimeState.ERROR],
+        stage_outputs={"propose": {"status": "error", "message": "no plan", "payload": None}},
+    )
+    with patch("eurika.agent.runtime.run_agent_cycle", return_value=fake):
+        out = run_cycle(ROOT, mode="fix", runtime_mode="hybrid", quiet=True)
+    runtime = (out.get("report") or {}).get("runtime") or {}
+    assert runtime.get("degraded_mode") is True
+    assert runtime.get("state") == "error"
+    assert "no plan" in (runtime.get("degraded_reasons") or [])

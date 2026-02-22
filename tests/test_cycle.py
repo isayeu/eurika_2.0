@@ -523,6 +523,43 @@ def test_run_full_cycle_wrapper_delegates_to_orchestration_module() -> None:
     assert callable(kwargs.get("run_fix_cycle_fn"))
 
 
+def test_full_cycle_propagates_doctor_runtime_to_fix_report() -> None:
+    """run_full_cycle should copy doctor runtime metadata into fix report."""
+    from cli.orchestration.full_cycle import run_full_cycle
+
+    doctor_out = {
+        "summary": {"system": {}, "risks": []},
+        "history": {"evolution_report": ""},
+        "architect_text": "ok",
+        "runtime": {
+            "degraded_mode": True,
+            "degraded_reasons": ["llm_disabled"],
+            "llm_used": False,
+            "use_llm": False,
+        },
+    }
+    fix_out = {
+        "return_code": 0,
+        "report": {},
+        "operations": [],
+        "modified": [],
+        "verify_success": True,
+        "agent_result": None,
+    }
+    with patch("runtime_scan.run_scan", return_value=0):
+        out = run_full_cycle(
+            ROOT,
+            quiet=True,
+            no_llm=True,
+            run_doctor_cycle_fn=lambda *_args, **_kwargs: doctor_out,
+            run_fix_cycle_fn=lambda *_args, **_kwargs: dict(fix_out),
+        )
+    runtime = (out.get("report") or {}).get("runtime") or {}
+    assert runtime.get("degraded_mode") is True
+    assert "llm_disabled" in (runtime.get("degraded_reasons") or [])
+    assert runtime.get("source") == "doctor"
+
+
 def test_prepare_fix_cycle_operations_wrapper_delegates() -> None:
     """Compatibility wrapper for prepare-stage should delegate unchanged."""
     from cli.orchestrator import _prepare_fix_cycle_operations
