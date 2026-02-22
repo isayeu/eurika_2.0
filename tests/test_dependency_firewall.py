@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from eurika.checks.dependency_firewall import ImportRule, collect_dependency_violations
+from eurika.checks.dependency_firewall import (
+    ImportRule,
+    LayerException,
+    LayerImportRule,
+    LayerPathRule,
+    collect_dependency_violations,
+    collect_layer_violations,
+)
 
 
 def _write(path: Path, content: str) -> None:
@@ -27,5 +34,35 @@ def test_collect_dependency_violations_ignores_tests_and_valid_imports(tmp_path)
     violations = collect_dependency_violations(
         tmp_path,
         rules=(ImportRule(path_pattern="eurika/analysis/", forbidden_imports=("patch_apply",)),),
+    )
+    assert violations == []
+
+
+def test_collect_layer_violations_detects_upward_dependency(tmp_path: Path) -> None:
+    _write(tmp_path / "eurika" / "analysis" / "scan.py", "from patch_engine import apply_patch\n")
+    violations = collect_layer_violations(
+        tmp_path,
+        path_rules=(LayerPathRule(path_pattern="eurika/analysis/", layer=2),),
+        import_rules=(LayerImportRule(import_prefix="patch_engine", layer=4),),
+    )
+    assert len(violations) == 1
+    assert violations[0].path == "eurika/analysis/scan.py"
+    assert violations[0].source_layer == 2
+    assert violations[0].target_layer == 4
+
+
+def test_collect_layer_violations_allows_exception(tmp_path: Path) -> None:
+    _write(tmp_path / "eurika" / "analysis" / "scan.py", "from patch_engine import apply_patch\n")
+    violations = collect_layer_violations(
+        tmp_path,
+        path_rules=(LayerPathRule(path_pattern="eurika/analysis/", layer=2),),
+        import_rules=(LayerImportRule(import_prefix="patch_engine", layer=4),),
+        exceptions=(
+            LayerException(
+                path_pattern="eurika/analysis/scan.py",
+                allowed_import_prefixes=("patch_engine",),
+                reason="temporary migration bridge",
+            ),
+        ),
     )
     assert violations == []
