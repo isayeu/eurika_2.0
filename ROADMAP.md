@@ -304,12 +304,12 @@
 - 2.7.2 Tool Contract Layer — типизированные адаптеры scan, patch, verify, rollback, tests, git_read в `eurika/agent/tool_contract.py`; единый ToolResult; ошибки нормализованы; dry-run воспроизводим; OrchestratorToolset получает contract; tests/test_tool_contract.py
 - 2.7.3 Policy Engine — policy-конфиг: risk, max_ops, max_files, deny_patterns, api_breaking_guard; allow/deny/review для hybrid/auto; hybrid сохраняет review для HITL; тесты deny-правил и граничных кейсов в test_agent_policy.py
 - 2.7.4 Explainability Record — why, risk, expected_outcome, rollback_plan, verify_outcome в operation_explanations; eurika_fix_report.json и dry-run; eurika explain показывает Runtime rationale из последнего fix; tests/test_explainability.py
-- 2.7.5 Session Memory — campaign memory в SessionMemory: rejected_keys (из любой сессии), verify_fail_keys (2+ fail → skip); apply_campaign_memory в prepare; record_verify_failure при verify fail; tests
+- 2.7.5 Session Memory — campaign memory в SessionMemory: rejected_keys (из любой сессии), verify_fail_keys (2+ fail → skip); apply_campaign_memory в prepare; record_verify_failure при verify fail; добавлен scoped retry-флаг `--allow-campaign-retry` (одноразовый обход campaign-skip без глобального env bypass); tests
 - 2.7.6 Human-in-the-loop CLI — approve/reject/A/R/s в hybrid; --non-interactive для CI (детерминировано, без stdin); tests/test_hitl_cli.py (non_interactive, isatty, mocked input)
 - 2.7.7 Safety & Rollback Gates — обязательный verify, auto_rollback при fail; backup=True; enrich_report_with_rescan → rollback при metrics_worsened; tests/test_safety_rollback_gates.py; policy max_ops/max_files
-- 2.7.8 Telemetry & KPIs — apply-rate, rollback-rate, no-op-rate, median_verify_time_ms; telemetry в fix report; report-snapshot и doctor (last_fix_telemetry); suggest_policy_from_telemetry; aggregate_operational_metrics (rolling); /api/operational_metrics; Dashboard card
+- 2.7.8 Telemetry & KPIs — apply-rate, rollback-rate, no-op-rate, median_verify_time_ms; telemetry в fix report; report-snapshot и doctor (last_fix_telemetry); no-op репортинг прозрачен для campaign/session skip (`campaign_skipped`, `session_skipped`) и согласован с telemetry (`skipped_count`, `no_op_rate`); suggest_policy_from_telemetry; aggregate_operational_metrics (rolling); /api/operational_metrics; Dashboard card
 - 2.7.9 Dogfooding Campaign — 3 стабильных цикла подряд; verify ✓, тесты зелёные; split_module architecture_planner → build_plan, build_action_plan
-- 2.7.10 Docs & Migration — CLI.md, ROADMAP, DOGFOODING, CYCLE_REPORT обновлены; runtime-режимы и telemetry описаны
+- 2.7.10 Docs & Migration — CLI.md, ROADMAP, DOGFOODING, CYCLE_REPORT обновлены; runtime-режимы и telemetry описаны; добавлен операторский сценарий controlled re-apply через `--allow-campaign-retry`
 
 **Метрики выхода из фазы 2.7 (DoD):**
 
