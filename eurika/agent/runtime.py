@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from .models import AgentCycleResult, AgentMode, AgentStage, ToolResult
+from .models import (
+    AgentCycleResult,
+    AgentMode,
+    AgentRuntimeState,
+    AgentStage,
+    ToolResult,
+)
 
 _STAGES: tuple[AgentStage, ...] = ("observe", "reason", "propose", "apply", "verify", "learn")
 
@@ -15,6 +21,13 @@ def _normalize_result(value: Any) -> ToolResult:
     return ToolResult(status="ok", payload=value)
 
 
+def _set_state(cycle: AgentCycleResult, state: AgentRuntimeState) -> None:
+    if cycle.state == state:
+        return
+    cycle.state = state
+    cycle.state_history.append(state)
+
+
 def run_agent_cycle(
     *,
     mode: AgentMode,
@@ -22,6 +35,7 @@ def run_agent_cycle(
 ) -> AgentCycleResult:
     """Execute a full runtime cycle through configured tool adapters."""
     cycle = AgentCycleResult(mode=mode)
+    _set_state(cycle, AgentRuntimeState.THINKING)
     stage_input: dict[str, Any] = {}
     for stage in _STAGES:
         fn: Callable[..., Any] | None = getattr(tools, stage, None)
@@ -42,5 +56,8 @@ def run_agent_cycle(
         if stage == "apply":
             cycle.payload = result.payload
         if result.status == "error":
+            _set_state(cycle, AgentRuntimeState.ERROR)
             break
+    if cycle.state != AgentRuntimeState.ERROR:
+        _set_state(cycle, AgentRuntimeState.DONE)
     return cycle

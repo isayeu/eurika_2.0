@@ -33,6 +33,7 @@ class _FakeTools:
 def test_run_agent_cycle_executes_all_stages() -> None:
     out = run_agent_cycle(mode="assist", tools=_FakeTools())
     assert out.mode == "assist"
+    assert out.state == "done"
     assert out.stages == ["observe", "reason", "propose", "apply", "verify", "learn"]
     assert out.payload == {"result": "applied"}
     assert out.stage_outputs["verify"]["payload"] == {"ok": True}
@@ -54,6 +55,7 @@ def test_run_agent_cycle_stops_on_error() -> None:
 
     out = run_agent_cycle(mode="hybrid", tools=_ToolsFailAtPropose())
     assert out.mode == "hybrid"
+    assert out.state == "error"
     assert out.stages == ["observe", "reason", "propose"]
     assert out.stage_outputs["propose"]["status"] == "error"
     assert out.stage_outputs["propose"]["message"] == "no plan"
@@ -76,6 +78,7 @@ def test_run_agent_cycle_handles_exception_as_error() -> None:
             raise RuntimeError("apply failed")
 
     out = run_agent_cycle(mode="auto", tools=_ToolsRaiseAtApply())
+    assert out.state == "error"
     assert out.stages == ["observe", "reason", "propose", "apply"]
     assert out.stage_outputs["apply"]["status"] == "error"
     assert "apply failed" in (out.stage_outputs["apply"].get("message") or "")
@@ -91,5 +94,22 @@ def test_run_agent_cycle_skips_missing_stages() -> None:
             return {"result": "applied"}
 
     out = run_agent_cycle(mode="assist", tools=_PartialTools())
+    assert out.state == "done"
     assert out.stages == ["observe", "apply"]
     assert out.payload == {"result": "applied"}
+
+
+def test_run_agent_cycle_state_transitions_success() -> None:
+    out = run_agent_cycle(mode="assist", tools=_FakeTools())
+    assert out.state_history == ["idle", "thinking", "done"]
+
+
+def test_run_agent_cycle_state_transitions_error() -> None:
+    from eurika.agent.models import ToolResult
+
+    class _ToolsFailAtObserve:
+        def observe(self, _):
+            return ToolResult(status="error", message="broken", payload=None)
+
+    out = run_agent_cycle(mode="assist", tools=_ToolsFailAtObserve())
+    assert out.state_history == ["idle", "thinking", "error"]
