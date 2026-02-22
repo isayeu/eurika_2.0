@@ -98,6 +98,42 @@ def _deprioritize_weak_pairs(
     return sorted(operations, key=lambda op: (1 if _is_weak_pair(op) else 0))
 
 
+def _apply_context_priority(
+    operations: list[dict[str, Any]],
+    context_sources: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Boost operations with stronger semantic context signals."""
+    rejected_targets = set(context_sources.get("campaign_rejected_targets") or [])
+    fail_targets = set(context_sources.get("recent_verify_fail_targets") or [])
+    by_target = context_sources.get("by_target") or {}
+    scored: list[tuple[int, int, dict[str, Any]]] = []
+    for idx, op in enumerate(operations):
+        target = str(op.get("target_file") or "")
+        ctx = by_target.get(target) or {}
+        tests = ctx.get("related_tests") or []
+        neighbors = ctx.get("neighbor_modules") or []
+        hits: list[str] = []
+        score = 0
+        if target in fail_targets:
+            score += 3
+            hits.append("recent_verify_fail")
+        if target in rejected_targets:
+            score += 2
+            hits.append("campaign_rejected")
+        if tests:
+            score += 1
+            hits.append("related_tests")
+        if neighbors:
+            score += 1
+            hits.append("neighbor_modules")
+        op2 = dict(op)
+        op2["context_score"] = score
+        op2["context_hits"] = hits
+        scored.append((-score, idx, op2))
+    scored.sort()
+    return [item[2] for item in scored]
+
+
 def _approval_state_from_policy(decision: str) -> str:
     """Map policy decision to default approval state."""
     if decision == "allow":
@@ -393,8 +429,18 @@ def prepare_fix_cycle_operations(
     patch_plan, operations, session_skipped = apply_session_rejections(
         path, patch_plan, operations, session_id=session_id
     )
+    context_sources: dict[str, Any] = {}
+    try:
+        from eurika.reasoning.context_sources import build_context_sources
+
+        context_sources = build_context_sources(path, operations)
+        operations = _apply_context_priority(operations, context_sources)
+    except Exception:
+        context_sources = {}
     operations, critic_decisions = _run_critic_pass(operations, runtime_mode=runtime_mode)
     patch_plan = dict(patch_plan, operations=operations)
+    if context_sources:
+        patch_plan["context_sources"] = context_sources
     if not operations:
         return {
             "return_code": 0,
@@ -402,6 +448,7 @@ def prepare_fix_cycle_operations(
                 "message": "Patch plan has no operations. Cycle complete.",
                 "policy_decisions": policy_decisions,
                 "critic_decisions": critic_decisions,
+                "context_sources": context_sources,
                 "campaign_skipped": len(campaign_skipped),
                 "session_skipped": len(session_skipped),
                 "llm_hint_runtime": result.output.get("llm_hint_runtime"),
@@ -415,6 +462,7 @@ def prepare_fix_cycle_operations(
         result.output["session_skipped"] = len(session_skipped)
     result.output["policy_decisions"] = policy_decisions
     result.output["critic_decisions"] = critic_decisions
+    result.output["context_sources"] = context_sources
     return None, result, patch_plan, operations
 
 

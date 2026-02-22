@@ -89,6 +89,8 @@ def test_get_patch_plan_returns_dict_with_self_map(tmp_path: Path) -> None:
     assert data is not None
     assert "operations" in data
     assert isinstance(data["operations"], list)
+    assert "context_sources" in data
+    assert isinstance(data["context_sources"], dict)
     json.dumps(data)
 
 

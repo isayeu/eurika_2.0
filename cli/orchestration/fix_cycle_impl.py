@@ -410,6 +410,7 @@ def run_fix_cycle_impl(
             "message": "All operations rejected by user/policy. Cycle complete.",
             "policy_decisions": result.output.get("policy_decisions", []),
             "critic_decisions": result.output.get("critic_decisions", []),
+            "context_sources": result.output.get("context_sources"),
             "llm_hint_runtime": result.output.get("llm_hint_runtime"),
             "operation_explanations": [],
             "operation_results": gate_skipped + rejected_meta,

@@ -219,11 +219,20 @@ def handle_doctor(args: Any) -> int:
         patch_plan = data['patch_plan']
         architect_text = data['architect_text']
         suggested_policy = data.get('suggested_policy') or {}
+        context_sources = data.get('context_sources') or {}
         print(summary_to_text(summary))
         print()
         print(history.get('evolution_report', ''))
         print()
         print(architect_text)
+        if context_sources:
+            vfail = len(context_sources.get('recent_verify_fail_targets') or [])
+            crej = len(context_sources.get('campaign_rejected_targets') or [])
+            recent = len(context_sources.get('recent_patch_modified') or [])
+            targets = len(context_sources.get('by_target') or {})
+            print()
+            print('Context sources (ROADMAP 3.6.3):')
+            print(f'  targets={targets}, recent_verify_fail={vfail}, campaign_rejected={crej}, recent_patch_modified={recent}')
         ops_metrics = data.get('operational_metrics') or {}
         if ops_metrics:
             ar = ops_metrics.get('apply_rate', 'N/A')
@@ -245,6 +254,8 @@ def handle_doctor(args: Any) -> int:
                 print(f'  export {k}={v}')
             print('  # Or run fix/cycle with --apply-suggested-policy')
         report = {'summary': summary, 'history': history, 'architect': architect_text, 'patch_plan': patch_plan}
+        if context_sources:
+            report['context_sources'] = context_sources
         if suggested_policy:
             report['suggested_policy'] = suggested_policy
         if data.get('operational_metrics'):

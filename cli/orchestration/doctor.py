@@ -159,6 +159,7 @@ def run_doctor_cycle(
         "summary": summary,
         "history": history,
         "patch_plan": patch_plan,
+        "context_sources": (patch_plan or {}).get("context_sources") if isinstance(patch_plan, dict) else {},
         "architect_text": architect_text,
         "runtime": {
             "degraded_mode": bool((architect_meta or {}).get("degraded_mode")),

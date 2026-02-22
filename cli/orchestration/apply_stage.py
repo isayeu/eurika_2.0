@@ -43,6 +43,7 @@ def build_fix_dry_run_result(
         "operation_results": op_results,
         "policy_decisions": result.output.get("policy_decisions", []),
         "critic_decisions": result.output.get("critic_decisions", []),
+        "context_sources": result.output.get("context_sources"),
         "llm_hint_runtime": result.output.get("llm_hint_runtime"),
     }
     try:
@@ -316,6 +317,7 @@ def execute_fix_apply_stage(
     report["operation_results"] = op_results
     report["policy_decisions"] = result.output.get("policy_decisions", [])
     report["critic_decisions"] = result.output.get("critic_decisions", [])
+    report["context_sources"] = result.output.get("context_sources")
     report["llm_hint_runtime"] = result.output.get("llm_hint_runtime")
     attach_fix_telemetry(report, operations, path)
     enrich_report_with_rescan(

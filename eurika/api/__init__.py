@@ -221,7 +221,14 @@ def get_patch_plan(project_root: Path, window: int = 5) -> Dict[str, Any] | None
         graph=graph,
         self_map=self_map,
     )
-    return plan.to_dict()
+    payload = plan.to_dict()
+    try:
+        from eurika.reasoning.context_sources import build_context_sources
+
+        payload["context_sources"] = build_context_sources(root, payload.get("operations") or [])
+    except Exception:
+        pass
+    return payload
 
 
 def get_recent_events(

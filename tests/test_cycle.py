@@ -271,6 +271,29 @@ def test_doctor_suggested_policy_block(tmp_path: Path) -> None:
     assert "EURIKA_AGENT_MAX_OPS" in result.stdout or "export" in result.stdout
 
 
+def test_doctor_includes_context_sources(tmp_path: Path) -> None:
+    """Doctor output should include semantic context sources (ROADMAP 3.6.3)."""
+    from cli.orchestration.doctor import run_doctor_cycle
+
+    (tmp_path / "self_map.json").write_text(
+        json.dumps(
+            {
+                "modules": [{"path": "a.py", "lines": 10}, {"path": "b.py", "lines": 12}],
+                "dependencies": {"a.py": ["b.py"]},
+                "system": {"modules": 2, "dependencies": 1, "cycles": 0},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_a.py").write_text("def test_a(): assert True\n", encoding="utf-8")
+    out = run_doctor_cycle(tmp_path, window=3, no_llm=True, online=False)
+    ctx = out.get("context_sources")
+    assert isinstance(ctx, dict)
+    assert "by_target" in ctx
+    assert isinstance(ctx.get("by_target"), dict)
+
+
 def test_load_suggested_policy_for_apply(tmp_path: Path) -> None:
     """load_suggested_policy_for_apply loads from fix report when doctor report absent."""
     from cli.orchestration.doctor import load_suggested_policy_for_apply
