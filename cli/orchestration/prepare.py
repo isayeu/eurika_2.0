@@ -169,11 +169,13 @@ def apply_campaign_memory(
     path: Path,
     patch_plan: dict[str, Any],
     operations: list[dict[str, Any]],
+    *,
+    allow_retry: bool = False,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     """Skip ops rejected in any session or that failed verify 2+ times (ROADMAP 2.7.5).
     Bypassed when EURIKA_IGNORE_CAMPAIGN=1 (e.g. --apply-suggested-policy)."""
     import os
-    if os.environ.get("EURIKA_IGNORE_CAMPAIGN", "").strip() in {"1", "true", "yes"}:
+    if allow_retry or os.environ.get("EURIKA_IGNORE_CAMPAIGN", "").strip() in {"1", "true", "yes"}:
         return patch_plan, operations, []
     from eurika.storage import SessionMemory, operation_key
 
@@ -257,6 +259,7 @@ def prepare_fix_cycle_operations(
     no_clean_imports: bool,
     no_code_smells: bool,
     run_scan: Any,
+    allow_campaign_retry: bool = False,
 ) -> tuple[dict[str, Any] | None, Any, dict[str, Any] | None, list[dict[str, Any]]]:
     """Prepare diagnose result, patch plan and operations; return early payload on stop conditions."""
     if not skip_scan:
@@ -292,7 +295,12 @@ def prepare_fix_cycle_operations(
         operations,
         runtime_mode=runtime_mode,
     )
-    patch_plan, operations, campaign_skipped = apply_campaign_memory(path, patch_plan, operations)
+    patch_plan, operations, campaign_skipped = apply_campaign_memory(
+        path,
+        patch_plan,
+        operations,
+        allow_retry=allow_campaign_retry,
+    )
     patch_plan, operations, session_skipped = apply_session_rejections(
         path, patch_plan, operations, session_id=session_id
     )

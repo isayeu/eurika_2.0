@@ -26,6 +26,7 @@ def run_fix_cycle_impl(
     no_code_smells: bool = False,
     verify_cmd: str | None = None,
     verify_timeout: int | None = None,
+    allow_campaign_retry: bool = False,
     team_mode: bool = False,
     apply_approved: bool = False,
     fix_cycle_deps: Callable[[], dict[str, Any]],
@@ -50,6 +51,7 @@ def run_fix_cycle_impl(
         no_code_smells=no_code_smells,
         verify_cmd=verify_cmd,
         verify_timeout=verify_timeout,
+        allow_campaign_retry=allow_campaign_retry,
     )
     deps = fix_cycle_deps()
     run_scan = deps["run_scan"]
@@ -117,6 +119,7 @@ def run_fix_cycle_impl(
         skip_scan=skip_scan,
         no_clean_imports=no_clean_imports,
         no_code_smells=no_code_smells,
+        allow_campaign_retry=allow_campaign_retry,
         run_scan=run_scan,
     )
     if early is not None:

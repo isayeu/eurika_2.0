@@ -717,6 +717,29 @@ def test_apply_campaign_memory_filters_rejected_ops(tmp_path: Path) -> None:
     assert operation_key(skipped[0]) == operation_key(rejected[0])
 
 
+def test_apply_campaign_memory_allow_retry_keeps_operations(tmp_path: Path) -> None:
+    """allow_retry=True should bypass campaign skip for current run only."""
+    from cli.orchestration.prepare import apply_campaign_memory
+    from eurika.storage import SessionMemory
+
+    mem = SessionMemory(tmp_path)
+    rejected = [{"target_file": "foo.py", "kind": "split_module", "params": {"location": ""}}]
+    mem.record("prior", approved=[], rejected=rejected)
+    ops = [
+        {"target_file": "foo.py", "kind": "split_module", "params": {"location": ""}},
+        {"target_file": "bar.py", "kind": "remove_unused_import", "params": {}},
+    ]
+    patch_plan = {"operations": ops}
+    _out_plan, out_ops, skipped = apply_campaign_memory(
+        tmp_path,
+        patch_plan,
+        ops,
+        allow_retry=True,
+    )
+    assert len(out_ops) == 2
+    assert len(skipped) == 0
+
+
 def test_prepare_fix_cycle_reports_campaign_skipped_in_noop(tmp_path: Path) -> None:
     """No-op report includes campaign_skipped count when campaign filter removes ops."""
     from types import SimpleNamespace

@@ -66,6 +66,7 @@ def run_cycle(
     no_code_smells: bool = False,
     verify_cmd: str | None = None,
     verify_timeout: int | None = None,
+    allow_campaign_retry: bool = False,
     online: bool = False,
     team_mode: bool = False,
     apply_approved: bool = False,
@@ -85,6 +86,7 @@ def run_cycle(
         no_code_smells=no_code_smells,
         verify_cmd=verify_cmd,
         verify_timeout=verify_timeout,
+        allow_campaign_retry=allow_campaign_retry,
         online=online,
         team_mode=team_mode,
         apply_approved=apply_approved,
@@ -119,6 +121,7 @@ def run_full_cycle(
     no_code_smells: bool = False,
     verify_cmd: str | None = None,
     verify_timeout: int | None = None,
+    allow_campaign_retry: bool = False,
     online: bool = False,
     team_mode: bool = False,
     apply_approved: bool = False,
@@ -137,6 +140,7 @@ def run_full_cycle(
         no_code_smells=no_code_smells,
         verify_cmd=verify_cmd,
         verify_timeout=verify_timeout,
+        allow_campaign_retry=allow_campaign_retry,
         online=online,
         run_doctor_cycle_fn=run_doctor_cycle,
         run_fix_cycle_fn=run_fix_cycle,
@@ -155,6 +159,7 @@ def _prepare_fix_cycle_operations(
     skip_scan: bool,
     no_clean_imports: bool,
     no_code_smells: bool,
+    allow_campaign_retry: bool,
     run_scan: Any,
 ) -> tuple[dict[str, Any] | None, Any, dict[str, Any] | None, list[dict[str, Any]]]:
     """Compatibility wrapper; delegated to orchestration.prepare."""
@@ -167,6 +172,7 @@ def _prepare_fix_cycle_operations(
         skip_scan=skip_scan,
         no_clean_imports=no_clean_imports,
         no_code_smells=no_code_smells,
+        allow_campaign_retry=allow_campaign_retry,
         run_scan=run_scan,
     )
 
@@ -185,6 +191,7 @@ def _run_fix_cycle_impl(
     no_code_smells: bool = False,
     verify_cmd: str | None = None,
     verify_timeout: int | None = None,
+    allow_campaign_retry: bool = False,
     team_mode: bool = False,
     apply_approved: bool = False,
 ) -> dict[str, Any]:
@@ -202,6 +209,7 @@ def _run_fix_cycle_impl(
         no_code_smells=no_code_smells,
         verify_cmd=verify_cmd,
         verify_timeout=verify_timeout,
+        allow_campaign_retry=allow_campaign_retry,
         team_mode=team_mode,
         apply_approved=apply_approved,
         fix_cycle_deps=_fix_cycle_deps,

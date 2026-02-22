@@ -22,3 +22,4 @@ class FixCycleContext:
     no_code_smells: bool = False
     verify_cmd: str | None = None
     verify_timeout: int | None = None
+    allow_campaign_retry: bool = False
