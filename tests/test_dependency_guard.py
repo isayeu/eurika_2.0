@@ -32,11 +32,6 @@ LAYER_FIREWALL_EXCEPTIONS: tuple[LayerException, ...] = (
         allowed_import_prefixes=("eurika.smells",),
         reason="snapshot currently reads smell detector output directly",
     ),
-    LayerException(
-        path_pattern="eurika/reasoning/planner_patch_ops.py",
-        allowed_import_prefixes=("eurika.refactor",),
-        reason="planner-patch bridge still uses extract_class helper",
-    ),
 )
 
 

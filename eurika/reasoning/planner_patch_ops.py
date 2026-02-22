@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-from eurika.refactor.extract_class import suggest_extract_class
 from eurika.reasoning.planner_rules import (
     EXTRACT_CLASS_SKIP_PATTERNS,
     FACADE_MODULES,
@@ -20,6 +20,45 @@ from patch_plan import PatchOperation
 
 if TYPE_CHECKING:
     from eurika.analysis.graph import ProjectGraph
+
+
+def _uses_self_attributes(node: ast.FunctionDef) -> bool:
+    """True when method body reads self.attr (conservative extract-class gate)."""
+    for child in ast.walk(node):
+        if isinstance(child, ast.Attribute) and isinstance(child.ctx, ast.Load):
+            if isinstance(child.value, ast.Name) and child.value.id == "self":
+                return True
+    return False
+
+
+def _suggest_extract_class(file_path: Path, min_methods: int = 6) -> Optional[tuple[str, List[str]]]:
+    """Planner-local suggestion to avoid L3->L4 dependency on refactor package."""
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return None
+
+    best: Optional[tuple[str, List[str]]] = None
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        methods = [
+            n
+            for n in ast.iter_child_nodes(node)
+            if isinstance(n, ast.FunctionDef) and not n.name.startswith("__")
+        ]
+        if len(methods) < min_methods:
+            continue
+        extractable = [m.name for m in methods if not _uses_self_attributes(m)]
+        if not extractable:
+            continue
+        if best is None or len(extractable) > len(best[1]):
+            best = (node.name, extractable)
+    return best
 
 
 def build_patch_operations(
@@ -170,7 +209,7 @@ def _maybe_add_extract_class_operation(
     file_path = Path(project_root) / name
     if not (file_path.exists() and file_path.is_file()):
         return
-    suggestion = suggest_extract_class(file_path)
+    suggestion = _suggest_extract_class(file_path)
     if not suggestion:
         return
     class_name, methods = suggestion
