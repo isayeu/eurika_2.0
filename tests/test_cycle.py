@@ -518,6 +518,56 @@ def test_fix_cycle_all_rejected_includes_telemetry_and_no_verify_gate() -> None:
     assert safety.get("verify_passed") is None
 
 
+def test_fix_cycle_decision_gate_blocks_critic_denied_op() -> None:
+    """Hard gate must skip op when critic verdict is deny even if selected."""
+    from cli.orchestrator import run_cycle
+
+    fake_result = MagicMock()
+    fake_result.output = {
+        "policy_decisions": [
+            {
+                "index": 1,
+                "target_file": "a.py",
+                "kind": "split_module",
+                "decision": "allow",
+                "reason": "allowed by policy",
+                "risk": "high",
+            }
+        ],
+        "critic_decisions": [
+            {
+                "index": 1,
+                "target_file": "a.py",
+                "kind": "split_module",
+                "verdict": "deny",
+                "reason": "blocked",
+                "risk": "high",
+            }
+        ],
+    }
+    ops = [
+        {
+            "target_file": "a.py",
+            "kind": "split_module",
+            "approval_state": "approved",
+            "critic_verdict": "deny",
+            "explainability": {"risk": "high"},
+        }
+    ]
+    with (
+        patch("cli.orchestrator._fix_cycle_deps", return_value={"run_scan": lambda *_args, **_kwargs: True}),
+        patch("cli.orchestrator._prepare_fix_cycle_operations", return_value=(None, fake_result, {"operations": ops}, ops)),
+        patch("cli.orchestrator._select_hybrid_operations", return_value=(ops, [])),
+    ):
+        out = run_cycle(ROOT, mode="fix", runtime_mode="hybrid", quiet=True, non_interactive=False)
+    report = out.get("report", {})
+    assert report.get("message") == "All operations rejected by user/policy. Cycle complete."
+    assert "critic_decisions" in report
+    assert (report.get("skipped_reasons") or {}).get("a.py") == "critic_verdict=deny"
+    assert report.get("telemetry", {}).get("operations_total") == 1
+    assert report.get("telemetry", {}).get("modified_count") == 0
+
+
 def test_fix_cycle_noop_writes_fresh_fix_report(tmp_path: Path) -> None:
     """No-op fix cycle should overwrite eurika_fix_report.json with current report."""
     from cli.orchestrator import run_cycle

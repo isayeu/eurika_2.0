@@ -27,8 +27,12 @@ def select_hybrid_operations(
     non_interactive: bool,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Interactive approval flow for hybrid mode."""
-    if non_interactive or not operations or quiet or not sys.stdin.isatty():
+    if not operations or quiet:
         return operations, []
+    if non_interactive or not sys.stdin.isatty():
+        approved = [op for op in operations if str(op.get("approval_state", "approved")) == "approved"]
+        rejected = [op for op in operations if str(op.get("approval_state", "approved")) == "rejected"]
+        return approved, rejected
     approved: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
     for idx, op in enumerate(operations, start=1):
@@ -41,17 +45,41 @@ def select_hybrid_operations(
         )
         choice = read_hybrid_choice(prompt)
         if choice == "a":
-            approved.append(op)
+            op2 = dict(op)
+            op2["approval_state"] = "approved"
+            op2["decision_source"] = "human"
+            approved.append(op2)
         elif choice == "r":
-            rejected.append(op)
+            op2 = dict(op)
+            op2["approval_state"] = "rejected"
+            op2["decision_source"] = "human"
+            rejected.append(op2)
         elif choice == "A":
-            approved.append(op)
-            approved.extend(operations[idx:])
+            op2 = dict(op)
+            op2["approval_state"] = "approved"
+            op2["decision_source"] = "human"
+            approved.append(op2)
+            for tail in operations[idx:]:
+                tail2 = dict(tail)
+                tail2["approval_state"] = "approved"
+                tail2["decision_source"] = "human"
+                approved.append(tail2)
             break
         elif choice == "R":
-            rejected.append(op)
-            rejected.extend(operations[idx:])
+            op2 = dict(op)
+            op2["approval_state"] = "rejected"
+            op2["decision_source"] = "human"
+            rejected.append(op2)
+            for tail in operations[idx:]:
+                tail2 = dict(tail)
+                tail2["approval_state"] = "rejected"
+                tail2["decision_source"] = "human"
+                rejected.append(tail2)
             break
         elif choice == "s":
-            approved.append(op)
+            state = str(op.get("approval_state", "pending"))
+            if state == "rejected":
+                rejected.append(dict(op))
+            elif state == "approved":
+                approved.append(dict(op))
     return approved, rejected

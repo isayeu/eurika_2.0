@@ -159,7 +159,7 @@ def _prepare_fix_cycle_operations(
     skip_scan: bool,
     no_clean_imports: bool,
     no_code_smells: bool,
-    allow_campaign_retry: bool,
+    allow_campaign_retry: bool = False,
     run_scan: Any,
 ) -> tuple[dict[str, Any] | None, Any, dict[str, Any] | None, list[dict[str, Any]]]:
     """Compatibility wrapper; delegated to orchestration.prepare."""

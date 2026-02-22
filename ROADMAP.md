@@ -186,6 +186,47 @@
 - deep_nesting — гибрид: suggest_extract_block + extract_block_to_helper (эвристика для простых блоков); EURIKA_DEEP_NESTING_MODE=heuristic|hybrid|llm|skip; TODO/LLM при неудаче
 - long_function без вложенных def — fallback на suggest_extract_block (if/for/while блок 5+ строк) когда extract_nested_function не срабатывает
 
+### Пакет 3.6 — Operability UX (практики из Cursor)
+
+**Цель:** повысить долю реальных и безопасных применений в `eurika fix` за счёт управляемого apply-процесса и лучшего контекста для планировщика.
+
+| #     | Шаг                                | Задача                                                                                           | Критерий готовности                                                                                   |
+| ----- | ---------------------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| 3.6.1 | Approve per operation              | Подтверждение/отклонение по операциям (а не только whole-plan): risk, reason, target, diff-hint | Для high-risk ops доступен per-op approve/reject; `--apply-approved` применяет только approved ops |
+| 3.6.2 | Critic pass before apply           | Перед применением прогонять критический check плана (imports/API/tests impact)                  | План получает pre-apply verdict (`allow/review/deny`), deny-ops не применяются в auto режиме       |
+| 3.6.3 | Semantic context for planner       | Подмешивать в planner семантически релевантные модули/тесты/историю фейлов                       | В отчёте есть "context sources"; снижается доля no-op/TODO операций по long/deep сценариям         |
+| 3.6.4 | Session checkpoint + campaign undo | Снимок состояния перед серией apply; откат всей кампании одним действием                         | Есть restore для run/session; rollback по verify fail и manual undo работают предсказуемо           |
+
+**DoD для пакета 3.6:** рост `apply_rate`, снижение `rollback_rate`, снижение доли TODO/no-op операций в dogfooding-циклах.
+
+**Рекомендуемый порядок внедрения (по спринтам):**
+
+- **Спринт 1 (быстрый эффект):** 3.6.1 + 3.6.2. Сначала управляемый apply (per-op approve), затем pre-apply critic для отсечки рискованных операций.
+- **Спринт 2 (качество планирования):** 3.6.3. Добавить семантический контекст в planner и наблюдать снижение no-op/TODO по long/deep сценариям.
+- **Спринт 3 (безопасность кампаний):** 3.6.4. Ввести session checkpoint и понятный campaign undo для длинных серий apply.
+- **Стабилизация после каждого спринта:** dogfooding + `report-snapshot` + обновление CYCLE_REPORT/ROADMAP по фактическим метрикам.
+
+#### Спринт 1 — инженерная декомпозиция (3.6.1 + 3.6.2)
+
+**Scope:** управляемое применение операций + pre-apply safety фильтр.
+
+| Трек | Что делаем | Артефакты |
+| ---- | ---------- | --------- |
+| T1. Contract | Ввести/расширить структуру operation approval: `approved/rejected/pending`, reason, reviewer, timestamp; унифицировать формат pending/approved плана | Обновлённый JSON-контракт pending plan + обратная совместимость чтения |
+| T2. CLI/UX | Добавить per-op workflow в CLI: показать операции с индексами/risk и поддержать approve/reject по индексам; сохранить существующий `--apply-approved` сценарий | Команды approve/reject по операциям + понятный вывод статусов |
+| T3. Apply pipeline | На этапе apply исполнять только approved ops; rejected пропускать с явной причиной в отчёте; pending не запускать в auto | Обновлённый apply-stage с детерминированной фильтрацией операций |
+| T4. Critic pass | Перед apply запускать critic для каждой операции: imports/API surface/test impact, verdict `allow/review/deny` | Поле `critic_verdict` в operation metadata; deny блокирует auto-apply |
+| T5. Reporting | Включить в `eurika_fix_report.json` breakdown по операциям: approval_state, critic_verdict, applied/skipped reason | Прозрачный отчёт "почему операция применена/отклонена" |
+| T6. Tests | Добавить unit/integration тесты: approve subset, reject high-risk, deny from critic, mixed plan apply | Набор тестов для happy path и edge-cases (индексы, пустой approved set, all denied) |
+
+**DoD спринта 1:**
+
+- high-risk операции не применяются без явного approve;
+- deny-операции от critic не проходят в auto режиме;
+- `--apply-approved` стабильно применяет только одобренный поднабор;
+- отчёт фиксирует decision trail по каждой операции (approval + critic + итог apply/skip);
+- regression-набор зелёный, dogfooding-цикл без роста rollback-rate.
+
 ---
 
 ### Фаза 2.1 — Саморазвитие и стабилизация (приоритет 1)

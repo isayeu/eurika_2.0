@@ -21,13 +21,28 @@ def build_fix_dry_run_result(
 ) -> dict[str, Any]:
     """Build and persist dry-run report/result payload."""
     expls = [dict(op.get("explainability") or {}, verify_outcome=None) for op in operations]
+    op_results = []
+    for idx, op in enumerate(operations, start=1):
+        op_results.append(
+            {
+                "index": idx,
+                "target_file": op.get("target_file"),
+                "kind": op.get("kind"),
+                "approval_state": op.get("approval_state", "approved"),
+                "critic_verdict": op.get("critic_verdict", "allow"),
+                "applied": False,
+                "skipped_reason": "dry_run",
+            }
+        )
     report = {
         "dry_run": True,
         "patch_plan": patch_plan,
         "modified": [],
         "verify": {"success": None},
         "operation_explanations": expls,
+        "operation_results": op_results,
         "policy_decisions": result.output.get("policy_decisions", []),
+        "critic_decisions": result.output.get("critic_decisions", []),
         "llm_hint_runtime": result.output.get("llm_hint_runtime"),
     }
     try:
@@ -282,12 +297,25 @@ def execute_fix_apply_stage(
     report = apply_and_verify(path, patch_plan, backup=True, verify=True, verify_timeout=resolved_timeout, verify_cmd=verify_cmd, auto_rollback=True)
     verify_outcome = report["verify"].get("success")
     expls = []
+    op_results = []
     for op in operations:
         expl = dict(op.get("explainability") or {})
         expl["verify_outcome"] = verify_outcome
         expls.append(expl)
+        op_results.append(
+            {
+                "target_file": op.get("target_file"),
+                "kind": op.get("kind"),
+                "approval_state": op.get("approval_state", "approved"),
+                "critic_verdict": op.get("critic_verdict", "allow"),
+                "applied": True,
+                "skipped_reason": None,
+            }
+        )
     report["operation_explanations"] = expls
+    report["operation_results"] = op_results
     report["policy_decisions"] = result.output.get("policy_decisions", [])
+    report["critic_decisions"] = result.output.get("critic_decisions", [])
     report["llm_hint_runtime"] = result.output.get("llm_hint_runtime")
     attach_fix_telemetry(report, operations, path)
     enrich_report_with_rescan(

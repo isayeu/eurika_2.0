@@ -43,6 +43,8 @@ def save_pending_plan(
         dec = dec_by_idx.get(idx, {})
         op_copy = dict(op)
         op_copy["policy_decision"] = dec.get("decision", "allow")
+        op_copy["approval_state"] = "pending"
+        op_copy["critic_verdict"] = str(op_copy.get("critic_verdict") or "pending").lower()
         op_copy["team_decision"] = "pending"
         op_copy["approved_by"] = None
         ops_with_team.append(op_copy)
@@ -81,10 +83,14 @@ def load_approved_operations(project_root: Path) -> tuple[list[dict[str, Any]], 
     for op in ops:
         if not isinstance(op, dict):
             return [], None
-        if str(op.get("team_decision", "")).lower() == "approve":
+        team_decision = str(op.get("team_decision", "")).lower()
+        approval_state = str(op.get("approval_state", "")).lower()
+        if team_decision == "approve" or approval_state == "approved":
             approved.append(dict(op))
     # Strip team-specific fields from ops before apply
     for op in approved:
+        op["approval_state"] = "approved"
+        op["decision_source"] = "team"
         op.pop("team_decision", None)
         op.pop("approved_by", None)
         op.pop("policy_decision", None)
@@ -141,9 +147,18 @@ def update_team_decisions(
             if not isinstance(new, dict):
                 return False, "invalid operations payload"
             m = dict(old)
-            m["team_decision"] = str(new.get("team_decision", m.get("team_decision", "pending"))).lower()
+            approval_state = new.get("approval_state")
+            if approval_state is not None:
+                state = str(approval_state).lower()
+                if state not in {"approved", "rejected", "pending"}:
+                    return False, "invalid approval_state"
+                m["approval_state"] = state
+                m["team_decision"] = "approve" if state == "approved" else ("reject" if state == "rejected" else "pending")
+            else:
+                m["team_decision"] = str(new.get("team_decision", m.get("team_decision", "pending"))).lower()
+                m["approval_state"] = "approved" if m["team_decision"] == "approve" else ("rejected" if m["team_decision"] == "reject" else "pending")
             m["approved_by"] = new.get("approved_by")
-            if m["team_decision"] != "approve":
+            if m.get("approval_state") != "approved":
                 m["approved_by"] = None
             merged.append(m)
         data["operations"] = merged

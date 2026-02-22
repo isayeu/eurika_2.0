@@ -234,6 +234,55 @@ def _print_fix_summary(operations: list, modified: list, verify_success: bool | 
         print(f'Verify: {status}', file=sys.stderr)
     print(file=sys.stderr)
 
+
+def _decision_summary_from_report(report: dict[str, Any]) -> dict[str, int]:
+    """Extract decision-gate counters for concise CLI output."""
+    ds = report.get("decision_summary")
+    if isinstance(ds, dict):
+        return {
+            "blocked_by_policy": int(ds.get("blocked_by_policy") or 0),
+            "blocked_by_critic": int(ds.get("blocked_by_critic") or 0),
+            "blocked_by_human": int(ds.get("blocked_by_human") or 0),
+        }
+    # Fallback for partial/legacy payloads.
+    policy_blocked = sum(
+        1
+        for d in (report.get("policy_decisions") or [])
+        if isinstance(d, dict) and str(d.get("decision") or "").lower() == "deny"
+    )
+    critic_blocked = sum(
+        1
+        for d in (report.get("critic_decisions") or [])
+        if isinstance(d, dict) and str(d.get("verdict") or "").lower() == "deny"
+    )
+    human_blocked = 0
+    for r in (report.get("skipped_reasons") or {}).values():
+        if str(r) == "rejected_in_hybrid":
+            human_blocked += 1
+    return {
+        "blocked_by_policy": int(policy_blocked),
+        "blocked_by_critic": int(critic_blocked),
+        "blocked_by_human": int(human_blocked),
+    }
+
+
+def _print_decision_summary(report: dict[str, Any], *, quiet: bool) -> None:
+    """Print concise decision summary for operator UX."""
+    if quiet:
+        return
+    summary = _decision_summary_from_report(report)
+    if not any(summary.values()):
+        return
+    print(
+        (
+            "Decision summary: "
+            f"blocked by policy={summary['blocked_by_policy']}, "
+            f"critic={summary['blocked_by_critic']}, "
+            f"human={summary['blocked_by_human']}"
+        ),
+        file=sys.stderr,
+    )
+
 def _print_verify_failure_help(
     report: dict[str, Any],
     *,
@@ -294,6 +343,7 @@ def _run_cycle_with_mode(args: Any, mode: str='fix') -> int:
             dry_run = out.get('dry_run', False)
             if not quiet and (operations or dry_run):
                 _print_fix_summary(operations, modified=modified, verify_success=verify_success, dry_run=dry_run)
+                _print_decision_summary(report, quiet=quiet)
             if dry_run:
                 print(json.dumps({'patch_plan': report.get('patch_plan', {})}, indent=2, ensure_ascii=False))
             else:

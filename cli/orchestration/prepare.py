@@ -98,6 +98,76 @@ def _deprioritize_weak_pairs(
     return sorted(operations, key=lambda op: (1 if _is_weak_pair(op) else 0))
 
 
+def _approval_state_from_policy(decision: str) -> str:
+    """Map policy decision to default approval state."""
+    if decision == "allow":
+        return "approved"
+    if decision == "review":
+        return "pending"
+    return "rejected"
+
+
+def _run_critic_pass(
+    operations: list[dict[str, Any]],
+    *,
+    runtime_mode: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Attach critic verdict to each operation before apply."""
+    updated: list[dict[str, Any]] = []
+    decisions: list[dict[str, Any]] = []
+    for idx, op in enumerate(operations, start=1):
+        op2 = dict(op)
+        kind = str(op2.get("kind") or "")
+        target = str(op2.get("target_file") or "")
+        expl = op2.get("explainability") or {}
+        risk = str(expl.get("risk") or op2.get("risk") or "unknown")
+        diff = str(op2.get("diff") or "")
+        approval_state = str(op2.get("approval_state") or "pending")
+
+        verdict = "allow"
+        reason = "passed critic checks"
+        if approval_state == "rejected":
+            verdict = "deny"
+            reason = "rejected by policy/human"
+        elif "_extracted_extracted" in target:
+            verdict = "deny"
+            reason = "blocked repeated extracted chain"
+        elif kind == "refactor_code_smell" and "# TODO" in diff:
+            verdict = "deny"
+            reason = "blocked todo-only patch candidate"
+        elif risk == "high" and runtime_mode in {"hybrid", "auto"}:
+            verdict = "review"
+            reason = "high-risk operation requires explicit review"
+        elif (
+            kind in {"split_module", "refactor_module", "extract_class"}
+            and risk in {"medium", "high"}
+            and runtime_mode in {"hybrid", "auto"}
+        ):
+            verdict = "review"
+            reason = "structural refactor requires review"
+
+        op2["critic_verdict"] = verdict
+        op2["critic_reason"] = reason
+        op2["decision_source"] = op2.get("decision_source", "policy")
+        if verdict == "deny":
+            op2["approval_state"] = "rejected"
+        elif verdict == "review" and op2.get("approval_state") == "approved":
+            op2["approval_state"] = "pending"
+
+        updated.append(op2)
+        decisions.append(
+            {
+                "index": idx,
+                "target_file": target,
+                "kind": kind,
+                "verdict": verdict,
+                "reason": reason,
+                "risk": risk,
+            }
+        )
+    return updated, decisions
+
+
 def apply_runtime_policy(
     patch_plan: dict[str, Any],
     operations: list[dict[str, Any]],
@@ -116,6 +186,11 @@ def apply_runtime_policy(
         res = evaluate_operation(op, config=cfg, index=idx, seen_files=seen_files)
         op_with_meta = dict(op)
         op_with_meta["explainability"] = res.explainability
+        op_with_meta["policy_decision"] = res.decision
+        op_with_meta["approval_state"] = _approval_state_from_policy(res.decision)
+        op_with_meta["critic_verdict"] = "pending"
+        op_with_meta["critic_reason"] = ""
+        op_with_meta["decision_source"] = "policy"
         decisions.append(
             {
                 "index": idx,
@@ -318,12 +393,15 @@ def prepare_fix_cycle_operations(
     patch_plan, operations, session_skipped = apply_session_rejections(
         path, patch_plan, operations, session_id=session_id
     )
+    operations, critic_decisions = _run_critic_pass(operations, runtime_mode=runtime_mode)
+    patch_plan = dict(patch_plan, operations=operations)
     if not operations:
         return {
             "return_code": 0,
             "report": {
                 "message": "Patch plan has no operations. Cycle complete.",
                 "policy_decisions": policy_decisions,
+                "critic_decisions": critic_decisions,
                 "campaign_skipped": len(campaign_skipped),
                 "session_skipped": len(session_skipped),
                 "llm_hint_runtime": result.output.get("llm_hint_runtime"),
@@ -336,6 +414,7 @@ def prepare_fix_cycle_operations(
     if session_skipped:
         result.output["session_skipped"] = len(session_skipped)
     result.output["policy_decisions"] = policy_decisions
+    result.output["critic_decisions"] = critic_decisions
     return None, result, patch_plan, operations
 
 

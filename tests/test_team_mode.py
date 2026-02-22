@@ -78,6 +78,26 @@ def test_update_team_decisions(tmp_path: Path) -> None:
     assert data["operations"][1]["approved_by"] is None
 
 
+def test_update_team_decisions_supports_approval_state(tmp_path: Path) -> None:
+    """API payload may send approval_state directly; it must map to team_decision."""
+    plan = {"project_root": str(tmp_path), "operations": []}
+    ops = [{"target_file": "a.py", "kind": "split"}]
+    decs = [{"index": 1, "decision": "allow"}]
+    save_pending_plan(tmp_path, plan, ops, decs)
+    ok, _ = update_team_decisions(
+        tmp_path,
+        [{"approval_state": "approved", "approved_by": "ui"}],
+    )
+    assert ok
+    data = load_pending_plan(tmp_path)
+    assert data["operations"][0]["approval_state"] == "approved"
+    assert data["operations"][0]["team_decision"] == "approve"
+    approved, _ = load_approved_operations(tmp_path)
+    assert len(approved) == 1
+    assert approved[0]["approval_state"] == "approved"
+    assert approved[0]["decision_source"] == "team"
+
+
 def test_load_missing_file(tmp_path: Path) -> None:
     """Load from path with no pending plan returns ([], None)."""
     approved, payload = load_approved_operations(tmp_path)

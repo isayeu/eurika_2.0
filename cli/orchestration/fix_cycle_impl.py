@@ -12,6 +12,83 @@ from .models import FixCycleContext
 _LOG = get_logger("orchestration.fix_cycle")
 
 
+def _filter_executable_operations(
+    operations: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, str], list[str]]:
+    """Apply hard decision gate: only approved + critic allow/review are executable."""
+    executable: list[dict[str, Any]] = []
+    skipped_meta: list[dict[str, Any]] = []
+    skipped_reasons: dict[str, str] = {}
+    skipped_files: list[str] = []
+    for op in operations:
+        approval_state = str(op.get("approval_state", "approved"))
+        critic_verdict = str(op.get("critic_verdict", "allow"))
+        target = str(op.get("target_file") or "")
+        reason = ""
+        if approval_state != "approved":
+            reason = f"approval_state={approval_state}"
+        elif critic_verdict not in {"allow", "review"}:
+            reason = f"critic_verdict={critic_verdict}"
+        if reason:
+            skipped_meta.append(
+                {
+                    "target_file": target,
+                    "kind": op.get("kind"),
+                    "approval_state": approval_state,
+                    "critic_verdict": critic_verdict,
+                    "decision_source": str(op.get("decision_source") or "policy"),
+                    "skipped_reason": reason,
+                }
+            )
+            if target:
+                skipped_files.append(target)
+                skipped_reasons[target] = reason
+            continue
+        executable.append(op)
+    return executable, skipped_meta, skipped_reasons, skipped_files
+
+
+def _attach_decision_summary(report: dict[str, Any]) -> None:
+    """Attach compact decision summary for CLI/report UX."""
+    op_results = report.get("operation_results") or []
+    policy_blocked = 0
+    critic_blocked = 0
+    human_blocked = 0
+    if isinstance(op_results, list):
+        for item in op_results:
+            if not isinstance(item, dict):
+                continue
+            reason = str(item.get("skipped_reason") or "")
+            source = str(item.get("decision_source") or "policy")
+            if reason.startswith("critic_verdict="):
+                critic_blocked += 1
+            elif reason.startswith("approval_state="):
+                if source in {"human", "team"}:
+                    human_blocked += 1
+                else:
+                    policy_blocked += 1
+            elif reason == "rejected_in_hybrid":
+                human_blocked += 1
+    # Fallback for legacy/partial payloads where operation_results may be absent.
+    if policy_blocked == 0:
+        policy_blocked = sum(
+            1
+            for d in (report.get("policy_decisions") or [])
+            if isinstance(d, dict) and str(d.get("decision") or "").lower() == "deny"
+        )
+    if critic_blocked == 0:
+        critic_blocked = sum(
+            1
+            for d in (report.get("critic_decisions") or [])
+            if isinstance(d, dict) and str(d.get("verdict") or "").lower() == "deny"
+        )
+    report["decision_summary"] = {
+        "blocked_by_policy": int(policy_blocked),
+        "blocked_by_critic": int(critic_blocked),
+        "blocked_by_human": int(human_blocked),
+    }
+
+
 def run_fix_cycle_impl(
     path: Path,
     *,
@@ -81,12 +158,46 @@ def run_fix_cycle_impl(
                 "agent_result": None,
             }
         patch_plan = dict(payload.get("patch_plan") or {}, operations=approved)
+        approved, _, skipped_reasons, skipped_files = _filter_executable_operations(approved)
+        if not approved:
+            op_results = []
+            for target, reason in skipped_reasons.items():
+                op_results.append(
+                    {
+                        "target_file": target,
+                        "kind": None,
+                        "approval_state": "approved",
+                        "critic_verdict": "deny",
+                        "decision_source": "team",
+                        "applied": False,
+                        "skipped_reason": reason,
+                    }
+                )
+            report = {
+                "message": "No executable approved operations after decision gate.",
+                "skipped": skipped_files,
+                "skipped_reasons": skipped_reasons,
+                "operation_results": op_results,
+            }
+            _attach_decision_summary(report)
+            attach_fix_telemetry(report, [])
+            write_fix_report(path, report, quiet)
+            return {
+                "return_code": 0,
+                "report": report,
+                "operations": [],
+                "modified": [],
+                "verify_success": True,
+                "agent_result": None,
+            }
+        patch_plan = dict(patch_plan, operations=approved)
         result = type(
             "R",
             (),
             {
                 "output": {
                     "policy_decisions": [{"decision": "allow"} for _ in approved],
+                    "critic_decisions": [],
                     "summary": {"risks": []},
                 }
             },
@@ -175,6 +286,7 @@ def run_fix_cycle_impl(
             "dry_run": True,
         }
 
+    planned_ops = list(operations)
     approved_ops, rejected_ops = select_hybrid_operations(
         operations,
         quiet=quiet,
@@ -186,20 +298,41 @@ def run_fix_cycle_impl(
         SessionMemory(path).record(session_id, approved=approved_ops, rejected=rejected_ops)
     operations = approved_ops
     patch_plan = dict(patch_plan, operations=operations)
-    if not operations:
+    executable_ops, gate_skipped, gate_skipped_reasons, gate_skipped_files = _filter_executable_operations(operations)
+    if not executable_ops:
         rejected_files = [
             str(op.get("target_file", ""))
             for op in rejected_ops
             if op.get("target_file")
         ]
+        all_skipped = rejected_files + gate_skipped_files
+        skipped_reasons = dict(gate_skipped_reasons)
+        rejected_meta = []
+        for rf in rejected_files:
+            if rf and rf not in skipped_reasons:
+                skipped_reasons[rf] = "rejected_in_hybrid"
+            rejected_meta.append(
+                {
+                    "target_file": rf,
+                    "kind": None,
+                    "approval_state": "rejected",
+                    "critic_verdict": "allow",
+                    "decision_source": "human",
+                    "skipped_reason": "rejected_in_hybrid",
+                }
+            )
         report = {
             "message": "All operations rejected by user/policy. Cycle complete.",
             "policy_decisions": result.output.get("policy_decisions", []),
+            "critic_decisions": result.output.get("critic_decisions", []),
             "llm_hint_runtime": result.output.get("llm_hint_runtime"),
             "operation_explanations": [],
-            "skipped": rejected_files,
+            "operation_results": gate_skipped + rejected_meta,
+            "skipped": all_skipped,
+            "skipped_reasons": skipped_reasons,
         }
-        attach_fix_telemetry(report, approved_ops)
+        _attach_decision_summary(report)
+        attach_fix_telemetry(report, planned_ops)
         write_fix_report(path, report, quiet)
         return {
             "return_code": 0,
@@ -215,12 +348,19 @@ def run_fix_cycle_impl(
         if not quiet:
             _LOG.info("--- Step 3/3: plan (dry-run, no apply) ---")
         out = build_fix_dry_run_result(path, patch_plan, operations, result)
-        attach_fix_telemetry(out["report"], operations)
+        out["report"]["critic_decisions"] = result.output.get("critic_decisions", [])
+        out["report"]["operation_results"] = list(out["report"].get("operation_results", [])) + gate_skipped
+        if gate_skipped_reasons:
+            out["report"]["skipped_reasons"] = gate_skipped_reasons
+            out["report"]["skipped"] = gate_skipped_files
+        _attach_decision_summary(out["report"])
+        attach_fix_telemetry(out["report"], planned_ops)
         return out
+    patch_plan = dict(patch_plan, operations=executable_ops)
     report, modified, verify_success = execute_fix_apply_stage(
         path,
         patch_plan,
-        operations,
+        executable_ops,
         quiet=quiet,
         verify_cmd=verify_cmd,
         verify_timeout=verify_timeout,
@@ -233,4 +373,13 @@ def run_fix_cycle_impl(
         rollback_patch=deps["rollback_patch"],
         result=result,
     )
-    return build_fix_cycle_result(report, operations, modified, verify_success, result)
+    if gate_skipped:
+        report["operation_results"] = list(report.get("operation_results", [])) + gate_skipped
+        report["skipped"] = list(report.get("skipped", [])) + gate_skipped_files
+        report["skipped_reasons"] = {
+            **(report.get("skipped_reasons") or {}),
+            **gate_skipped_reasons,
+        }
+    _attach_decision_summary(report)
+    write_fix_report(path, report, quiet)
+    return build_fix_cycle_result(report, executable_ops, modified, verify_success, result)
