@@ -23,6 +23,22 @@ EXEC_TIMEOUT_MIN = 1
 EXEC_TIMEOUT_MAX = 3600
 
 
+def _parse_bool_flag(value: object) -> bool | None:
+    """Parse bool-like request payload value; return None for invalid input."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        raw = value.strip().lower()
+        if raw in {"1", "true", "yes", "on"}:
+            return True
+        if raw in {"0", "false", "no", "off"}:
+            return False
+        return None
+    if isinstance(value, int) and value in (0, 1):
+        return bool(value)
+    return None
+
+
 def _json_response(handler: BaseHTTPRequestHandler, data: dict, status: int = 200) -> None:
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
@@ -197,7 +213,7 @@ def _dispatch_api_get(
             _json_response(handler, {"error": "query param 'path' required (e.g. ?path=cli/handlers.py)"}, status=400)
             return True
         rel = file_q[0]
-        if ".." in rel or rel.startswith("/"):
+        if not str(rel).strip() or ".." in rel or rel.startswith("/"):
             _json_response(handler, {"error": "invalid path"}, status=400)
             return True
         fpath = (project_root / rel).resolve()
@@ -309,7 +325,15 @@ def _run_post_handler(
         return True
     if path == "/api/ask_architect":
         from cli.orchestration.doctor import run_doctor_cycle
-        no_llm = (body or {}).get("no_llm", False)
+        no_llm_raw = (body or {}).get("no_llm", False)
+        no_llm = _parse_bool_flag(no_llm_raw)
+        if no_llm is None:
+            _json_response(
+                handler,
+                {"error": "invalid no_llm payload", "hint": "Expected no_llm: boolean"},
+                status=400,
+            )
+            return True
         doctor_data = run_doctor_cycle(project_root, window=5, no_llm=no_llm)
         if doctor_data.get("error"):
             _json_response(handler, {"error": doctor_data["error"], "text": ""})

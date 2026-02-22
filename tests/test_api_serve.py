@@ -489,7 +489,7 @@ def test_run_post_handler_ask_architect_passes_no_llm_value(tmp_path: Path, monk
     )
     assert handled is True
     assert captured.get("status") == 200
-    assert called.get("no_llm") == "yes"
+    assert called.get("no_llm") is True
     assert (captured.get("data") or {}).get("text") == "ok"
 
 
@@ -509,8 +509,29 @@ def test_dispatch_api_get_file_rejects_empty_path(tmp_path: Path, monkeypatch) -
         {"path": [""]},
     )
     assert handled is True
-    assert captured.get("status") == 404
-    assert (captured.get("data") or {}).get("error") == "not a file or not found"
+    assert captured.get("status") == 400
+    assert (captured.get("data") or {}).get("error") == "invalid path"
+
+
+def test_run_post_handler_ask_architect_rejects_invalid_no_llm_payload(tmp_path: Path, monkeypatch) -> None:
+    """POST /api/ask_architect should return 400 when no_llm cannot be parsed to boolean."""
+    captured: dict[str, object] = {}
+
+    def _fake_json_response(_handler, data: dict, status: int = 200) -> None:
+        captured["status"] = status
+        captured["data"] = data
+
+    monkeypatch.setattr(api_serve, "_json_response", _fake_json_response)
+
+    handled = api_serve._run_post_handler(
+        _DummyHandler(),
+        tmp_path,
+        "/api/ask_architect",
+        {"no_llm": {"bad": "value"}},
+    )
+    assert handled is True
+    assert captured.get("status") == 400
+    assert (captured.get("data") or {}).get("error") == "invalid no_llm payload"
 
 
 def test_dispatch_api_get_file_rejects_traversal_like_path(tmp_path: Path, monkeypatch) -> None:
