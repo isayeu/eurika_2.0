@@ -67,7 +67,11 @@ L6: CLI             ← command parsing, dispatch, orchestration wiring
 
 ### 0.6 Verification
 
-Автоматическая проверка: `tests/test_dependency_guard.py` (ROADMAP 2.8.2). Тест падает при нарушении правил; запускается в CI вместе с `pytest`. Команда: `pytest tests/test_dependency_guard.py -v`.
+Автоматическая проверка: `tests/test_dependency_guard.py` (ROADMAP 2.8.2).
+- `test_no_forbidden_imports` — строгий guard для явных запрещённых импортов.
+- `test_layer_firewall_contract_soft_start` — проверка layer-контракта L0–L6 в soft-start режиме.
+  Для строгого режима в CI включить `EURIKA_STRICT_LAYER_FIREWALL=1`.
+Команда: `pytest tests/test_dependency_guard.py -v`.
 
 ### 0.7 API Boundaries (ROADMAP 3.1-arch.2)
 
