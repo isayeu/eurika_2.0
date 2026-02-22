@@ -1,5 +1,6 @@
 """Domain-level edge-case tests for eurika.api.chat."""
 
+import json
 from pathlib import Path
 
 
@@ -128,3 +129,54 @@ def test_chat_send_recall_returns_unknown_when_context_missing(tmp_path: Path, m
     out = chat_mod.chat_send(tmp_path, "what is my name")
     assert out.get("error") is None
     assert "Я не знаю, как тебя зовут" in (out.get("text") or "")
+
+
+def test_append_chat_history_records_timezone_aware_utc_timestamp(tmp_path: Path) -> None:
+    """append_chat_history should write UTC timestamp in Z-suffixed ISO format."""
+    from eurika.api.chat import append_chat_history
+
+    append_chat_history(tmp_path, "user", "hello", None)
+    log_path = tmp_path / ".eurika" / "chat_history" / "chat.jsonl"
+    payload = json.loads(log_path.read_text(encoding="utf-8").strip())
+    ts = payload.get("ts") or ""
+    assert ts.endswith("Z")
+    assert "T" in ts
+
+
+def test_append_chat_history_truncates_content_and_context(tmp_path: Path) -> None:
+    """append_chat_history should cap content and context snapshot lengths."""
+    from eurika.api.chat import append_chat_history
+
+    append_chat_history(tmp_path, "assistant", "x" * 12000, "y" * 900)
+    log_path = tmp_path / ".eurika" / "chat_history" / "chat.jsonl"
+    payload = json.loads(log_path.read_text(encoding="utf-8").strip())
+    assert len(payload.get("content") or "") == 10000
+    assert len(payload.get("context_snapshot") or "") == 500
+
+
+def test_append_chat_history_stores_none_context_when_empty(tmp_path: Path) -> None:
+    """append_chat_history should store null context_snapshot when context is empty."""
+    from eurika.api.chat import append_chat_history
+
+    append_chat_history(tmp_path, "assistant", "ok", "")
+    payload = json.loads((tmp_path / ".eurika" / "chat_history" / "chat.jsonl").read_text(encoding="utf-8").strip())
+    assert payload.get("context_snapshot") is None
+
+
+def test_chat_send_works_with_preexisting_corrupted_chat_jsonl(tmp_path: Path, monkeypatch) -> None:
+    """chat_send should remain functional even when chat.jsonl has corrupted prior lines."""
+    import eurika.api.chat as chat_mod
+    import eurika.api.chat_intent as intent_mod
+
+    chat_dir = tmp_path / ".eurika" / "chat_history"
+    chat_dir.mkdir(parents=True, exist_ok=True)
+    (chat_dir / "chat.jsonl").write_text("{bad json line\n", encoding="utf-8")
+
+    monkeypatch.setattr(intent_mod, "detect_intent", lambda _msg: ("recall", "name"))
+    monkeypatch.setattr(chat_mod, "_load_user_context", lambda _root: {"name": "Alex"})
+    out = chat_mod.chat_send(tmp_path, "what is my name")
+    assert out.get("error") is None
+    assert "Тебя зовут Alex." in (out.get("text") or "")
+    # Ensure new valid line can still be appended after corrupted content.
+    lines = (chat_dir / "chat.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(lines) >= 3

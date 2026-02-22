@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -196,7 +196,7 @@ def append_chat_history(
     chat_dir.mkdir(parents=True, exist_ok=True)
     log_path = chat_dir / "chat.jsonl"
     record = {
-        "ts": datetime.utcnow().isoformat() + "Z",
+        "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "role": role,
         "content": content[:10000],
         "context_snapshot": context_snapshot[:500] if context_snapshot else None,
