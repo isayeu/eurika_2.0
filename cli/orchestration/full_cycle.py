@@ -57,6 +57,8 @@ def run_cycle_entry(
     online: bool = False,
     team_mode: bool = False,
     apply_approved: bool = False,
+    approve_ops: str | None = None,
+    reject_ops: str | None = None,
     run_doctor_cycle_fn: Callable[..., dict[str, Any]],
     run_fix_cycle_fn: Callable[..., dict[str, Any]],
     run_full_cycle_fn: Callable[..., dict[str, Any]],
@@ -85,6 +87,8 @@ def run_cycle_entry(
                 allow_campaign_retry=allow_campaign_retry,
                 team_mode=team_mode,
                 apply_approved=apply_approved,
+                approve_ops=approve_ops,
+                reject_ops=reject_ops,
             )
         if mode == "full":
             return run_full_cycle_fn(
@@ -104,6 +108,8 @@ def run_cycle_entry(
                 online=online,
                 team_mode=team_mode,
                 apply_approved=apply_approved,
+                approve_ops=approve_ops,
+                reject_ops=reject_ops,
             )
         return {"error": f"Unknown mode: {mode}. Use 'doctor', 'fix', or 'full'."}
 
@@ -162,6 +168,8 @@ def run_full_cycle(
     online: bool = False,
     team_mode: bool = False,
     apply_approved: bool = False,
+    approve_ops: str | None = None,
+    reject_ops: str | None = None,
     run_doctor_cycle_fn: Callable[..., dict[str, Any]],
     run_fix_cycle_fn: Callable[..., dict[str, Any]],
 ) -> dict[str, Any]:
@@ -199,6 +207,8 @@ def run_full_cycle(
         allow_campaign_retry=allow_campaign_retry,
         team_mode=team_mode,
         apply_approved=apply_approved,
+        approve_ops=approve_ops,
+        reject_ops=reject_ops,
     )
     out["doctor_report"] = data
     report = out.get("report")

@@ -48,6 +48,66 @@ def _filter_executable_operations(
     return executable, skipped_meta, skipped_reasons, skipped_files
 
 
+def _parse_operation_indexes(raw: str | None, total_ops: int, *, flag_name: str) -> tuple[set[int], str | None]:
+    """Parse 1-based indexes from CSV string."""
+    if not raw:
+        return set(), None
+    out: set[int] = set()
+    parts = [p.strip() for p in str(raw).split(",")]
+    for p in parts:
+        if not p:
+            continue
+        if not p.isdigit():
+            return set(), f"Invalid {flag_name} value '{p}': expected integers"
+        idx = int(p)
+        if idx < 1 or idx > total_ops:
+            return set(), f"Invalid {flag_name} index {idx}: expected range 1..{total_ops}"
+        out.add(idx)
+    return out, None
+
+
+def _select_operations_by_indexes(
+    operations: list[dict[str, Any]],
+    *,
+    approve_ops: str | None,
+    reject_ops: str | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str | None]:
+    """Apply explicit CLI approve/reject selection by operation indexes."""
+    approve_idx, err = _parse_operation_indexes(approve_ops, len(operations), flag_name="--approve-ops")
+    if err:
+        return [], [], err
+    reject_idx, err = _parse_operation_indexes(reject_ops, len(operations), flag_name="--reject-ops")
+    if err:
+        return [], [], err
+    overlap = approve_idx & reject_idx
+    if overlap:
+        return [], [], f"Conflicting indexes in --approve-ops and --reject-ops: {sorted(overlap)}"
+
+    if not approve_idx and not reject_idx:
+        return operations, [], None
+
+    approved: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    for idx, op in enumerate(operations, start=1):
+        op2 = dict(op)
+        if idx in reject_idx:
+            op2["approval_state"] = "rejected"
+            op2["decision_source"] = "human"
+            op2["rejection_reason"] = "rejected_by_index"
+            rejected.append(op2)
+            continue
+        if approve_idx and idx not in approve_idx:
+            op2["approval_state"] = "rejected"
+            op2["decision_source"] = "human"
+            op2["rejection_reason"] = "not_in_approved_set"
+            rejected.append(op2)
+            continue
+        op2["approval_state"] = "approved"
+        op2["decision_source"] = "human"
+        approved.append(op2)
+    return approved, rejected, None
+
+
 def _attach_decision_summary(report: dict[str, Any]) -> None:
     """Attach compact decision summary for CLI/report UX."""
     op_results = report.get("operation_results") or []
@@ -106,6 +166,8 @@ def run_fix_cycle_impl(
     allow_campaign_retry: bool = False,
     team_mode: bool = False,
     apply_approved: bool = False,
+    approve_ops: str | None = None,
+    reject_ops: str | None = None,
     fix_cycle_deps: Callable[[], dict[str, Any]],
     prepare_fix_cycle_operations: Callable[..., tuple[dict[str, Any] | None, Any, dict[str, Any] | None, list[dict[str, Any]]]],
     select_hybrid_operations: Callable[..., tuple[list[dict[str, Any]], list[dict[str, Any]]]],
@@ -287,40 +349,63 @@ def run_fix_cycle_impl(
         }
 
     planned_ops = list(operations)
-    approved_ops, rejected_ops = select_hybrid_operations(
-        operations,
-        quiet=quiet,
-        non_interactive=non_interactive or runtime_mode != "hybrid",
-    )
+    if approve_ops or reject_ops:
+        approved_ops, rejected_ops, selection_error = _select_operations_by_indexes(
+            operations,
+            approve_ops=approve_ops,
+            reject_ops=reject_ops,
+        )
+        if selection_error:
+            report = {"error": selection_error}
+            write_fix_report(path, report, quiet)
+            return {
+                "return_code": 1,
+                "report": report,
+                "operations": [],
+                "modified": [],
+                "verify_success": False,
+                "agent_result": result,
+                "dry_run": dry_run,
+            }
+    else:
+        approved_ops, rejected_ops = select_hybrid_operations(
+            operations,
+            quiet=quiet,
+            non_interactive=non_interactive or runtime_mode != "hybrid",
+        )
     if rejected_ops and session_id:
         from eurika.storage import SessionMemory
 
         SessionMemory(path).record(session_id, approved=approved_ops, rejected=rejected_ops)
     operations = approved_ops
     patch_plan = dict(patch_plan, operations=operations)
+    rejected_files = [
+        str(op.get("target_file", ""))
+        for op in rejected_ops
+        if op.get("target_file")
+    ]
+    rejected_meta: list[dict[str, Any]] = []
+    rejected_reasons: dict[str, str] = {}
+    for op in rejected_ops:
+        target = str(op.get("target_file") or "")
+        reason = str(op.get("rejection_reason") or "rejected_by_human")
+        rejected_meta.append(
+            {
+                "target_file": target,
+                "kind": op.get("kind"),
+                "approval_state": "rejected",
+                "critic_verdict": str(op.get("critic_verdict") or "allow"),
+                "decision_source": str(op.get("decision_source") or "human"),
+                "skipped_reason": reason,
+            }
+        )
+        if target:
+            rejected_reasons[target] = reason
     executable_ops, gate_skipped, gate_skipped_reasons, gate_skipped_files = _filter_executable_operations(operations)
     if not executable_ops:
-        rejected_files = [
-            str(op.get("target_file", ""))
-            for op in rejected_ops
-            if op.get("target_file")
-        ]
         all_skipped = rejected_files + gate_skipped_files
         skipped_reasons = dict(gate_skipped_reasons)
-        rejected_meta = []
-        for rf in rejected_files:
-            if rf and rf not in skipped_reasons:
-                skipped_reasons[rf] = "rejected_in_hybrid"
-            rejected_meta.append(
-                {
-                    "target_file": rf,
-                    "kind": None,
-                    "approval_state": "rejected",
-                    "critic_verdict": "allow",
-                    "decision_source": "human",
-                    "skipped_reason": "rejected_in_hybrid",
-                }
-            )
+        skipped_reasons.update(rejected_reasons)
         report = {
             "message": "All operations rejected by user/policy. Cycle complete.",
             "policy_decisions": result.output.get("policy_decisions", []),
@@ -349,10 +434,16 @@ def run_fix_cycle_impl(
             _LOG.info("--- Step 3/3: plan (dry-run, no apply) ---")
         out = build_fix_dry_run_result(path, patch_plan, operations, result)
         out["report"]["critic_decisions"] = result.output.get("critic_decisions", [])
-        out["report"]["operation_results"] = list(out["report"].get("operation_results", [])) + gate_skipped
+        out["report"]["operation_results"] = list(out["report"].get("operation_results", [])) + gate_skipped + rejected_meta
         if gate_skipped_reasons:
             out["report"]["skipped_reasons"] = gate_skipped_reasons
             out["report"]["skipped"] = gate_skipped_files
+        if rejected_reasons:
+            out["report"]["skipped_reasons"] = {
+                **(out["report"].get("skipped_reasons") or {}),
+                **rejected_reasons,
+            }
+            out["report"]["skipped"] = list(out["report"].get("skipped", [])) + rejected_files
         _attach_decision_summary(out["report"])
         attach_fix_telemetry(out["report"], planned_ops)
         return out
@@ -379,6 +470,13 @@ def run_fix_cycle_impl(
         report["skipped_reasons"] = {
             **(report.get("skipped_reasons") or {}),
             **gate_skipped_reasons,
+        }
+    if rejected_meta:
+        report["operation_results"] = list(report.get("operation_results", [])) + rejected_meta
+        report["skipped"] = list(report.get("skipped", [])) + rejected_files
+        report["skipped_reasons"] = {
+            **(report.get("skipped_reasons") or {}),
+            **rejected_reasons,
         }
     _attach_decision_summary(report)
     write_fix_report(path, report, quiet)

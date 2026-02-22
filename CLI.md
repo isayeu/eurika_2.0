@@ -74,28 +74,36 @@ eurika doctor . --no-llm
 
 ---
 
-### eurika fix [path ...] [--window N] [--dry-run] [--quiet] [--runtime-mode MODE] [--non-interactive] [--session-id ID] [--no-clean-imports] [--verify-cmd CMD]
+### eurika fix [path ...] [--window N] [--dry-run] [--quiet] [--runtime-mode MODE] [--non-interactive] [--session-id ID] [--approve-ops IDX[,IDX...]] [--reject-ops IDX[,IDX...]] [--no-clean-imports] [--verify-cmd CMD]
 
 Полный цикл: scan → arch-review → patch-apply --apply --verify. **По умолчанию** план fix включает операции **remove_unused_import** (clean-imports) для файлов с неиспользуемыми импортами; затем — архитектурные патчи (remove_cyclic_import, split_module и т.д.). Эквивалент `eurika agent cycle` с применением патчей и проверкой тестами. После apply запускается **pytest** (или `--verify-cmd` / `[tool.eurika] verify_cmd` в pyproject.toml); для верификации нужен установленный pytest: `pip install pytest` или `pip install -e ".[test]"`. **Отчёт сохраняется в `eurika_fix_report.json`** (при apply — полный; при `--dry-run` — `dry_run: true` + `patch_plan`).
 
-**Опции:** `--window N`, `--dry-run` (только план, без apply; сохраняет eurika_fix_report.json), `--quiet` / `-q` (минимальный вывод, итог в JSON), `--runtime-mode {assist,hybrid,auto}` (режим agent runtime), `--non-interactive` (для `hybrid`: не спрашивать approve/reject, детерминированный режим для CI), `--session-id ID` (память решений сессии для `hybrid`), `--no-clean-imports` (исключить remove_unused_import из плана), `--no-code-smells` (исключить refactor_code_smell — long_function, deep_nesting — из плана), `--verify-cmd CMD` (переопределить команду верификации, напр. `python manage.py test` для Django; иначе используется `[tool.eurika] verify_cmd` в pyproject.toml или pytest), `--interval SEC` (авто-повтор каждые SEC секунд, 0=один раз; Ctrl+C для остановки).
+**Опции:** `--window N`, `--dry-run` (только план, без apply; сохраняет eurika_fix_report.json), `--quiet` / `-q` (минимальный вывод, итог в JSON), `--runtime-mode {assist,hybrid,auto}` (режим agent runtime), `--non-interactive` (для `hybrid`: не спрашивать approve/reject, детерминированный режим для CI), `--session-id ID` (память решений сессии для `hybrid`), `--approve-ops IDX[,IDX...]` (явно одобрить операции по индексам, 1-based), `--reject-ops IDX[,IDX...]` (явно отклонить операции по индексам), `--no-clean-imports` (исключить remove_unused_import из плана), `--no-code-smells` (исключить refactor_code_smell — long_function, deep_nesting — из плана), `--verify-cmd CMD` (переопределить команду верификации, напр. `python manage.py test` для Django; иначе используется `[tool.eurika] verify_cmd` в pyproject.toml или pytest), `--interval SEC` (авто-повтор каждые SEC секунд, 0=один раз; Ctrl+C для остановки).
+
+**Manual per-op approval (без интерактива):**
+
+- Индексы считаются по порядку операций в плане (начиная с 1).
+- Если задан `--approve-ops`, все неуказанные операции считаются отклонёнными (`not_in_approved_set`).
+- `--approve-ops` и `--reject-ops` не должны пересекаться; при конфликте команда завершается с ошибкой.
 
 ```bash
 eurika fix .
 eurika fix . --dry-run
 eurika fix . --team-mode      # propose; plan saved to .eurika/pending_plan.json
 eurika fix . --apply-approved # apply only ops with team_decision=approve
+eurika fix . --approve-ops 1,3,5
+eurika fix . --approve-ops 1,2 --reject-ops 4
 eurika fix . -q
 eurika fix . --no-clean-imports
 ```
 
 ---
 
-### eurika cycle [path ...] [--window N] [--dry-run] [--quiet] [--runtime-mode MODE] [--non-interactive] [--session-id ID] [--no-llm] [--no-clean-imports] [--verify-cmd CMD]
+### eurika cycle [path ...] [--window N] [--dry-run] [--quiet] [--runtime-mode MODE] [--non-interactive] [--session-id ID] [--approve-ops IDX[,IDX...]] [--reject-ops IDX[,IDX...]] [--no-llm] [--no-clean-imports] [--verify-cmd CMD]
 
 Полный ритуал одной командой: **scan → doctor (report + architect) → fix**. Сначала scan, затем вывод полной диагностики (summary, evolution, architect), затем fix (patch-apply --apply --verify). Fix по умолчанию включает remove_unused_import; architect при cycle получает recent_events (последние patch/learn) в контексте.
 
-**Опции:** `--window N`, `--dry-run` (doctor + plan, без apply), `--quiet` / `-q`, `--runtime-mode {assist,hybrid,auto}`, `--non-interactive`, `--session-id ID`, `--no-llm` (architect по шаблону, без API-ключа), `--no-clean-imports` (исключить clean-imports из fix), `--no-code-smells` (исключить refactor_code_smell из fix), `--verify-cmd CMD` (переопределить команду верификации для fix), `--interval SEC` (авто-повтор каждые SEC секунд; Ctrl+C для остановки).
+**Опции:** `--window N`, `--dry-run` (doctor + plan, без apply), `--quiet` / `-q`, `--runtime-mode {assist,hybrid,auto}`, `--non-interactive`, `--session-id ID`, `--approve-ops IDX[,IDX...]`, `--reject-ops IDX[,IDX...]`, `--no-llm` (architect по шаблону, без API-ключа), `--no-clean-imports` (исключить clean-imports из fix), `--no-code-smells` (исключить refactor_code_smell из fix), `--verify-cmd CMD` (переопределить команду верификации для fix), `--interval SEC` (авто-повтор каждые SEC секунд; Ctrl+C для остановки).
 
 ### eurika watch [path] [--poll SEC] [--quiet] [--no-clean-imports]
 
@@ -104,6 +112,7 @@ eurika fix . --no-clean-imports
 ```bash
 eurika cycle .
 eurika cycle . --dry-run --no-llm
+eurika cycle . --approve-ops 1,2
 eurika cycle . -q
 eurika cycle . --no-clean-imports
 ```
@@ -465,6 +474,6 @@ eurika agent feedback-summary .
 | `.eurika/events.json` | Единый журнал событий (scan, patch, learn, feedback) — ROADMAP 3.2 |
 | `.eurika/history.json` | История снимков, version, risk_score |
 | `.eurika/observations.json` | Журнал наблюдений scan |
-| `eurika_fix_report.json` | Отчёт fix (modified, skipped, rescan_diff, verify, telemetry, safety_gates, policy_decisions, operation_explanations) — по умолчанию |
+| `eurika_fix_report.json` | Отчёт fix (modified, skipped, skipped_reasons, operation_results, decision_summary, rescan_diff, verify, telemetry, safety_gates, policy_decisions, critic_decisions, operation_explanations) — по умолчанию |
 | `eurika_doctor_report.json` | Отчёт doctor (summary, history, architect, patch_plan) — по умолчанию |
 | `.eurika_backups/<run_id>/` | Бэкапы при patch-apply --apply |

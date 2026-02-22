@@ -70,6 +70,8 @@ def run_cycle(
     online: bool = False,
     team_mode: bool = False,
     apply_approved: bool = False,
+    approve_ops: str | None = None,
+    reject_ops: str | None = None,
 ) -> dict[str, Any]:
     """Единая точка входа: mode='doctor' | 'fix' | 'full'."""
     return _full_run_cycle_entry(
@@ -90,6 +92,8 @@ def run_cycle(
         online=online,
         team_mode=team_mode,
         apply_approved=apply_approved,
+        approve_ops=approve_ops,
+        reject_ops=reject_ops,
         run_doctor_cycle_fn=run_doctor_cycle,
         run_fix_cycle_fn=run_fix_cycle,
         run_full_cycle_fn=run_full_cycle,
@@ -125,6 +129,8 @@ def run_full_cycle(
     online: bool = False,
     team_mode: bool = False,
     apply_approved: bool = False,
+    approve_ops: str | None = None,
+    reject_ops: str | None = None,
 ) -> dict[str, Any]:
     """Compatibility wrapper; delegated to orchestration.full_cycle."""
     return _full_run_full_cycle(
@@ -146,6 +152,8 @@ def run_full_cycle(
         run_fix_cycle_fn=run_fix_cycle,
         team_mode=team_mode,
         apply_approved=apply_approved,
+        approve_ops=approve_ops,
+        reject_ops=reject_ops,
     )
 
 
@@ -194,6 +202,8 @@ def _run_fix_cycle_impl(
     allow_campaign_retry: bool = False,
     team_mode: bool = False,
     apply_approved: bool = False,
+    approve_ops: str | None = None,
+    reject_ops: str | None = None,
 ) -> dict[str, Any]:
     """Implementation for run_fix_cycle. Persists report and memory events."""
     return _fix_impl_run_fix_cycle_impl(
@@ -212,6 +222,8 @@ def _run_fix_cycle_impl(
         allow_campaign_retry=allow_campaign_retry,
         team_mode=team_mode,
         apply_approved=apply_approved,
+        approve_ops=approve_ops,
+        reject_ops=reject_ops,
         fix_cycle_deps=_fix_cycle_deps,
         prepare_fix_cycle_operations=_prepare_fix_cycle_operations,
         select_hybrid_operations=_select_hybrid_operations,

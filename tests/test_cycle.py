@@ -568,6 +568,46 @@ def test_fix_cycle_decision_gate_blocks_critic_denied_op() -> None:
     assert report.get("telemetry", {}).get("modified_count") == 0
 
 
+def test_fix_cycle_approve_ops_selects_subset() -> None:
+    """--approve-ops applies only selected operation indexes."""
+    from cli.orchestrator import run_cycle
+
+    fake_result = MagicMock()
+    fake_result.output = {"policy_decisions": [], "critic_decisions": []}
+    ops = [
+        {"target_file": "a.py", "kind": "split_module", "approval_state": "approved", "critic_verdict": "allow"},
+        {"target_file": "b.py", "kind": "remove_unused_import", "approval_state": "approved", "critic_verdict": "allow"},
+    ]
+    with (
+        patch("cli.orchestrator._fix_cycle_deps", return_value={"run_scan": lambda *_args, **_kwargs: True}),
+        patch("cli.orchestrator._prepare_fix_cycle_operations", return_value=(None, fake_result, {"operations": ops}, ops)),
+    ):
+        out = run_cycle(ROOT, mode="fix", dry_run=True, quiet=True, approve_ops="1")
+    selected = out.get("operations") or []
+    assert len(selected) == 1
+    assert selected[0].get("target_file") == "a.py"
+    skipped = (out.get("report") or {}).get("skipped_reasons") or {}
+    assert skipped.get("b.py") == "not_in_approved_set"
+
+
+def test_fix_cycle_reject_ops_conflict_returns_error() -> None:
+    """Conflicting --approve-ops/--reject-ops indexes return deterministic error."""
+    from cli.orchestrator import run_cycle
+
+    fake_result = MagicMock()
+    fake_result.output = {"policy_decisions": [], "critic_decisions": []}
+    ops = [
+        {"target_file": "a.py", "kind": "split_module", "approval_state": "approved", "critic_verdict": "allow"},
+    ]
+    with (
+        patch("cli.orchestrator._fix_cycle_deps", return_value={"run_scan": lambda *_args, **_kwargs: True}),
+        patch("cli.orchestrator._prepare_fix_cycle_operations", return_value=(None, fake_result, {"operations": ops}, ops)),
+    ):
+        out = run_cycle(ROOT, mode="fix", dry_run=True, quiet=True, approve_ops="1", reject_ops="1")
+    assert out.get("return_code") == 1
+    assert "Conflicting indexes" in ((out.get("report") or {}).get("error") or "")
+
+
 def test_fix_cycle_noop_writes_fresh_fix_report(tmp_path: Path) -> None:
     """No-op fix cycle should overwrite eurika_fix_report.json with current report."""
     from cli.orchestrator import run_cycle

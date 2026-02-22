@@ -292,6 +292,8 @@ def handle_fix(args: Any) -> int:
             online=getattr(args, 'online', False),
             team_mode=getattr(args, 'team_mode', False),
             apply_approved=getattr(args, 'apply_approved', False),
+            approve_ops=getattr(args, 'approve_ops', None),
+            reject_ops=getattr(args, 'reject_ops', None),
         )
         if handle_agent_cycle(fix_args) != 0:
             exit_code = 1
@@ -325,6 +327,8 @@ def handle_cycle(args: Any) -> int:
             online=getattr(args, 'online', False),
             team_mode=getattr(args, 'team_mode', False),
             apply_approved=getattr(args, 'apply_approved', False),
+            approve_ops=getattr(args, 'approve_ops', None),
+            reject_ops=getattr(args, 'reject_ops', None),
         )
         if _run_cycle_with_mode(cycle_args, mode='full') != 0:
             exit_code = 1
