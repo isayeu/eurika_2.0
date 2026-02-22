@@ -11,15 +11,14 @@ TTL/pruning: max_records and optional max_age_seconds.
 import time
 from dataclasses import dataclass
 from typing import Any, List, Optional
-from agent_core import InputEvent, DecisionProposal, Result
 
 
 @dataclass
 class MemoryRecord:
     """Single step: event + decision + result."""
-    event: InputEvent
-    decision: Optional[DecisionProposal]
-    result: Result
+    event: Any
+    decision: Optional[Any]
+    result: Any
 
     @property
     def event_type(self) -> str:
@@ -50,9 +49,9 @@ class SimpleMemory:
 
     def record(
         self,
-        event: InputEvent,
-        decision: Optional[DecisionProposal],
-        result: Result,
+        event: Any,
+        decision: Optional[Any],
+        result: Any,
     ):
         """Append a new record. Prunes after append if limits exceeded."""
         self._records.append(

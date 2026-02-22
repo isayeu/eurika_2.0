@@ -50,13 +50,20 @@ def _infer_role(name: str) -> SemanticRole:
 
     if any(
         key in lower
-        for key in ("architecture_", "project_graph", "graph_analysis", "code_awareness", "planner")
+        for key in (
+            "architecture_",
+            "project_graph",
+            "graph_analysis",
+            "code_awareness",
+            "planner",
+            "self_map",
+        )
     ):
         return "analytics"
 
     if any(
         key in lower
-        for key in ("memory", "history", "feedback", "self_map", "io", "observation")
+        for key in ("memory", "history", "feedback", "io", "observation")
     ):
         return "infrastructure"
 
