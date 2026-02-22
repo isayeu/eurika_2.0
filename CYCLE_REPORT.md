@@ -2,6 +2,25 @@
 
 ---
 
+## 39. Snapshot (2026-02-22) — ritual check after Sprint 3 push
+
+### Команды
+- `eurika scan .`
+- `eurika doctor . --no-llm`
+- `eurika fix . --dry-run` / no-op fix-path
+
+### Результат
+- `eurika_fix_report.json`: `message="Patch plan has no operations. Cycle complete."`
+- telemetry: `operations_total=1`, `modified_count=0`, `skipped_count=1`, `apply_rate=0.0`, `no_op_rate=1.0`, `rollback_rate=0.0`
+- safety_gates: `verify_required=false`, `verify_ran=false`, `rollback_done=false`
+- `eurika_doctor_report.json`: риск стабилен (`risk_score=46`), `smells=stable`, `regressions=[]`
+
+### Проверка Sprint 3.6.4 в ритуале
+- risky op по `eurika/agent/tool_contract.py` снова отсечён campaign-memory (`campaign_skipped=1`) — ожидаемо.
+- checkpoint кампании в этом прогоне не создаётся, так как apply-stage не запускался (нет executable ops) — поведение корректное для no-op ритуала.
+
+---
+
 ## 38. Snapshot (2026-02-22) — 3.6.3 closed: context visibility + context effect
 
 ### Изменения
