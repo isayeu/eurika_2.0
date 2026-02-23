@@ -51,6 +51,8 @@ module = [
   "cli.wiring.dispatch",
   "cli.core_handlers",
   "cli.handlers",
+  "eurika.api.__init__",
+  "eurika.api.serve",
 ]
 check_untyped_defs = true
 disallow_incomplete_defs = true

@@ -2,6 +2,28 @@
 
 ---
 
+## 49. Snapshot (2026-02-23) — R3 Typing contract step 6 (API surface)
+
+### Scope
+- расширен typing-gate на API слой:
+  - `eurika/api/__init__.py`
+  - `eurika/api/serve.py`
+- `pyproject.toml` (`tool.mypy.overrides`) расширен до 16 модулей (orchestration + CLI entry + API surface).
+
+### Проверка
+- `mypy` по 16 модулям:
+  - orchestration core + CLI entry/wiring + API surface
+  - результат: `Success: no issues found in 16 source files`
+- regression-check:
+  - `tests/test_api.py` — green
+  - `tests/test_api_serve.py` — green
+  - суммарно: `54 passed`
+
+### Итог
+- typing-contract gate покрывает полный путь `CLI entry -> orchestration -> API surface` без изменения runtime-поведения.
+
+---
+
 ## 48. Snapshot (2026-02-23) — R3 Typing contract step 5 (CLI wiring + core handlers)
 
 ### Scope
