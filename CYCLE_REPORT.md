@@ -2,6 +2,54 @@
 
 ---
 
+## 46. Snapshot (2026-02-23) — R3 Typing contract step 3 (full-cycle + facade)
+
+### Scope
+- расширен typing-gate на orchestration-routing слой:
+  - `cli/orchestration/full_cycle.py`
+  - `cli/orchestration/facade.py`
+- исправлен typing-дефект в `EurikaOrchestrator.run`:
+  - устранены `no-redef` и `"None" not callable` в lazy-import ветке.
+- `pyproject.toml` (`tool.mypy.overrides`) расширен до 7 модулей orchestration/entry boundary.
+
+### Проверка
+- `mypy` по 7 модулям:
+  - `prepare`, `apply_stage`, `fix_cycle_impl`, `hybrid_approval`, `full_cycle`, `facade`, `orchestrator`
+  - результат: `Success: no issues found in 7 source files`
+- regression-check:
+  - `tests/test_hitl_cli.py` — green
+  - `tests/test_cycle.py -k "run_full_cycle_wrapper_delegates_to_orchestration_module or full_cycle_propagates_doctor_runtime_to_fix_report or fix_cycle_approve_ops_selects_subset or fix_cycle_approve_ops_reject_ops_conflict"` — green
+
+### Итог
+- typing-contract gate расширен на полный orchestration entry path без изменения runtime-поведения.
+
+---
+
+## 45. Snapshot (2026-02-23) — R3 Typing contract step 2 (HITL + orchestrator adapters)
+
+### Scope
+- расширен typing-gate на соседний orchestration-слой:
+  - `cli/orchestration/hybrid_approval.py`
+  - `cli/orchestrator.py`
+- `hybrid_approval` переведён на контракт `OperationRecord`, устранён no-redef паттерн для `approved/rejected`.
+- `orchestrator`-адаптер синхронизирован по типам с `PatchPlan`/`OperationRecord`/`FixCycleDeps`.
+- `pyproject.toml` (`tool.mypy.overrides`) расширен до 5 модулей orchestration boundary.
+
+### Проверка
+- `mypy`:
+  - `cli/orchestration/prepare.py`
+  - `cli/orchestration/apply_stage.py`
+  - `cli/orchestration/fix_cycle_impl.py`
+  - `cli/orchestration/hybrid_approval.py`
+  - `cli/orchestrator.py`
+  - результат: `Success: no issues found in 5 source files`
+- `pytest -q tests/test_hitl_cli.py` → `6 passed`
+
+### Итог
+- typing-contract gate расширен на HITL и compatibility-адаптер без изменения runtime-семантики approve/reject flow.
+
+---
+
 ## 44. Snapshot (2026-02-23) — R3 Typing contract kickoff (orchestration boundary)
 
 ### Scope

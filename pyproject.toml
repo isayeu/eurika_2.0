@@ -40,6 +40,10 @@ module = [
   "cli.orchestration.prepare",
   "cli.orchestration.apply_stage",
   "cli.orchestration.fix_cycle_impl",
+  "cli.orchestration.hybrid_approval",
+  "cli.orchestration.full_cycle",
+  "cli.orchestration.facade",
+  "cli.orchestrator",
 ]
 check_untyped_defs = true
 disallow_incomplete_defs = true

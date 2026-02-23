@@ -30,11 +30,13 @@ class EurikaOrchestrator:
         apply_approved: bool = False,
     ) -> dict[str, Any]:
         """Execute cycle. mode: 'doctor' | 'fix' | 'full'."""
-        run_cycle_fn = self._run_cycle_fn
-        if run_cycle_fn is None:
+        resolved_run_cycle = self._run_cycle_fn
+        if resolved_run_cycle is None:
             # Lazy import avoids circular dependency with cli.orchestrator.
-            from cli.orchestrator import run_cycle as run_cycle_fn
-        return run_cycle_fn(
+            from cli.orchestrator import run_cycle as imported_run_cycle
+
+            resolved_run_cycle = imported_run_cycle
+        return resolved_run_cycle(
             target_path,
             mode=mode,
             runtime_mode=runtime_mode,

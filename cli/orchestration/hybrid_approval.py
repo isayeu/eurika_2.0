@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import sys
-from typing import Any
+
+from .contracts import OperationRecord
 
 from .logging import get_logger
 
@@ -21,20 +22,24 @@ def read_hybrid_choice(prompt: str) -> str:
 
 
 def select_hybrid_operations(
-    operations: list[dict[str, Any]],
+    operations: list[OperationRecord],
     *,
     quiet: bool,
     non_interactive: bool,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[list[OperationRecord], list[OperationRecord]]:
     """Interactive approval flow for hybrid mode."""
+    approved: list[OperationRecord] = []
+    rejected: list[OperationRecord] = []
     if not operations or quiet:
-        return operations, []
+        return list(operations), []
     if non_interactive or not sys.stdin.isatty():
-        approved = [op for op in operations if str(op.get("approval_state", "approved")) == "approved"]
-        rejected = [op for op in operations if str(op.get("approval_state", "approved")) == "rejected"]
+        approved = [
+            op for op in operations if str(op.get("approval_state", "approved")) == "approved"
+        ]
+        rejected = [
+            op for op in operations if str(op.get("approval_state", "approved")) == "rejected"
+        ]
         return approved, rejected
-    approved: list[dict[str, Any]] = []
-    rejected: list[dict[str, Any]] = []
     for idx, op in enumerate(operations, start=1):
         kind = op.get("kind", "?")
         target = op.get("target_file", "?")

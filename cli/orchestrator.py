@@ -8,9 +8,11 @@ EurikaOrchestrator — формальный класс (review.md Part 1), де�
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from cli.orchestration import load_fix_cycle_deps
+from cli.orchestration.contracts import OperationRecord, PatchPlan
+from cli.orchestration.deps import FixCycleDeps
 from cli.orchestration.apply_stage import (
     build_fix_dry_run_result as _apply_build_fix_dry_run_result,
     attach_fix_telemetry as _apply_attach_fix_telemetry,
@@ -48,7 +50,7 @@ _prepare_prepare_fix_cycle_operations = _prepare_fix_cycle_operations_impl
 _knowledge_topics_from_env_or_summary = _doctor_knowledge_topics_from_env_or_summary
 _build_fix_dry_run_result = _apply_build_fix_dry_run_result
 _select_hybrid_operations = _hybrid_select_hybrid_operations
-_fix_cycle_deps = load_fix_cycle_deps
+_fix_cycle_deps: Callable[[], FixCycleDeps] = load_fix_cycle_deps
 
 
 def run_cycle(
@@ -169,7 +171,7 @@ def _prepare_fix_cycle_operations(
     no_code_smells: bool,
     allow_campaign_retry: bool = False,
     run_scan: Any,
-) -> tuple[dict[str, Any] | None, Any, dict[str, Any] | None, list[dict[str, Any]]]:
+) -> tuple[dict[str, Any] | None, Any, PatchPlan | None, list[OperationRecord]]:
     """Compatibility wrapper; delegated to orchestration.prepare."""
     return _prepare_prepare_fix_cycle_operations(
         path,
