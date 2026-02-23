@@ -76,6 +76,10 @@ module = [
   "eurika.reasoning.context_sources",
   "eurika.reasoning.planner_patch_ops",
   "eurika.reasoning.graph_ops",
+  "eurika.agent.runtime",
+  "eurika.agent.tool_contract",
+  "eurika.agent.tool_contract_extracted",
+  "eurika.agent.tool_contract_toolcontract",
 ]
 check_untyped_defs = true
 disallow_incomplete_defs = true

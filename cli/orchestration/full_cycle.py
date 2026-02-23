@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Literal, cast
 
 from .logging import get_logger
 
@@ -120,9 +120,10 @@ def run_cycle_entry(
     from eurika.agent.tool_contract import DefaultToolContract
     from eurika.agent.tools import OrchestratorToolset
 
+    runtime_mode_lit = cast(Literal["assist", "hybrid", "auto"], runtime_mode)
     contract = DefaultToolContract()
     cycle = run_agent_cycle(
-        mode=runtime_mode,
+        mode=runtime_mode_lit,
         tools=OrchestratorToolset(
             path=path,
             mode=mode,

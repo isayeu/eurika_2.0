@@ -2,6 +2,33 @@
 
 ---
 
+## 56. Snapshot (2026-02-23) — R3 Typing contract step 12 (agent runtime contracts)
+
+### Scope
+- расширен typing-gate на runtime/tool-contract модули:
+  - `eurika/agent/runtime.py`
+  - `eurika/agent/tool_contract.py`
+  - `eurika/agent/tool_contract_extracted.py`
+  - `eurika/agent/tool_contract_toolcontract.py`
+- в `cli/orchestration/full_cycle.py` добавлен type-safe cast:
+  - `runtime_mode` приводится к `Literal["assist", "hybrid", "auto"]` перед `run_agent_cycle`,
+  - устраняет `mypy` arg-type без изменения runtime-поведения.
+- `pyproject.toml` (`tool.mypy.overrides`) расширен до 43 модулей boundary-гейта.
+
+### Проверка
+- `mypy` по runtime/tool-contract модулям: `Success: no issues found in 4 source files`
+- `mypy` по full boundary-скоупу: `Success: no issues found in 43 source files`
+- regression-check:
+  - `tests/test_agent_runtime.py`
+  - `tests/test_tool_contract.py`
+  - `tests/test_cli_runtime_mode.py`
+  - результат: `18 passed`
+
+### Итог
+- typed boundary расширен на runtime/tool-contract контур; gate стабилен на полном 43-модульном скоупе.
+
+---
+
 ## 55. Snapshot (2026-02-23) — R3 Typing contract step 11 (reasoning layer)
 
 ### Scope
