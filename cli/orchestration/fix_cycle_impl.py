@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 from .apply_stage import write_fix_report
 from .contracts import DecisionSummary, FixReport, OperationRecord, PatchPlan
+from .deps import FixCycleDeps
 from .logging import get_logger
 from .models import FixCycleContext
 
@@ -170,7 +171,7 @@ def run_fix_cycle_impl(
     apply_approved: bool = False,
     approve_ops: str | None = None,
     reject_ops: str | None = None,
-    fix_cycle_deps: Callable[[], dict[str, Any]],
+    fix_cycle_deps: Callable[[], FixCycleDeps],
     prepare_fix_cycle_operations: Callable[..., tuple[dict[str, Any] | None, Any, PatchPlan | None, list[OperationRecord]]],
     select_hybrid_operations: Callable[..., tuple[list[OperationRecord], list[OperationRecord]]],
     build_fix_dry_run_result: Callable[[Path, PatchPlan, list[OperationRecord], Any], dict[str, Any]],
@@ -333,7 +334,8 @@ def run_fix_cycle_impl(
         from cli.orchestration.team_mode import save_pending_plan
 
         policy_decisions = result.output.get("policy_decisions", [])
-        saved = save_pending_plan(path, patch_plan, operations, policy_decisions, session_id)
+        pending_patch_plan = patch_plan or {"operations": operations}
+        saved = save_pending_plan(path, pending_patch_plan, operations, policy_decisions, session_id)
         if not quiet:
             _LOG.info(f"Team mode: plan saved to {saved}")
             _LOG.info(

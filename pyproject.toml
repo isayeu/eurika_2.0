@@ -43,6 +43,9 @@ module = [
   "cli.orchestration.hybrid_approval",
   "cli.orchestration.full_cycle",
   "cli.orchestration.facade",
+  "cli.orchestration.doctor",
+  "cli.orchestration.team_mode",
+  "cli.orchestration.deps",
   "cli.orchestrator",
 ]
 check_untyped_defs = true

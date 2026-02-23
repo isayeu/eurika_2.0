@@ -2,6 +2,31 @@
 
 ---
 
+## 47. Snapshot (2026-02-23) — R3 Typing contract step 4 (doctor + team mode + deps)
+
+### Scope
+- расширен typing-gate на ещё 3 модуля orchestration:
+  - `cli/orchestration/doctor.py`
+  - `cli/orchestration/team_mode.py`
+  - `cli/orchestration/deps.py`
+- обновлён `pyproject.toml` (`tool.mypy.overrides`) для целевого скоупа 10 модулей.
+- в `fix_cycle_impl` добавлены типобезопасные правки:
+  - `fix_cycle_deps` теперь типизирован как `Callable[[], FixCycleDeps]`;
+  - для team-mode сохранения введён безопасный fallback `pending_patch_plan = patch_plan or {"operations": operations}`.
+
+### Проверка
+- `mypy` по 10 модулям orchestration/entry boundary:
+  - `prepare`, `apply_stage`, `fix_cycle_impl`, `hybrid_approval`, `full_cycle`, `facade`, `doctor`, `team_mode`, `deps`, `orchestrator`
+  - результат: `Success: no issues found in 10 source files`
+- regression-check:
+  - `tests/test_team_mode.py` — green
+  - `tests/test_cycle.py -k "doctor_runtime_reports_degraded_mode_when_llm_disabled or knowledge_topics_derived_from_summary"` — green
+
+### Итог
+- typing-contract gate расширен на весь orchestration core-путь (prepare/apply/fix/full/doctor/team/deps/orchestrator) без изменения runtime-поведения.
+
+---
+
 ## 46. Snapshot (2026-02-23) — R3 Typing contract step 3 (full-cycle + facade)
 
 ### Scope
