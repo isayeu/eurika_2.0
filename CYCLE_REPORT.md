@@ -2,6 +2,32 @@
 
 ---
 
+## 57. Snapshot (2026-02-23) — R3 Typing contract step 13 (evolution layer)
+
+### Scope
+- расширен typing-gate на evolution-слой:
+  - `eurika/evolution/__init__.py`
+  - `eurika/evolution/diff.py`
+  - `eurika/evolution/history.py`
+- в `diff.py` добавлен безопасный парсер centrality shift payload:
+  - `_parse_centrality_shift(...)` нормализует `module/fan_in/fan_out`,
+  - убирает `object is not iterable`/`invalid index type` ошибки в отчётных секциях,
+  - поведение для валидных данных не изменяется; невалидные записи пропускаются.
+- `pyproject.toml` (`tool.mypy.overrides`) расширен до 46 модулей boundary-гейта.
+
+### Проверка
+- `mypy` по evolution-модулям: `Success: no issues found in 3 source files`
+- `mypy` по full boundary-скоупу: `Success: no issues found in 46 source files`
+- regression-check:
+  - `tests/test_cycle.py -k "report_snapshot_context_effect_block or report_snapshot_telemetry_block"`
+  - `tests/test_architect.py`
+  - результат: `2 passed` (targeted), без регрессий
+
+### Итог
+- typed boundary расширен на evolution diff/history контур; отчётная типизация стабилизирована.
+
+---
+
 ## 56. Snapshot (2026-02-23) — R3 Typing contract step 12 (agent runtime contracts)
 
 ### Scope

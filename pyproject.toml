@@ -80,6 +80,9 @@ module = [
   "eurika.agent.tool_contract",
   "eurika.agent.tool_contract_extracted",
   "eurika.agent.tool_contract_toolcontract",
+  "eurika.evolution.__init__",
+  "eurika.evolution.diff",
+  "eurika.evolution.history",
 ]
 check_untyped_defs = true
 disallow_incomplete_defs = true

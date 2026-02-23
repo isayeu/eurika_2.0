@@ -240,10 +240,11 @@ def _build_recommended_actions(
     new_index = _index_smells_by_module(new_smells)
     shift_index: Dict[str, Tuple[int, int, int, int]] = {}
     for s in shifts:
-        m = s["module"]
-        ofi, nfi = s["fan_in"]
-        ofo, nfo = s["fan_out"]
-        shift_index[m] = (int(ofi), int(nfi), int(ofo), int(nfo))
+        parsed = _parse_centrality_shift(s)
+        if not parsed:
+            continue
+        m, (ofi, nfi), (ofo, nfo) = parsed
+        shift_index[m] = (ofi, nfi, ofo, nfo)
 
     ACTION_LABELS: Dict[str, str] = {
         "god_module": "refactor/split module",
@@ -340,9 +341,10 @@ def _append_centrality_shifts(lines: List[str], shifts: List[Dict[str, object]])
         lines.append("  (no significant centrality changes)")
     else:
         for s in shifts[:10]:
-            m = s["module"]
-            ofi, nfi = s["fan_in"]
-            ofo, nfo = s["fan_out"]
+            parsed = _parse_centrality_shift(s)
+            if not parsed:
+                continue
+            m, (ofi, nfi), (ofo, nfo) = parsed
             lines.append(
                 f"- {m}: fan-in {ofi} → {nfi}, fan-out {ofo} → {nfo}"
             )
@@ -363,9 +365,11 @@ def _append_top_fan_in_growth(lines: List[str], shifts: List[Dict[str, object]],
     # Compute Δ fan-in for each module and take top N with positive growth.
     deltas: List[Tuple[int, str, Tuple[int, int]]] = []
     for s in shifts:
-        m = s["module"]
-        ofi, nfi = s["fan_in"]
-        delta = int(nfi) - int(ofi)
+        parsed = _parse_centrality_shift(s)
+        if not parsed:
+            continue
+        m, (ofi, nfi), _fan_out = parsed
+        delta = nfi - ofi
         if delta > 0:
             deltas.append((delta, m, (ofi, nfi)))
 
@@ -392,6 +396,29 @@ def _append_became_bottlenecks(lines: List[str], modules: List[str]) -> None:
     for m in modules:
         lines.append(f"- {m}")
     lines.append("")
+
+
+def _parse_centrality_shift(
+    shift: Dict[str, object],
+) -> Tuple[str, Tuple[int, int], Tuple[int, int]] | None:
+    """Parse a centrality shift payload into typed tuples."""
+    module = shift.get("module")
+    fan_in = shift.get("fan_in")
+    fan_out = shift.get("fan_out")
+    if not isinstance(module, str):
+        return None
+    if not (isinstance(fan_in, (list, tuple)) and len(fan_in) == 2):
+        return None
+    if not (isinstance(fan_out, (list, tuple)) and len(fan_out) == 2):
+        return None
+    try:
+        return (
+            module,
+            (int(fan_in[0]), int(fan_in[1])),
+            (int(fan_out[0]), int(fan_out[1])),
+        )
+    except (TypeError, ValueError):
+        return None
 
 
 def _append_smell_dynamics(lines: List[str], smells: List[Dict[str, object]]) -> None:
