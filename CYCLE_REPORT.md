@@ -2,6 +2,34 @@
 
 ---
 
+## 51. Snapshot (2026-02-23) — R3 Typing contract step 7 (agent/storage contracts)
+
+### Scope
+- расширен typing-gate на контракты agent/storage слоя:
+  - `cli/orchestration/models.py`
+  - `eurika/agent/models.py`
+  - `eurika/agent/config.py`
+  - `eurika/agent/policy.py`
+  - `eurika/agent/tools.py`
+  - `eurika/storage/session_memory.py`
+- устранён typing-дефект в `SessionMemory`:
+  - `path` переведён из nullable в стабильный `Path`, что убрало `union-attr` ошибки в `_load/_save`.
+- `pyproject.toml` (`tool.mypy.overrides`) расширен до 22 модулей (CLI + orchestration + API + agent/storage contracts).
+
+### Проверка
+- `mypy` по 22 модулям boundary-гейта:
+  - результат: `Success: no issues found in 22 source files`
+- regression-check:
+  - `tests/test_session_memory.py`
+  - `tests/test_cycle_test_apply_campaign_memory_filters_rejected_ops.py`
+  - `tests/test_context_sources.py`
+  - результат: `6 passed`
+
+### Итог
+- typed boundary расширен до ключевых контрактов памяти/политик; поведение campaign/session memory остаётся стабильным.
+
+---
+
 ## 50. Snapshot (2026-02-23) — R3 typing consolidate ritual (16-module gate)
 
 ### Сценарий

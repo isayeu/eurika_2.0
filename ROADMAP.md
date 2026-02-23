@@ -171,7 +171,7 @@
 - god_class|extract_class в WEAK_SMELL_ACTION_PAIRS + EXTRACT_CLASS_SKIP_PATTERNS (*tool_contract*.py) — защита от повторных ошибок (CYCLE_REPORT #34)
 - report-snapshot, DOGFOODING
 - Малые рефакторинги + тесты для топ-long/deep функций
-- R3 Typing contract (iterative): целевой mypy-gate расширен до `CLI entry -> orchestration -> API surface` (16 модулей), подтверждён ритуалом (CYCLE_REPORT #50)
+- R3 Typing contract (iterative): целевой mypy-gate расширен до `CLI entry -> orchestration -> API surface -> agent/storage contracts` (22 модуля), подтверждён ритуалом и step-7 валидацией (CYCLE_REPORT #50, #51)
 
 **Новый бэклог (следующие шаги):**
 

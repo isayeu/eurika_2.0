@@ -53,6 +53,12 @@ module = [
   "cli.handlers",
   "eurika.api.__init__",
   "eurika.api.serve",
+  "cli.orchestration.models",
+  "eurika.agent.models",
+  "eurika.agent.config",
+  "eurika.agent.policy",
+  "eurika.agent.tools",
+  "eurika.storage.session_memory",
 ]
 check_untyped_defs = true
 disallow_incomplete_defs = true

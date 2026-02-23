@@ -24,7 +24,7 @@ class SessionMemory:
     """Persistent store for per-session operation decisions."""
 
     project_root: Path
-    path: Path | None = None
+    path: Path = Path(".")
 
     def __post_init__(self) -> None:
         root = Path(self.project_root).resolve()
