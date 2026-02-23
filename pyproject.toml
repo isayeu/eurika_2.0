@@ -16,6 +16,7 @@ verify_timeout = 300
 llm = ["openai>=1.0"]
 env = ["python-dotenv>=1.0"]
 test = ["pytest>=7.0"]
+typecheck = ["mypy>=1.10"]
 
 [project.scripts]
 eurika = "eurika_cli:main"
@@ -26,3 +27,19 @@ py-modules = ["eurika_cli"]
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["*"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_ignores = true
+warn_redundant_casts = true
+pretty = true
+follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = [
+  "cli.orchestration.prepare",
+  "cli.orchestration.apply_stage",
+  "cli.orchestration.fix_cycle_impl",
+]
+check_untyped_defs = true
+disallow_incomplete_defs = true

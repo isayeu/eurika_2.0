@@ -5,8 +5,9 @@ from __future__ import annotations
 import io
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
+from .contracts import FixReport, OperationRecord, PatchPlan
 from .logging import get_logger
 
 _LOG = get_logger("orchestration.prepare")
@@ -25,11 +26,11 @@ def run_fix_scan_stage(path: Path, quiet: bool, run_scan: Any) -> bool:
 
 def prepend_fix_operations(
     path: Path,
-    patch_plan: dict[str, Any],
-    operations: list[dict[str, Any]],
+    patch_plan: PatchPlan,
+    operations: list[OperationRecord],
     no_clean_imports: bool,
     no_code_smells: bool,
-) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+) -> tuple[PatchPlan, list[OperationRecord]]:
     """Prepend clean-imports and code-smell operations to patch plan."""
     if not no_clean_imports:
         from eurika.api import get_clean_imports_operations
@@ -51,12 +52,12 @@ def prepend_fix_operations(
 
 
 def _drop_noop_append_ops(
-    operations: list[dict[str, Any]],
+    operations: list[OperationRecord],
     path: Path,
-) -> list[dict[str, Any]]:
+) -> list[OperationRecord]:
     """Drop ops whose diff is already in the target file (avoids skipped: diff already in content)."""
     append_kinds = ("refactor_code_smell", "refactor_module", "split_module")
-    kept: list[dict[str, Any]] = []
+    kept: list[OperationRecord] = []
     for op in operations:
         kind = op.get("kind") or ""
         if kind not in append_kinds:
@@ -83,7 +84,7 @@ def _drop_noop_append_ops(
     return kept
 
 
-def _is_weak_pair(op: dict[str, Any]) -> bool:
+def _is_weak_pair(op: OperationRecord) -> bool:
     """True if op is a historically low-success smell|action pair."""
     from eurika.agent.policy import WEAK_SMELL_ACTION_PAIRS
     kind = (op.get("kind") or "").strip()
@@ -92,21 +93,21 @@ def _is_weak_pair(op: dict[str, Any]) -> bool:
 
 
 def _deprioritize_weak_pairs(
-    operations: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
+    operations: list[OperationRecord],
+) -> list[OperationRecord]:
     """Move weak-pair ops to the end so they are cut first when hitting max_ops."""
     return sorted(operations, key=lambda op: (1 if _is_weak_pair(op) else 0))
 
 
 def _apply_context_priority(
-    operations: list[dict[str, Any]],
+    operations: list[OperationRecord],
     context_sources: dict[str, Any],
-) -> list[dict[str, Any]]:
+) -> list[OperationRecord]:
     """Boost operations with stronger semantic context signals."""
     rejected_targets = set(context_sources.get("campaign_rejected_targets") or [])
     fail_targets = set(context_sources.get("recent_verify_fail_targets") or [])
     by_target = context_sources.get("by_target") or {}
-    scored: list[tuple[int, int, dict[str, Any]]] = []
+    scored: list[tuple[int, int, OperationRecord]] = []
     for idx, op in enumerate(operations):
         target = str(op.get("target_file") or "")
         ctx = by_target.get(target) or {}
@@ -144,12 +145,12 @@ def _approval_state_from_policy(decision: str) -> str:
 
 
 def _run_critic_pass(
-    operations: list[dict[str, Any]],
+    operations: list[OperationRecord],
     *,
     runtime_mode: str,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[list[OperationRecord], list[dict[str, Any]]]:
     """Attach critic verdict to each operation before apply."""
-    updated: list[dict[str, Any]] = []
+    updated: list[OperationRecord] = []
     decisions: list[dict[str, Any]] = []
     for idx, op in enumerate(operations, start=1):
         op2 = dict(op)
@@ -205,17 +206,17 @@ def _run_critic_pass(
 
 
 def apply_runtime_policy(
-    patch_plan: dict[str, Any],
-    operations: list[dict[str, Any]],
+    patch_plan: PatchPlan,
+    operations: list[OperationRecord],
     *,
     runtime_mode: str,
-) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[PatchPlan, list[OperationRecord], list[dict[str, Any]]]:
     """Evaluate operations via policy engine and attach explainability metadata."""
     from eurika.agent import evaluate_operation, load_policy_config
 
     cfg = load_policy_config(runtime_mode)
     seen_files: set[str] = set()
-    kept: list[dict[str, Any]] = []
+    kept: list[OperationRecord] = []
     decisions: list[dict[str, Any]] = []
     for idx, op in enumerate(operations, start=1):
         target_file = str(op.get("target_file") or "")
@@ -252,11 +253,11 @@ def apply_runtime_policy(
 
 def apply_session_rejections(
     path: Path,
-    patch_plan: dict[str, Any],
-    operations: list[dict[str, Any]],
+    patch_plan: PatchPlan,
+    operations: list[OperationRecord],
     *,
     session_id: str | None,
-) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[PatchPlan, list[OperationRecord], list[OperationRecord]]:
     """Skip operations that were explicitly rejected in this session earlier."""
     if not session_id:
         return patch_plan, operations, []
@@ -266,8 +267,8 @@ def apply_session_rejections(
     rejected_keys = mem.rejected_keys(session_id)
     if not rejected_keys:
         return patch_plan, operations, []
-    kept: list[dict[str, Any]] = []
-    skipped: list[dict[str, Any]] = []
+    kept: list[OperationRecord] = []
+    skipped: list[OperationRecord] = []
     for op in operations:
         if operation_key(op) in rejected_keys:
             skipped.append(op)
@@ -278,11 +279,11 @@ def apply_session_rejections(
 
 def apply_campaign_memory(
     path: Path,
-    patch_plan: dict[str, Any],
-    operations: list[dict[str, Any]],
+    patch_plan: PatchPlan,
+    operations: list[OperationRecord],
     *,
     allow_retry: bool = False,
-) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[PatchPlan, list[OperationRecord], list[OperationRecord]]:
     """Skip ops rejected in any session or that failed verify 2+ times (ROADMAP 2.7.5).
     Bypassed when EURIKA_IGNORE_CAMPAIGN=1 (e.g. --apply-suggested-policy)."""
     import os
@@ -294,8 +295,8 @@ def apply_campaign_memory(
     skip_keys = mem.campaign_keys_to_skip()
     if not skip_keys:
         return patch_plan, operations, []
-    kept: list[dict[str, Any]] = []
-    skipped: list[dict[str, Any]] = []
+    kept: list[OperationRecord] = []
+    skipped: list[OperationRecord] = []
     for op in operations:
         if operation_key(op) in skip_keys:
             skipped.append(op)
@@ -322,7 +323,7 @@ def run_fix_diagnose_stage(path: Path, window: int, quiet: bool) -> Any:
 
 def extract_patch_plan_from_result(
     result: Any,
-) -> tuple[dict[str, Any], list[dict[str, Any]]] | tuple[None, None]:
+) -> tuple[PatchPlan, list[OperationRecord]] | tuple[None, None]:
     """Extract patch_plan and operations from agent result."""
     proposals = result.output.get("proposals", [])
     patch_proposal = next(
@@ -351,11 +352,11 @@ def _attach_llm_hint_runtime(result: Any) -> None:
 
 def _early_exit(
     return_code: int,
-    report: dict[str, Any],
+    report: FixReport,
     result: Any,
-    patch_plan: dict[str, Any] | None,
-    operations: list[dict[str, Any]],
-) -> tuple[dict[str, Any], Any, dict[str, Any] | None, list[dict[str, Any]]]:
+    patch_plan: PatchPlan | None,
+    operations: list[OperationRecord],
+) -> tuple[dict[str, Any], Any, PatchPlan | None, list[OperationRecord]]:
     """Build early-exit tuple for prepare_fix_cycle_operations."""
     return (
         {
@@ -384,7 +385,7 @@ def prepare_fix_cycle_operations(
     no_code_smells: bool,
     run_scan: Any,
     allow_campaign_retry: bool = False,
-) -> tuple[dict[str, Any] | None, Any, dict[str, Any] | None, list[dict[str, Any]]]:
+) -> tuple[dict[str, Any] | None, Any, PatchPlan | None, list[OperationRecord]]:
     """Prepare diagnose result, patch plan and operations; return early payload on stop conditions."""
     if not skip_scan:
         if not run_fix_scan_stage(path, quiet, run_scan):
@@ -408,7 +409,7 @@ def prepare_fix_cycle_operations(
             },
             result, None, [],
         )
-    patch_plan, operations = extracted
+    patch_plan, operations = cast(tuple[PatchPlan, list[OperationRecord]], extracted)
     patch_plan, operations = prepend_fix_operations(
         path, patch_plan, operations, no_clean_imports, no_code_smells
     )

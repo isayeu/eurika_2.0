@@ -2,6 +2,28 @@
 
 ---
 
+## 44. Snapshot (2026-02-23) — R3 Typing contract kickoff (orchestration boundary)
+
+### Scope
+- старт целевого typing-гейта для критичного fix-контура:
+  - `cli/orchestration/prepare.py`
+  - `cli/orchestration/apply_stage.py`
+  - `cli/orchestration/fix_cycle_impl.py`
+- добавлен модуль контрактов `cli/orchestration/contracts.py` (пограничные алиасы + typed payloads для decision/telemetry/safety).
+- в `pyproject.toml` добавлен optional extra `typecheck` (`mypy`) и базовая конфигурация `tool.mypy` для постепенного включения typecheck.
+
+### Проверка
+- `mypy` по целевым модулям: `Success: no issues found in 3 source files`.
+- regression-check:
+  - `tests/test_agent_handlers_decision_summary.py` — green
+  - `tests/test_campaign_flow.py` — green
+  - `tests/test_cycle.py -k "attach_fix_telemetry_counts_campaign_session_skips or attach_fix_telemetry_median_verify_time"` — green
+
+### Итог
+- включён узкий typing-contract gate на boundary fix-orchestration без изменения runtime-поведения.
+
+---
+
 ## 43. Snapshot (2026-02-23) — QG-4 ritual confirmation (apply-safe + no-op)
 
 ### Сценарий A (apply-safe e2e, mini-project)

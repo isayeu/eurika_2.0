@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .apply_stage import write_fix_report
+from .contracts import DecisionSummary, FixReport, OperationRecord, PatchPlan
 from .logging import get_logger
 from .models import FixCycleContext
 
@@ -13,10 +14,10 @@ _LOG = get_logger("orchestration.fix_cycle")
 
 
 def _filter_executable_operations(
-    operations: list[dict[str, Any]],
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, str], list[str]]:
+    operations: list[OperationRecord],
+) -> tuple[list[OperationRecord], list[dict[str, Any]], dict[str, str], list[str]]:
     """Apply hard decision gate: only approved + critic allow/review are executable."""
-    executable: list[dict[str, Any]] = []
+    executable: list[OperationRecord] = []
     skipped_meta: list[dict[str, Any]] = []
     skipped_reasons: dict[str, str] = {}
     skipped_files: list[str] = []
@@ -67,11 +68,11 @@ def _parse_operation_indexes(raw: str | None, total_ops: int, *, flag_name: str)
 
 
 def _select_operations_by_indexes(
-    operations: list[dict[str, Any]],
+    operations: list[OperationRecord],
     *,
     approve_ops: str | None,
     reject_ops: str | None,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str | None]:
+) -> tuple[list[OperationRecord], list[OperationRecord], str | None]:
     """Apply explicit CLI approve/reject selection by operation indexes."""
     approve_idx, err = _parse_operation_indexes(approve_ops, len(operations), flag_name="--approve-ops")
     if err:
@@ -86,8 +87,8 @@ def _select_operations_by_indexes(
     if not approve_idx and not reject_idx:
         return operations, [], None
 
-    approved: list[dict[str, Any]] = []
-    rejected: list[dict[str, Any]] = []
+    approved: list[OperationRecord] = []
+    rejected: list[OperationRecord] = []
     for idx, op in enumerate(operations, start=1):
         op2 = dict(op)
         if idx in reject_idx:
@@ -108,7 +109,7 @@ def _select_operations_by_indexes(
     return approved, rejected, None
 
 
-def _attach_decision_summary(report: dict[str, Any]) -> None:
+def _attach_decision_summary(report: FixReport) -> None:
     """Attach compact decision summary for CLI/report UX."""
     op_results = report.get("operation_results") or []
     policy_blocked = 0
@@ -142,11 +143,12 @@ def _attach_decision_summary(report: dict[str, Any]) -> None:
             for d in (report.get("critic_decisions") or [])
             if isinstance(d, dict) and str(d.get("verdict") or "").lower() == "deny"
         )
-    report["decision_summary"] = {
+    summary: DecisionSummary = {
         "blocked_by_policy": int(policy_blocked),
         "blocked_by_critic": int(critic_blocked),
         "blocked_by_human": int(human_blocked),
     }
+    report["decision_summary"] = summary
 
 
 def run_fix_cycle_impl(
@@ -169,12 +171,12 @@ def run_fix_cycle_impl(
     approve_ops: str | None = None,
     reject_ops: str | None = None,
     fix_cycle_deps: Callable[[], dict[str, Any]],
-    prepare_fix_cycle_operations: Callable[..., tuple[dict[str, Any] | None, Any, dict[str, Any] | None, list[dict[str, Any]]]],
-    select_hybrid_operations: Callable[..., tuple[list[dict[str, Any]], list[dict[str, Any]]]],
-    build_fix_dry_run_result: Callable[[Path, dict[str, Any], list[dict[str, Any]], Any], dict[str, Any]],
-    attach_fix_telemetry: Callable[[dict[str, Any], list[dict[str, Any]]], None],
-    build_fix_cycle_result: Callable[[dict[str, Any], list[dict[str, Any]], list[str], bool, Any], dict[str, Any]],
-    execute_fix_apply_stage: Callable[..., tuple[dict[str, Any], list[str], bool]],
+    prepare_fix_cycle_operations: Callable[..., tuple[dict[str, Any] | None, Any, PatchPlan | None, list[OperationRecord]]],
+    select_hybrid_operations: Callable[..., tuple[list[OperationRecord], list[OperationRecord]]],
+    build_fix_dry_run_result: Callable[[Path, PatchPlan, list[OperationRecord], Any], dict[str, Any]],
+    attach_fix_telemetry: Callable[[FixReport, list[OperationRecord]], None],
+    build_fix_cycle_result: Callable[[FixReport, list[OperationRecord], list[str], bool, Any], dict[str, Any]],
+    execute_fix_apply_stage: Callable[..., tuple[FixReport, list[str], bool]],
 ) -> dict[str, Any]:
     """Core implementation for run_fix_cycle; callbacks keep orchestrator patchability in tests."""
     _ = FixCycleContext(
@@ -194,6 +196,7 @@ def run_fix_cycle_impl(
     )
     deps = fix_cycle_deps()
     run_scan = deps["run_scan"]
+    patch_plan: PatchPlan | None = None
 
     if apply_approved:
         from cli.orchestration.team_mode import load_approved_operations
@@ -379,6 +382,18 @@ def run_fix_cycle_impl(
 
         SessionMemory(path).record(session_id, approved=approved_ops, rejected=rejected_ops)
     operations = approved_ops
+    if patch_plan is None:
+        report = {"error": "Internal error: missing patch plan after prepare stage."}
+        write_fix_report(path, report, quiet)
+        return {
+            "return_code": 1,
+            "report": report,
+            "operations": [],
+            "modified": [],
+            "verify_success": False,
+            "agent_result": result,
+            "dry_run": dry_run,
+        }
     patch_plan = dict(patch_plan, operations=operations)
     rejected_files = [
         str(op.get("target_file", ""))

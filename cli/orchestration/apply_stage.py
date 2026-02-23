@@ -8,6 +8,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
 
+from .contracts import FixReport, OperationRecord, PatchPlan, SafetyGatesPayload, TelemetryPayload
 from .logging import get_logger
 
 _LOG = get_logger("orchestration.apply_stage")
@@ -15,8 +16,8 @@ _LOG = get_logger("orchestration.apply_stage")
 
 def build_fix_dry_run_result(
     path: Path,
-    patch_plan: dict[str, Any],
-    operations: list[dict[str, Any]],
+    patch_plan: PatchPlan,
+    operations: list[OperationRecord],
     result: Any,
 ) -> dict[str, Any]:
     """Build and persist dry-run report/result payload."""
@@ -94,7 +95,7 @@ def _compute_rescan_metrics(
 
 def enrich_report_with_rescan(
     path: Path,
-    report: dict[str, Any],
+    report: FixReport,
     rescan_before: Path,
     quiet: bool,
     run_scan: Any,
@@ -143,8 +144,8 @@ def enrich_report_with_rescan(
 def append_fix_cycle_memory(
     path: Path,
     result: Any,
-    operations: list[dict[str, Any]],
-    report: dict[str, Any],
+    operations: list[OperationRecord],
+    report: FixReport,
     verify_success: Any,
 ) -> None:
     """Append learning and patch events to memory."""
@@ -183,7 +184,7 @@ def append_fix_cycle_memory(
         pass
 
 
-def write_fix_report(path: Path, report: dict[str, Any], quiet: bool) -> None:
+def write_fix_report(path: Path, report: FixReport, quiet: bool) -> None:
     """Persist eurika_fix_report.json report."""
     try:
         report_path = path / "eurika_fix_report.json"
@@ -217,7 +218,7 @@ def _median_verify_time_ms(path: Path, current_ms: int) -> int | None:
         return None
 
 
-def attach_fix_telemetry(report: dict[str, Any], operations: list[dict[str, Any]], path: Path | None = None) -> None:
+def attach_fix_telemetry(report: FixReport, operations: list[OperationRecord], path: Path | None = None) -> None:
     """Attach operational telemetry and safety-gate summary to fix report (ROADMAP 2.7.8)."""
     policy_total = len(report.get("policy_decisions", []) or [])
     ops_total = len(operations) or policy_total
@@ -244,7 +245,7 @@ def attach_fix_telemetry(report: dict[str, Any], operations: list[dict[str, Any]
     apply_rate = (len(modified) / ops_total) if ops_total else 0.0
     no_op_rate = (skipped_count / ops_total) if ops_total else 0.0
     rollback_rate = (1.0 if rollback_done else 0.0) if verify_required else 0.0
-    telemetry = {
+    telemetry: TelemetryPayload = {
         "operations_total": ops_total,
         "modified_count": len(modified),
         "skipped_count": skipped_count,
@@ -258,19 +259,20 @@ def attach_fix_telemetry(report: dict[str, Any], operations: list[dict[str, Any]
         if median_ms is not None:
             telemetry["median_verify_time_ms"] = median_ms
     report["telemetry"] = telemetry
-    report["safety_gates"] = {
+    safety_gates: SafetyGatesPayload = {
         "verify_required": verify_required,
         "auto_rollback_enabled": verify_required,
         "verify_ran": verify_ran,
         "verify_passed": (bool(verify_success_raw) if verify_ran else None),
         "rollback_done": rollback_done,
     }
+    report["safety_gates"] = safety_gates
 
 
 def execute_fix_apply_stage(
     path: Path,
-    patch_plan: dict[str, Any],
-    operations: list[dict[str, Any]],
+    patch_plan: PatchPlan,
+    operations: list[OperationRecord],
     *,
     session_id: str | None,
     quiet: bool,
@@ -284,7 +286,7 @@ def execute_fix_apply_stage(
     metrics_from_graph: Any,
     rollback_patch: Any,
     result: Any,
-) -> tuple[dict[str, Any], list[str], Any]:
+) -> tuple[FixReport, list[str], Any]:
     """Apply patch plan, enrich with rescan metrics, append memory, and persist report.
 
     Safety (ROADMAP 2.7.7): mandatory verify-gate, auto_rollback on verify fail,
@@ -371,8 +373,8 @@ def execute_fix_apply_stage(
 
 
 def build_fix_cycle_result(
-    report: dict[str, Any],
-    operations: list[dict[str, Any]],
+    report: FixReport,
+    operations: list[OperationRecord],
     modified: list[str],
     verify_success: Any,
     result: Any,
