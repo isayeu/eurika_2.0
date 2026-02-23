@@ -43,7 +43,7 @@ eurika agent <subcommand> [path] [options]
 
 **Продуктовые команды (5 режимов):** `scan`, `doctor`, `fix`, `cycle`, `explain`. В `eurika help` они выводятся первыми; остальные команды — Other/Advanced (ROADMAP этап 5).
 
-**Для LLM (doctor, architect, cycle):** в venv установите `pip install -e ".[test]"` (openai, pytest). Без openai — только шаблонный вывод architect. См. DOGFOODING.md.
+**Для LLM (doctor, architect, cycle):** установите `pip install -e ".[test]"` (openai, pytest). Без openai — только шаблонный вывод architect. См. DOGFOODING.md.
 
 ---
 

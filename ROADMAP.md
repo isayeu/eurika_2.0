@@ -36,7 +36,7 @@
 | Качество кода           | 8/10   |
 | Концепция               | 9/10   |
 | Операционность          | 5/10   |
-| Продуктовая готовность  | 5/10   |
+| Продуктовая готовность  | 6/10   |
 | Потенциал               | 9.5/10 |
 
 
@@ -81,8 +81,8 @@
 | B.2 | README: все 4 продуктовые команды с примерами (scan, doctor, fix --dry-run, serve)                | ✓                                                      |
 | B.3 | UI.md: полный список вкладок + описание Chat                                                      | ✓                                                      |
 | B.4 | CLI.md: раздел CI/CD и рекомендуемый цикл                                                         | ✓                                                      |
-| B.5 | Новый пользователь может за 5 минут: install → scan → doctor → fix --dry-run без чтения 10 файлов | Достигается при B.1–B.4                                |
-| B.6 | Тесты зелёные, CYCLE_REPORT актуален                                                              | Ритуал 2.1                                             |
+| B.5 | Новый пользователь может за 5 минут: install → scan → doctor → fix --dry-run без чтения 10 файлов | ✓ README/UI/CLI покрывают сценарий 5-minute onboarding |
+| B.6 | Тесты зелёные, CYCLE_REPORT актуален                                                              | ✓ ритуалы #61–#64 зафиксированы                        |
 
 
 **Цель:** пользователь клонирует репо, читает README и через 5 минут понимает, что делает Eurika и как её запустить.
@@ -176,10 +176,10 @@
 - Full cycle + snapshot ritual (post R3 typing) выполнен: no-op без verify-step, risk_score=46, context effect зафиксирован (CYCLE_REPORT #63)
 - UI.md обновлён и закрыт как MVP-гайд по Web UI (serve, tabs, run-cycle/terminal/approve/chat)
 - README обновлён под продуктовый onboarding: venv-нейтральный quick start + базовые команды `scan/doctor/fix --dry-run/serve` (CYCLE_REPORT #64)
+- B. Продуктовая готовность закрыт до 6/10: критерии B.1–B.6 выполнены (ROADMAP + CYCLE_REPORT #65)
 
 **Новый бэклог (следующие шаги):**
 
-- B. Продуктовая готовность — критерии в ROADMAP; README/CLI.md без machine-specific venv; UI.md + Chat
 - long_function|extract_nested_function: extend suggest/extract — extract with params (1–3 parent vars) — повышение success rate
 
 **Дальнейшая доработка (long_function / deep_nesting):**
