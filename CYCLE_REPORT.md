@@ -2,6 +2,33 @@
 
 ---
 
+## 53. Snapshot (2026-02-23) — R3 Typing contract step 9 (storage facade layer)
+
+### Scope
+- расширен typing-gate на storage facade/utility слой:
+  - `eurika/storage/__init__.py`
+  - `eurika/storage/persistence.py`
+  - `eurika/storage/paths.py`
+  - `eurika/storage/operational_metrics.py`
+- `pyproject.toml` (`tool.mypy.overrides`) расширен до 29 модулей boundary-гейта.
+
+### Проверка
+- `mypy` по 29 модулям:
+  - CLI entry + orchestration + API + agent/storage contracts + storage facade layer
+  - результат: `Success: no issues found in 29 source files`
+- regression-check:
+  - `tests/test_storage_memory.py`
+  - `tests/test_storage_events.py`
+  - `tests/test_architecture_learning.py`
+  - `tests/test_architecture_feedback.py`
+  - `tests/test_cycle.py -k "attach_fix_telemetry_median_verify_time or attach_fix_telemetry_counts_campaign_session_skips"`
+  - результат: `2 passed` (targeted), без регрессий
+
+### Итог
+- boundary typing-gate расширен до полного storage entry/facade слоя, включая operational metrics pipeline.
+
+---
+
 ## 52. Snapshot (2026-02-23) — R3 Typing contract step 8 (event views/memory)
 
 ### Scope

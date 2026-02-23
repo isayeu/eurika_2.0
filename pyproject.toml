@@ -62,6 +62,10 @@ module = [
   "eurika.storage.event_views",
   "eurika.storage.event_engine",
   "eurika.storage.memory",
+  "eurika.storage.__init__",
+  "eurika.storage.persistence",
+  "eurika.storage.paths",
+  "eurika.storage.operational_metrics",
 ]
 check_untyped_defs = true
 disallow_incomplete_defs = true
