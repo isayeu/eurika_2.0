@@ -1,6 +1,5 @@
-"""Facade for self_map I/O (load_self_map, build_graph_from_self_map).
+"""Facade for self_map I/O with explicit exports."""
 
-Implementation currently lives in `self_map_io.py`.
-"""
+from self_map_io import build_graph_from_self_map, load_self_map
 
-from self_map_io import *  # noqa: F401,F403
+__all__ = ["load_self_map", "build_graph_from_self_map"]

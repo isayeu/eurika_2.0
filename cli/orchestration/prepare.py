@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from .contracts import FixReport, OperationRecord, PatchPlan
 from .logging import get_logger
@@ -214,7 +214,8 @@ def apply_runtime_policy(
     """Evaluate operations via policy engine and attach explainability metadata."""
     from eurika.agent import evaluate_operation, load_policy_config
 
-    cfg = load_policy_config(runtime_mode)
+    runtime_mode_lit = cast(Literal["assist", "hybrid", "auto"], runtime_mode)
+    cfg = load_policy_config(runtime_mode_lit)
     seen_files: set[str] = set()
     kept: list[OperationRecord] = []
     decisions: list[dict[str, Any]] = []

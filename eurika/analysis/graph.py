@@ -1,10 +1,6 @@
-"""Facade for project graph related APIs.
+"""Facade for project graph related APIs with explicit exports."""
 
-The implementation currently lives in the flat modules:
-- `project_graph.py`
-- `project_graph_api.py`
-"""
+from project_graph import NodeMetrics, ProjectGraph
 
-from project_graph import *  # noqa: F401,F403
-from project_graph_api import *  # noqa: F401,F403
+__all__ = ["ProjectGraph", "NodeMetrics"]
 

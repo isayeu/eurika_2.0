@@ -7,7 +7,7 @@ Converts smells + graph metrics into refactoring recommendations.
 
 from __future__ import annotations
 
-from typing import List
+from typing import Dict, List, Tuple
 
 from eurika.analysis.graph import ProjectGraph
 from eurika.smells.models import ArchSmell
@@ -21,7 +21,7 @@ def _fmt_nodes(nodes: List[str], max_n: int = 3) -> str:
     return ", ".join(nodes[:max_n]) + f" (and {len(nodes) - max_n} more)"
 
 
-def _recommend_for_hub(fan, nodes: List[str]) -> List[str]:
+def _recommend_for_hub(fan: Dict[str, Tuple[int, int]], nodes: List[str]) -> List[str]:
     recs: List[str] = []
     for n in nodes:
         fi, fo = fan.get(n, (0, 0))
@@ -33,7 +33,7 @@ def _recommend_for_hub(fan, nodes: List[str]) -> List[str]:
     return recs
 
 
-def _recommend_for_bottleneck(fan, nodes: List[str]) -> List[str]:
+def _recommend_for_bottleneck(fan: Dict[str, Tuple[int, int]], nodes: List[str]) -> List[str]:
     recs: List[str] = []
     for n in nodes:
         fi, fo = fan.get(n, (0, 0))
@@ -45,7 +45,7 @@ def _recommend_for_bottleneck(fan, nodes: List[str]) -> List[str]:
     return recs
 
 
-def _recommend_for_god_module(fan, nodes: List[str]) -> List[str]:
+def _recommend_for_god_module(fan: Dict[str, Tuple[int, int]], nodes: List[str]) -> List[str]:
     recs: List[str] = []
     for n in nodes:
         fi, fo = fan.get(n, (0, 0))

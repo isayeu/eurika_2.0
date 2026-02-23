@@ -1,14 +1,6 @@
-"""Facade to the legacy `core.pipeline` module.
+"""Facade to the legacy `core.pipeline` module with explicit exports."""
 
-The real implementation currently lives in `core/pipeline.py`.
-This wrapper exists to provide a stable import path:
+from core.pipeline import build_snapshot_from_self_map, run_full_analysis
 
-    from eurika.core import pipeline
-    # or
-    from eurika.core.pipeline import run_full_analysis
-
-without changing any behaviour.
-"""
-
-from core.pipeline import *  # noqa: F401,F403
+__all__ = ["run_full_analysis", "build_snapshot_from_self_map"]
 

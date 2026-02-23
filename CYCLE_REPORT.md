@@ -2,6 +2,115 @@
 
 ---
 
+## 60. Snapshot (2026-02-23) — R3 Typing contract step 16 (support layer: checks/utils/storage sidecar)
+
+### Scope
+- расширен typing-gate на support-слой:
+  - `eurika/__init__.py`
+  - `eurika/agent/__init__.py`
+  - `eurika/reasoning/__init__.py`
+  - `eurika/refactor/__init__.py`
+  - `eurika/checks/__init__.py`
+  - `eurika/checks/dependency_firewall.py`
+  - `eurika/checks/file_size.py`
+  - `eurika/utils/__init__.py`
+  - `eurika/utils/fs.py`
+  - `eurika/utils/logging.py`
+  - `eurika/storage/events.py`
+  - `eurika/storage/global_memory.py`
+  - `eurika/storage/campaign_checkpoint.py`
+- дополнительный type-hardening для полного гейта:
+  - `cli/orchestration/prepare.py`: `runtime_mode` приведён к `Literal["assist", "hybrid", "auto"]` перед `load_policy_config(...)`.
+- `pyproject.toml` (`tool.mypy.overrides`) расширен до 80 модулей boundary-гейта.
+
+### Проверка
+- `mypy` по support-слою: `Success: no issues found in 13 source files`
+- `mypy` по full boundary-скоупу: `Success: no issues found in 80 source files`
+- regression-check:
+  - `tests/test_campaign_checkpoint.py`
+  - `tests/test_global_memory.py`
+  - `tests/test_file_size_check.py`
+  - `tests/test_clean_imports_cli.py`
+  - `tests/test_cycle.py`
+  - результат: `73 passed`
+
+### Итог
+- typed boundary расширен на инфраструктурный support-контур; full-gate стабилен на 80 модулях.
+
+---
+
+## 59. Snapshot (2026-02-23) — R3 Typing contract step 15 (analysis + reporting layer)
+
+### Scope
+- расширен typing-gate на analysis/reporting слой:
+  - `eurika/analysis/__init__.py`
+  - `eurika/analysis/cycles.py`
+  - `eurika/analysis/metrics.py`
+  - `eurika/analysis/topology.py`
+  - `eurika/analysis/self_map.py`
+  - `eurika/analysis/scanner.py`
+  - `eurika/analysis/graph.py`
+  - `eurika/reporting/__init__.py`
+  - `eurika/reporting/json.py`
+  - `eurika/reporting/markdown.py`
+  - `eurika/reporting/text.py`
+- минимальные type-hardening правки фасадов:
+  - `eurika/analysis/graph.py`: wildcard-export заменён на explicit export `ProjectGraph`, `NodeMetrics`;
+  - `eurika/analysis/self_map.py`: wildcard-export заменён на explicit export `load_self_map`, `build_graph_from_self_map`.
+- `pyproject.toml` (`tool.mypy.overrides`) расширен до 67 модулей boundary-гейта.
+
+### Проверка
+- `mypy` по analysis/reporting модулям: `Success: no issues found in 11 source files`
+- `mypy` по full boundary-скоупу: `Success: no issues found in 67 source files`
+- regression-check:
+  - `tests/test_semantic_architecture.py`
+  - `tests/test_architecture_diagnostics.py`
+  - `tests/test_architecture_history.py`
+  - `tests/test_evolution_diff.py`
+  - `tests/test_api.py`
+  - результат: `27 passed`
+
+### Итог
+- typed boundary расширен на analysis/reporting контур; import-контракты фасадов стабилизированы для `mypy attr-defined`.
+
+---
+
+## 58. Snapshot (2026-02-23) — R3 Typing contract step 14 (smells + core layer)
+
+### Scope
+- расширен typing-gate на smells/core слой:
+  - `eurika/smells/__init__.py`
+  - `eurika/smells/detector.py`
+  - `eurika/smells/models.py`
+  - `eurika/smells/rules.py`
+  - `eurika/smells/summary.py`
+  - `eurika/smells/advisor.py`
+  - `eurika/smells/health.py`
+  - `eurika/core/__init__.py`
+  - `eurika/core/snapshot.py`
+  - `eurika/core/pipeline.py`
+- минимальные type-hardening правки:
+  - `eurika/smells/advisor.py`: добавлены явные типы `fan: Dict[str, Tuple[int, int]]` в helper-функции рекомендаций;
+  - `eurika/core/pipeline.py`: убран wildcard-export, добавлен explicit re-export `run_full_analysis` и `build_snapshot_from_self_map` + `__all__`.
+- `pyproject.toml` (`tool.mypy.overrides`) расширен до 56 модулей boundary-гейта.
+
+### Проверка
+- `mypy` по smells/core модулям: `Success: no issues found in 10 source files`
+- `mypy` по full boundary-скоупу: `Success: no issues found in 56 source files`
+- regression-check:
+  - `tests/test_architecture_smells.py`
+  - `tests/test_architecture_advisor.py`
+  - `tests/test_architecture_health.py`
+  - `tests/test_architecture_diagnostics.py`
+  - `tests/test_evolution_diff.py`
+  - `tests/test_api.py`
+  - результат: `29 passed`
+
+### Итог
+- typed boundary расширен до smells/core контура; совместимость import-контрактов `eurika.core.pipeline` сохранена.
+
+---
+
 ## 57. Snapshot (2026-02-23) — R3 Typing contract step 13 (evolution layer)
 
 ### Scope
