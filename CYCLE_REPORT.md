@@ -2,6 +2,32 @@
 
 ---
 
+## 48. Snapshot (2026-02-23) — R3 Typing contract step 5 (CLI wiring + core handlers)
+
+### Scope
+- расширен typing-gate на CLI entry/wiring слой:
+  - `cli/wiring/parser.py`
+  - `cli/wiring/dispatch.py`
+  - `cli/core_handlers.py`
+  - `cli/handlers.py`
+- устранён typing-дефект в `handle_learn_github`:
+  - нормализован сбор `projects` к `set[str]` перед `sorted(...)`.
+- `pyproject.toml` (`tool.mypy.overrides`) расширен до 14 модулей orchestration+CLI entry boundary.
+
+### Проверка
+- `mypy` по 14 модулям:
+  - orchestration core + `cli/orchestrator.py` + `cli/wiring/*` + `cli/core_handlers.py` + `cli/handlers.py`
+  - результат: `Success: no issues found in 14 source files`
+- regression-check:
+  - `tests/test_hitl_cli.py` — green
+  - `tests/test_team_mode.py` — green
+  - `tests/test_github_search.py` — green
+
+### Итог
+- typing-contract gate покрывает полный CLI entry path до orchestration core без изменения runtime-поведения.
+
+---
+
 ## 47. Snapshot (2026-02-23) — R3 Typing contract step 4 (doctor + team mode + deps)
 
 ### Scope

@@ -545,7 +545,15 @@ def handle_learn_github(args: Any) -> int:
         data = extract_patterns_from_repos(cache_dir)
         save_pattern_library(data, lib_path)
         total = sum(len(v) for v in data.values() if isinstance(v, list))
-        projects = {e.get("project") for v in data.values() if isinstance(v, list) for e in v if isinstance(e, dict)}
+        projects = {
+            str(project)
+            for v in data.values()
+            if isinstance(v, list)
+            for e in v
+            if isinstance(e, dict)
+            for project in [e.get("project")]
+            if project
+        }
         proj_str = ", ".join(sorted(projects)) if projects else "none"
         print(f"eurika learn-github: pattern library written ({total} entries from {len(projects)} repo(s): {proj_str}) -> {lib_path}", file=sys.stderr)
     print(f"eurika learn-github: {ok}/{len(repos)} repos available", file=sys.stderr)

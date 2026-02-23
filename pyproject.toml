@@ -47,6 +47,10 @@ module = [
   "cli.orchestration.team_mode",
   "cli.orchestration.deps",
   "cli.orchestrator",
+  "cli.wiring.parser",
+  "cli.wiring.dispatch",
+  "cli.core_handlers",
+  "cli.handlers",
 ]
 check_untyped_defs = true
 disallow_incomplete_defs = true
