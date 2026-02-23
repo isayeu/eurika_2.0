@@ -2,6 +2,24 @@
 
 ---
 
+## 41. Snapshot (2026-02-23) — DoD 3.6 baseline (3 ritual runs)
+
+### Сценарий
+- 3 последовательных прогона: `scan -> doctor --no-llm -> fix --dry-run --quiet`
+
+### Метрики по прогонам
+| run | apply_rate | no_op_rate | rollback_rate | verify_required | blocked policy/critic/human | doctor apply_rate | doctor rollback_rate | doctor median_verify_time_ms |
+|-----|------------|------------|---------------|-----------------|------------------------------|-------------------|----------------------|------------------------------|
+| 1 | 0.0 | 1.0 | 0.0 | false | 0 / 0 / 0 | 0.3576 | 0.7 | 96430 |
+| 2 | 0.0 | 1.0 | 0.0 | false | 0 / 0 / 0 | 0.3576 | 0.7 | 96430 |
+| 3 | 0.0 | 1.0 | 0.0 | false | 0 / 0 / 0 | 0.3576 | 0.7 | 96430 |
+
+### Вывод
+- baseline стабилен и предсказуем: no-op сценарий повторяется без новых регрессий.
+- risky target по `eurika/agent/tool_contract.py` последовательно отсекается campaign-memory, verify stage не запускается (ожидаемое поведение для no-op).
+
+---
+
 ## 40. Snapshot (2026-02-23) — Sprint 3.6.4 e2e: checkpoint -> campaign-undo
 
 ### Сценарий (безопасный mini-project)
