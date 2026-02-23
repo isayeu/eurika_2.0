@@ -2,6 +2,30 @@
 
 ---
 
+## 50. Snapshot (2026-02-23) — R3 typing consolidate ritual (16-module gate)
+
+### Сценарий
+- единый `mypy`-прогон по целевому boundary-сетапу (16 модулей):
+  - orchestration core: `prepare`, `apply_stage`, `fix_cycle_impl`, `hybrid_approval`, `full_cycle`, `facade`, `doctor`, `team_mode`, `deps`
+  - CLI entry: `cli/orchestrator.py`, `cli/wiring/parser.py`, `cli/wiring/dispatch.py`, `cli/core_handlers.py`, `cli/handlers.py`
+  - API surface: `eurika/api/__init__.py`, `eurika/api/serve.py`
+- целевой regression-набор:
+  - `tests/test_hitl_cli.py`
+  - `tests/test_team_mode.py`
+  - `tests/test_github_search.py`
+  - `tests/test_api.py`
+  - `tests/test_api_serve.py`
+  - `tests/test_cycle.py -k "doctor_runtime_reports_degraded_mode_when_llm_disabled or knowledge_topics_derived_from_summary or run_full_cycle_wrapper_delegates_to_orchestration_module or full_cycle_propagates_doctor_runtime_to_fix_report or fix_cycle_approve_ops_selects_subset or fix_cycle_approve_ops_reject_ops_conflict"`
+
+### Результат
+- `mypy`: `Success: no issues found in 16 source files`
+- `pytest`: `5 passed` (targeted selection), без регрессий
+
+### Итог
+- R3 typing-contract gate подтверждён консолидированным ритуалом: покрыт полный путь `CLI entry -> orchestration -> API surface`, поведение остаётся стабильным.
+
+---
+
 ## 49. Snapshot (2026-02-23) — R3 Typing contract step 6 (API surface)
 
 ### Scope
