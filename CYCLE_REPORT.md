@@ -2,6 +2,36 @@
 
 ---
 
+## 43. Snapshot (2026-02-23) — QG-4 ritual confirmation (apply-safe + no-op)
+
+### Сценарий A (apply-safe e2e, mini-project)
+- подготовлен временный проект `.tmp_qg4_apply` (`a.py` + `tests/test_a.py`).
+- `../.venv/bin/python -m eurika_cli scan .tmp_qg4_apply`
+- `../.venv/bin/python -m eurika_cli fix .tmp_qg4_apply --quiet`
+- `../.venv/bin/python -m eurika_cli campaign-undo .tmp_qg4_apply --checkpoint-id 20260223_113847_517`
+
+### Результат A
+- `fix`: `modified_count=1`, `apply_rate=1.0`, `no_op_rate=0.0`, `rollback_rate=0.0`.
+- verify: `1 passed`; `verify_required=true`, `verify_ran=true`, `verify_passed=true`.
+- checkpoint: `checkpoint_id=20260223_113847_517`, `status=completed`, `run_ids=["20260223_083847"]`.
+- `campaign-undo`: `status=undone`, `restored=["a.py"]`, `errors=[]`.
+
+### Сценарий B (no-op e2e, основной проект)
+- `../.venv/bin/python -m eurika_cli scan .`
+- `../.venv/bin/python -m eurika_cli doctor . --no-llm`
+- `../.venv/bin/python -m eurika_cli fix . --dry-run --quiet`
+
+### Результат B
+- `eurika_fix_report`: `message="Patch plan has no operations. Cycle complete."`
+- telemetry: `operations_total=1`, `modified_count=0`, `skipped_count=1`, `apply_rate=0.0`, `no_op_rate=1.0`, `rollback_rate=0.0`.
+- safety gates: `verify_required=false`, `verify_ran=false`, `rollback_done=false`.
+- campaign memory: `campaign_skipped=1` по рискованной цели, apply-stage не запускался (ожидаемое no-op поведение).
+
+### Итог
+- QG-4 подтверждён: и apply-safe путь (apply + verify + campaign-undo), и no-op путь отрабатывают предсказуемо и детерминированно.
+
+---
+
 ## 42. Snapshot (2026-02-23) — QG-1/QG-2 closeout for 3.6.4
 
 ### QG-1 (edge-case hardening)

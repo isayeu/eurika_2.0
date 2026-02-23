@@ -211,6 +211,7 @@
 - Спринт 1 (3.6.1 + 3.6.2): ✅ выполнен (decision gate, critic pass, per-op approve/reject, decision summary).
 - Спринт 2 (3.6.3): ✅ выполнен (context_sources в JSON/API/doctor, UI Dashboard + top context hits + by-target breakdown, CYCLE_REPORT через report-snapshot context effect).
 - Спринт 3 (3.6.4): ✅ выполнен (checkpoint + campaign-undo + e2e подтверждение на безопасном apply-сценарии).
+- R3 Quality Gate для 3.6.4: ✅ закрыт (QG-1 edge-cases, QG-2 integration flow, QG-3 undo playbook, QG-4 ritual confirmation apply-safe + no-op).
 
 #### Спринт 1 — инженерная декомпозиция (3.6.1 + 3.6.2)
 
