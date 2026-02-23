@@ -263,6 +263,17 @@ eurika campaign-undo .                  # undo latest campaign
 eurika campaign-undo . --checkpoint-id 20260222_221530_123
 ```
 
+### Undo playbook (QG-3)
+
+- `eurika campaign-undo` — rollback всей apply-кампании по checkpoint (`.eurika/campaign_checkpoints/*.json`), когда нужно отменить серию операций как единый шаг.
+- `eurika agent patch-rollback --run-id ...` — точечный rollback конкретного run из `.eurika_backups/<run_id>/`, когда нужно откатить один apply.
+- no-op сценарий (`patch plan has no operations`) не создаёт новый checkpoint: apply-stage не запускался, откатывать нечего.
+- статусы checkpoint:
+  - `pending` — checkpoint создан до apply;
+  - `completed` — apply прошёл, `run_id` привязан;
+  - `undone` — campaign-undo уже выполнен;
+  - `noop` — checkpoint без run_id (фактически нечего откатывать).
+
 ---
 
 ### eurika explain <module> [path] [--window N]

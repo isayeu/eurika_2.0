@@ -2,6 +2,29 @@
 
 ---
 
+## 42. Snapshot (2026-02-23) — QG-1/QG-2 closeout for 3.6.4
+
+### QG-1 (edge-case hardening)
+- `campaign-undo` для битого checkpoint payload теперь возвращает явную ошибку (`Invalid checkpoint payload`).
+- повторный `campaign-undo` по already-undone checkpoint сделан идемпотентным (`already_undone=true`, без повторного rollback).
+- добавлены тесты на missing checkpoint id, invalid payload, repeated undo, mixed rollback errors.
+
+### QG-2 (integrated flow)
+- добавлен интеграционный тест `tests/test_campaign_flow.py`:
+  - `fix --approve-ops 1` (частичный apply),
+  - проверка `decision_summary.blocked_by_human` и `not_in_approved_set`,
+  - проверка `campaign_checkpoint` (`checkpoint_id`, `run_ids`),
+  - `campaign-undo --checkpoint-id ...` и восстановление изменённого файла.
+
+### Проверка
+- `tests/test_campaign_checkpoint.py` — edge-cases green
+- `tests/test_campaign_flow.py` + related suites (`test_agent_handlers_decision_summary`) — green
+
+### Итог
+- quality-gate для контура `decision gate + checkpoint + campaign-undo` закрыт на интеграционном уровне.
+
+---
+
 ## 41. Snapshot (2026-02-23) — DoD 3.6 baseline (3 ritual runs)
 
 ### Сценарий
