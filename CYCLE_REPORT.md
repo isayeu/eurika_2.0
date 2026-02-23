@@ -2,6 +2,33 @@
 
 ---
 
+## 54. Snapshot (2026-02-23) — R3 Typing contract step 10 (learning + knowledge layer)
+
+### Scope
+- расширен typing-gate на learning/knowledge слой:
+  - `eurika/learning/__init__.py`
+  - `eurika/learning/github_search.py`
+  - `eurika/learning/pattern_library.py`
+  - `eurika/learning/curated_repos.py`
+  - `eurika/knowledge/__init__.py`
+  - `eurika/knowledge/base.py`
+- `pyproject.toml` (`tool.mypy.overrides`) расширен до 35 модулей boundary-гейта.
+
+### Проверка
+- `mypy` по 35 модулям:
+  - CLI + orchestration + API + agent/storage + storage facade + learning/knowledge
+  - результат: `Success: no issues found in 35 source files`
+- regression-check:
+  - `tests/test_github_search.py`
+  - `tests/test_knowledge.py`
+  - `tests/test_architect.py`
+  - результат: `38 passed`
+
+### Итог
+- typing-contract gate покрывает весь operational path и knowledge/learning слой без изменения runtime-поведения.
+
+---
+
 ## 53. Snapshot (2026-02-23) — R3 Typing contract step 9 (storage facade layer)
 
 ### Scope

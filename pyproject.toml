@@ -66,6 +66,12 @@ module = [
   "eurika.storage.persistence",
   "eurika.storage.paths",
   "eurika.storage.operational_metrics",
+  "eurika.learning.__init__",
+  "eurika.learning.github_search",
+  "eurika.learning.pattern_library",
+  "eurika.learning.curated_repos",
+  "eurika.knowledge.__init__",
+  "eurika.knowledge.base",
 ]
 check_untyped_defs = true
 disallow_incomplete_defs = true
