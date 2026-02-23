@@ -127,7 +127,7 @@ def _attach_decision_summary(report: dict[str, Any]) -> None:
                     human_blocked += 1
                 else:
                     policy_blocked += 1
-            elif reason == "rejected_in_hybrid":
+            elif reason in {"rejected_in_hybrid", "rejected_by_human", "rejected_by_index", "not_in_approved_set"}:
                 human_blocked += 1
     # Fallback for legacy/partial payloads where operation_results may be absent.
     if policy_blocked == 0:
