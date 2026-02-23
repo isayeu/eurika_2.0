@@ -185,8 +185,25 @@ def undo_campaign_checkpoint(
     if selected is None:
         return {"errors": [f"Checkpoint not found: {checkpoint_id or 'latest'}"], "checkpoint_id": checkpoint_id}
 
-    data = _load_json(selected) or {}
+    loaded = _load_json(selected)
+    if loaded is None:
+        return {
+            "errors": [f"Invalid checkpoint payload: {selected.name}"],
+            "checkpoint_id": checkpoint_id or selected.stem,
+        }
+    data = loaded
     cid = str(data.get("checkpoint_id") or selected.stem)
+    status = str(data.get("status") or "")
+    if status == "undone":
+        return {
+            "checkpoint_id": cid,
+            "run_ids": [str(x) for x in (data.get("run_ids") or []) if str(x)],
+            "restored": [],
+            "errors": [],
+            "status": "undone",
+            "already_undone": True,
+            "rollback_reports": [],
+        }
     run_ids = [str(x) for x in (data.get("run_ids") or []) if str(x)]
     if rollback_fn is None:
         from patch_engine import rollback_patch

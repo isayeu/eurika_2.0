@@ -127,3 +127,72 @@ def test_doctor_cycle_includes_latest_campaign_checkpoint(tmp_path: Path) -> Non
     out = run_doctor_cycle(tmp_path, window=3, no_llm=True, online=False)
     latest = out.get("campaign_checkpoint") or {}
     assert latest.get("checkpoint_id") == cp.get("checkpoint_id")
+
+
+def test_undo_campaign_checkpoint_missing_checkpoint_returns_error(tmp_path: Path) -> None:
+    from eurika.storage.campaign_checkpoint import undo_campaign_checkpoint
+
+    out = undo_campaign_checkpoint(tmp_path, checkpoint_id="missing_1")
+    assert out.get("errors")
+    assert "missing_1" in str(out.get("checkpoint_id") or "")
+
+
+def test_undo_campaign_checkpoint_invalid_payload_returns_error(tmp_path: Path) -> None:
+    from eurika.storage.campaign_checkpoint import undo_campaign_checkpoint
+
+    cp_dir = tmp_path / ".eurika" / "campaign_checkpoints"
+    cp_dir.mkdir(parents=True, exist_ok=True)
+    (cp_dir / "bad.json").write_text("{broken", encoding="utf-8")
+    out = undo_campaign_checkpoint(tmp_path, checkpoint_id="bad")
+    assert out.get("errors")
+    assert "Invalid checkpoint payload" in " ".join(str(x) for x in (out.get("errors") or []))
+
+
+def test_undo_campaign_checkpoint_repeated_call_is_idempotent(tmp_path: Path) -> None:
+    from eurika.storage.campaign_checkpoint import (
+        attach_run_to_checkpoint,
+        create_campaign_checkpoint,
+        undo_campaign_checkpoint,
+    )
+
+    cp = create_campaign_checkpoint(tmp_path, operations=[{"target_file": "a.py", "kind": "split_module"}], session_id="s-idempotent")
+    cid = str(cp.get("checkpoint_id"))
+    attach_run_to_checkpoint(tmp_path, cid, run_id="r-x", verify_success=True, modified=["a.py"])
+
+    calls: list[str | None] = []
+
+    def fake_rollback(_root: Path, run_id: str | None) -> dict:
+        calls.append(run_id)
+        return {"run_id": run_id, "restored": ["a.py"], "errors": []}
+
+    first = undo_campaign_checkpoint(tmp_path, checkpoint_id=cid, rollback_fn=fake_rollback)
+    assert first.get("status") == "undone"
+    assert calls == ["r-x"]
+
+    second = undo_campaign_checkpoint(tmp_path, checkpoint_id=cid, rollback_fn=fake_rollback)
+    assert second.get("status") == "undone"
+    assert second.get("already_undone") is True
+    assert calls == ["r-x"]  # no extra rollback on repeated undo
+
+
+def test_undo_campaign_checkpoint_collects_mixed_rollback_errors(tmp_path: Path) -> None:
+    from eurika.storage.campaign_checkpoint import (
+        attach_run_to_checkpoint,
+        create_campaign_checkpoint,
+        undo_campaign_checkpoint,
+    )
+
+    cp = create_campaign_checkpoint(tmp_path, operations=[{"target_file": "a.py", "kind": "split_module"}], session_id="s-mixed")
+    cid = str(cp.get("checkpoint_id"))
+    attach_run_to_checkpoint(tmp_path, cid, run_id="r-1", verify_success=True, modified=["a.py"])
+    attach_run_to_checkpoint(tmp_path, cid, run_id="r-2", verify_success=False, modified=[])
+
+    def fake_rollback(_root: Path, run_id: str | None) -> dict:
+        if run_id == "r-2":
+            return {"run_id": run_id, "restored": [], "errors": ["restore failed"]}
+        return {"run_id": run_id, "restored": ["a.py"], "errors": []}
+
+    out = undo_campaign_checkpoint(tmp_path, checkpoint_id=cid, rollback_fn=fake_rollback)
+    assert out.get("status") == "undone"
+    errs = out.get("errors") or []
+    assert "restore failed" in [str(x) for x in errs]
