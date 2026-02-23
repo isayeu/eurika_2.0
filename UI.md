@@ -4,6 +4,18 @@
 
 ---
 
+## MVP статус
+
+MVP для Web UI закрыт: покрыты базовые операторские сценарии запуска цикла, обзора архитектуры, ручного approve/reject и диалога с архитектором/чатом.
+
+**MVP-чеклист:**
+- запуск через `eurika serve [path]`;
+- вкладки: `Dashboard`, `Terminal`, `Approve`, `Ask Architect`, `Chat` (а также `Summary`, `History`, `Diff`, `Graph`, `Explain Module`);
+- запуск ритуала из UI: `Scan`, `Doctor`, `Fix`, `Report snapshot`, `Cycle (dry-run)`;
+- безопасный exec-контур через whitelist eurika-команд (`POST /api/exec`).
+
+---
+
 ## Запуск
 
 ```bash
@@ -34,7 +46,7 @@ http://127.0.0.1:8765/
 ### Dashboard
 Обзор: risk score, системные метрики (modules, deps, cycles, maturity), operational metrics (apply-rate, rollback-rate, median verify time), тренды, central modules, top risks.
 
-**Кнопки команд:** Scan, Doctor, Fix, Report snapshot, Cycle (dry-run). Для Fix: чекбокс **dry-run** (по умолчанию вкл) и **require approval** (eurika fix . --team-mode). Вывод появляется во вкладке Terminal.
+**Кнопки команд:** Scan, Doctor, Fix, Report snapshot, Cycle (dry-run). Для Fix: чекбокс **dry-run** (по умолчанию вкл) и **require approval** (`eurika fix . --team-mode`). Вывод появляется во вкладке Terminal.
 
 ### Summary
 Детализированный architecture summary: system metrics, central modules, risks.

@@ -172,11 +172,12 @@
 - report-snapshot, DOGFOODING
 - Малые рефакторинги + тесты для топ-long/deep функций
 - R3 Typing contract (iterative): целевой mypy-gate расширен до `CLI entry -> orchestration -> API surface -> agent/storage/event-memory/facade -> learning/knowledge -> reasoning -> runtime/tool-contract -> evolution -> smells/core -> analysis/reporting -> checks/utils/storage-sidecar` (80 модулей), подтверждён финальным consolidate-ритуалом (full mypy + targeted regression-pack) и step-7..step-16 валидацией (CYCLE_REPORT #50, #51, #52, #53, #54, #55, #56, #57, #58, #59, #60, #61)
+- Ритуал 2.1: `eurika report-snapshot .` (post R3 typing) выполнен и зафиксирован в CYCLE_REPORT #62
+- Full cycle + snapshot ritual (post R3 typing) выполнен: no-op без verify-step, risk_score=46, context effect зафиксирован (CYCLE_REPORT #63)
+- UI.md обновлён и закрыт как MVP-гайд по Web UI (serve, tabs, run-cycle/terminal/approve/chat)
 
 **Новый бэклог (следующие шаги):**
 
-- Добавить UI.md — инструкция по запуску `eurika serve`, вкладки (Dashboard, Terminal, Approve, Ask Architect, Chat), Run cycle (ROADMAP 3.5 DoD)
-- Прогон `eurika report-snapshot .` и актуализация CYCLE_REPORT (ритуал 2.1)
 - Опционально: обновить README — getting started, примеры `eurika scan .`, `eurika doctor .`, `eurika fix . --dry-run`
 - B. Продуктовая готовность — критерии в ROADMAP; README/CLI.md без machine-specific venv; UI.md + Chat
 - long_function|extract_nested_function: extend suggest/extract — extract with params (1–3 parent vars) — повышение success rate

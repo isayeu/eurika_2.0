@@ -2,6 +2,81 @@
 
 ---
 
+## 63. Snapshot (2026-02-23) — Full cycle + snapshot ritual (post R3 typing)
+
+### Команды
+- `eurika cycle .`
+- `eurika report-snapshot .`
+
+### Report-snapshot вывод (факт)
+- **Fix (`eurika fix .`)**
+  - `modified=0`, `skipped=0`, `verify=N/A`
+  - telemetry: `apply_rate=0.0`, `no_op_rate=1.0`, `rollback_rate=0.0`, `verify_duration_ms=0`, `median_verify_time_ms=N/A`
+- **Doctor (`eurika_doctor_report.json`)**
+  - `modules=221`
+  - `dependencies=108`
+  - `risk_score=46/100`
+  - `apply_rate(last 10)=0.3576`
+  - `rollback_rate=0.7`
+  - `median_verify_time_ms=96430`
+- **Context effect (3.6.3)**
+  - `context_targets=0`, `recent_verify_fail_targets=10`, `campaign_rejected_targets=0`
+  - `apply_rate: current=0.0, baseline=0.3576 (Δ -35.8pp)`
+  - `no_op_rate: current=1.0, baseline=0.0 (Δ +100.0pp)`
+- **Learning (top)**
+  - `refactor_code_smell: 0 success / 1042 fail (0%)`
+  - `remove_unused_import: 8 success / 41 fail (16%)`
+  - `split_module: 2 success / 7 fail (22%)`
+  - `extract_nested_function: 0 success / 30 fail (0%)`
+
+### Итог
+- полный ритуал завершён в no-op режиме без apply и без verify-шага (`verify=N/A`);
+- архитектурный срез стабилен (`risk_score=46`, cycles=0), но продуктивность smell-рефакторинга остаётся основной зоной улучшения.
+
+---
+
+## 62. Snapshot (2026-02-23) — Ritual 2.1 `eurika report-snapshot .` (post R3 typing)
+
+### Команда
+- `eurika report-snapshot .`
+
+### Fix (`eurika fix .`)
+- `modified`: `0`
+- `skipped`: `0`
+- `verify`: `True`
+
+### Doctor (`eurika_doctor_report.json`)
+- `modules`: `220`
+- `dependencies`: `109`
+- `risk_score`: `43/100`
+- `apply_rate` (last 10 runs): `0.3576`
+- `rollback_rate`: `0.7`
+- `median_verify_time_ms`: `96430`
+
+### Learning
+- `by_action_kind`:
+  - `refactor_code_smell`: `0 success / 1042 fail (0%)`
+  - `remove_unused_import`: `8 success / 41 fail (16%)`
+  - `split_module`: `2 success / 7 fail (22%)`
+  - `extract_nested_function`: `0 success / 30 fail (0%)`
+  - `extract_class`: `1 success / 1 fail (50%)`
+  - `extract_block_to_helper`: `0 success / 4 fail (0%)`
+- `by_smell_action`:
+  - `long_function|refactor_code_smell`: `total=868, success=0, fail=857`
+  - `unknown|remove_unused_import`: `total=49, success=8, fail=41`
+  - `deep_nesting|refactor_code_smell`: `total=187, success=0, fail=185`
+  - `god_module|split_module`: `total=9, success=2, fail=7`
+  - `long_function|extract_nested_function`: `total=30, success=0, fail=30`
+  - `god_class|extract_class`: `total=2, success=1, fail=1`
+  - `long_function|extract_block_to_helper`: `total=2, success=0, fail=2`
+  - `deep_nesting|extract_block_to_helper`: `total=2, success=0, fail=2`
+
+### Итог
+- ритуал 2.1 выполнен: post-R3 typing состояние зафиксировано в едином snapshot;
+- подтверждена стабильность verify в текущем срезе (`modified=0`, `verify=True`), при этом learning-метрики по smell-refactor остаются ключевой зоной улучшения.
+
+---
+
 ## 61. Snapshot (2026-02-23) — R3 Typing contract final consolidate ritual
 
 ### Scope
