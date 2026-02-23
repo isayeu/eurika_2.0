@@ -8,7 +8,17 @@
 
 ## Быстрый старт
 
-После `pip install -e .`:
+### Установка (venv-нейтрально)
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[test]"
+```
+
+### Базовые команды
+
+После установки:
 
 ```bash
 eurika scan .           # полный скан → self_map.json, smells, summary
@@ -19,7 +29,7 @@ eurika serve .          # Web UI на http://127.0.0.1:8765/
 
 Или напрямую: `python eurika_cli.py scan .`.
 
-**Для LLM (doctor, architect, cycle):** в venv установите `pip install -e ".[test]"` (включает openai, pytest). Без openai LLM не вызывается — вывод шаблонный. Подробнее — **DOGFOODING.md**.
+**Для LLM (doctor, architect, cycle):** установите `pip install -e ".[test]"` (включает openai, pytest). Без openai LLM не вызывается — вывод шаблонный. Подробнее — **DOGFOODING.md**.
 
 **Ollama (локальный LLM):** для architect/cycle с ollama запустите сервер, при необходимости с переменными для AMD GPU:
 ```bash

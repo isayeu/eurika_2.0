@@ -175,10 +175,10 @@
 - Ритуал 2.1: `eurika report-snapshot .` (post R3 typing) выполнен и зафиксирован в CYCLE_REPORT #62
 - Full cycle + snapshot ritual (post R3 typing) выполнен: no-op без verify-step, risk_score=46, context effect зафиксирован (CYCLE_REPORT #63)
 - UI.md обновлён и закрыт как MVP-гайд по Web UI (serve, tabs, run-cycle/terminal/approve/chat)
+- README обновлён под продуктовый onboarding: venv-нейтральный quick start + базовые команды `scan/doctor/fix --dry-run/serve` (CYCLE_REPORT #64)
 
 **Новый бэклог (следующие шаги):**
 
-- Опционально: обновить README — getting started, примеры `eurika scan .`, `eurika doctor .`, `eurika fix . --dry-run`
 - B. Продуктовая готовность — критерии в ROADMAP; README/CLI.md без machine-specific venv; UI.md + Chat
 - long_function|extract_nested_function: extend suggest/extract — extract with params (1–3 parent vars) — повышение success rate
 

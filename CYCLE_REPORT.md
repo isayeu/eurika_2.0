@@ -2,6 +2,23 @@
 
 ---
 
+## 64. Snapshot (2026-02-23) — Product onboarding docs refresh (README)
+
+### Scope
+- закрыт следующий пункт backlog по продуктовой готовности:
+  - обновлён `README.md` с venv-нейтральным quick start;
+  - добавлен явный блок установки (`python -m venv .venv`, `pip install -e ".[test]"`);
+  - сохранены и выделены базовые команды onboarding:
+    - `eurika scan .`
+    - `eurika doctor .`
+    - `eurika fix . --dry-run`
+    - `eurika serve .`
+
+### Итог
+- onboarding для новых пользователей стал короче и воспроизводимее без machine-specific путей.
+
+---
+
 ## 63. Snapshot (2026-02-23) — Full cycle + snapshot ritual (post R3 typing)
 
 ### Команды
