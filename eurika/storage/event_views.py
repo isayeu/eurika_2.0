@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
+    from architecture_feedback import FeedbackRecord
+    from architecture_learning import LearningRecord
     from .event_engine import EventStore
 
 

@@ -59,6 +59,9 @@ module = [
   "eurika.agent.policy",
   "eurika.agent.tools",
   "eurika.storage.session_memory",
+  "eurika.storage.event_views",
+  "eurika.storage.event_engine",
+  "eurika.storage.memory",
 ]
 check_untyped_defs = true
 disallow_incomplete_defs = true

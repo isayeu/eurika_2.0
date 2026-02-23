@@ -22,6 +22,7 @@ from .paths import ensure_storage_dir, migrate_if_needed, storage_path
 if TYPE_CHECKING:
     from .event_views import FeedbackView, LearningView
     from observation_memory import ObservationMemory
+    from eurika.evolution.history import ArchitectureHistory
     from eurika.storage.event_engine import EventStore
 
 # Lazy: feedback and learning are views over EventStore (ROADMAP 3.2.2)
@@ -37,19 +38,19 @@ def _learning_view(events: "EventStore", path: Path) -> "LearningView":
     from .event_views import LearningView
     return LearningView(events, path)
 
-def _observation_memory(path: Path):
+def _observation_memory(path: Path) -> "ObservationMemory":
     migrate_if_needed(path, "observations")
     ensure_storage_dir(path)
     from observation_memory import ObservationMemory
     return ObservationMemory(storage_path=storage_path(path, "observations"))
 
-def _architecture_history(path: Path):
+def _architecture_history(path: Path) -> "ArchitectureHistory":
     migrate_if_needed(path, "history")
     ensure_storage_dir(path)
     from eurika.evolution.history import ArchitectureHistory
     return ArchitectureHistory(storage_path=storage_path(path, "history"))
 
-def _event_store(path: Path):
+def _event_store(path: Path) -> "EventStore":
     migrate_if_needed(path, "events")
     ensure_storage_dir(path)
     from eurika.storage.event_engine import event_engine

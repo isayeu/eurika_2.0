@@ -2,6 +2,38 @@
 
 ---
 
+## 52. Snapshot (2026-02-23) — R3 Typing contract step 8 (event views/memory)
+
+### Scope
+- расширен typing-gate на storage event-модель:
+  - `eurika/storage/event_views.py`
+  - `eurika/storage/event_engine.py`
+  - `eurika/storage/memory.py`
+- в `event_views` добавлены `TYPE_CHECKING`-импорты для:
+  - `LearningRecord`
+  - `FeedbackRecord`
+  что закрывает `name-defined` ошибки без влияния на runtime.
+- `pyproject.toml` (`tool.mypy.overrides`) расширен до 25 модулей boundary-гейта.
+
+### Проверка
+- `mypy`:
+  - `eurika/storage/event_views.py`
+  - `eurika/storage/event_engine.py`
+  - `eurika/storage/memory.py`
+  - плюс ранее включённые agent/storage контрактные модули
+  - результат: `Success: no issues found in 9 source files`
+- regression-check:
+  - `tests/test_storage_memory.py`
+  - `tests/test_storage_events.py`
+  - `tests/test_architecture_learning.py`
+  - `tests/test_architecture_feedback.py`
+  - результат: `18 passed`
+
+### Итог
+- typed boundary расширен до event-driven memory слоя; learning/feedback views и event-store контракты подтверждены тестами.
+
+---
+
 ## 51. Snapshot (2026-02-23) — R3 Typing contract step 7 (agent/storage contracts)
 
 ### Scope
