@@ -73,7 +73,8 @@ def _build_llm_patch_desc(patch_plan: Optional[Dict[str, Any]]) -> str:
     total, _kind_counts, targets = _summarize_patch_plan(patch_plan)
     if total == 0:
         return ''
-    kinds = [o.get('kind', 'refactor') for o in patch_plan['operations']]
+    ops = patch_plan.get('operations', []) if isinstance(patch_plan, dict) else []
+    kinds = [o.get('kind', 'refactor') for o in ops if isinstance(o, dict)]
     return f'\n\nPlanned patch operations: {total} total. Kinds: {kinds[:10]}. Top target modules: {targets[:5]}. Consider these in your recommendation.'
 
 def _resolve_knowledge_snippet(knowledge_provider: Optional['KnowledgeProvider'], knowledge_topic: Optional[Union[str, List[str]]]) -> str:

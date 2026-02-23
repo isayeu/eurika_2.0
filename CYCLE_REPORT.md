@@ -2,6 +2,31 @@
 
 ---
 
+## 55. Snapshot (2026-02-23) — R3 Typing contract step 11 (reasoning layer)
+
+### Scope
+- расширен typing-gate на reasoning-слой:
+  - `eurika/reasoning/architect.py`
+  - `eurika/reasoning/context_sources.py`
+  - `eurika/reasoning/planner_patch_ops.py`
+  - `eurika/reasoning/graph_ops.py`
+- в `architect` закрыт type-дефект доступа к patch plan:
+  - безопасное извлечение `operations` через `isinstance(patch_plan, dict)` вместо прямой индексации nullable payload.
+- `pyproject.toml` (`tool.mypy.overrides`) расширен до 39 модулей boundary-гейта.
+
+### Проверка
+- `mypy` по reasoning-модулям: `Success: no issues found in 4 source files`
+- `mypy` по full boundary-скоупу: `Success: no issues found in 39 source files`
+- regression-check:
+  - `tests/test_architect.py`
+  - `tests/test_context_sources.py`
+  - результат: `17 passed`
+
+### Итог
+- typed boundary расширен на planner/architect reasoning контур без изменения runtime-поведения.
+
+---
+
 ## 54. Snapshot (2026-02-23) — R3 Typing contract step 10 (learning + knowledge layer)
 
 ### Scope

@@ -72,6 +72,10 @@ module = [
   "eurika.learning.curated_repos",
   "eurika.knowledge.__init__",
   "eurika.knowledge.base",
+  "eurika.reasoning.architect",
+  "eurika.reasoning.context_sources",
+  "eurika.reasoning.planner_patch_ops",
+  "eurika.reasoning.graph_ops",
 ]
 check_untyped_defs = true
 disallow_incomplete_defs = true
