@@ -2,6 +2,24 @@
 
 ---
 
+## 70. Snapshot (2026-02-26) — allow-low-risk-campaign, tool_contract fix, REMOVE_UNUSED_IMPORT_SKIP
+
+### Scope
+- `--allow-low-risk-campaign` и `EURIKA_CAMPAIGN_ALLOW_LOW_RISK=1`: низкорисковые ops (remove_unused_import) обходят campaign skip.
+- tool_contract: init импортирует DefaultToolContract из tool_contract_extracted напрямую; убран re-export в tool_contract.py.
+- `REMOVE_UNUSED_IMPORT_SKIP`: tool_contract.py исключён из remove_unused_import (re-export layer).
+- test_cli_env: skip при отсутствии python-dotenv.
+- eurika_cli: dotenv_values(path) с корректной передачей пути.
+
+### Проверка
+- pytest: 450 passed, 1 skipped.
+- fix --allow-low-risk-campaign: cycle complete (tool_contract не в плане; test_cli_env deny по policy).
+
+### Итог
+- campaign skip ослаблен для low-risk; tool_contract защищён от false-positive remove_unused_import.
+
+---
+
 ## 69. Snapshot (2026-02-26) — Dogfooding no-op (campaign_skipped)
 
 ### Scope
