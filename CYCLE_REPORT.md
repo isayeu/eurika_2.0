@@ -2,6 +2,36 @@
 
 ---
 
+## 69. Snapshot (2026-02-26) — Dogfooding no-op (campaign_skipped)
+
+### Scope
+- Полный цикл `eurika fix .` + `eurika report-snapshot .` на проекте Eurika.
+- План: 1 операция remove_unused_import (eurika/agent/tool_contract.py, policy: allow).
+- Итог: campaign_skipped=1 — target в recent_verify_fail_targets; apply_rate=0, no_op_rate=1.
+- Архитектура: 221 модулей, risk 46/100, maturity low; learning по by_action_kind без изменений.
+
+### Проверка
+- report-snapshot: context effect (recent_verify_fail_targets=8) → campaign skip, baseline apply_rate 0.87.
+
+### Итог
+- Контекстный фильтр отработал: операция отфильтрована по истории verify_fail.
+
+---
+
+## 68. Snapshot (2026-02-25) — Дальнейшая доработка long/deep закрыта
+
+### Scope
+- Подтверждено, что пункты ROADMAP «Дальнейшая доработка» уже реализованы:
+  - `refactor_code_smell`: по умолчанию не эмитить (emit_todo=0); `EURIKA_EMIT_CODE_SMELL_TODO=1` для старого поведения
+  - `deep_nesting`: `EURIKA_DEEP_NESTING_MODE=heuristic|hybrid|llm|skip`, suggest_extract_block + extract_block_to_helper
+  - `long_function` fallback: suggest_extract_block (min_lines=5) при отсутствии вложенных def
+- ROADMAP обновлён: эти пункты перенесены в «Закрыто»; новый бэклог — dogfooding.
+
+### Итог
+- Фокус смещён на dogfooding — регулярные циклы на Eurika для валидации и метрик.
+
+---
+
 ## 67. Snapshot (2026-02-25) — extract_nested_function controlled scenario verify_success
 
 ### Scope

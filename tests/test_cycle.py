@@ -876,6 +876,38 @@ def test_apply_campaign_memory_allow_retry_keeps_operations(tmp_path: Path) -> N
     assert len(skipped) == 0
 
 
+def test_apply_campaign_memory_allow_low_risk_bypasses_remove_unused_import(tmp_path: Path) -> None:
+    """allow_low_risk=True lets remove_unused_import through campaign skip."""
+    import os
+
+    from cli.orchestration.prepare import apply_campaign_memory
+    from eurika.storage import SessionMemory
+
+    mem = SessionMemory(tmp_path)
+    rejected = [{"target_file": "bar.py", "kind": "remove_unused_import", "params": {}}]
+    mem.record("prior", approved=[], rejected=rejected)
+    ops = [
+        {"target_file": "foo.py", "kind": "split_module", "params": {"location": ""}},
+        {"target_file": "bar.py", "kind": "remove_unused_import", "params": {}},
+    ]
+    patch_plan = {"operations": ops}
+    orig = os.environ.get("EURIKA_CAMPAIGN_ALLOW_LOW_RISK")
+    try:
+        os.environ.pop("EURIKA_CAMPAIGN_ALLOW_LOW_RISK", None)
+        _out_plan, out_ops, skipped = apply_campaign_memory(
+            tmp_path,
+            patch_plan,
+            ops,
+            allow_retry=False,
+            allow_low_risk=True,
+        )
+        assert len(out_ops) == 2
+        assert len(skipped) == 0
+    finally:
+        if orig is not None:
+            os.environ["EURIKA_CAMPAIGN_ALLOW_LOW_RISK"] = orig
+
+
 def test_prepare_fix_cycle_reports_campaign_skipped_in_noop(tmp_path: Path) -> None:
     """No-op report includes campaign_skipped count when campaign filter removes ops."""
     from types import SimpleNamespace

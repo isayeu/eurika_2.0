@@ -261,6 +261,11 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
     return ops
 
 
+_REMOVE_UNUSED_IMPORT_SKIP: frozenset[str] = frozenset({
+    "eurika/agent/tool_contract.py",  # re-export layer; detector misses re-exports
+})
+
+
 def get_clean_imports_operations(project_root: Path) -> List[Dict[str, Any]]:
     """
     Build patch operations to remove unused imports (ROADMAP 2.4.2).
@@ -283,9 +288,11 @@ def get_clean_imports_operations(project_root: Path) -> List[Dict[str, Any]]:
             continue
         if not p.is_file():
             continue
+        rel = str(p.relative_to(root)).replace("\\", "/")
+        if rel in _REMOVE_UNUSED_IMPORT_SKIP:
+            continue
         if remove_unused_imports(p) is None:
             continue
-        rel = str(p.relative_to(root))
         ops.append(
             {
                 "target_file": rel,

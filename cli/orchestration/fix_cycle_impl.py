@@ -167,6 +167,7 @@ def run_fix_cycle_impl(
     verify_cmd: str | None = None,
     verify_timeout: int | None = None,
     allow_campaign_retry: bool = False,
+    allow_low_risk_campaign: bool = False,
     team_mode: bool = False,
     apply_approved: bool = False,
     approve_ops: str | None = None,
@@ -298,6 +299,7 @@ def run_fix_cycle_impl(
         no_clean_imports=no_clean_imports,
         no_code_smells=no_code_smells,
         allow_campaign_retry=allow_campaign_retry,
+        allow_low_risk_campaign=allow_low_risk_campaign,
         run_scan=run_scan,
     )
     if early is not None:

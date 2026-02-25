@@ -54,6 +54,7 @@ def run_cycle_entry(
     verify_cmd: str | None = None,
     verify_timeout: int | None = None,
     allow_campaign_retry: bool = False,
+    allow_low_risk_campaign: bool = False,
     online: bool = False,
     team_mode: bool = False,
     apply_approved: bool = False,
@@ -85,6 +86,7 @@ def run_cycle_entry(
                 verify_cmd=verify_cmd,
                 verify_timeout=verify_timeout,
                 allow_campaign_retry=allow_campaign_retry,
+                allow_low_risk_campaign=allow_low_risk_campaign,
                 team_mode=team_mode,
                 apply_approved=apply_approved,
                 approve_ops=approve_ops,
@@ -105,6 +107,7 @@ def run_cycle_entry(
                 verify_cmd=verify_cmd,
                 verify_timeout=verify_timeout,
                 allow_campaign_retry=allow_campaign_retry,
+                allow_low_risk_campaign=allow_low_risk_campaign,
                 online=online,
                 team_mode=team_mode,
                 apply_approved=apply_approved,
@@ -117,7 +120,7 @@ def run_cycle_entry(
         return _run_cycle_impl()
 
     from eurika.agent.runtime import run_agent_cycle
-    from eurika.agent.tool_contract import DefaultToolContract
+    from eurika.agent import DefaultToolContract
     from eurika.agent.tools import OrchestratorToolset
 
     runtime_mode_lit = cast(Literal["assist", "hybrid", "auto"], runtime_mode)
@@ -166,6 +169,7 @@ def run_full_cycle(
     verify_cmd: str | None = None,
     verify_timeout: int | None = None,
     allow_campaign_retry: bool = False,
+    allow_low_risk_campaign: bool = False,
     online: bool = False,
     team_mode: bool = False,
     apply_approved: bool = False,
@@ -206,6 +210,7 @@ def run_full_cycle(
         verify_cmd=verify_cmd,
         verify_timeout=verify_timeout,
         allow_campaign_retry=allow_campaign_retry,
+        allow_low_risk_campaign=allow_low_risk_campaign,
         team_mode=team_mode,
         apply_approved=apply_approved,
         approve_ops=approve_ops,

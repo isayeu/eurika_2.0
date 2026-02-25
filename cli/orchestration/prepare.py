@@ -278,16 +278,33 @@ def apply_session_rejections(
     return dict(patch_plan, operations=kept), kept, skipped
 
 
+_CAMPAIGN_BYPASS_LOW_RISK_KINDS = frozenset({"remove_unused_import"})
+
+
+def _allow_low_risk_campaign_bypass() -> bool:
+    """When True, low-risk ops (e.g. remove_unused_import) bypass campaign skip."""
+    import os
+
+    return os.environ.get("EURIKA_CAMPAIGN_ALLOW_LOW_RISK", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
 def apply_campaign_memory(
     path: Path,
     patch_plan: PatchPlan,
     operations: list[OperationRecord],
     *,
     allow_retry: bool = False,
+    allow_low_risk: bool = False,
 ) -> tuple[PatchPlan, list[OperationRecord], list[OperationRecord]]:
     """Skip ops rejected in any session or that failed verify 2+ times (ROADMAP 2.7.5).
-    Bypassed when EURIKA_IGNORE_CAMPAIGN=1 (e.g. --apply-suggested-policy)."""
+    Bypassed when EURIKA_IGNORE_CAMPAIGN=1 (e.g. --apply-suggested-policy).
+    When allow_low_risk or EURIKA_CAMPAIGN_ALLOW_LOW_RISK=1, low-risk kinds (remove_unused_import) bypass skip."""
     import os
+
     if allow_retry or os.environ.get("EURIKA_IGNORE_CAMPAIGN", "").strip() in {"1", "true", "yes"}:
         return patch_plan, operations, []
     from eurika.storage import SessionMemory, operation_key
@@ -296,11 +313,15 @@ def apply_campaign_memory(
     skip_keys = mem.campaign_keys_to_skip()
     if not skip_keys:
         return patch_plan, operations, []
+    allow_low_risk = allow_low_risk or _allow_low_risk_campaign_bypass()
     kept: list[OperationRecord] = []
     skipped: list[OperationRecord] = []
     for op in operations:
         if operation_key(op) in skip_keys:
-            skipped.append(op)
+            if allow_low_risk and str(op.get("kind") or "") in _CAMPAIGN_BYPASS_LOW_RISK_KINDS:
+                kept.append(op)
+            else:
+                skipped.append(op)
             continue
         kept.append(op)
     return dict(patch_plan, operations=kept), kept, skipped
@@ -386,6 +407,7 @@ def prepare_fix_cycle_operations(
     no_code_smells: bool,
     run_scan: Any,
     allow_campaign_retry: bool = False,
+    allow_low_risk_campaign: bool = False,
 ) -> tuple[dict[str, Any] | None, Any, PatchPlan | None, list[OperationRecord]]:
     """Prepare diagnose result, patch plan and operations; return early payload on stop conditions."""
     if not skip_scan:
@@ -427,6 +449,7 @@ def prepare_fix_cycle_operations(
         patch_plan,
         operations,
         allow_retry=allow_campaign_retry,
+        allow_low_risk=allow_low_risk_campaign,
     )
     patch_plan, operations, session_skipped = apply_session_rejections(
         path, patch_plan, operations, session_id=session_id

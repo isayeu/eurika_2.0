@@ -8,7 +8,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from eurika.agent.models import ToolResult
-from eurika.agent.tool_contract import DefaultToolContract
+from eurika.agent import DefaultToolContract
 
 
 def test_patch_dry_run_reproducible(tmp_path: Path) -> None:

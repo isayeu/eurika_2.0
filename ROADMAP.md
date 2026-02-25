@@ -179,15 +179,16 @@
 - B. Продуктовая готовность закрыт до 6/10: критерии B.1–B.6 выполнены (ROADMAP + CYCLE_REPORT #65)
 - Uplift refactor/extract action-kind (phase 1+2): outcome-семантика `not_applied|verify_fail|verify_success`, hardening extract-функций, детальная skip-диагностика (CYCLE_REPORT #66)
 
+**Закрыто (CYCLE_REPORT #67, #68):**
+
+- long_function|extract_nested_function: extract with params (1–3 parent vars), verify_success в controlled scenario
+- refactor_code_smell — по умолчанию не эмитить; `EURIKA_EMIT_CODE_SMELL_TODO=1` для TODO-маркеров
+- deep_nesting — EURIKA_DEEP_NESTING_MODE=heuristic|hybrid|llm|skip, suggest_extract_block + extract_block_to_helper
+- long_function fallback — suggest_extract_block (if/for/while 5+ строк) когда extract_nested_function не срабатывает
+
 **Новый бэклог (следующие шаги):**
 
-- long_function|extract_nested_function: extend suggest/extract — extract with params (1–3 parent vars) — повышение success rate
-
-**Дальнейшая доработка (long_function / deep_nesting):**
-
-- refactor_code_smell — по умолчанию не эмитить при отсутствии реального фикса; `EURIKA_EMIT_CODE_SMELL_TODO=1` для старого поведения (TODO-маркеры)
-- deep_nesting — гибрид: suggest_extract_block + extract_block_to_helper (эвристика для простых блоков); EURIKA_DEEP_NESTING_MODE=heuristic|hybrid|llm|skip; TODO/LLM при неудаче
-- long_function без вложенных def — fallback на suggest_extract_block (if/for/while блок 5+ строк) когда extract_nested_function не срабатывает
+- dogfooding: регулярные циклы scan→doctor→fix на Eurika, report-snapshot, фиксация метрик
 
 ### Пакет 3.6 — Operability UX (практики из Cursor)
 

@@ -3,9 +3,16 @@
 import os
 from pathlib import Path
 
+import pytest
+
 
 def test_load_environment_overrides_llm_keys_from_dotenv(tmp_path: Path, monkeypatch) -> None:
-    """Project .env should override exported OPENAI/OLLAMA routing keys."""
+    """Project .env should override exported OPENAI/OLLAMA routing keys. Requires python-dotenv."""
+    try:
+        import dotenv
+    except ImportError:
+        pytest.skip("python-dotenv not installed (pip install python-dotenv or eurika[env])")
+
     env_file = tmp_path / ".env"
     env_file.write_text(
         "\n".join(

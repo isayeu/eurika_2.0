@@ -30,8 +30,9 @@ def _load_environment(env_path: Path | str = ".env") -> None:
     except ImportError:
         return
 
-    load_dotenv(dotenv_path=env_path, override=False)
-    values = dotenv_values(env_path)
+    path = str(env_path) if env_path else ".env"
+    load_dotenv(dotenv_path=path, override=False)
+    values = dotenv_values(dotenv_path=path)
     keys = (
         "OPENAI_API_KEY",
         "OPENAI_MODEL",

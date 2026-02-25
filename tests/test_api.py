@@ -14,6 +14,7 @@ from eurika.api import (
     get_diff,
     get_patch_plan,
     get_code_smell_operations,
+    get_clean_imports_operations,
     get_pending_plan,
     save_approvals,
 )
@@ -347,5 +348,22 @@ def test_get_code_smell_operations_skips_second_todo_same_smell_type(tmp_path: P
         o.get("kind") == "refactor_code_smell"
         and o.get("smell_type") == "long_function"
         and o.get("target_file") == "big.py"
+        for o in ops
+    )
+
+
+def test_get_clean_imports_operations_skips_reexport_modules(tmp_path: Path) -> None:
+    """REMOVE_UNUSED_IMPORT_SKIP: tool_contract.py (re-export layer) not proposed."""
+    agent_dir = tmp_path / "eurika" / "agent"
+    agent_dir.mkdir(parents=True)
+    # Re-export style: import not used in file body but re-exported
+    (agent_dir / "tool_contract.py").write_text(
+        "from .other import DefaultToolContract\nx = 1\n",
+        encoding="utf-8",
+    )
+    (agent_dir / "other.py").write_text("class DefaultToolContract: pass\n", encoding="utf-8")
+    ops = get_clean_imports_operations(tmp_path)
+    assert not any(
+        o.get("kind") == "remove_unused_import" and "tool_contract" in str(o.get("target_file", ""))
         for o in ops
     )

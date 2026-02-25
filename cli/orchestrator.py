@@ -69,6 +69,7 @@ def run_cycle(
     verify_cmd: str | None = None,
     verify_timeout: int | None = None,
     allow_campaign_retry: bool = False,
+    allow_low_risk_campaign: bool = False,
     online: bool = False,
     team_mode: bool = False,
     apply_approved: bool = False,
@@ -91,6 +92,7 @@ def run_cycle(
         verify_cmd=verify_cmd,
         verify_timeout=verify_timeout,
         allow_campaign_retry=allow_campaign_retry,
+        allow_low_risk_campaign=allow_low_risk_campaign,
         online=online,
         team_mode=team_mode,
         apply_approved=apply_approved,
@@ -128,6 +130,7 @@ def run_full_cycle(
     verify_cmd: str | None = None,
     verify_timeout: int | None = None,
     allow_campaign_retry: bool = False,
+    allow_low_risk_campaign: bool = False,
     online: bool = False,
     team_mode: bool = False,
     apply_approved: bool = False,
@@ -149,6 +152,7 @@ def run_full_cycle(
         verify_cmd=verify_cmd,
         verify_timeout=verify_timeout,
         allow_campaign_retry=allow_campaign_retry,
+        allow_low_risk_campaign=allow_low_risk_campaign,
         online=online,
         run_doctor_cycle_fn=run_doctor_cycle,
         run_fix_cycle_fn=run_fix_cycle,
@@ -170,6 +174,7 @@ def _prepare_fix_cycle_operations(
     no_clean_imports: bool,
     no_code_smells: bool,
     allow_campaign_retry: bool = False,
+    allow_low_risk_campaign: bool = False,
     run_scan: Any,
 ) -> tuple[dict[str, Any] | None, Any, PatchPlan | None, list[OperationRecord]]:
     """Compatibility wrapper; delegated to orchestration.prepare."""
@@ -183,6 +188,7 @@ def _prepare_fix_cycle_operations(
         no_clean_imports=no_clean_imports,
         no_code_smells=no_code_smells,
         allow_campaign_retry=allow_campaign_retry,
+        allow_low_risk_campaign=allow_low_risk_campaign,
         run_scan=run_scan,
     )
 
@@ -202,6 +208,7 @@ def _run_fix_cycle_impl(
     verify_cmd: str | None = None,
     verify_timeout: int | None = None,
     allow_campaign_retry: bool = False,
+    allow_low_risk_campaign: bool = False,
     team_mode: bool = False,
     apply_approved: bool = False,
     approve_ops: str | None = None,
@@ -222,6 +229,7 @@ def _run_fix_cycle_impl(
         verify_cmd=verify_cmd,
         verify_timeout=verify_timeout,
         allow_campaign_retry=allow_campaign_retry,
+        allow_low_risk_campaign=allow_low_risk_campaign,
         team_mode=team_mode,
         apply_approved=apply_approved,
         approve_ops=approve_ops,
