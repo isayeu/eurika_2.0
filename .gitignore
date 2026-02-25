@@ -7,6 +7,7 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.venv/
 *.egg-info/
 .eggs/
 dist/
@@ -15,6 +16,7 @@ build/
 # IDE
 .idea/
 .vscode/
+.cursor/
 *.swp
 *.swo
 
