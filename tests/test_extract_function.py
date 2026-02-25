@@ -74,6 +74,29 @@ def test_extract_nested_function_with_extra_params(tmp_path: Path) -> None:
     assert 'return inner(x)' in content
 
 
+def test_extract_nested_function_uses_correct_parent_context(tmp_path: Path) -> None:
+    """Extraction should target the requested parent, not another nested context with same helper name."""
+    code = """
+def target_parent():
+    def helper():
+        return 1
+    return helper()
+
+def other_parent():
+    def helper():
+        return 2
+    return helper()
+"""
+    (tmp_path / "mod.py").write_text(code)
+    result = extract_nested_function(tmp_path / "mod.py", "target_parent", "helper")
+    assert result is not None
+    (tmp_path / "mod.py").write_text(result)
+    content = (tmp_path / "mod.py").read_text()
+    assert content.count("def helper():") == 2
+    assert "return helper()" in content
+    assert content.index("def helper():") < content.index("def target_parent():")
+
+
 # --- deep_nesting: extract_block_to_helper ---
 
 

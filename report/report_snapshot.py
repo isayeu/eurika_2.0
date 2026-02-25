@@ -176,7 +176,13 @@ def format_report_snapshot(path: Path) -> str:
             for k, v in list(by_action.items())[:8]:
                 s, f = (v.get('success', 0), v.get('fail', 0))
                 rate = f'{100 * s / (s + f):.0f}%' if s + f else 'N/A'
-                lines.append(f'- {k}: {s} success, {f} fail ({rate})')
+                not_applied = v.get('not_applied', 0)
+                verify_ok = v.get('verify_success', s)
+                verify_fail = v.get('verify_fail', f)
+                lines.append(
+                    f'- {k}: {s} success, {f} fail ({rate}); '
+                    f'verify_success={verify_ok}, verify_fail={verify_fail}, not_applied={not_applied}'
+                )
             lines.append('')
         if by_smell:
             lines.append('### by_smell_action')

@@ -738,6 +738,27 @@ def test_append_fix_cycle_memory_tolerates_memory_write_error(tmp_path: Path) ->
         append_fix_cycle_memory(tmp_path, result, operations, report, verify_success=True)
 
 
+def test_append_fix_cycle_memory_records_not_applied_outcome(tmp_path: Path) -> None:
+    """Learning record should preserve not_applied outcome for accurate action stats."""
+    from types import SimpleNamespace
+    from cli.orchestration.apply_stage import append_fix_cycle_memory
+    from eurika.storage import ProjectMemory
+
+    result = SimpleNamespace(output={"summary": {"risks": []}})
+    operations = [{"target_file": "a.py", "kind": "extract_nested_function"}]
+    report = {
+        "modified": [],
+        "operation_results": [
+            {"execution_outcome": "not_applied", "skipped_reason": "extract_nested_function: parent not found", "applied": False}
+        ],
+        "run_id": "r1",
+        "verify_duration_ms": 0,
+    }
+    append_fix_cycle_memory(tmp_path, result, operations, report, verify_success=True)
+    stats = ProjectMemory(tmp_path).learning.aggregate_by_action_kind()
+    assert stats["extract_nested_function"]["not_applied"] >= 1
+
+
 def test_fix_apply_approved_missing_pending_plan_returns_error(tmp_path: Path) -> None:
     """--apply-approved should fail predictably when pending_plan.json is missing."""
     from cli.orchestrator import run_cycle

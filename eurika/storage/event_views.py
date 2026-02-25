@@ -56,6 +56,20 @@ def _is_strong_refactor_code_smell_success(op: Dict[str, Any]) -> bool:
     return True
 
 
+def _resolve_learning_outcome(op: Dict[str, Any], verify_success: Optional[bool]) -> str:
+    """Resolve per-operation learning outcome for aggregation."""
+    outcome = str(op.get("execution_outcome") or "").strip()
+    if outcome in {"not_applied", "verify_success", "verify_fail"}:
+        return outcome
+    if op.get("applied") is False:
+        return "not_applied"
+    if verify_success is True:
+        return "verify_success"
+    if verify_success is False:
+        return "verify_fail"
+    return "not_applied"
+
+
 def _migrate_legacy_to_events(
     events: "EventStore",
     storage_path: Path,
@@ -140,13 +154,28 @@ class LearningView:
         for r in records:
             for op in r.operations:
                 kind = op.get("kind", "unknown")
-                by_kind = stats.setdefault(kind, {"total": 0, "success": 0, "fail": 0})
+                by_kind = stats.setdefault(
+                    kind,
+                    {
+                        "total": 0,
+                        "success": 0,
+                        "fail": 0,
+                        "verify_success": 0,
+                        "verify_fail": 0,
+                        "not_applied": 0,
+                    },
+                )
                 by_kind["total"] += 1
-                if r.verify_success is True:
+                outcome = _resolve_learning_outcome(op, r.verify_success)
+                if outcome == "verify_success":
+                    by_kind["verify_success"] += 1
                     if _is_strong_refactor_code_smell_success(op):
                         by_kind["success"] += 1
-                elif r.verify_success is False:
+                elif outcome == "verify_fail":
+                    by_kind["verify_fail"] += 1
                     by_kind["fail"] += 1
+                else:
+                    by_kind["not_applied"] += 1
         return stats
 
     def aggregate_by_smell_action(self) -> Dict[str, Dict[str, Any]]:
@@ -158,13 +187,28 @@ class LearningView:
                 kind = op.get("kind", "unknown")
                 smell = op.get("smell_type") or "unknown"
                 key = f"{smell}{sep}{kind}"
-                by_key = stats.setdefault(key, {"total": 0, "success": 0, "fail": 0})
+                by_key = stats.setdefault(
+                    key,
+                    {
+                        "total": 0,
+                        "success": 0,
+                        "fail": 0,
+                        "verify_success": 0,
+                        "verify_fail": 0,
+                        "not_applied": 0,
+                    },
+                )
                 by_key["total"] += 1
-                if r.verify_success is True:
+                outcome = _resolve_learning_outcome(op, r.verify_success)
+                if outcome == "verify_success":
+                    by_key["verify_success"] += 1
                     if _is_strong_refactor_code_smell_success(op):
                         by_key["success"] += 1
-                elif r.verify_success is False:
+                elif outcome == "verify_fail":
+                    by_key["verify_fail"] += 1
                     by_key["fail"] += 1
+                else:
+                    by_key["not_applied"] += 1
         return stats
 
 

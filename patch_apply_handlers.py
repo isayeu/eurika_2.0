@@ -6,7 +6,12 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from eurika.refactor.extract_class import extract_class
-from eurika.refactor.extract_function import extract_block_to_helper, extract_nested_function
+from eurika.refactor.extract_function import (
+    diagnose_extract_block_failure,
+    diagnose_extract_nested_failure,
+    extract_block_to_helper,
+    extract_nested_function,
+)
 from eurika.refactor.introduce_facade import introduce_facade
 from eurika.refactor.remove_import import remove_import_from_file
 from eurika.refactor.remove_unused_import import remove_unused_imports
@@ -258,18 +263,24 @@ def handle_non_default_kind(
     ):
         try:
             extra_params = params.get("extra_params")
-            new_content = extract_block_to_helper(
+            extracted_content: str | None = extract_block_to_helper(
                 path,
                 params["location"],
                 params["block_start_line"],
                 params["helper_name"],
                 extra_params=extra_params if isinstance(extra_params, list) else None,
             )
-            if new_content is None:
-                skip_cb("extract_block_to_helper: extraction failed")
+            if extracted_content is None:
+                skip_cb(
+                    diagnose_extract_block_failure(
+                        path,
+                        str(params["location"]),
+                        int(params["block_start_line"]),
+                    )
+                )
                 return True, backup_dir
             backup_dir, changed = write_single_file_change(
-                root, path, target_file, new_content, run_id, backup_dir, do_backup
+                root, path, target_file, extracted_content, run_id, backup_dir, do_backup
             )
             if changed:
                 modified.append(target_file)
@@ -284,15 +295,21 @@ def handle_non_default_kind(
     ):
         try:
             extra_params = params.get("extra_params")
-            new_content = extract_nested_function(
+            nested_content: str | None = extract_nested_function(
                 path, params["location"], params["nested_function_name"],
                 extra_params=extra_params if isinstance(extra_params, list) else None,
             )
-            if new_content is None:
-                skip_cb("extract_nested_function: extraction failed")
+            if nested_content is None:
+                skip_cb(
+                    diagnose_extract_nested_failure(
+                        path,
+                        str(params["location"]),
+                        str(params["nested_function_name"]),
+                    )
+                )
                 return True, backup_dir
             backup_dir, changed = write_single_file_change(
-                root, path, target_file, new_content, run_id, backup_dir, do_backup
+                root, path, target_file, nested_content, run_id, backup_dir, do_backup
             )
             if changed:
                 modified.append(target_file)

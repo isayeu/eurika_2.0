@@ -162,6 +162,20 @@ def test_apply_extract_nested_function(tmp_path: Path) -> None:
     assert "return inner()" in content
 
 
+def test_apply_extract_nested_function_reports_diagnostic_skip_reason(tmp_path: Path) -> None:
+    """When extraction fails, skipped_reasons should contain a concrete diagnostic reason."""
+    (tmp_path / "m.py").write_text("def long_foo():\n    return 1\n")
+    plan = {"operations": [{
+        "target_file": "m.py",
+        "kind": "extract_nested_function",
+        "params": {"location": "long_foo", "nested_function_name": "inner"},
+    }]}
+    report = apply_patch_plan(tmp_path, plan, dry_run=False, backup=False)
+    reasons = report.get("skipped_reasons") or {}
+    assert "m.py" in reasons
+    assert reasons["m.py"].startswith("extract_nested_function:")
+
+
 def test_apply_extract_block_to_helper(tmp_path: Path) -> None:
     """extract_block_to_helper: real extraction when deep_nesting block is extractable."""
     code = """

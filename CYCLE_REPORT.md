@@ -2,6 +2,48 @@
 
 ---
 
+## 66. Snapshot (2026-02-23) — Uplift refactor/extract action-kind (phase 1+2)
+
+### Scope
+- выполнен двухфазный uplift по проблемным action-kind:
+  - `refactor_code_smell`
+  - `extract_nested_function`
+  - `extract_block_to_helper`
+- **Фаза 1 (метрики/семантика outcome):**
+  - в `fix`-контуре добавлен per-op `execution_outcome` (`not_applied|verify_success|verify_fail`);
+  - learning-агрегаты разделяют `not_applied`, `verify_success`, `verify_fail` (без смешивания с `fail`);
+  - `report-snapshot` показывает расширенные counters в `by_action_kind`.
+- **Фаза 2 (extract hardening):**
+  - `extract_nested_function`: устойчивый выбор parent-context и post-validation AST (`parse/compile`) перед возвратом;
+  - `extract_block_to_helper`: стабильный выбор target-block в parent-функции, post-validation AST;
+  - `patch_apply_handlers`: детальные причины skip через `diagnose_extract_*_failure(...)` вместо общего `extraction failed`.
+
+### Проверка
+- `pytest` regression pack:
+  - `tests/test_cycle.py`
+  - `tests/test_api.py`
+  - `tests/test_patch_apply.py`
+  - `tests/test_extract_function.py`
+  - `tests/test_storage_memory.py`
+  - `tests/test_architecture_learning.py`
+  - результат: `107 passed`
+- `mypy` по изменённым модулям:
+  - `cli/orchestration/apply_stage.py`
+  - `eurika/storage/event_views.py`
+  - `architecture_learning.py`
+  - `eurika/refactor/extract_function.py`
+  - `patch_apply_handlers.py`
+  - `report/report_snapshot.py`
+  - результат: `Success: no issues found in 6 source files`
+- `eurika report-snapshot .`:
+  - `by_action_kind` теперь показывает `verify_success/verify_fail/not_applied` рядом с `success/fail`.
+
+### Итог
+- метрики action-kind стали операционно прозрачнее (`not_applied` отделён от `verify_fail`);
+- extract-пайплайн получил более предсказуемую диагностику и синтаксическую валидацию результата.
+
+---
+
 ## 65. Snapshot (2026-02-23) — Product readiness B closed (6/10)
 
 ### Scope

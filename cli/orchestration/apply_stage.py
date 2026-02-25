@@ -152,28 +152,50 @@ def append_fix_cycle_memory(
     from eurika.storage import ProjectMemory, SessionMemory
 
     try:
+        op_results = report.get("operation_results") or []
+        learning_operations: list[OperationRecord] = []
+        for idx, op in enumerate(operations):
+            op2 = dict(op)
+            if idx < len(op_results) and isinstance(op_results[idx], dict):
+                op_result = op_results[idx]
+                op2["execution_outcome"] = op_result.get("execution_outcome")
+                op2["execution_reason"] = op_result.get("skipped_reason")
+                op2["applied"] = op_result.get("applied", False)
+            learning_operations.append(op2)
+
         memory = ProjectMemory(path)
         summary = result.output.get("summary", {}) or {}
         risks = list(summary.get("risks", []))
         modified = report.get("modified", [])
+        modules_for_learning = modified or [
+            str(op.get("target_file"))
+            for op in operations
+            if op.get("target_file")
+        ]
         if verify_success is False and operations:
             SessionMemory(path).record_verify_failure(operations)
-        # Only record learning when we actually modified files (skip inflates success for unapplied ops)
-        if modified:
+        if operations:
             memory.learning.append(
                 project_root=path,
-                modules=modified,
-                operations=operations,
+                modules=modules_for_learning,
+                operations=learning_operations,
                 risks=risks,
                 verify_success=verify_success,
             )
             from eurika.storage.global_memory import append_learn_to_global
-            append_learn_to_global(path, modified, operations, risks, verify_success)
+            append_learn_to_global(
+                path,
+                modules_for_learning,
+                learning_operations,
+                risks,
+                verify_success,
+            )
         memory.events.append_event(
             type="patch",
             input={"operations_count": len(operations)},
             output={
                 "modified": modified,
+                "skipped": report.get("skipped", []),
                 "run_id": report.get("run_id"),
                 "verify_success": verify_success,
                 "verify_duration_ms": report.get("verify_duration_ms"),
@@ -314,18 +336,34 @@ def execute_fix_apply_stage(
     verify_outcome = report["verify"].get("success")
     expls = []
     op_results = []
+    modified_set = set(report.get("modified") or [])
+    skipped_reasons = report.get("skipped_reasons") or {}
     for op in operations:
+        target_file = str(op.get("target_file") or "")
+        skipped_reason = skipped_reasons.get(target_file)
+        applied = bool(target_file and target_file in modified_set and skipped_reason is None)
+        if not applied:
+            execution_outcome = "not_applied"
+        elif verify_outcome is True:
+            execution_outcome = "verify_success"
+        elif verify_outcome is False:
+            execution_outcome = "verify_fail"
+        else:
+            execution_outcome = "verify_unknown"
+
         expl = dict(op.get("explainability") or {})
         expl["verify_outcome"] = verify_outcome
+        expl["execution_outcome"] = execution_outcome
         expls.append(expl)
         op_results.append(
             {
-                "target_file": op.get("target_file"),
+                "target_file": target_file,
                 "kind": op.get("kind"),
                 "approval_state": op.get("approval_state", "approved"),
                 "critic_verdict": op.get("critic_verdict", "allow"),
-                "applied": True,
-                "skipped_reason": None,
+                "applied": applied,
+                "execution_outcome": execution_outcome,
+                "skipped_reason": (skipped_reason or ("not_modified" if not applied else None)),
             }
         )
     report["operation_explanations"] = expls

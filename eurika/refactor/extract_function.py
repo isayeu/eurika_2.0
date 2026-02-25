@@ -95,6 +95,52 @@ def _used_from_parent(nested: ast.FunctionDef, parent: ast.FunctionDef) -> Set[s
     return used & _parent_locals(parent)
 
 
+def _validate_and_unparse_module(tree: ast.Module) -> Optional[str]:
+    """Return source only when resulting AST is syntactically valid."""
+    try:
+        ast.fix_missing_locations(tree)
+        rendered = ast.unparse(tree)
+        reparsed = ast.parse(rendered)
+        compile(reparsed, "<eurika-extract-validate>", "exec")
+        return rendered
+    except Exception:
+        return None
+
+
+def _find_parent_with_nested(
+    tree: ast.Module,
+    parent_function_name: str,
+    nested_function_name: str,
+) -> Optional[Tuple[ast.FunctionDef, ast.AST]]:
+    """
+    Find a concrete parent function node and its module-level container.
+
+    Container is either the parent function itself (module-level function) or
+    a module-level class/function that contains the parent.
+    """
+    candidates: List[Tuple[ast.FunctionDef, ast.AST]] = []
+
+    def visit(node: ast.AST, container: ast.AST) -> None:
+        body = list(getattr(node, "body", []) or [])
+        for child in body:
+            next_container = child if isinstance(node, ast.Module) else container
+            if isinstance(child, ast.FunctionDef):
+                if child.name == parent_function_name:
+                    for stmt in child.body:
+                        if isinstance(stmt, ast.FunctionDef) and stmt.name == nested_function_name:
+                            candidates.append((child, next_container))
+                            break
+                visit(child, next_container)
+            elif isinstance(child, ast.ClassDef):
+                visit(child, next_container)
+
+    visit(tree, tree)
+    if not candidates:
+        return None
+    # Prefer the earliest concrete location for deterministic behavior.
+    return min(candidates, key=lambda item: getattr(item[0], "lineno", 0))
+
+
 def suggest_extract_nested_function(
     file_path: Path,
     function_name: str,
@@ -175,24 +221,6 @@ def extract_nested_function(
     except SyntaxError:
         return None
 
-    def find_and_extract(node: ast.AST) -> Optional[ast.FunctionDef]:
-        if isinstance(node, ast.FunctionDef):
-            if node.name == parent_function_name:
-                for stmt in node.body:
-                    if isinstance(stmt, ast.FunctionDef) and stmt.name == nested_function_name:
-                        return stmt
-                return None
-            for stmt in node.body:
-                found = find_and_extract(stmt)
-                if found:
-                    return found
-        elif isinstance(node, (ast.ClassDef, ast.Module)):
-            for stmt in getattr(node, "body", []):
-                found = find_and_extract(stmt)
-                if found:
-                    return found
-        return None
-
     def add_extra_args_to_calls(node: ast.AST) -> None:
         for n in ast.walk(node):
             if isinstance(n, ast.Call) and isinstance(n.func, ast.Name):
@@ -200,25 +228,29 @@ def extract_nested_function(
                     for p in extra:
                         n.args.append(ast.Name(id=p, ctx=ast.Load()))
 
-    def remove_nested_from_parent(node: ast.AST) -> bool:
-        if isinstance(node, ast.FunctionDef) and node.name == parent_function_name:
-            add_extra_args_to_calls(node)
-            node.body = [
-                s for s in node.body
-                if not (isinstance(s, ast.FunctionDef) and s.name == nested_function_name)
-            ]
-            return True
-        for stmt in getattr(node, "body", []):
-            if remove_nested_from_parent(stmt):
-                return True
-        return False
+    parent_and_container = _find_parent_with_nested(
+        tree, parent_function_name, nested_function_name
+    )
+    if parent_and_container is None:
+        return None
+    parent_node, container_node = parent_and_container
 
-    nested = find_and_extract(tree)
+    nested: Optional[ast.FunctionDef] = None
+    retained_body: List[ast.stmt] = []
+    for stmt in parent_node.body:
+        if (
+            nested is None
+            and isinstance(stmt, ast.FunctionDef)
+            and stmt.name == nested_function_name
+        ):
+            nested = stmt
+            continue
+        retained_body.append(stmt)
     if nested is None:
         return None
 
-    if not remove_nested_from_parent(tree):
-        return None
+    add_extra_args_to_calls(parent_node)
+    parent_node.body = retained_body
 
     new_args_list = list(nested.args.args)
     for p in extra:
@@ -247,30 +279,18 @@ def extract_nested_function(
     )
     ast.fix_missing_locations(extracted)
 
-    # Find insert index: before the module-level node containing parent (class or function)
     insert_idx: Optional[int] = None
     for i, stmt in enumerate(tree.body):
-        if isinstance(stmt, ast.FunctionDef) and stmt.name == parent_function_name:
+        if stmt is container_node:
             insert_idx = i
             break
-        if isinstance(stmt, ast.ClassDef):
-            for m in stmt.body:
-                if isinstance(m, ast.FunctionDef) and m.name == parent_function_name:
-                    insert_idx = i
-                    break
-            if insert_idx is not None:
-                break
     if insert_idx is None:
         return None
 
     new_body = list(tree.body)
     new_body.insert(insert_idx, extracted)
     tree.body = new_body
-
-    try:
-        return ast.unparse(tree)
-    except Exception:
-        return None
+    return _validate_and_unparse_module(tree)
 
 
 def _block_has_control_flow_exit(block: List[ast.stmt]) -> bool:
@@ -373,7 +393,7 @@ def suggest_extract_block(
         return max((_nesting_depth(c) for c in ast.iter_child_nodes(n)), default=0)
 
     block_types = (ast.If, ast.For, ast.While, ast.Try, ast.With)
-    candidates: List[Tuple[ast.AST, List[ast.stmt], int, int]] = []
+    candidates: List[Tuple[ast.stmt, List[ast.stmt], int, int]] = []
 
     def collect_blocks(node: ast.AST, depth: int) -> None:
         if isinstance(node, block_types):
@@ -431,49 +451,52 @@ def extract_block_to_helper(
         return None
 
     block_types = (ast.If, ast.For, ast.While, ast.Try, ast.With)
-    target_block: Optional[Tuple[ast.AST, List[ast.stmt], ast.AST]] = None
-
-    def find_block(node: ast.AST) -> bool:
-        nonlocal target_block
-        if isinstance(node, block_types) and getattr(node, "lineno", None) == block_start_line:
-            body = getattr(node, "body", None)
-            if body and isinstance(body, list):
-                target_block = (node, body, node)
-                return True
-        for child in ast.iter_child_nodes(node):
-            if find_block(child):
-                return True
-        return False
-
-    for stmt in ast.walk(tree):
-        if isinstance(stmt, ast.FunctionDef) and stmt.name == parent_function_name:
-            if find_block(stmt):
-                break
-
-    if not target_block:
+    parent_func: Optional[ast.FunctionDef] = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == parent_function_name:
+            parent_func = node
+            break
+    if parent_func is None:
         return None
 
-    block_node, body, _ = target_block
+    candidates: List[Tuple[ast.AST, List[ast.stmt], int, int]] = []
+
+    def collect_blocks(node: ast.AST, depth: int) -> None:
+        if isinstance(node, block_types):
+            body = getattr(node, "body", None)
+            if body and isinstance(body, list):
+                lineno = int(getattr(node, "lineno", -1) or -1)
+                line_delta = abs(lineno - block_start_line) if lineno > 0 else 10**6
+                candidates.append((node, body, line_delta, depth))
+        for child in ast.iter_child_nodes(node):
+            collect_blocks(child, depth + 1)
+
+    collect_blocks(parent_func, 0)
+    if not candidates:
+        return None
+    # Prefer exact line match, then deeper block, then smallest delta.
+    block_node, body, _, _ = sorted(
+        candidates,
+        key=lambda item: (item[2], -item[3], getattr(item[0], "lineno", 10**9)),
+    )[0]
 
     def replace_body_with_call(node: ast.AST) -> bool:
         if node is block_node:
-            call_args = [ast.Name(id=p, ctx=ast.Load()) for p in extra]
+            call_args: List[ast.expr] = [ast.Name(id=p, ctx=ast.Load()) for p in extra]
             call = ast.Expr(ast.Call(ast.Name(id=helper_name, ctx=ast.Load()), call_args, []))
-            if isinstance(node, ast.For):
-                node.body = [call]
-            elif isinstance(node, ast.While):
-                node.body = [call]
-            elif isinstance(node, ast.With):
-                node.body = [call]
-            elif isinstance(node, ast.If):
-                node.body = [call]
+            typed_node = node
+            if isinstance(typed_node, (ast.If, ast.For, ast.While, ast.Try, ast.With)):
+                typed_node.body = [call]
+            else:
+                return False
             return True
         for child in ast.iter_child_nodes(node):
             if replace_body_with_call(child):
                 return True
         return False
 
-    replace_body_with_call(tree)
+    if not replace_body_with_call(parent_func):
+        return None
 
     args_list = [ast.arg(arg=p) for p in extra]
     extracted = ast.FunctionDef(
@@ -513,10 +536,76 @@ def extract_block_to_helper(
     new_body.insert(insert_idx, extracted)
     tree.body = new_body
 
+    return _validate_and_unparse_module(tree)
+
+
+def diagnose_extract_nested_failure(
+    file_path: Path,
+    parent_function_name: str,
+    nested_function_name: str,
+) -> str:
+    """Return a stable, human-readable reason when nested extraction returns None."""
     try:
-        return ast.unparse(tree)
-    except Exception:
-        return None
+        content = file_path.read_text(encoding="utf-8")
+    except OSError:
+        return "extract_nested_function: file read failed"
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return "extract_nested_function: source has syntax errors"
+
+    found = _find_parent_with_nested(tree, parent_function_name, nested_function_name)
+    if found is None:
+        return "extract_nested_function: parent or nested function not found"
+    parent_node, _ = found
+    nested_node: Optional[ast.FunctionDef] = None
+    for stmt in parent_node.body:
+        if isinstance(stmt, ast.FunctionDef) and stmt.name == nested_function_name:
+            nested_node = stmt
+            break
+    if nested_node is None:
+        return "extract_nested_function: nested function not found in parent body"
+    if _nested_uses_parent_locals(nested_node, parent_node):
+        return "extract_nested_function: nested uses unsupported parent locals"
+    return "extract_nested_function: AST transform validation failed"
+
+
+def diagnose_extract_block_failure(
+    file_path: Path,
+    parent_function_name: str,
+    block_start_line: int,
+) -> str:
+    """Return a stable, human-readable reason when block extraction returns None."""
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except OSError:
+        return "extract_block_to_helper: file read failed"
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return "extract_block_to_helper: source has syntax errors"
+
+    parent_func: Optional[ast.FunctionDef] = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == parent_function_name:
+            parent_func = node
+            break
+    if parent_func is None:
+        return "extract_block_to_helper: parent function not found"
+
+    block_types = (ast.If, ast.For, ast.While, ast.Try, ast.With)
+    candidates = [
+        n
+        for n in ast.walk(parent_func)
+        if isinstance(n, block_types)
+        and isinstance(getattr(n, "body", None), list)
+        and getattr(n, "body", None)
+    ]
+    if not candidates:
+        return "extract_block_to_helper: no extractable blocks in parent function"
+    if not any(int(getattr(n, "lineno", -1) or -1) == block_start_line for n in candidates):
+        return "extract_block_to_helper: target block line not found"
+    return "extract_block_to_helper: AST transform validation failed"
 
 
 # TODO (eurika): refactor deep_nesting '_names_assigned_in' — consider extracting nested block

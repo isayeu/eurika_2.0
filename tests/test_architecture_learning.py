@@ -22,3 +22,20 @@ def test_learning_store_append_and_aggregate(tmp_path: Path) -> None:
     assert by_smell['bottleneck|introduce_facade']['total'] == 1
     assert by_smell['bottleneck|refactor_module']['total'] == 1
     assert by_smell['bottleneck|refactor_module']['fail'] == 1
+
+
+def test_learning_store_tracks_not_applied_outcome(tmp_path: Path) -> None:
+    """Operations with execution_outcome=not_applied should be separated from verify_fail."""
+    store = LearningStore(storage_path=tmp_path / 'architecture_learning.json')
+    store.append(
+        project_root=tmp_path,
+        modules=['m1.py'],
+        operations=[{'kind': 'extract_nested_function', 'execution_outcome': 'not_applied'}],
+        risks=[],
+        verify_success=True,
+    )
+    stats = store.aggregate_by_action_kind()
+    assert stats['extract_nested_function']['total'] == 1
+    assert stats['extract_nested_function']['not_applied'] == 1
+    assert stats['extract_nested_function']['success'] == 0
+    assert stats['extract_nested_function']['fail'] == 0

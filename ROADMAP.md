@@ -177,6 +177,7 @@
 - UI.md обновлён и закрыт как MVP-гайд по Web UI (serve, tabs, run-cycle/terminal/approve/chat)
 - README обновлён под продуктовый onboarding: venv-нейтральный quick start + базовые команды `scan/doctor/fix --dry-run/serve` (CYCLE_REPORT #64)
 - B. Продуктовая готовность закрыт до 6/10: критерии B.1–B.6 выполнены (ROADMAP + CYCLE_REPORT #65)
+- Uplift refactor/extract action-kind (phase 1+2): outcome-семантика `not_applied|verify_fail|verify_success`, hardening extract-функций, детальная skip-диагностика (CYCLE_REPORT #66)
 
 **Новый бэклог (следующие шаги):**
 

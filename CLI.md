@@ -476,6 +476,8 @@ eurika agent cycle . -q          # только итоговый JSON на stdou
 ### eurika agent learning-summary [path]
 
 Статистика по patch-apply + verify: `by_action_kind`, `by_smell_action`.
+Для `by_action_kind` дополнительно выводятся counters исполнения:
+`verify_success`, `verify_fail`, `not_applied`.
 
 ```bash
 eurika agent learning-summary .
