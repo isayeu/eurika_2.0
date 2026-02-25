@@ -2,6 +2,28 @@
 
 ---
 
+## 67. Snapshot (2026-02-25) — extract_nested_function controlled scenario verify_success
+
+### Scope
+- реализован uplift `extract_nested_function` (ROADMAP backlog):
+  - поддержка extraction с до 3 parent locals (params и locals);
+  - валидация free names и лимит переменных в `extract_nested_function`;
+  - точнее диагностика в `diagnose_extract_nested_failure`;
+  - planner rule `_EXTRACT_NESTED_INTERNAL_SKIP`: блокировка внутренних helper (`_has_nonlocal_or_global`, `add_extra_args_to_calls`, `collect_blocks`) в `eurika/refactor/extract_function.py`;
+  - `_should_try_extract_nested` обновлён для outcome (`verify_fail`, `not_applied`) и legacy aggregates.
+- controlled scenario `.tmp_extract_nested_demo/`: long function + nested helper — `fix ... --allow-campaign-retry --approve-ops 1` успешно применён.
+- тесты: dry-run no-op допускает `operations=[]`; skip-причины при неудачном extraction.
+
+### Проверка
+- `pytest` regression pack: `tests/test_cycle.py`, `tests/test_api.py`, `tests/test_patch_apply.py`, `tests/test_extract_function.py` — passed;
+- learning-summary: `extract_nested_function` — `verify_success=1`.
+
+### Итог
+- `extract_nested_function` получил подтверждённый verify_success в controlled scenario;
+- planner не предлагает extraction для внутренних helper extract_function.py.
+
+---
+
 ## 66. Snapshot (2026-02-23) — Uplift refactor/extract action-kind (phase 1+2)
 
 ### Scope

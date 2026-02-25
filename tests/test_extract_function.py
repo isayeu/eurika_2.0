@@ -74,6 +74,50 @@ def test_extract_nested_function_with_extra_params(tmp_path: Path) -> None:
     assert 'return inner(x)' in content
 
 
+def test_suggest_extract_nested_function_with_parent_locals_up_to_three(tmp_path: Path) -> None:
+    """suggest_extract returns candidate when nested uses up to 3 parent locals."""
+    code = """
+def long_foo(flag):
+    x = 1
+    y = 2
+    def inner():
+        if flag:
+            return x + y
+        return x
+    return inner()
+"""
+    (tmp_path / "mod.py").write_text(code)
+    sugg = suggest_extract_nested_function(tmp_path / "mod.py", "long_foo")
+    assert sugg is not None
+    assert sugg[0] == "inner"
+    assert sugg[2] == ["flag", "x", "y"]
+
+
+def test_extract_nested_function_with_parent_locals_extra_params(tmp_path: Path) -> None:
+    """extract_nested_function accepts extra params derived from parent locals."""
+    code = """
+def long_foo():
+    x = 10
+    y = 20
+    def inner():
+        total = x + y
+        return total
+    return inner()
+"""
+    (tmp_path / "mod.py").write_text(code)
+    sugg = suggest_extract_nested_function(tmp_path / "mod.py", "long_foo")
+    assert sugg is not None
+    nested_name, _, extra = sugg
+    assert nested_name == "inner"
+    assert extra == ["x", "y"]
+    out = extract_nested_function(tmp_path / "mod.py", "long_foo", nested_name, extra_params=extra)
+    assert out is not None
+    (tmp_path / "mod.py").write_text(out)
+    content = (tmp_path / "mod.py").read_text()
+    assert "def inner(x, y):" in content
+    assert "return inner(x, y)" in content
+
+
 def test_extract_nested_function_uses_correct_parent_context(tmp_path: Path) -> None:
     """Extraction should target the requested parent, not another nested context with same helper name."""
     code = """

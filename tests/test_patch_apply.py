@@ -176,6 +176,33 @@ def test_apply_extract_nested_function_reports_diagnostic_skip_reason(tmp_path: 
     assert reasons["m.py"].startswith("extract_nested_function:")
 
 
+def test_apply_extract_nested_function_reports_too_many_parent_vars(tmp_path: Path) -> None:
+    """Diagnostic reason should mention >3 parent vars case for nested extraction."""
+    code = """
+def long_foo():
+    a = 1
+    b = 2
+    c = 3
+    d = 4
+    def inner():
+        return a + b + c + d
+    return inner()
+"""
+    (tmp_path / "m.py").write_text(code)
+    plan = {"operations": [{
+        "target_file": "m.py",
+        "kind": "extract_nested_function",
+        "params": {"location": "long_foo", "nested_function_name": "inner"},
+    }]}
+    report = apply_patch_plan(tmp_path, plan, dry_run=False, backup=False)
+    reasons = report.get("skipped_reasons") or {}
+    assert "m.py" in reasons
+    assert (
+        reasons["m.py"] == "extract_nested_function: nested has unresolved free names"
+        or reasons["m.py"] == "extract_nested_function: nested needs more than 3 parent vars"
+    )
+
+
 def test_apply_extract_block_to_helper(tmp_path: Path) -> None:
     """extract_block_to_helper: real extraction when deep_nesting block is extractable."""
     code = """

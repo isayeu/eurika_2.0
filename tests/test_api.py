@@ -194,6 +194,66 @@ def test_get_code_smell_operations_skips_extract_nested_on_failed_learning(tmp_p
     assert not any(o.get("kind") == "refactor_code_smell" and o.get("target_file") == "big.py" for o in ops)
 
 
+def test_get_code_smell_operations_does_not_block_on_not_applied_outcome(tmp_path: Path) -> None:
+    """not_applied history should not block extract_nested attempts."""
+    lines = "\n".join(("    x = 1" for _ in range(48)))
+    content = (
+        "def long_foo():\n"
+        "    y = 2\n"
+        "    def helper():\n"
+        "        total = x + y\n"
+        "        result = total + 1\n"
+        "        return result\n"
+        f"{lines}\n"
+        "    return helper()\n"
+    )
+    (tmp_path / "big.py").write_text(content, encoding="utf-8")
+
+    from eurika.storage import ProjectMemory
+
+    memory = ProjectMemory(tmp_path)
+    memory.learning.append(
+        project_root=tmp_path,
+        modules=["big.py"],
+        operations=[
+            {
+                "kind": "extract_nested_function",
+                "smell_type": "long_function",
+                "execution_outcome": "not_applied",
+                "applied": False,
+            }
+        ],
+        risks=[],
+        verify_success=True,
+    )
+
+    ops = get_code_smell_operations(tmp_path)
+    assert any(o.get("kind") == "extract_nested_function" for o in ops)
+
+
+def test_get_code_smell_operations_skips_internal_extract_helpers_for_extract_function(tmp_path: Path) -> None:
+    """Planner should not propose known internal helper extractions for extract_function module."""
+    target = tmp_path / "eurika" / "refactor"
+    target.mkdir(parents=True, exist_ok=True)
+    code = (
+        "def suggest_extract_nested_function():\n"
+        + ("    x = 1\n" * 48)
+        + (
+        "    def _has_nonlocal_or_global(node):\n"
+        "        return False\n"
+        "    return _has_nonlocal_or_global(None)\n"
+        )
+    )
+    (target / "extract_function.py").write_text(code, encoding="utf-8")
+    ops = get_code_smell_operations(tmp_path)
+    assert not any(
+        o.get("kind") == "extract_nested_function"
+        and o.get("target_file") == "eurika/refactor/extract_function.py"
+        and (o.get("params") or {}).get("nested_function_name") == "_has_nonlocal_or_global"
+        for o in ops
+    )
+
+
 def test_get_code_smell_operations_skips_when_architectural_todo_exists(tmp_path: Path) -> None:
     """Do not add code-smell TODO when module already has architectural TODO marker."""
     long_func = (

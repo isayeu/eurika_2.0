@@ -6,16 +6,46 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
+_EXTRACT_NESTED_INTERNAL_SKIP: dict[str, set[str]] = {
+    "eurika/refactor/extract_function.py": {
+        "_has_nonlocal_or_global",
+        "add_extra_args_to_calls",
+        "collect_blocks",
+    },
+}
+
+
+def _should_skip_extract_nested_candidate(
+    rel_path: str,
+    nested_name: str,
+) -> bool:
+    """Skip known internal helper extractions that are high-noise for operability."""
+    skip_names = _EXTRACT_NESTED_INTERNAL_SKIP.get(rel_path.replace("\\", "/"))
+    return bool(skip_names and nested_name in skip_names)
+
+
 def _should_try_extract_nested(stats: Optional[Dict[str, Dict[str, Any]]]) -> bool:
-    """Allow extract_nested_function unless history is clearly unfavorable."""
+    """Allow extract_nested_function unless modern stats show repeated verify failures."""
     if not stats:
         return True
     rec = stats.get("long_function|extract_nested_function", {})
     total = int(rec.get("total", 0) or 0)
     success = int(rec.get("success", 0) or 0)
-    if total >= 1 and success == 0:
+    verify_fail = int(rec.get("verify_fail", 0) or 0)
+    not_applied = int(rec.get("not_applied", 0) or 0)
+    has_detailed_outcomes = any(
+        key in rec for key in ("verify_success", "verify_fail", "not_applied")
+    )
+
+    if total <= 0:
+        return True
+    # Legacy stats (pre outcome split) may overcount "fail" with skipped/no-op results.
+    # Do not block retries based on those ambiguous aggregates.
+    if not has_detailed_outcomes:
+        return True
+    if total >= 1 and success == 0 and verify_fail >= 1 and not_applied == 0:
         return False
-    if total >= 3 and (success / total) < 0.25:
+    if total >= 3 and (success / total) < 0.25 and verify_fail > not_applied:
         return False
     return True
 
@@ -184,6 +214,8 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
                             suggestion[1],
                             (suggestion[2] if len(suggestion) > 2 else []),
                         )
+                        if _should_skip_extract_nested_candidate(rel, nested_name):
+                            continue
                         ops.append(
                             _build_extract_nested_op(
                                 rel, smell.location, nested_name, line_count, extra_params or None
