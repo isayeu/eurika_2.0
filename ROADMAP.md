@@ -54,10 +54,10 @@
 
 ## Следующий горизонт (кратко)
 
-- **Состояние v3.0.7:** фазы 2.1–2.9, 3.0, 3.1, 3.1-arch, 3.2, 3.5 — выполнены. Web UI: Dashboard, Graph, Approve, Terminal, Ask Architect, Run cycle.
+- **Состояние v3.0.x:** фазы 2.1–2.9, 3.0, 3.1, 3.1-arch, 3.2, 3.5 — выполнены. Web UI: Dashboard (Core Command Builder), Graph, Approve, Terminal, Ask Architect, Chat.
 - **Фокус:** работа над собой — регулярный scan/doctor/fix, добавление функций по запросу, багфиксы, актуализация документации.
 - **Стабилизация:** тесты зелёные, доки соответствуют коду.
-- **Операционность 5/10:** refactor_code_smell 0% success (в WEAK_SMELL_ACTION_PAIRS); приоритет — 3.0.5 Learning from GitHub или продуктовая готовность.
+- **Операционность 5/10:** refactor_code_smell 0% success (в WEAK_SMELL_ACTION_PAIRS); extract_block_to_helper работает в guarded-режиме (hybrid: review, auto: deny, target-aware/whitelist); для повышения — допустимо использовать интернет и LLM (промпты, pattern library, curated repos).
 - **Дальше:** см. «Следующий фокус (после 3.5)» и новый активный бэклог ниже.
 
 ### Следующий фокус (после 3.5)
@@ -67,7 +67,7 @@
 
 | Направление                            | Описание                                                                                               | Быстрота  |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------ | --------- |
-| **A. 3.0.5 Learning from GitHub**      | Curated repos (Django, FastAPI) → pattern library → повышение apply-rate                               | Долго     |
+| **A. 3.0.5 Learning from GitHub**      | Curated repos (Django, FastAPI) → pattern library → повышение verify_success_rate по action-kind       | Долго     |
 | **B. Продуктовая готовность (5→6/10)** | UI.md ✓; README (getting started, примеры); критерии готовности в ROADMAP; venv-нейтральные инструкции | Быстро    |
 | **C. Ритуал 2.1**                      | Регулярно: scan, doctor, report-snapshot; обновлять CYCLE_REPORT; без новых фич                        | Постоянно |
 
@@ -169,6 +169,8 @@
 - WEAK_SMELL_ACTION_PAIRS, _deprioritize_weak_pairs
 - refactor_code_smell в WEAK_SMELL_ACTION_PAIRS (hybrid: review, auto: deny)
 - god_class|extract_class в WEAK_SMELL_ACTION_PAIRS + EXTRACT_CLASS_SKIP_PATTERNS (*tool_contract*.py) — защита от повторных ошибок (CYCLE_REPORT #34)
+- extract_block_to_helper в WEAK_SMELL_ACTION_PAIRS (hybrid: review, auto: deny) + target-aware policy по verify_fail history
+- operation whitelist: `.eurika/operation_whitelist.json` для controlled rollout safe targets (CYCLE_REPORT #74)
 - report-snapshot, DOGFOODING
 - Малые рефакторинги + тесты для топ-long/deep функций
 - R3 Typing contract (iterative): целевой mypy-gate расширен до `CLI entry -> orchestration -> API surface -> agent/storage/event-memory/facade -> learning/knowledge -> reasoning -> runtime/tool-contract -> evolution -> smells/core -> analysis/reporting -> checks/utils/storage-sidecar` (80 модулей), подтверждён финальным consolidate-ритуалом (full mypy + targeted regression-pack) и step-7..step-16 валидацией (CYCLE_REPORT #50, #51, #52, #53, #54, #55, #56, #57, #58, #59, #60, #61)
@@ -183,12 +185,13 @@
 
 - long_function|extract_nested_function: extract with params (1–3 parent vars), verify_success в controlled scenario
 - refactor_code_smell — по умолчанию не эмитить; `EURIKA_EMIT_CODE_SMELL_TODO=1` для TODO-маркеров
-- deep_nesting — EURIKA_DEEP_NESTING_MODE=heuristic|hybrid|llm|skip, suggest_extract_block + extract_block_to_helper
+- deep_nesting — EURIKA_DEEP_NESTING_MODE=heuristic|hybrid|llm|skip, suggest_extract_block + extract_block_to_helper (guarded path: weak+target-aware+whitelist)
 - long_function fallback — suggest_extract_block (if/for/while 5+ строк) когда extract_nested_function не срабатывает
 
 **Новый бэклог (следующие шаги):**
 
 - dogfooding: регулярные циклы scan→doctor→fix на Eurika, report-snapshot, фиксация метрик
+- KPI-фокус: `verify_success_rate` по `smell|action|target` (apply_rate вторичен)
 
 ### Пакет 3.6 — Operability UX (практики из Cursor)
 
@@ -827,12 +830,12 @@
 
 - **Eurika = автономный архитектурный ревьюер и рефакторинг-ассистент:** анализирует → находит проблемы → формирует план → предлагает патчи (и при желании применяет с verify).
 
-### TODO до продуктовой 1.0
+### ~~TODO до продуктовой 1.0~~ (закрыто)
 
-- **Консолидация памяти:** единый контракт — `eurika.storage.ProjectMemory(project_root)`. Довести до единого Event Engine — см. Этап 4 плана прорыва.
-- **Замкнутый цикл (скелет):** поток `eurika fix` = scan → diagnose → plan → patch → verify → learn есть; довести verify + rollback и полноценный Patch Engine — этапы 1, 3.
-- **Killer-feature (цель):** remove_cyclic_import, remove unused imports, split oversized module; eurika fix с verify и откатом при провале — этапы 1–2, 3.
-- **CLI режимы есть:** scan, doctor, fix, explain. Упростить до 4 режимов без dev-команд — этап 5.
+- ~~Консолидация памяти~~ — **выполнено (Фаза 3.2):** EventStore, LearningView, FeedbackView, .eurika/
+- ~~Замкнутый цикл (скелет)~~ — **выполнено:** scan → diagnose → plan → patch → verify → learn; Patch Engine, verify, rollback
+- ~~Killer-feature~~ — **выполнено:** remove_cyclic_import, remove_unused_import, split_module; eurika fix с verify и откатом
+- ~~CLI режимы~~ — **выполнено:** scan, doctor, fix, explain — первые 4 продуктовые; остальные в Advanced
 
 ### Уже есть (не дублировать)
 
@@ -866,6 +869,8 @@
 
 
 **Приоритет:** стабилизация цикла, прогоны на других проектах.
+
+**Для повышения операционности** допустимо обращаться к **интернету** (документация, примеры, best practices) и к **LLM** — для улучшения промптов, подбора стратегий фиксов, расширения pattern library, обучения на curated repos.
 
 ---
 

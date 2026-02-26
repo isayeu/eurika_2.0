@@ -161,11 +161,15 @@ def format_report_snapshot(path: Path) -> str:
         lines.append('')
     by_action: dict[str, Any] = {}
     by_smell: dict[str, Any] = {}
+    whitelist_candidates: list[str] = []
     try:
-        from eurika.storage import ProjectMemory
+        from eurika.storage import ProjectMemory, SessionMemory
         mem = ProjectMemory(path)
         by_action = mem.learning.aggregate_by_action_kind()
         by_smell = mem.learning.aggregate_by_smell_action()
+        whitelist_candidates = sorted(
+            SessionMemory(path).campaign_whitelist_candidates(min_success=2)
+        )
     except Exception:
         pass
     if by_action or by_smell:
@@ -188,6 +192,12 @@ def format_report_snapshot(path: Path) -> str:
             lines.append('### by_smell_action')
             for k, v in list(by_smell.items())[:8]:
                 lines.append(f"- {k}: total={v.get('total')}, success={v.get('success')}, fail={v.get('fail')}")
+        if whitelist_candidates:
+            lines.append('')
+            lines.append('### whitelist_candidates (campaign)')
+            lines.append('- Operation keys with 2+ verify_success and no repeated verify_fail; candidates for .eurika/operation_whitelist.json')
+            for key in whitelist_candidates[:10]:
+                lines.append(f'- {key}')
     if not lines:
         lines.append('(No eurika_doctor_report.json or eurika_fix_report.json found. Run doctor/fix first.)')
     if load_errors:

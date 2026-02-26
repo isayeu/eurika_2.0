@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal
 
 from .config import PolicyConfig, RiskLevel
@@ -49,7 +51,9 @@ WEAK_SMELL_ACTION_PAIRS: frozenset[tuple[str, str]] = frozenset({
     ("bottleneck", "introduce_facade"),
     ("god_class", "extract_class"),
     ("long_function", "extract_nested_function"),
+    ("long_function", "extract_block_to_helper"),
     ("long_function", "refactor_code_smell"),
+    ("deep_nesting", "extract_block_to_helper"),
     ("deep_nesting", "refactor_code_smell"),
 })
 
@@ -67,6 +71,75 @@ def _weak_pair_policy(
     if mode == "hybrid":
         return "review", f"historically weak pair requires manual approval: {smell}|{kind}"
     return "deny", f"historically weak pair blocked in auto mode: {smell}|{kind}"
+
+
+def _target_verify_fail_count(project_root: Path | None, op: dict[str, Any]) -> int:
+    """Return verify_fail count for operation key from campaign memory."""
+    if project_root is None:
+        return 0
+    try:
+        from collections import Counter
+        from eurika.storage import SessionMemory, operation_key
+
+        mem = SessionMemory(project_root)
+        data = mem._load()  # best-effort read of existing campaign data
+        fail_keys = ((data.get("campaign") or {}).get("verify_fail_keys") or [])
+        counts = Counter(str(k) for k in fail_keys)
+        return int(counts.get(operation_key(op), 0))
+    except Exception:
+        return 0
+
+
+def _load_operation_whitelist(project_root: Path | None) -> list[dict[str, Any]]:
+    """Load optional operation whitelist from .eurika/operation_whitelist.json."""
+    if project_root is None:
+        return []
+    p = project_root / ".eurika" / "operation_whitelist.json"
+    if not p.exists():
+        return []
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    ops = data.get("operations")
+    if not isinstance(ops, list):
+        return []
+    return [x for x in ops if isinstance(x, dict)]
+
+
+def _op_matches_whitelist_entry(op: dict[str, Any], entry: dict[str, Any]) -> bool:
+    """Match by kind, target_file and optional smell_type/location."""
+    if str(entry.get("kind") or "") != str(op.get("kind") or ""):
+        return False
+    if str(entry.get("target_file") or "") != str(op.get("target_file") or ""):
+        return False
+    entry_smell = str(entry.get("smell_type") or "")
+    if entry_smell and entry_smell != str(op.get("smell_type") or ""):
+        return False
+    entry_location = str(entry.get("location") or "")
+    op_location = str((op.get("params") or {}).get("location") or "")
+    if entry_location and entry_location != op_location:
+        return False
+    return True
+
+
+def _whitelist_policy_override(
+    op: dict[str, Any],
+    *,
+    mode: str,
+    project_root: Path | None,
+) -> tuple[PolicyDecision | None, str | None]:
+    """Return optional decision override when operation is explicitly whitelisted."""
+    for entry in _load_operation_whitelist(project_root):
+        if not _op_matches_whitelist_entry(op, entry):
+            continue
+        allow_hybrid = bool(entry.get("allow_in_hybrid", True))
+        allow_auto = bool(entry.get("allow_in_auto", False))
+        if mode == "hybrid" and allow_hybrid:
+            return "review", "whitelisted target for controlled hybrid rollout"
+        if mode == "auto" and allow_auto:
+            return "allow", "whitelisted target allowed in auto mode"
+    return None, None
 
 
 def _apply_core_rules(
@@ -105,6 +178,7 @@ def evaluate_operation(
     config: PolicyConfig,
     index: int,
     seen_files: set[str],
+    project_root: Path | None = None,
 ) -> OperationPolicyResult:
     """Evaluate one patch operation against configured policy and produce explainability metadata."""
     risk = _estimate_risk(op)
@@ -117,6 +191,28 @@ def evaluate_operation(
         if weak_decision is not None and weak_reason is not None:
             decision = weak_decision
             reason = weak_reason
+
+    fail_count = _target_verify_fail_count(project_root, op)
+    if fail_count >= 2:
+        if config.mode == "auto":
+            decision = "deny"
+            reason = f"target has repeated verify failures (count={fail_count})"
+        elif config.mode == "hybrid" and decision != "deny":
+            decision = "review"
+            reason = f"target has repeated verify failures (count={fail_count})"
+
+    wl_decision, wl_reason = _whitelist_policy_override(
+        op, mode=config.mode, project_root=project_root
+    )
+    if wl_decision is not None and wl_reason is not None:
+        # Whitelist only relaxes conservative denies/reviews, never escalates.
+        if decision == "deny" and wl_decision in {"review", "allow"}:
+            decision = wl_decision
+            reason = wl_reason
+        elif decision == "review" and wl_decision in {"review", "allow"}:
+            if wl_decision == "allow":
+                decision = wl_decision
+            reason = wl_reason
 
     explainability = {
         "why": str(op.get("description") or "No description provided."),

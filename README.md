@@ -36,6 +36,8 @@ eurika serve .          # Web UI на http://127.0.0.1:8765/
 HSA_OVERRIDE_GFX_VERSION=10.3.0 ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 ollama serve
 ```
 
+Fallback-модель для локального OpenAI-compatible endpoint Ollama задаётся через `OLLAMA_OPENAI_MODEL` (по умолчанию: `qwen2.5-coder:7b`).
+
 **Pipeline:** `cli → core/pipeline → code_awareness → scan → graph → smells → summary → history → report`
 
 ## Режимы (продуктовые)
@@ -47,7 +49,7 @@ HSA_OVERRIDE_GFX_VERSION=10.3.0 ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 oll
 
 **CI:** `eurika fix . --quiet` — exit 0 при успехе, 1 при провале verify или ошибках. См. CLI.md § CI/CD.
 - **`eurika explain <module> [path]`** — роль и риски модуля.
-- **`eurika serve [path]`** — Web UI: Dashboard, Summary, History, Diff, Graph, Approve, Explain, Terminal, Ask Architect, Chat. См. **UI.md**.
+- **`eurika serve [path]`** — Web UI: Dashboard, Summary, History, Diff, Graph, Approve, Explain, Terminal, Ask Architect, Chat. Dashboard включает Core Command Builder для `scan/doctor/fix/cycle/explain` с параметрами runtime/policy/session. См. **UI.md**.
 
 ## CLI commands
 

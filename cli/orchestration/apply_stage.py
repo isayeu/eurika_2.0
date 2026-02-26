@@ -174,6 +174,8 @@ def append_fix_cycle_memory(
         ]
         if verify_success is False and operations:
             SessionMemory(path).record_verify_failure(operations)
+        if verify_success is True and operations:
+            SessionMemory(path).record_verify_success(operations)
         if operations:
             memory.learning.append(
                 project_root=path,

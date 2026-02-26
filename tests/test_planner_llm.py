@@ -1,5 +1,6 @@
 """Tests for planner_llm (ROADMAP 2.9.2)."""
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -7,6 +8,7 @@ import pytest
 from eurika.reasoning.planner_llm import (
     _build_planner_prompt,
     _parse_llm_hints,
+    ask_llm_extract_method_hints,
     ask_ollama_split_hints,
     llm_hint_runtime_stats,
 )
@@ -157,6 +159,32 @@ def test_ask_ollama_timeout_triggers_circuit_breaker() -> None:
     assert r1 == []
     assert r2 == []
     assert mock_cli.call_count == 1
+
+
+def test_ask_llm_extract_method_hints_disabled_by_default() -> None:
+    """When EURIKA_USE_LLM_EXTRACT_HINTS=0 (default), returns [] without calling."""
+    from eurika.reasoning.planner_llm import ask_llm_extract_method_hints
+
+    result = ask_llm_extract_method_hints(__file__, "test_ask_llm_extract_method_hints_disabled")
+    assert result == []
+
+
+def test_ask_llm_extract_method_hints_success(tmp_path: Path) -> None:
+    """When enabled and Ollama returns text, parsed hints are returned."""
+    py_file = tmp_path / "code.py"
+    py_file.write_text(
+        "def long_function(x):\n    a = 1\n    b = 2\n    for i in range(10):\n        yield i * a + b\n",
+        encoding="utf-8",
+    )
+    with patch("eurika.reasoning.planner_llm._use_llm_extract_hints", return_value=True):
+        with patch("eurika.reasoning.architect._call_ollama_cli") as mock_cli:
+            mock_cli.return_value = (
+                "- Extract the loop body to _process_chunk(data)\n- Move validation to helper",
+                None,
+            )
+            result = ask_llm_extract_method_hints(py_file, "long_function")
+    assert len(result) >= 1
+    assert "loop" in result[0].lower() or "validation" in result[0].lower() or "chunk" in result[0].lower()
 
 
 def test_llm_hint_runtime_stats_exposes_budget_state(monkeypatch: pytest.MonkeyPatch) -> None:

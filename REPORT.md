@@ -1,18 +1,28 @@
 # REPORT — Текущий статус Eurika
 
-_Обновлено: v3.0.8. Синхронизировано с review.md и ROADMAP.md. Контракт — SPEC.md._
+_Обновлено: актуально для ветки v3.0.x (runtime policy + whitelist rollout + UI Core Command Builder)._
 
 ---
 
 ## Статус
 
-**Текущая версия:** v3.0.8 (god_class WEAK, deep_nesting extract_block, long_function fallback)
+**Основная задача (сейчас):** повышать операционность (качество apply/verify), сохраняя безопасность rollout через policy/learning.
 
-**Основная задача (сейчас):** саморазвитие, анализ и исправление собственного кода, добавление новых функций по запросу и т.д. Eurika в первую очередь работает над собой: scan/doctor/fix по своей кодовой базе, доработки по обратной связи, наращивание возможностей.
+**Ключевое состояние:**
 
-**Выполнено:** Architecture Awareness Engine, AgentCore v0.2–v0.4, core pipeline, history v0.6 (+ diff metrics), self-check, CLI UX, smells 2.0, Diff Engine, `eurika scan | doctor | fix | explain`, `eurika architect`, `eurika serve` (JSON API). **План прорыва (ROADMAP):** Patch Engine (apply_patch, verify_patch, rollback_patch, auto_rollback), Verify Stage (метрики + откат при ухудшении), три автофикса (unused imports, cyclic imports, split module), Event Engine (event_engine.py), CLI 4 режима первыми, dogfooding с venv (/mnt/storage/project/venv). **v1.2.6:** doctor/fix отчёты, event_engine, упрощение CLI. **Багфикс (Knowledge):** при явной пустой карте `topic_urls={}` у OfficialDocsProvider/ReleaseNotesProvider использовался дефолтный allow-list (`topic_urls or DEFAULT`), из‑за чего падали тесты и verify при `eurika fix`. Исправлено: дефолт только при `topic_urls is None`; `{}` даёт пустой результат по любой теме.
+- `extract_block_to_helper` переведён в guarded-path:
+  - weak-pair policy (`hybrid: review`, `auto: deny`);
+  - target-aware demote при `verify_fail >= 2`;
+  - whitelist для controlled rollout (`.eurika/operation_whitelist.json`).
+- Добавлена mini-automation для campaign memory:
+  - учёт `verify_success` и кандидаты в whitelist;
+  - генерация черновика whitelist: `eurika whitelist-draft`.
+- Web UI доведён до полного покрытия core-сценариев:
+  - Dashboard Core Command Builder для `scan/doctor/fix/cycle/explain`;
+  - безопасная валидация `/api/exec` по матрице разрешённых флагов;
+  - preview/build/copy/run поток, контекстные подсказки и динамика полей.
 
-### Оценка зрелости (по review.md, актуальная версия)
+### Оценка зрелости (по review)
 
 | Компонент               | Оценка |
 | ----------------------- | ------ |
@@ -20,35 +30,44 @@ _Обновлено: v3.0.8. Синхронизировано с review.md и RO
 | Качество кода           | 8/10   |
 | Концепция               | 9/10   |
 | Операционность          | 5/10   |
-| Продуктовая готовность  | 5/10   |
+| Продуктовая готовность  | 6/10   |
 | Потенциал               | 9.5/10 |
 
-**Диагноз (review):** «Архитектурный аналитик с амбициями автономного агента» — автономным агентом пока не является. Усиливать LLM — преждевременно; усиливать execution — критично.
+---
 
-**В ответ на review реализовано:** Patch Engine (apply_patch, verify_patch, rollback_patch, auto_rollback), Verify Stage (метрики + откат при ухудшении), детерминированные автофиксы, единый Event Engine, CLI 4 продуктовых режима, dogfooding. Это закладывает фундамент для перехода к «автономному архитектурному инструменту» и, в долгосроке, к полноценному AI-агенту с самоусовершенствованием (см. вывод в review.md).
+## Текущий рабочий фокус
 
-**Следующий горизонт:** фазы 2.2, 2.3.1 и 2.3.2 выполнены. Остаётся: регулярный цикл 2.1, горизонт 3.
+1. Рост `verify_success_rate` по `smell|action|target` (а не только общий apply-rate).
+2. Точечный rollout risky ops через whitelist + campaign learning.
+3. Эксплуатационная стабильность UI/CLI как единого контура запуска ритуалов.
 
-### Проверка стабильности
+---
 
-- **Тесты:** 172 passed (pytest).
-- **Использование на других проектах:** farm_helper — 0 ops; optweb — clean-imports, verify failed (Django); eurika (/mnt/storage/project/eurika/) — fix применяет patch, fix_import_from_verify создаёт internal_goals.py и добавляет GOALS_FILE в extracted, verify timeout 120s на тяжёлых тестах.
-- **Полный fix на Eurika:** выполнен `eurika fix .` (без --dry-run) с venv: apply → verify (pytest 131 passed) → rescan → verify_metrics. Артефакты в .gitignore; цикл scan → doctor → fix --dry-run выполнялся, тренды стабильны.
+## Быстрый операционный цикл
 
-### Видение (далёкое будущее)
+```bash
+# из корня проекта
+../.venv/bin/python -m eurika_cli scan .
+../.venv/bin/python -m eurika_cli doctor .
+../.venv/bin/python -m eurika_cli fix . --dry-run
+../.venv/bin/python -m eurika_cli report-snapshot .
+```
 
-В перспективе система должна стать **полноценным агентом**: не только анализ и рефакторинг кода, но и звонки, разбор финансов, написание кода по запросу, собственная LLM и т.д. До этого ещё очень далеко; примеры проектов рядом (pphone, mind_games, binance, eurika, farm_helper, pytorch) показывают диапазон областей. Сейчас — архитектурный инструмент и фундамент; см. ROADMAP § Горизонт 3.
+Для controlled apply:
+
+```bash
+../.venv/bin/python -m eurika_cli fix . --runtime-mode hybrid --non-interactive --approve-ops 1
+```
 
 ---
 
 ## Ключевые документы
 
-| Документ        | Назначение |
-|-----------------|------------|
-| **review.md**   | Концептуальный разбор: диагноз (аналитик vs агент), операционность vs reasoning, стратегическое заключение; вывод — долгосрочно Eurika как AI-агент с самоусовершенствованием, фундамент закладываем сейчас. |
-| **ROADMAP.md**  | План задач, план прорыва (этапы 1–5), dogfooding ✓, после 1.0 — Knowledge Layer |
-| **DOGFOODING.md** | Ритуал: scan → doctor → fix на Eurika; про venv для verify |
-| **Architecture.md** | Структура системы, замкнутый цикл, Patch Engine (целевой API), оценка по review |
-| **SPEC.md**     | Контракт проекта (v0.1–v0.4), текущий фокус |
-| **CLI.md**      | Справочник команд, рекомендуемый цикл, целевое упрощение CLI |
-| **CHANGELOG.md**| История версий |
+| Документ | Назначение |
+| --- | --- |
+| `ROADMAP.md` | Текущий план и приоритеты (operability + guarded rollout) |
+| `CYCLE_REPORT.md` | Фактические снапшоты ритуалов и выводы по метрикам |
+| `CLI.md` | Актуальные команды/флаги, включая `whitelist-draft` |
+| `UI.md` | Web UI и Core Command Builder |
+| `DOGFOODING.md` | Практика запусков и верификации в локальном окружении |
+| `CHANGELOG.md` | История релизных изменений |

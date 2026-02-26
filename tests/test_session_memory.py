@@ -46,3 +46,24 @@ def test_campaign_memory_single_verify_failure_not_skipped(tmp_path: Path) -> No
     mem.record_verify_failure(ops)
     skip = mem.campaign_keys_to_skip()
     assert operation_key(ops[0]) not in skip
+
+
+def test_campaign_whitelist_candidates_requires_repeated_success(tmp_path: Path) -> None:
+    """2+ verify_success with no repeated fail marks operation as candidate."""
+    mem = SessionMemory(tmp_path)
+    op = {"target_file": "ok.py", "kind": "extract_block_to_helper", "params": {"location": "f"}}
+    mem.record_verify_success([op])
+    assert operation_key(op) not in mem.campaign_whitelist_candidates()
+    mem.record_verify_success([op])
+    assert operation_key(op) in mem.campaign_whitelist_candidates()
+
+
+def test_campaign_whitelist_candidates_excludes_repeated_fail(tmp_path: Path) -> None:
+    """Repeated verify_fail suppresses promotion candidate status."""
+    mem = SessionMemory(tmp_path)
+    op = {"target_file": "mixed.py", "kind": "extract_block_to_helper", "params": {"location": "f"}}
+    mem.record_verify_success([op])
+    mem.record_verify_success([op])
+    mem.record_verify_failure([op])
+    mem.record_verify_failure([op])
+    assert operation_key(op) not in mem.campaign_whitelist_candidates()

@@ -138,24 +138,66 @@
 
   <div id="panel-dashboard" class="panel active">
     <div class="card">
-      <h2>Commands</h2>
-      <div class="cmd-grid" style="display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem;">
-        <button id="run-scan-btn" class="run-cmd-btn">Scan</button>
-        <button id="run-doctor-btn" class="run-cmd-btn">Doctor</button>
-        <label style="display: inline-flex; align-items: center; gap: 0.35rem; margin-left: 0.25rem;">
-          <input type="checkbox" id="doctor-llm-cb"> Use LLM
+      <h2>Core Command Builder</h2>
+      <div class="cmd-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.6rem; margin-bottom: 0.75rem;">
+        <label>Command
+          <select id="core-cmd-kind" style="width: 100%; margin-top: 0.2rem; padding: 0.35rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: inherit;">
+            <option value="scan">scan</option>
+            <option value="doctor">doctor</option>
+            <option value="fix">fix</option>
+            <option value="cycle">cycle</option>
+            <option value="explain">explain</option>
+          </select>
         </label>
-        <button id="run-fix-btn" class="run-cmd-btn">Fix</button>
-        <label style="display: inline-flex; align-items: center; gap: 0.35rem; margin-left: 0.5rem;">
-          <input type="checkbox" id="fix-dry-run-cb" checked> dry-run
+        <label>Window
+          <input id="core-window" type="number" min="1" max="100" value="5" style="width: 100%; margin-top: 0.2rem; padding: 0.35rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: inherit;">
         </label>
-        <label style="display: inline-flex; align-items: center; gap: 0.35rem; margin-left: 0.25rem;">
-          <input type="checkbox" id="fix-approval-cb"> require approval
+        <label>Runtime mode
+          <select id="core-runtime-mode" style="width: 100%; margin-top: 0.2rem; padding: 0.35rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: inherit;">
+            <option value="assist">assist</option>
+            <option value="hybrid">hybrid</option>
+            <option value="auto">auto</option>
+          </select>
         </label>
-        <button id="run-report-btn" class="run-cmd-btn">Report snapshot</button>
-        <button id="run-cycle-btn" class="run-cmd-btn run-cycle-btn">Cycle (dry-run)</button>
+        <label>Session ID
+          <input id="core-session-id" type="text" placeholder="optional" style="width: 100%; margin-top: 0.2rem; padding: 0.35rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: inherit;">
+        </label>
+        <label>Verify timeout (sec)
+          <input id="core-verify-timeout" type="number" min="1" max="3600" placeholder="optional" style="width: 100%; margin-top: 0.2rem; padding: 0.35rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: inherit;">
+        </label>
+        <label>Interval (sec)
+          <input id="core-interval" type="number" min="0" max="3600" value="0" style="width: 100%; margin-top: 0.2rem; padding: 0.35rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: inherit;">
+        </label>
+        <label>Scan format
+          <select id="core-scan-format" style="width: 100%; margin-top: 0.2rem; padding: 0.35rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: inherit;">
+            <option value="text">text</option>
+            <option value="markdown">markdown</option>
+          </select>
+        </label>
+        <label>Explain module
+          <input id="core-explain-module" type="text" placeholder="cli/handlers.py" style="width: 100%; margin-top: 0.2rem; padding: 0.35rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: inherit;">
+        </label>
       </div>
-      <p class="muted" style="font-size: 11px; margin: 0;">Output appears in Terminal tab. dry-run: show plan without applying. require approval: eurika fix . --team-mode.</p>
+      <div class="cmd-grid" style="display: flex; flex-wrap: wrap; gap: 0.6rem; margin-bottom: 0.75rem;">
+        <label><input type="checkbox" id="core-dry-run-cb" checked> dry-run</label>
+        <label><input type="checkbox" id="core-no-llm-cb"> no-llm</label>
+        <label><input type="checkbox" id="core-no-clean-imports-cb"> no-clean-imports</label>
+        <label><input type="checkbox" id="core-no-code-smells-cb"> no-code-smells</label>
+        <label><input type="checkbox" id="core-quiet-cb"> quiet</label>
+        <label><input type="checkbox" id="core-online-cb"> online</label>
+        <label><input type="checkbox" id="core-team-mode-cb"> team-mode</label>
+        <label><input type="checkbox" id="core-apply-approved-cb"> apply-approved</label>
+        <label><input type="checkbox" id="core-non-interactive-cb"> non-interactive</label>
+        <label><input type="checkbox" id="core-allow-campaign-retry-cb"> allow-campaign-retry</label>
+        <label><input type="checkbox" id="core-allow-low-risk-campaign-cb"> allow-low-risk-campaign</label>
+      </div>
+      <div class="cmd-grid" style="display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem;">
+        <button id="core-build-btn" class="run-cmd-btn">Build command</button>
+        <button id="core-copy-btn" class="run-cmd-btn">Copy command</button>
+        <button id="core-run-btn" class="run-cmd-btn run-cycle-btn">Run</button>
+      </div>
+      <pre id="core-cmd-preview" class="terminal-output" style="min-height: 48px; max-height: 120px; margin-top: 0;">eurika scan .</pre>
+      <p id="core-cmd-hint" class="muted" style="font-size: 11px; margin: 0;">Build a core command, preview it, then run in Terminal.</p>
     </div>
     <div id="dashboard-content" class="loading">Loading…</div>
   </div>

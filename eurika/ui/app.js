@@ -431,33 +431,271 @@ function runCommand(cmd, btn, btnText) {
     });
 }
 
-function initRunCycle() {
-  const scanBtn = document.getElementById('run-scan-btn');
-  const doctorBtn = document.getElementById('run-doctor-btn');
-  const fixBtn = document.getElementById('run-fix-btn');
-  const reportBtn = document.getElementById('run-report-btn');
-  const cycleBtn = document.getElementById('run-cycle-btn');
-  const dryRunCb = document.getElementById('fix-dry-run-cb');
-  const approvalCb = document.getElementById('fix-approval-cb');
-  const doctorLlmCb = document.getElementById('doctor-llm-cb');
+function _uiBool(id) {
+  const el = document.getElementById(id);
+  return !!(el && el.checked);
+}
 
-  if (scanBtn) scanBtn.addEventListener('click', () => runCommand('eurika scan .', scanBtn, true));
-  if (doctorBtn) doctorBtn.addEventListener('click', () => {
-    const useLlm = doctorLlmCb && doctorLlmCb.checked;
-    const cmd = useLlm ? 'eurika doctor .' : 'eurika doctor . --no-llm';
-    runCommand(cmd, doctorBtn, true);
+function _uiValue(id) {
+  const el = document.getElementById(id);
+  return el ? String(el.value || '').trim() : '';
+}
+
+function setTerminalInput(cmd) {
+  const terminalInput = document.getElementById('terminal-input');
+  if (terminalInput) terminalInput.value = cmd;
+}
+
+function _setCoreFieldVisible(id, visible) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const host = el.parentElement || el;
+  host.style.display = visible ? '' : 'none';
+  if ('disabled' in el) el.disabled = !visible;
+}
+
+function applyCoreCommandFieldVisibility() {
+  const kind = _uiValue('core-cmd-kind') || 'scan';
+  const runtime = _uiValue('core-runtime-mode') || 'assist';
+  const isScan = kind === 'scan';
+  const isDoctor = kind === 'doctor';
+  const isFix = kind === 'fix';
+  const isCycle = kind === 'cycle';
+  const isExplain = kind === 'explain';
+  const isFixOrCycle = isFix || isCycle;
+  const isHybrid = runtime === 'hybrid';
+
+  _setCoreFieldVisible('core-window', !isScan);
+  _setCoreFieldVisible('core-runtime-mode', isDoctor || isFixOrCycle);
+  _setCoreFieldVisible('core-session-id', isFixOrCycle && isHybrid);
+  _setCoreFieldVisible('core-verify-timeout', isFixOrCycle);
+  _setCoreFieldVisible('core-interval', isFixOrCycle);
+  _setCoreFieldVisible('core-scan-format', isScan);
+  _setCoreFieldVisible('core-explain-module', isExplain);
+
+  _setCoreFieldVisible('core-dry-run-cb', isFixOrCycle);
+  _setCoreFieldVisible('core-no-llm-cb', isDoctor || isCycle);
+  _setCoreFieldVisible('core-no-clean-imports-cb', isFixOrCycle);
+  _setCoreFieldVisible('core-no-code-smells-cb', isFixOrCycle);
+  _setCoreFieldVisible('core-quiet-cb', isFixOrCycle);
+  _setCoreFieldVisible('core-online-cb', isDoctor || isFixOrCycle);
+  _setCoreFieldVisible('core-team-mode-cb', isFixOrCycle);
+  _setCoreFieldVisible('core-apply-approved-cb', isFixOrCycle);
+  _setCoreFieldVisible('core-non-interactive-cb', isFixOrCycle && isHybrid);
+  _setCoreFieldVisible('core-allow-campaign-retry-cb', isFixOrCycle);
+  _setCoreFieldVisible('core-allow-low-risk-campaign-cb', isFixOrCycle);
+}
+
+function _coreCommandGuidance(kind, runtime) {
+  if (kind === 'scan') {
+    return 'Tip: run scan first to refresh self_map.json before doctor/fix/cycle.';
+  }
+  if (kind === 'doctor') {
+    return 'Tip: use --no-llm for deterministic diagnostics; enable LLM only when you need narrative guidance.';
+  }
+  if (kind === 'fix') {
+    if (runtime === 'hybrid') {
+      return 'Hybrid mode: session-id and non-interactive are available for approval-memory workflows.';
+    }
+    return 'Fix mode: prefer dry-run first, then team-mode/apply-approved for controlled rollout.';
+  }
+  if (kind === 'cycle') {
+    if (runtime === 'hybrid') {
+      return 'Hybrid cycle: use session-id to persist decisions across repeated runs.';
+    }
+    return 'Cycle mode: dry-run first to inspect plan; full apply only after reviewing operations.';
+  }
+  if (kind === 'explain') {
+    return 'Explain requires a module path, e.g. eurika/api/serve.py.';
+  }
+  return '';
+}
+
+function buildCoreCommandFromUi() {
+  const kind = _uiValue('core-cmd-kind') || 'scan';
+  const win = _uiValue('core-window') || '5';
+  const runtime = _uiValue('core-runtime-mode') || 'assist';
+  const sessionId = _uiValue('core-session-id');
+  const verifyTimeout = _uiValue('core-verify-timeout');
+  const interval = _uiValue('core-interval');
+  const scanFormat = _uiValue('core-scan-format') || 'text';
+  const explainModule = _uiValue('core-explain-module');
+  const dryRun = _uiBool('core-dry-run-cb');
+  const noLlm = _uiBool('core-no-llm-cb');
+  const noCleanImports = _uiBool('core-no-clean-imports-cb');
+  const noCodeSmells = _uiBool('core-no-code-smells-cb');
+  const quiet = _uiBool('core-quiet-cb');
+  const online = _uiBool('core-online-cb');
+  const teamMode = _uiBool('core-team-mode-cb');
+  const applyApproved = _uiBool('core-apply-approved-cb');
+  const nonInteractive = _uiBool('core-non-interactive-cb');
+  const allowCampaignRetry = _uiBool('core-allow-campaign-retry-cb');
+  const allowLowRiskCampaign = _uiBool('core-allow-low-risk-campaign-cb');
+
+  const append = (parts, flag, value) => {
+    parts.push(flag);
+    if (value != null && value !== '') parts.push(String(value));
+  };
+
+  if (teamMode && applyApproved) {
+    return { command: '', error: 'team-mode and apply-approved cannot be enabled together.' };
+  }
+  if ((kind === 'fix' || kind === 'cycle') && nonInteractive && runtime !== 'hybrid') {
+    return { command: '', error: 'non-interactive is valid only with runtime-mode=hybrid.' };
+  }
+  if (kind === 'explain' && !explainModule) {
+    return { command: '', error: 'explain requires module path.' };
+  }
+  if (verifyTimeout && (!/^\d+$/.test(verifyTimeout) || parseInt(verifyTimeout, 10) < 1)) {
+    return { command: '', error: 'verify-timeout must be a positive integer.' };
+  }
+  if (interval && !/^\d+$/.test(interval)) {
+    return { command: '', error: 'interval must be a non-negative integer.' };
+  }
+
+  const parts = ['eurika', kind];
+  if (kind === 'scan') {
+    parts.push('.');
+    if (scanFormat !== 'text') append(parts, '--format', scanFormat);
+  } else if (kind === 'doctor') {
+    parts.push('.');
+    append(parts, '--window', win);
+    if (noLlm) append(parts, '--no-llm');
+    if (online) append(parts, '--online');
+    if (runtime !== 'assist') append(parts, '--runtime-mode', runtime);
+  } else if (kind === 'fix') {
+    parts.push('.');
+    append(parts, '--window', win);
+    if (dryRun) append(parts, '--dry-run');
+    if (teamMode) append(parts, '--team-mode');
+    if (applyApproved) append(parts, '--apply-approved');
+    if (noCleanImports) append(parts, '--no-clean-imports');
+    if (noCodeSmells) append(parts, '--no-code-smells');
+    if (online) append(parts, '--online');
+    if (runtime !== 'assist') append(parts, '--runtime-mode', runtime);
+    if (nonInteractive) append(parts, '--non-interactive');
+    if (sessionId) append(parts, '--session-id', sessionId);
+    if (allowCampaignRetry) append(parts, '--allow-campaign-retry');
+    if (allowLowRiskCampaign) append(parts, '--allow-low-risk-campaign');
+    if (verifyTimeout) append(parts, '--verify-timeout', verifyTimeout);
+    if (interval && parseInt(interval, 10) > 0) append(parts, '--interval', interval);
+    if (quiet) append(parts, '--quiet');
+  } else if (kind === 'cycle') {
+    parts.push('.');
+    append(parts, '--window', win);
+    if (dryRun) append(parts, '--dry-run');
+    if (noLlm) append(parts, '--no-llm');
+    if (noCleanImports) append(parts, '--no-clean-imports');
+    if (noCodeSmells) append(parts, '--no-code-smells');
+    if (online) append(parts, '--online');
+    if (runtime !== 'assist') append(parts, '--runtime-mode', runtime);
+    if (nonInteractive) append(parts, '--non-interactive');
+    if (sessionId) append(parts, '--session-id', sessionId);
+    if (allowCampaignRetry) append(parts, '--allow-campaign-retry');
+    if (allowLowRiskCampaign) append(parts, '--allow-low-risk-campaign');
+    if (verifyTimeout) append(parts, '--verify-timeout', verifyTimeout);
+    if (interval && parseInt(interval, 10) > 0) append(parts, '--interval', interval);
+    if (teamMode) append(parts, '--team-mode');
+    if (applyApproved) append(parts, '--apply-approved');
+    if (quiet) append(parts, '--quiet');
+  } else if (kind === 'explain') {
+    parts.push(explainModule, '.');
+    append(parts, '--window', win);
+  }
+  return { command: parts.join(' '), error: '' };
+}
+
+function refreshCoreCommandPreview() {
+  const preview = document.getElementById('core-cmd-preview');
+  const hint = document.getElementById('core-cmd-hint');
+  if (!preview || !hint) return { command: '', error: 'UI not ready' };
+  applyCoreCommandFieldVisibility();
+  const kind = _uiValue('core-cmd-kind') || 'scan';
+  const runtime = _uiValue('core-runtime-mode') || 'assist';
+  const built = buildCoreCommandFromUi();
+  if (built.error) {
+    preview.textContent = '(invalid command)';
+    hint.innerHTML = '<span class="error">' + escapeHtml(built.error) + '</span>';
+  } else {
+    preview.textContent = built.command;
+    const guide = _coreCommandGuidance(kind, runtime);
+    hint.textContent = guide || 'Command is valid. Use Build command to copy to Terminal, or Run to execute.';
+  }
+  return built;
+}
+
+function initRunCycle() {
+  const buildBtn = document.getElementById('core-build-btn');
+  const copyBtn = document.getElementById('core-copy-btn');
+  const runBtn = document.getElementById('core-run-btn');
+  if (!buildBtn || !runBtn || !copyBtn) return;
+
+  [
+    'core-cmd-kind',
+    'core-window',
+    'core-runtime-mode',
+    'core-session-id',
+    'core-verify-timeout',
+    'core-interval',
+    'core-scan-format',
+    'core-explain-module',
+    'core-dry-run-cb',
+    'core-no-llm-cb',
+    'core-no-clean-imports-cb',
+    'core-no-code-smells-cb',
+    'core-quiet-cb',
+    'core-online-cb',
+    'core-team-mode-cb',
+    'core-apply-approved-cb',
+    'core-non-interactive-cb',
+    'core-allow-campaign-retry-cb',
+    'core-allow-low-risk-campaign-cb',
+  ].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', refreshCoreCommandPreview);
+    el.addEventListener('input', refreshCoreCommandPreview);
   });
-  if (fixBtn) fixBtn.addEventListener('click', () => {
-    const dry = dryRunCb && dryRunCb.checked;
-    const team = approvalCb && approvalCb.checked;
-    let cmd = 'eurika fix .';
-    if (team) cmd += ' --team-mode';
-    else if (dry) cmd += ' --dry-run';
-    runCommand(cmd, fixBtn, true);
-    if (team) setTimeout(() => { document.querySelector('.tabs button[data-tab="approve"]')?.click(); loadApprove(); }, 2000);
+
+  buildBtn.addEventListener('click', () => {
+    const built = refreshCoreCommandPreview();
+    if (built.error) return;
+    setTerminalInput(built.command);
+    document.querySelector('.tabs button[data-tab="terminal"]')?.click();
   });
-  if (reportBtn) reportBtn.addEventListener('click', () => runCommand('eurika report-snapshot .', reportBtn, true));
-  if (cycleBtn) cycleBtn.addEventListener('click', () => runCommand('eurika cycle . --dry-run', cycleBtn, true));
+
+  copyBtn.addEventListener('click', async () => {
+    const hint = document.getElementById('core-cmd-hint');
+    const built = refreshCoreCommandPreview();
+    if (built.error) return;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(built.command);
+      } else {
+        throw new Error('clipboard API not available');
+      }
+      if (hint) hint.textContent = 'Command copied to clipboard.';
+    } catch (_e) {
+      setTerminalInput(built.command);
+      if (hint) hint.textContent = 'Clipboard unavailable. Command placed into Terminal input.';
+      document.querySelector('.tabs button[data-tab="terminal"]')?.click();
+    }
+  });
+
+  runBtn.addEventListener('click', () => {
+    const built = refreshCoreCommandPreview();
+    if (built.error) return;
+    setTerminalInput(built.command);
+    runCommand(built.command, runBtn, true);
+    if (built.command.includes('--team-mode')) {
+      setTimeout(() => {
+        document.querySelector('.tabs button[data-tab="approve"]')?.click();
+        loadApprove();
+      }, 2000);
+    }
+  });
+
+  refreshCoreCommandPreview();
 }
 
 async function loadGraph() {

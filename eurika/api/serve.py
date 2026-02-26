@@ -21,6 +21,114 @@ MIME_TYPES = {".html": "text/html", ".js": "application/javascript", ".css": "te
 EXEC_WHITELIST = {"scan", "doctor", "fix", "cycle", "explain", "report-snapshot"}
 EXEC_TIMEOUT_MIN = 1
 EXEC_TIMEOUT_MAX = 3600
+_FLAG_TAKES_VALUE = 1
+_FLAG_IS_BOOL = 0
+EXEC_ALLOWED_FLAGS: dict[str, dict[str, int]] = {
+    "scan": {
+        "--format": _FLAG_TAKES_VALUE,
+        "-f": _FLAG_TAKES_VALUE,
+        "--color": _FLAG_IS_BOOL,
+        "--no-color": _FLAG_IS_BOOL,
+    },
+    "doctor": {
+        "--window": _FLAG_TAKES_VALUE,
+        "--no-llm": _FLAG_IS_BOOL,
+        "--online": _FLAG_IS_BOOL,
+        "--runtime-mode": _FLAG_TAKES_VALUE,
+    },
+    "fix": {
+        "--window": _FLAG_TAKES_VALUE,
+        "--dry-run": _FLAG_IS_BOOL,
+        "--quiet": _FLAG_IS_BOOL,
+        "-q": _FLAG_IS_BOOL,
+        "--no-clean-imports": _FLAG_IS_BOOL,
+        "--no-code-smells": _FLAG_IS_BOOL,
+        "--verify-cmd": _FLAG_TAKES_VALUE,
+        "--verify-timeout": _FLAG_TAKES_VALUE,
+        "--interval": _FLAG_TAKES_VALUE,
+        "--runtime-mode": _FLAG_TAKES_VALUE,
+        "--non-interactive": _FLAG_IS_BOOL,
+        "--session-id": _FLAG_TAKES_VALUE,
+        "--allow-campaign-retry": _FLAG_IS_BOOL,
+        "--allow-low-risk-campaign": _FLAG_IS_BOOL,
+        "--online": _FLAG_IS_BOOL,
+        "--apply-suggested-policy": _FLAG_IS_BOOL,
+        "--team-mode": _FLAG_IS_BOOL,
+        "--apply-approved": _FLAG_IS_BOOL,
+        "--approve-ops": _FLAG_TAKES_VALUE,
+        "--reject-ops": _FLAG_TAKES_VALUE,
+    },
+    "cycle": {
+        "--window": _FLAG_TAKES_VALUE,
+        "--dry-run": _FLAG_IS_BOOL,
+        "--quiet": _FLAG_IS_BOOL,
+        "-q": _FLAG_IS_BOOL,
+        "--no-llm": _FLAG_IS_BOOL,
+        "--no-clean-imports": _FLAG_IS_BOOL,
+        "--no-code-smells": _FLAG_IS_BOOL,
+        "--verify-cmd": _FLAG_TAKES_VALUE,
+        "--verify-timeout": _FLAG_TAKES_VALUE,
+        "--interval": _FLAG_TAKES_VALUE,
+        "--runtime-mode": _FLAG_TAKES_VALUE,
+        "--non-interactive": _FLAG_IS_BOOL,
+        "--session-id": _FLAG_TAKES_VALUE,
+        "--allow-campaign-retry": _FLAG_IS_BOOL,
+        "--allow-low-risk-campaign": _FLAG_IS_BOOL,
+        "--online": _FLAG_IS_BOOL,
+        "--apply-suggested-policy": _FLAG_IS_BOOL,
+        "--team-mode": _FLAG_IS_BOOL,
+        "--apply-approved": _FLAG_IS_BOOL,
+        "--approve-ops": _FLAG_TAKES_VALUE,
+        "--reject-ops": _FLAG_TAKES_VALUE,
+    },
+    "explain": {
+        "--window": _FLAG_TAKES_VALUE,
+    },
+    "report-snapshot": {},
+}
+
+
+def _normalize_exec_args_for_subcommand(
+    project_root: Path,
+    subcmd: str,
+    raw_args: list[str],
+) -> tuple[list[str] | None, str | None]:
+    """Validate/normalize argv for a whitelisted eurika subcommand."""
+    allowed_flags = EXEC_ALLOWED_FLAGS.get(subcmd, {})
+    flags: list[str] = []
+    positional: list[str] = []
+    i = 0
+    while i < len(raw_args):
+        tok = str(raw_args[i])
+        if tok.startswith("-"):
+            arity = allowed_flags.get(tok)
+            if arity is None:
+                allowed = ", ".join(sorted(allowed_flags.keys()))
+                hint = f"Allowed flags for '{subcmd}': {allowed}" if allowed else f"'{subcmd}' does not accept flags"
+                return None, f"flag not allowed for '{subcmd}': {tok}. {hint}"
+            flags.append(tok)
+            if arity == _FLAG_TAKES_VALUE:
+                if i + 1 >= len(raw_args):
+                    return None, f"flag '{tok}' requires a value"
+                flags.append(str(raw_args[i + 1]))
+                i += 1
+            i += 1
+            continue
+        positional.append(tok)
+        i += 1
+
+    path_str = str(project_root)
+    if subcmd == "explain":
+        if not positional:
+            return None, "explain requires module positional argument (e.g. 'eurika explain cli/handlers.py')"
+        if len(positional) > 2:
+            return None, f"too many positional arguments for explain: {positional}"
+        module = positional[0]
+        return [module, path_str] + flags, None
+
+    if len(positional) > 1:
+        return None, f"too many positional arguments for '{subcmd}': {positional}"
+    return [path_str] + flags, None
 
 
 def _parse_bool_flag(value: object) -> bool | None:
@@ -98,11 +206,13 @@ def _exec_eurika_command(project_root: Path, command: str, timeout: int | None =
             "stderr": "",
             "exit_code": -1,
         }
-    # Always run in project_root (serve is bound to one project)
-    path_str = str(project_root)
-    flags = [a for a in args if a.startswith("-")]
-    args = [path_str] + flags
-    full_args = [sys.executable, "-m", "eurika_cli", subcmd] + args
+    normalized_args, normalize_error = _normalize_exec_args_for_subcommand(
+        project_root, subcmd, args
+    )
+    if normalize_error:
+        return {"error": normalize_error, "stdout": "", "stderr": "", "exit_code": -1}
+
+    full_args = [sys.executable, "-m", "eurika_cli", subcmd] + (normalized_args or [])
     try:
         r = subprocess.run(
             full_args,

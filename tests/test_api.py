@@ -367,3 +367,16 @@ def test_get_clean_imports_operations_skips_reexport_modules(tmp_path: Path) -> 
         o.get("kind") == "remove_unused_import" and "tool_contract" in str(o.get("target_file", ""))
         for o in ops
     )
+
+
+def test_get_clean_imports_operations_skips_test_files(tmp_path: Path) -> None:
+    """Do not propose remove_unused_import for tests/ (policy denies; apply-rate)."""
+    (tmp_path / "src.py").write_text("import os\nimport sys\nx = os.path\n", encoding="utf-8")
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_foo.py").write_text("import unused\nassert True\n", encoding="utf-8")
+    ops = get_clean_imports_operations(tmp_path)
+    assert not any(
+        o.get("kind") == "remove_unused_import" and str(o.get("target_file", "")).startswith("tests/")
+        for o in ops
+    )

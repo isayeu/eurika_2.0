@@ -249,6 +249,26 @@ eurika report . --json --window 5
 
 ---
 
+### eurika whitelist-draft [path] [--output FILE] [--min-success N] [--allow-auto] [--kinds K1,K2,...] [--all-kinds]
+
+Генерирует **черновик** whitelist из campaign memory (2+ `verify_success` по `target|kind|location`), без автоприменения в policy.
+
+- По умолчанию пишет в `.eurika/operation_whitelist.draft.json`
+- Боевой `.eurika/operation_whitelist.json` не изменяется
+- `--allow-auto` включает `allow_in_auto=true` для всех черновых записей
+- soft-guard по умолчанию: только `extract_block_to_helper` (`--kinds` для своего списка, `--all-kinds` чтобы снять фильтр)
+- `--kinds` валидируется по поддерживаемым operation kind; при ошибке команда завершится с подсказкой
+
+```bash
+eurika whitelist-draft .
+eurika whitelist-draft . --min-success 3
+eurika whitelist-draft . --kinds extract_block_to_helper,split_module
+eurika whitelist-draft . --all-kinds
+eurika whitelist-draft . --output ".eurika/operation_whitelist.review.json"
+```
+
+---
+
 ### eurika campaign-undo [path] [--checkpoint-id ID] [--list]
 
 Откат кампании Sprint 3.6.4: восстанавливает файлы по run_id из checkpoint (`.eurika/campaign_checkpoints/*.json`) в обратном порядке.
@@ -308,12 +328,32 @@ eurika explain action_plan.py . --window 10
 - `EURIKA_LLM_TIMEOUT_SEC` — таймаут HTTP LLM вызовов (default: `20`)
 - `EURIKA_OLLAMA_CLI_TIMEOUT_SEC` — таймаут CLI fallback `ollama run` (default: `45`)
 - `EURIKA_USE_LLM_HINTS` — включить LLM-подсказки в planner для god_module/hub/bottleneck (default: `1`; `0`/`false` — только эвристики графа)
+- `EURIKA_USE_LLM_EXTRACT_HINTS` — при `1` LLM подсказки для long_function (extract method) в refactor_code_smell; default `0` (без дополнительных вызовов)
 - `--apply-suggested-policy` (fix, cycle) — применить suggested policy из последнего doctor/fix (ROADMAP 2.9.4)
 - `EURIKA_GLOBAL_MEMORY` — каталог глобальной памяти (ROADMAP 3.0.2); default `~/.eurika`
 - `EURIKA_DISABLE_GLOBAL_MEMORY` — отключить cross-project learning (`1`/`true`/`yes`)
 - `EURIKA_EMIT_CODE_SMELL_TODO` — при `1` эмитить refactor_code_smell (TODO) когда нет реального фикса; default `0` (не эмитить)
 - `EURIKA_DEEP_NESTING_MODE` — режим для deep_nesting: `heuristic` (только эвристика), `hybrid` (эвристика → TODO при неудаче), `llm` (будущее: LLM-hints), `skip` (не обрабатывать); default `hybrid`
 - `EURIKA_CAMPAIGN_ALLOW_LOW_RISK` — при `1` низкорисковые ops (remove_unused_import) обходят campaign skip; можно задать флаг `--allow-low-risk-campaign`
+- `.eurika/operation_whitelist.json` — target-aware whitelist для controlled rollout risky ops. Формат:
+  - `kind`, `target_file`, опционально `smell_type`
+  - `allow_in_hybrid` (default `true`)
+  - `allow_in_auto` (default `false`)
+
+Пример:
+```json
+{
+  "operations": [
+    {
+      "kind": "extract_block_to_helper",
+      "target_file": "eurika/api/chat.py",
+      "smell_type": "deep_nesting",
+      "allow_in_hybrid": true,
+      "allow_in_auto": true
+    }
+  ]
+}
+```
 
 Переменные можно задать в `.env` в корне проекта; тогда нужен `pip install python-dotenv` (или `eurika[env]`). При ошибке LLM в stderr выводится причина и используется шаблон.
 Важно: Eurika больше не запускает `ollama serve` автоматически — Ollama daemon должен быть поднят вручную до запуска команд.

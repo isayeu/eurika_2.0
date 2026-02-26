@@ -14,6 +14,17 @@ _EXTRACT_NESTED_INTERNAL_SKIP: dict[str, set[str]] = {
     },
 }
 
+_EXTRACT_BLOCK_SKIP_PATTERNS: frozenset[str] = frozenset({
+    "eurika/refactor/", "eurika/reasoning/planner_patch_ops.py",
+    "eurika/reasoning/planner_llm.py", "report/", "cli/orchestration/",
+})
+
+
+def _should_skip_extract_block_target(rel_path: str) -> bool:
+    """Skip extract_block_to_helper for paths where extraction often breaks verify."""
+    r = rel_path.replace("\\", "/")
+    return any(r.startswith(p) or p in r for p in _EXTRACT_BLOCK_SKIP_PATTERNS)
+
 
 def _should_skip_extract_nested_candidate(
     rel_path: str,
@@ -122,14 +133,31 @@ def _build_extract_nested_op(
     }
 
 
-def _build_refactor_smell_op(rel_path: str, smell: Any) -> Dict[str, Any]:
+def _build_refactor_smell_op(
+    rel_path: str,
+    smell: Any,
+    root: Path,
+) -> Dict[str, Any]:
     """Build fallback TODO operation payload for a code smell."""
     hint = (
         "consider extracting helper"
         if smell.kind == "long_function"
         else "consider extracting nested block"
     )
-    diff = f"\n# TODO (eurika): refactor {smell.kind} '{smell.location}' — {hint}\n"
+    diff_lines: List[str] = [f"\n# TODO (eurika): refactor {smell.kind} '{smell.location}' — {hint}\n"]
+    if smell.kind == "long_function":
+        try:
+            from eurika.reasoning.planner_llm import ask_llm_extract_method_hints
+
+            file_path = root / rel_path.replace("\\", "/")
+            llm_hints = ask_llm_extract_method_hints(file_path, smell.location)
+            if llm_hints:
+                diff_lines.append("# LLM suggestions:\n")
+                for h in llm_hints[:3]:
+                    diff_lines.append(f"# - {h}\n")
+        except Exception:
+            pass
+    diff = "".join(diff_lines)
     return {
         "target_file": rel_path,
         "kind": "refactor_code_smell",
@@ -224,7 +252,7 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
                         fixed_locations.add(loc_key)
                         continue
                 block_suggestion = suggest_extract_block(file_path, smell.location, min_lines=5)
-                if block_suggestion:
+                if block_suggestion and not _should_skip_extract_block_target(rel):
                     helper_name, block_line, line_count, extra = block_suggestion
                     ops.append(
                         _build_extract_block_op(
@@ -244,7 +272,7 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
                     continue
                 if deep_mode in ("heuristic", "hybrid"):
                     block_suggestion = suggest_extract_block(file_path, smell.location)
-                    if block_suggestion:
+                    if block_suggestion and not _should_skip_extract_block_target(rel):
                         helper_name, block_line, line_count, extra = block_suggestion
                         ops.append(
                             _build_extract_block_op(
@@ -255,7 +283,7 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
                         continue
             if not emit_todo:
                 continue
-            op = _build_refactor_smell_op(rel, smell)
+            op = _build_refactor_smell_op(rel, smell, root)
             if _should_emit_refactor_smell_op(root, rel, op["diff"], smell.location, smell.kind):
                 ops.append(op)
     return ops
@@ -290,6 +318,8 @@ def get_clean_imports_operations(project_root: Path) -> List[Dict[str, Any]]:
             continue
         rel = str(p.relative_to(root)).replace("\\", "/")
         if rel in _REMOVE_UNUSED_IMPORT_SKIP:
+            continue
+        if rel.startswith("tests/"):
             continue
         if remove_unused_imports(p) is None:
             continue

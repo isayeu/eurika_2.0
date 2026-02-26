@@ -4,7 +4,20 @@
 
 ## Где venv
 
-**Venv для этого проекта:** `/mnt/storage/project/venv` (или `/mnt/storage/project/.venv`, `/mnt/sdb2/project/.venv`). Без него **LLM не работает** (doctor/architect с OPENAI_API_KEY). Для verify при `eurika fix` тоже нужен этот Python (pytest и зависимости проекта).
+**Рекомендуемый venv для этого репозитория:** `../.venv` (относительно корня `eurika_2.0`).
+
+Пример:
+
+```bash
+source ../.venv/bin/activate
+```
+
+или без активации:
+
+```bash
+../.venv/bin/python -m eurika_cli scan .
+../.venv/bin/pytest tests/ -q
+```
 
 Скан исключает каталоги `venv`, `.venv`, `node_modules` из анализа.
 
@@ -15,8 +28,8 @@
 Из **корня репозитория** `eurika_2.0` (где лежит `eurika_cli.py`, `eurika/`, `cli/`):
 
 ```bash
-# Использовать venv из родительского каталога (иначе LLM не работает)
-PY=/mnt/storage/project/venv/bin/python
+# Использовать venv из родительского каталога
+PY=../.venv/bin/python
 
 # 1. Скан и обновление артефактов
 $PY -m eurika_cli scan .
@@ -38,7 +51,7 @@ $PY -m eurika_cli cycle .
 Либо активировать venv и вызывать `eurika` как обычно:
 
 ```bash
-source /mnt/storage/project/venv/bin/activate
+source ../.venv/bin/activate
 eurika scan .
 eurika doctor .
 eurika fix . --dry-run
@@ -68,7 +81,7 @@ eurika fix . --dry-run
 **Каталог `binance/`** — набор разных проектов и их версий (bbot, binance-trade-bot, binance_watchdog_bot, freqtrade, NostalgiaForInfinity и т.д.). Путь указывать на подпроект, а не на корень binance:
 
 ```bash
-source /mnt/storage/project/venv/bin/activate
+source ../.venv/bin/activate
 eurika scan /mnt/storage/project/binance/bbot
 eurika doctor /mnt/storage/project/binance/bbot
 eurika fix /mnt/storage/project/binance/bbot --dry-run
@@ -105,4 +118,6 @@ verify_cmd = "python -m py_compile"
 
 ## Артефакты и Git
 
-Артефакты (`self_map.json`, `eurika_doctor_report.json`, `eurika_fix_report.json`, `eurika_knowledge.json`, `.eurika_backups/`, `.eurika/` — в т.ч. `knowledge_cache` для сетевых ответов) — генерируемые, в `.gitignore`. Не коммитить.
+Артефакты (`self_map.json`, `eurika_doctor_report.json`, `eurika_fix_report.json`, `.eurika_backups/`, `.eurika/` — в т.ч. `knowledge_cache`) — генерируемые, в `.gitignore`. Не коммитить.
+
+Дополнительно: не коммитить локальные окружения и IDE-артефакты (`.venv/`, `.cursor/`).

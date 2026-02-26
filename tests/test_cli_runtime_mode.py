@@ -27,6 +27,24 @@ def test_cli_fix_accepts_hybrid_session_flags() -> None:
     assert args.session_id == "sprint3"
 
 
+def test_cli_whitelist_draft_accepts_flags() -> None:
+    parser = eurika_cli._build_parser()
+    args = parser.parse_args(
+        ["whitelist-draft", "--min-success", "3", "--allow-auto", "--kinds", "extract_block_to_helper,split_module", "."]
+    )
+    assert args.command == "whitelist-draft"
+    assert args.min_success == 3
+    assert args.allow_auto is True
+    assert args.kinds == "extract_block_to_helper,split_module"
+
+
+def test_cli_whitelist_draft_all_kinds_flag() -> None:
+    parser = eurika_cli._build_parser()
+    args = parser.parse_args(["whitelist-draft", "--all-kinds", "."])
+    assert args.command == "whitelist-draft"
+    assert args.all_kinds is True
+
+
 def test_run_cycle_uses_runtime_wrapper_for_non_assist() -> None:
     fake = AgentCycleResult(mode="hybrid", stages=["observe", "apply"], payload={"ok": True})
     with patch("eurika.agent.runtime.run_agent_cycle", return_value=fake):

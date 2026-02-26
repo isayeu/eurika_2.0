@@ -1,5 +1,6 @@
 """Tests for agent policy evaluation (ROADMAP 2.7.3)."""
 
+import json
 import sys
 from pathlib import Path
 
@@ -96,6 +97,36 @@ def test_policy_weak_pair_review_in_hybrid() -> None:
     assert "weak" in out.reason or "approval" in out.reason
 
 
+def test_policy_extract_block_weak_pair_deny_in_auto() -> None:
+    """extract_block_to_helper weak pair should be denied in auto mode."""
+    cfg = PolicyConfig(
+        mode="auto", max_ops=100, max_files=100, allow_test_files=False, auto_apply_max_risk="high",
+    )
+    op = {
+        "kind": "extract_block_to_helper",
+        "target_file": "x.py",
+        "smell_type": "deep_nesting",
+        "description": "extract block",
+    }
+    out = evaluate_operation(op, config=cfg, index=1, seen_files=set())
+    assert out.decision == "deny"
+    assert "weak" in out.reason or "blocked" in out.reason
+
+
+def test_policy_extract_block_weak_pair_review_in_hybrid() -> None:
+    """extract_block_to_helper weak pair should require review in hybrid mode."""
+    cfg = load_policy_config("hybrid")
+    op = {
+        "kind": "extract_block_to_helper",
+        "target_file": "x.py",
+        "smell_type": "long_function",
+        "description": "extract block",
+    }
+    out = evaluate_operation(op, config=cfg, index=1, seen_files=set())
+    assert out.decision == "review"
+    assert "weak" in out.reason or "approval" in out.reason
+
+
 def test_policy_god_class_extract_class_weak_pair_deny_in_auto() -> None:
     """god_class|extract_class in WEAK: deny in auto (CYCLE_REPORT #34 tool_contract)."""
     cfg = PolicyConfig(
@@ -145,3 +176,68 @@ def test_suggest_policy_from_telemetry_high_rollback_rate() -> None:
 def test_suggest_policy_from_telemetry_empty() -> None:
     """Empty telemetry returns no suggestions."""
     assert suggest_policy_from_telemetry({}) == {}
+
+
+def test_policy_target_verify_fail_history_denies_auto(tmp_path: Path) -> None:
+    """Repeated verify_fail for same target|kind should block auto apply."""
+    from eurika.storage import SessionMemory
+
+    cfg = PolicyConfig(
+        mode="auto", max_ops=100, max_files=100, allow_test_files=False, auto_apply_max_risk="high",
+    )
+    op = {
+        "kind": "split_module",
+        "target_file": "x.py",
+        "smell_type": "god_module",
+        "description": "split",
+        "params": {"location": "foo"},
+    }
+    mem = SessionMemory(tmp_path)
+    mem.record_verify_failure([op])
+    mem.record_verify_failure([op])
+    out = evaluate_operation(op, config=cfg, index=1, seen_files=set(), project_root=tmp_path)
+    assert out.decision == "deny"
+    assert "repeated verify failures" in out.reason
+
+
+def test_policy_whitelist_allows_auto_for_known_target(tmp_path: Path) -> None:
+    """Whitelist can allow safe target in auto even after fail-history deny."""
+    from eurika.storage import SessionMemory
+
+    cfg = PolicyConfig(
+        mode="auto", max_ops=100, max_files=100, allow_test_files=False, auto_apply_max_risk="high",
+    )
+    op = {
+        "kind": "extract_block_to_helper",
+        "target_file": "eurika/api/chat.py",
+        "smell_type": "deep_nesting",
+        "description": "extract",
+        "params": {"location": "_build_chat_context"},
+    }
+    mem = SessionMemory(tmp_path)
+    mem.record_verify_failure([op])
+    mem.record_verify_failure([op])
+
+    wl_path = tmp_path / ".eurika" / "operation_whitelist.json"
+    wl_path.parent.mkdir(parents=True, exist_ok=True)
+    wl_path.write_text(
+        json.dumps(
+            {
+                "operations": [
+                    {
+                        "kind": "extract_block_to_helper",
+                        "target_file": "eurika/api/chat.py",
+                        "smell_type": "deep_nesting",
+                        "allow_in_hybrid": True,
+                        "allow_in_auto": True,
+                    }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    out = evaluate_operation(op, config=cfg, index=1, seen_files=set(), project_root=tmp_path)
+    assert out.decision == "allow"
+    assert "whitelisted target" in out.reason

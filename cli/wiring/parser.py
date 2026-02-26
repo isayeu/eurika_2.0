@@ -134,6 +134,42 @@ def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
     snapshot_parser = subparsers.add_parser("report-snapshot", help="Print CYCLE_REPORT-style markdown from doctor/fix artifacts (for updating CYCLE_REPORT.md)")
     snapshot_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
 
+    whitelist_draft_parser = subparsers.add_parser(
+        "whitelist-draft",
+        help="Generate operation whitelist draft from campaign verify_success candidates",
+    )
+    whitelist_draft_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
+    whitelist_draft_parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Output file path (default: .eurika/operation_whitelist.draft.json)",
+    )
+    whitelist_draft_parser.add_argument(
+        "--min-success",
+        type=int,
+        default=2,
+        metavar="N",
+        help="Minimum verify_success count to include candidate (default: 2)",
+    )
+    whitelist_draft_parser.add_argument(
+        "--allow-auto",
+        action="store_true",
+        help="Set allow_in_auto=true in generated draft entries",
+    )
+    whitelist_draft_parser.add_argument(
+        "--kinds",
+        type=str,
+        default="extract_block_to_helper",
+        metavar="K1,K2,...",
+        help="Comma-separated operation kinds to include (default: extract_block_to_helper)",
+    )
+    whitelist_draft_parser.add_argument(
+        "--all-kinds",
+        action="store_true",
+        help="Disable kind filter and include all candidate kinds",
+    )
+
     campaign_undo_parser = subparsers.add_parser("campaign-undo", help="Undo applied campaign from checkpoint (ROADMAP 3.6.4)")
     campaign_undo_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
     campaign_undo_parser.add_argument("--checkpoint-id", type=str, default=None, help="Undo a specific campaign checkpoint id")

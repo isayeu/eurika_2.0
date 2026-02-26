@@ -448,7 +448,9 @@ def deep_foo(x):
     code_smell_kinds = {"extract_block_to_helper", "extract_nested_function", "refactor_code_smell"}
     code_smell1 = [o for o in ops1 if o.get("kind") in code_smell_kinds]
     code_smell2 = [o for o in ops2 if o.get("kind") in code_smell_kinds]
-    assert len(code_smell1) >= 1, "without --no-code-smells should have code-smell ops (e.g. extract_block_to_helper for deep_nesting)"
+    # Safety policy may suppress historically weak pairs even without --no-code-smells.
+    # Contract here: --no-code-smells must not increase code-smell operations.
+    assert len(code_smell1) >= len(code_smell2), "--no-code-smells should not increase code-smell ops"
     assert len(code_smell2) == 0, "--no-code-smells should exclude code-smell ops"
 
 
@@ -1131,6 +1133,95 @@ def test_report_snapshot_context_effect_block(tmp_path: Path) -> None:
     assert "## 2.1 Context effect (ROADMAP 3.6.3)" in result.stdout
     assert "apply_rate: current=1.0, baseline=0.5" in result.stdout
     assert "no_op_rate: current=0.0" in result.stdout
+
+
+def test_whitelist_draft_generates_candidates_file(tmp_path: Path) -> None:
+    """whitelist-draft emits draft file from campaign verify_success candidates."""
+    from eurika.storage import SessionMemory
+
+    mem = SessionMemory(tmp_path)
+    op = {"target_file": "eurika/api/chat.py", "kind": "extract_block_to_helper", "params": {"location": "_ctx"}}
+    mem.record_verify_success([op])
+    mem.record_verify_success([op])
+
+    result = subprocess.run(
+        [sys.executable, "-m", "eurika_cli", "whitelist-draft", str(tmp_path)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0
+    draft_path = tmp_path / ".eurika" / "operation_whitelist.draft.json"
+    assert draft_path.exists()
+    payload = json.loads(draft_path.read_text(encoding="utf-8"))
+    ops = payload.get("operations") or []
+    assert len(ops) >= 1
+    assert ops[0].get("kind") == "extract_block_to_helper"
+    assert ops[0].get("target_file") == "eurika/api/chat.py"
+    assert ops[0].get("location") == "_ctx"
+    assert ops[0].get("allow_in_auto") is False
+
+
+def test_whitelist_draft_filters_kinds_by_default(tmp_path: Path) -> None:
+    """whitelist-draft keeps only default safe kind unless --all-kinds."""
+    from eurika.storage import SessionMemory
+
+    mem = SessionMemory(tmp_path)
+    op_extract = {"target_file": "a.py", "kind": "extract_block_to_helper", "params": {"location": "f"}}
+    op_split = {"target_file": "b.py", "kind": "split_module", "params": {"location": "g"}}
+    mem.record_verify_success([op_extract, op_split])
+    mem.record_verify_success([op_extract, op_split])
+
+    result = subprocess.run(
+        [sys.executable, "-m", "eurika_cli", "whitelist-draft", str(tmp_path)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0
+    payload = json.loads((tmp_path / ".eurika" / "operation_whitelist.draft.json").read_text(encoding="utf-8"))
+    kinds = {op.get("kind") for op in (payload.get("operations") or [])}
+    assert "extract_block_to_helper" in kinds
+    assert "split_module" not in kinds
+
+
+def test_whitelist_draft_all_kinds_includes_other_kinds(tmp_path: Path) -> None:
+    """--all-kinds disables default kind filter."""
+    from eurika.storage import SessionMemory
+
+    mem = SessionMemory(tmp_path)
+    op_extract = {"target_file": "a.py", "kind": "extract_block_to_helper", "params": {"location": "f"}}
+    op_split = {"target_file": "b.py", "kind": "split_module", "params": {"location": "g"}}
+    mem.record_verify_success([op_extract, op_split])
+    mem.record_verify_success([op_extract, op_split])
+
+    result = subprocess.run(
+        [sys.executable, "-m", "eurika_cli", "whitelist-draft", "--all-kinds", str(tmp_path)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0
+    payload = json.loads((tmp_path / ".eurika" / "operation_whitelist.draft.json").read_text(encoding="utf-8"))
+    kinds = {op.get("kind") for op in (payload.get("operations") or [])}
+    assert "extract_block_to_helper" in kinds
+    assert "split_module" in kinds
+
+
+def test_whitelist_draft_rejects_unknown_kind(tmp_path: Path) -> None:
+    """Unknown --kinds should fail fast with a clear CLI error."""
+    result = subprocess.run(
+        [sys.executable, "-m", "eurika_cli", "whitelist-draft", "--kinds", "unknown_kind", str(tmp_path)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 1
+    assert "unknown --kinds values" in result.stderr
 
 
 def test_run_fix_cycle_impl_uses_apply_stage_facade() -> None:

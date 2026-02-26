@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## v3.0.11 — Operability guardrails + UI core parity (2026-02-26)
+
+### Policy / operability
+- `extract_block_to_helper` hardened as guarded-path: weak pair policy + target-aware demote by verify_fail history + whitelist override.
+- `operation_whitelist.json` support extended with optional `location` matching.
+- Session campaign memory now tracks verify_success and expose promotion candidates (`campaign_whitelist_candidates`).
+- New CLI command: `eurika whitelist-draft` (draft generation from campaign success memory with safe kind filtering, `--kinds/--all-kinds`, validation).
+
+### Web UI
+- Dashboard upgraded to **Core Command Builder** for `scan/doctor/fix/cycle/explain`.
+- Safe command assembly with pre-run validation and command preview.
+- `/api/exec` hardened: subcommand-specific allowed flags + positional args normalization (including `explain <module>`).
+- UX improvements: dynamic field visibility by command/runtime, contextual guidance hints, `Copy command` with fallback to terminal input.
+
+### Docs
+- Updated `UI.md`, `CLI.md`, `ROADMAP.md`, `CYCLE_REPORT.md`, `README.md`, `REPORT.md`, `DOGFOODING.md` for new operability model and UI capabilities.
+
+### Tests
+- Added/updated coverage for API serve command normalization, CLI whitelist-draft options, session memory promotion logic, and UI-flow regressions.
+
+---
+
 ## v3.0.10 — planner split guard for extracted modules (2026-02-22)
 
 ### Fixes

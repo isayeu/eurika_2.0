@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 _CAMPAIGN_VERIFY_FAIL_MAX = 20
+_CAMPAIGN_VERIFY_SUCCESS_MAX = 50
 _CAMPAIGN_REJECTED_MAX = 100
 
 
@@ -74,12 +75,44 @@ class SessionMemory:
     def record_verify_failure(self, operations: list[dict[str, Any]]) -> None:
         """Record op keys from a run that failed verify (ROADMAP 2.7.5)."""
         data = self._load()
-        campaign = data.setdefault("campaign", {"rejected_keys": [], "verify_fail_keys": []})
+        campaign = data.setdefault(
+            "campaign",
+            {"rejected_keys": [], "verify_fail_keys": [], "verify_success_keys": []},
+        )
         fail_keys = list(campaign.get("verify_fail_keys") or [])
         for op in operations:
             fail_keys.append(operation_key(op))
         campaign["verify_fail_keys"] = fail_keys[-(_CAMPAIGN_VERIFY_FAIL_MAX):]
         self._save(data)
+
+    def record_verify_success(self, operations: list[dict[str, Any]]) -> None:
+        """Record op keys from a run that passed verify (promotion candidates)."""
+        data = self._load()
+        campaign = data.setdefault(
+            "campaign",
+            {"rejected_keys": [], "verify_fail_keys": [], "verify_success_keys": []},
+        )
+        success_keys = list(campaign.get("verify_success_keys") or [])
+        for op in operations:
+            success_keys.append(operation_key(op))
+        campaign["verify_success_keys"] = success_keys[-(_CAMPAIGN_VERIFY_SUCCESS_MAX):]
+        self._save(data)
+
+    def campaign_whitelist_candidates(self, min_success: int = 2) -> set[str]:
+        """Operation keys that are stable enough to consider for whitelist."""
+        if min_success <= 0:
+            return set()
+        data = self._load()
+        campaign = data.get("campaign") or {}
+        from collections import Counter
+
+        success_counts = Counter(str(k) for k in (campaign.get("verify_success_keys") or []))
+        fail_counts = Counter(str(k) for k in (campaign.get("verify_fail_keys") or []))
+        return {
+            key
+            for key, count in success_counts.items()
+            if count >= min_success and fail_counts.get(key, 0) < min_success
+        }
 
     def campaign_keys_to_skip(self) -> set[str]:
         """Keys to skip based on campaign memory: rejected in any session or 2+ verify failures."""

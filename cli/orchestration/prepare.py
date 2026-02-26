@@ -209,6 +209,7 @@ def apply_runtime_policy(
     patch_plan: PatchPlan,
     operations: list[OperationRecord],
     *,
+    path: Path,
     runtime_mode: str,
 ) -> tuple[PatchPlan, list[OperationRecord], list[dict[str, Any]]]:
     """Evaluate operations via policy engine and attach explainability metadata."""
@@ -221,7 +222,13 @@ def apply_runtime_policy(
     decisions: list[dict[str, Any]] = []
     for idx, op in enumerate(operations, start=1):
         target_file = str(op.get("target_file") or "")
-        res = evaluate_operation(op, config=cfg, index=idx, seen_files=seen_files)
+        res = evaluate_operation(
+            op,
+            config=cfg,
+            index=idx,
+            seen_files=seen_files,
+            project_root=path,
+        )
         op_with_meta = dict(op)
         op_with_meta["explainability"] = res.explainability
         op_with_meta["policy_decision"] = res.decision
@@ -442,6 +449,7 @@ def prepare_fix_cycle_operations(
     patch_plan, operations, policy_decisions = apply_runtime_policy(
         patch_plan,
         operations,
+        path=path,
         runtime_mode=runtime_mode,
     )
     patch_plan, operations, campaign_skipped = apply_campaign_memory(

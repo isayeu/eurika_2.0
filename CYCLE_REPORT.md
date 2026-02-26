@@ -2,6 +2,101 @@
 
 ---
 
+## 74. Snapshot (2026-02-26) — Target-aware policy + operation whitelist (controlled rollout)
+
+### Scope
+- В policy добавлен **target-aware override** по истории verify_fail:
+  - для operation key (`target|kind|location`) при `verify_fail >= 2`:
+    - `auto` → `deny`
+    - `hybrid` → `review`
+- Добавлен **operation whitelist**: `.eurika/operation_whitelist.json` для controlled rollout risky ops.
+- Starter whitelist: `extract_block_to_helper` для `eurika/api/chat.py` (`deep_nesting`).
+
+### Проверка
+- Controlled hybrid (`--approve-ops 1`): применён `eurika/api/chat.py`, verify ✅ (`458 passed`).
+- В отчёте зафиксировано:
+  - `policy_reason = whitelisted target for controlled hybrid rollout`
+  - `execution_outcome = verify_success`.
+- Контрольные запуски на других targets:
+  - `eurika/storage/global_memory.py` — verify_fail + rollback
+  - `cli/core_handlers.py` — verify_fail + rollback.
+
+### Итог
+1. `extract_block_to_helper` остаётся guarded-path (не массовый auto-fix).
+2. Появился безопасный механизм точечного rollout через whitelist.
+3. Новый операционный фокус: `verify_success_rate` по `smell|action|target` (а не только apply-rate).
+
+---
+
+## 72. Snapshot (2026-02-26) — Ритуал 2.1: extract_block_to_helper массовый verify_fail → rollback
+
+### Scope
+- Полный ритуал: scan → doctor → fix → report-snapshot.
+- После релаксации suggest_extract_block (parent_locals, min_lines=3): план fix содержал **24 ops extract_block_to_helper**.
+- Все 24 применены, verify провален (10 failed tests), **rollback** отработал — 16 файлов восстановлены.
+
+### Doctor (eurika_doctor_report.json)
+| Метрика | Значение |
+|---------|----------|
+| Модули | 221 |
+| Зависимости | 108 |
+| Risk score | 46/100 |
+| apply_rate (baseline) | 0.8095 |
+| patch_plan operations | 0 (context filter) |
+
+### Fix (eurika_fix_report.json)
+| Поле | Значение |
+|------|----------|
+| modified | 16 |
+| rollback | done (verify_failed) |
+| operations | 24 × extract_block_to_helper |
+| verify | failed (10 tests) |
+| apply_rate (current) | 0.6667 |
+| rollback_rate | 1.0 |
+
+### Learning (by_action_kind)
+| Action | Success | Fail | Rate |
+|--------|---------|------|------|
+| remove_unused_import | 7 | 43 | 14% |
+| split_module | 2 | 7 | 22% |
+| extract_class | 1 | 1 | 50% |
+| refactor_code_smell | 0 | 1041 | 0% |
+| extract_nested_function | 0 | 33 | 0% |
+| **extract_block_to_helper** | 0 | 28 (+24) | **0%** |
+
+### Выводы
+1. **extract_block_to_helper** — 0% success; релаксация (parent_locals, min_lines=3) породила много ops, все провалили verify.
+2. **Snapshot #73:** эвристика ужесточена — см. ниже.
+
+---
+
+## 73. Snapshot (2026-02-26) — extract_block эвристика: ужесточение после verify_fail
+
+### Scope
+- Реверт и улучшение эвристики suggest_extract_block после массового verify_fail (24 ops → rollback).
+- **Изменения:**
+  1. **parent_params only** — used_from_outer из parent_params (не parent_locals); исключены loop vars и промежуточные locals.
+  2. **writes_to_params** — пропуск блоков, которые присваивают в параметры parent.
+  3. **min_lines=5** (вместо 3) — меньше мелких экстракций.
+  4. **_EXTRACT_BLOCK_SKIP_PATTERNS** — skip для eurika/refactor/, planner_patch_ops.py, planner_llm.py, report/, cli/orchestration/ (модули, где extraction часто ломает verify).
+  5. **Исправлен баг** extra_params: `(used - assigned) & parent_params`.
+
+### Итог
+- Эвристика консервативнее; ожидаем меньше ops, но выше success rate при следующем прогоне.
+
+---
+
+## 71. Snapshot (2026-02-26) — Apply-rate: skip tests/ в get_clean_imports
+
+### Scope
+- get_clean_imports_operations: пропуск tests/ — policy всё равно deny, предложение создаёт no-op.
+- Цель: не тратить слоты операций на файлы, которые policy заблокирует.
+
+### Итог
+- Меньше no-op по remove_unused_import для tests/*; apply-rate при прочих равных выше.
+
+---
+
 ## 70. Snapshot (2026-02-26) — allow-low-risk-campaign, tool_contract fix, REMOVE_UNUSED_IMPORT_SKIP
 
 ### Scope

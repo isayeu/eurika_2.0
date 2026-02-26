@@ -22,17 +22,20 @@ def _names_used_in_node(node: ast.AST) -> Set[str]:
                 loaded.add(n.value.id)
     return loaded
 
+def _extracted_block_29(assigned, n):
+    for a in n.args.args:
+        assigned.add(a.arg)
+    if n.args.vararg:
+        assigned.add(n.args.vararg.arg or '')
+    if n.args.kwarg:
+        assigned.add(n.args.kwarg.arg or '')
+
 def _names_assigned_in(node: ast.AST) -> Set[str]:
     """Collect names assigned in node (params, assignments)."""
     assigned: Set[str] = set()
     for n in ast.walk(node):
         if isinstance(n, ast.FunctionDef):
-            for a in n.args.args:
-                assigned.add(a.arg)
-            if n.args.vararg:
-                assigned.add(n.args.vararg.arg or '')
-            if n.args.kwarg:
-                assigned.add(n.args.kwarg.arg or '')
+            _extracted_block_29(assigned, n)
         elif isinstance(n, ast.Assign):
             for t in n.targets:
                 if isinstance(t, ast.Name):
@@ -310,7 +313,7 @@ def suggest_extract_block(file_path: Path, function_name: str, *, min_lines: int
 
     Returns (helper_name, block_start_line, line_count, extra_params) or None.
     extra_params: names from parent scope to pass as args (max max_extra_params).
-    Only considers blocks with no break/continue/return; uses only parent params.
+    Uses only parent params; skips blocks that assign to parent params.
     """
     try:
         content = file_path.read_text(encoding='utf-8')
@@ -348,10 +351,15 @@ def suggest_extract_block(file_path: Path, function_name: str, *, min_lines: int
                 if not _block_has_control_flow_exit(body):
                     used = _names_used_in_statements(body)
                     assigned = _names_assigned_in_statements(body)
+                    writes_to_params = assigned & parent_params
                     free_names = used - assigned
-                    used_from_outer = free_names & parent_locals
+                    used_from_outer = free_names & parent_params
                     unresolved = free_names - parent_locals - module_bound - builtin_names
-                    if not unresolved and used_from_outer <= parent_params and (len(used_from_outer) <= max_extra_params):
+                    if (
+                        not unresolved
+                        and not writes_to_params
+                        and len(used_from_outer) <= max_extra_params
+                    ):
                         line_count = _block_line_count(body)
                         if line_count >= min_lines:
                             candidates.append((node, body, depth, line_count))
@@ -367,7 +375,8 @@ def suggest_extract_block(file_path: Path, function_name: str, *, min_lines: int
     block_node, body, _, line_count = best
     used = _names_used_in_statements(body)
     assigned = _names_assigned_in_statements(body)
-    extra_params = sorted(used - assigned & parent_params)
+    used_from_outer = (used - assigned) & parent_params
+    extra_params = sorted(used_from_outer)
     helper_name = f'_extracted_block_{block_node.lineno}'
     return (helper_name, block_node.lineno, line_count, extra_params)
 

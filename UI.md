@@ -46,7 +46,22 @@ http://127.0.0.1:8765/
 ### Dashboard
 Обзор: risk score, системные метрики (modules, deps, cycles, maturity), operational metrics (apply-rate, rollback-rate, median verify time), тренды, central modules, top risks.
 
-**Кнопки команд:** Scan, Doctor, Fix, Report snapshot, Cycle (dry-run). Для Fix: чекбокс **dry-run** (по умолчанию вкл) и **require approval** (`eurika fix . --team-mode`). Вывод появляется во вкладке Terminal.
+**Core Command Builder:** запуск `scan/doctor/fix/cycle/explain` из единой формы с параметрами.
+
+- `scan`: `--format`, color flags
+- `doctor`: `--window`, `--no-llm`, `--online`, `--runtime-mode`
+- `fix`/`cycle`: `--dry-run`, `--runtime-mode`, `--non-interactive`, `--session-id`, `--allow-campaign-retry`, `--allow-low-risk-campaign`, `--no-clean-imports`, `--no-code-smells`, `--verify-timeout`, `--interval`, а также `--team-mode` / `--apply-approved`
+- `explain`: module + `--window`
+
+Кнопки:
+- **Build command** — формирует команду и подставляет её в Terminal
+- **Copy command** — копирует собранную команду в clipboard (fallback: подстановка в Terminal input)
+- **Run** — выполняет собранную команду через `/api/exec`
+- UI динамически показывает только релевантные поля для выбранной команды
+- Для `fix/cycle` поля `session-id` и `non-interactive` показываются только при `runtime-mode=hybrid`
+- Внизу builder выводится контекстная подсказка по безопасному запуску для выбранной команды
+
+Для некорректных комбинаций (например `team-mode` + `apply-approved`, `non-interactive` вне `runtime-mode=hybrid`) UI показывает ошибку до запуска.
 
 ### Summary
 Детализированный architecture summary: system metrics, central modules, risks.

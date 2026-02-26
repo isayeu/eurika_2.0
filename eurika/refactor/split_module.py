@@ -16,15 +16,14 @@ def _infer_import_stems_from_tree(tree: ast.AST) -> Set[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                stem = alias.name.split(".")[0]
-                if stem and stem != "__init__":
+                stem = alias.name.split('.')[0]
+                if stem and stem != '__init__':
                     stems.add(stem)
         elif isinstance(node, ast.ImportFrom) and node.module:
-            stem = node.module.split(".")[-1]
-            if stem and stem != "__init__":
+            stem = node.module.split('.')[-1]
+            if stem and stem != '__init__':
                 stems.add(stem)
     return stems
-
 
 def split_module_by_import(file_path: Path, imports_from: List[str], extracted_module_stem: str='_extracted', target_file: Optional[str]=None) -> Optional[Tuple[str, str, str]]:
     """
@@ -96,12 +95,7 @@ def split_module_by_import(file_path: Path, imports_from: List[str], extracted_m
     modified_original = _build_modified_original(tree, to_extract, extracted_names, base, extracted_module_stem)
     return (new_rel_path, new_module_content, modified_original)
 
-def split_module_by_function(
-    file_path: Path,
-    extracted_module_stem: str = "_extracted",
-    target_file: Optional[str] = None,
-    min_statements: int = 1,
-) -> Optional[Tuple[str, str, str]]:
+def split_module_by_function(file_path: Path, extracted_module_stem: str='_extracted', target_file: Optional[str]=None, min_statements: int=1) -> Optional[Tuple[str, str, str]]:
     """
     Fallback: extract the largest self-contained top-level function to a new module.
 
@@ -109,7 +103,7 @@ def split_module_by_function(
     Picks the largest function that doesn't reference other top-level defs.
     """
     try:
-        content = file_path.read_text(encoding="utf-8")
+        content = file_path.read_text(encoding='utf-8')
     except OSError:
         return None
     try:
@@ -121,7 +115,7 @@ def split_module_by_function(
     top_level_names = _module_level_names(tree)
     candidates: List[ast.FunctionDef] = []
     for node in ast.iter_child_nodes(tree):
-        if not isinstance(node, ast.FunctionDef) or node.name.startswith("_"):
+        if not isinstance(node, ast.FunctionDef) or node.name.startswith('_'):
             continue
         stmt_count = len(node.body)
         if stmt_count < min_statements:
@@ -131,31 +125,28 @@ def split_module_by_function(
         candidates.append(node)
     if not candidates:
         return None
-    to_extract = max(candidates, key=lambda f: sum(1 for _ in ast.walk(f)))
+    to_extract = max(candidates, key=lambda f: sum((1 for _ in ast.walk(f))))
     used_stems = _used_import_stems(to_extract, bindings)
     import_lines = _gather_import_lines(tree, used_stems)
     if not import_lines:
         import_lines = ['"""Extracted from parent module."""']
     if target_file:
         t = Path(target_file)
-        base = str(t.with_suffix(""))
-        new_name = t.stem + "_" + to_extract.name.lower() + ".py"
-        new_rel_path = str(t.parent / new_name) if str(t.parent) != "." else new_name
+        base = str(t.with_suffix(''))
+        new_name = t.stem + '_' + to_extract.name.lower() + '.py'
+        new_rel_path = str(t.parent / new_name) if str(t.parent) != '.' else new_name
     else:
         base = file_path.stem
-        new_name = base + "_" + to_extract.name.lower() + ".py"
+        new_name = base + '_' + to_extract.name.lower() + '.py'
         new_rel_path = new_name
-    new_content_lines = ['"""Extracted from parent module to reduce complexity."""', ""]
+    new_content_lines = ['"""Extracted from parent module to reduce complexity."""', '']
     new_content_lines.extend(import_lines)
-    new_content_lines.append("")
+    new_content_lines.append('')
     new_content_lines.append(ast.unparse(to_extract))
-    new_content_lines.append("")
-    new_module_content = "\n".join(new_content_lines).rstrip() + "\n"
-    modified_original = _build_modified_original(
-        tree, [to_extract], [to_extract.name], base, "_" + to_extract.name.lower()
-    )
+    new_content_lines.append('')
+    new_module_content = '\n'.join(new_content_lines).rstrip() + '\n'
+    modified_original = _build_modified_original(tree, [to_extract], [to_extract.name], base, '_' + to_extract.name.lower())
     return (new_rel_path, new_module_content, modified_original)
-
 
 def split_module_by_class(file_path: Path, extracted_module_stem: str='_extracted', target_file: Optional[str]=None, min_class_size: int=3) -> Optional[Tuple[str, str, str]]:
     """
@@ -224,7 +215,6 @@ def _module_level_names(tree: ast.AST) -> Set[str]:
         elif isinstance(node, (ast.FunctionDef, ast.ClassDef)):
             names.add(node.name)
     return names
-
 
 def _def_references_local_names(node: ast.FunctionDef | ast.ClassDef, local_names: Set[str], bindings: Dict[str, str]) -> bool:
     """True if node body references any of local_names (other top-level defs/constants in same module)."""
@@ -312,18 +302,15 @@ def _build_extracted_module(tree: ast.AST, import_line: str, defs: List[ast.Func
     """Build content for the new extracted module (single import line)."""
     return _build_extracted_module_multi(tree, [import_line], defs)
 
-
-def _build_extracted_module_multi(
-    tree: ast.AST, import_lines: List[str], defs: List[ast.FunctionDef | ast.ClassDef]
-) -> str:
+def _build_extracted_module_multi(tree: ast.AST, import_lines: List[str], defs: List[ast.FunctionDef | ast.ClassDef]) -> str:
     """Build content for the new extracted module (multiple import lines)."""
-    lines = ['"""Extracted from parent module to reduce complexity."""', ""]
+    lines = ['"""Extracted from parent module to reduce complexity."""', '']
     lines.extend(import_lines)
-    lines.append("")
+    lines.append('')
     for d in defs:
         lines.append(ast.unparse(d))
-        lines.append("")
-    return "\n".join(lines).rstrip() + "\n"
+        lines.append('')
+    return '\n'.join(lines).rstrip() + '\n'
 
 def _build_modified_original(tree: ast.AST, to_remove: List[ast.FunctionDef | ast.ClassDef], extracted_names: List[str], base_name: str, extracted_stem: str) -> str:
     """Remove extracted defs from original and add import from new module."""
@@ -337,18 +324,3 @@ def _build_modified_original(tree: ast.AST, to_remove: List[ast.FunctionDef | as
     insert_idx = sum((1 for n in new_tree.body if isinstance(n, (ast.Import, ast.ImportFrom))))
     new_tree.body.insert(insert_idx, import_ast)
     return ast.unparse(new_tree) + '\n'
-
-
-# TODO (eurika): refactor long_function 'split_module_by_import' — consider extracting helper
-
-
-# TODO (eurika): refactor long_function 'split_module_by_function' — consider extracting helper
-
-
-# TODO (eurika): refactor long_function 'split_module_by_class' — consider extracting helper
-
-
-# TODO (eurika): refactor deep_nesting '_collect_bindings' — consider extracting nested block
-
-
-# TODO (eurika): refactor deep_nesting '_used_import_stems' — consider extracting nested block

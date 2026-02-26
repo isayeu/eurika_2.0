@@ -592,3 +592,38 @@ def test_read_json_body_returns_none_on_invalid_json() -> None:
     handler = _BodyHandler(b"{not json", "9")
     out = api_serve._read_json_body(handler)
     assert out is None
+
+
+def test_normalize_exec_args_explain_requires_module(tmp_path: Path) -> None:
+    """explain command must include module positional argument."""
+    args, err = api_serve._normalize_exec_args_for_subcommand(tmp_path, "explain", [])
+    assert args is None
+    assert err is not None
+    assert "requires module positional" in err
+
+
+def test_normalize_exec_args_rejects_unknown_flag_for_subcommand(tmp_path: Path) -> None:
+    """Unknown flag for subcommand should be rejected with explicit hint."""
+    args, err = api_serve._normalize_exec_args_for_subcommand(
+        tmp_path,
+        "scan",
+        ["--runtime-mode", "hybrid"],
+    )
+    assert args is None
+    assert err is not None
+    assert "flag not allowed for 'scan'" in err
+
+
+def test_normalize_exec_args_allows_explain_module_and_window(tmp_path: Path) -> None:
+    """explain should keep module and allow --window value."""
+    args, err = api_serve._normalize_exec_args_for_subcommand(
+        tmp_path,
+        "explain",
+        ["eurika/api/serve.py", "--window", "7"],
+    )
+    assert err is None
+    assert args is not None
+    assert args[0] == "eurika/api/serve.py"
+    assert args[1] == str(tmp_path)
+    assert "--window" in args
+    assert "7" in args

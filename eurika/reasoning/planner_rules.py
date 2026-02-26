@@ -51,6 +51,18 @@ DIFF_HINTS: Dict[tuple[str, str], List[str]] = {
         "Extract shared interfaces; depend on abstractions, not implementations.",
         "Consider introducing a shared-core module used by both sides.",
     ],
+    ("long_function", "extract_nested_function"): [
+        "Extract nested function to module level; pass parent scope vars as parameters (max 3).",
+        "Prefer largest self-contained nested def; avoid nonlocal/global.",
+    ],
+    ("long_function", "refactor_code_smell"): [
+        "Extract coherent block (if/for/while body) to helper; or extract nested def to module level.",
+        "Reduce cyclomatic complexity; aim for single responsibility per function.",
+    ],
+    ("deep_nesting", "refactor_code_smell"): [
+        "Extract nested block (if/for/while body) into helper; pass used outer vars as args.",
+        "Flatten nesting; avoid break/continue/return inside extractable block.",
+    ],
 }
 
 

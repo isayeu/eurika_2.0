@@ -137,6 +137,86 @@ def _build_planner_prompt(
     return ""
 
 
+def _use_llm_extract_hints() -> bool:
+    """Check env for long_function extract-method LLM hints. Default: off to avoid latency."""
+    v = os.environ.get("EURIKA_USE_LLM_EXTRACT_HINTS", "0").strip().lower()
+    return v in ("1", "true", "yes", "on")
+
+
+def _extract_function_source(content: str, function_name: str) -> str | None:
+    """Get function source by name (first 80 lines). Returns None if not found."""
+    try:
+        import ast
+        tree = ast.parse(content)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == function_name:
+                start = (node.lineno or 1) - 1
+                end = min((node.end_lineno or node.lineno or 0), start + 80)
+                lines = content.splitlines()
+                return "\n".join(lines[start:end])
+    except (SyntaxError, ValueError):
+        pass
+    return None
+
+
+def _build_extract_method_prompt(function_name: str, function_source: str) -> str:
+    """Prompt for LLM to suggest extract-method steps."""
+    preview = function_source[:1500] + ("..." if len(function_source) > 1500 else "")
+    return (
+        f"Python function '{function_name}' is too long. Here is its source:\n\n```python\n{preview}\n```\n\n"
+        "In 1-3 short bullet points, suggest how to extract a coherent helper (which block to move, what to name it). "
+        "Example: 'Extract the validation block (lines 15-25) to _validate_input(data)'. "
+        "Reply with bullet points only, no preamble."
+    )
+
+
+def ask_llm_extract_method_hints(file_path: "os.PathLike[str] | str", function_name: str) -> List[str]:
+    """
+    Ask LLM for extract-method hints (ROADMAP operability: internet/LLM).
+
+    Returns list of hint strings; empty when disabled, on failure, or budget exhausted.
+    Uses same budget/circuit breaker as ask_ollama_split_hints.
+    """
+    if not _use_llm_extract_hints():
+        return []
+    if not function_name or not function_name.strip():
+        return []
+    cache_key = ("long_function_extract", f"{file_path}:{function_name}")
+    cached = _HINT_CACHE.get(cache_key)
+    if cached is not None:
+        return list(cached)
+    if not _llm_hint_allowed():
+        _HINT_CACHE[cache_key] = []
+        return []
+    try:
+        content = open(file_path, encoding="utf-8").read()
+    except OSError:
+        _HINT_CACHE[cache_key] = []
+        return []
+    src = _extract_function_source(content, function_name)
+    if not src or len(src) < 30:
+        _HINT_CACHE[cache_key] = []
+        return []
+    prompt = _build_extract_method_prompt(function_name, src)
+    _register_llm_hint_call()
+    try:
+        from eurika.reasoning.architect import _call_ollama_cli
+
+        text, reason = _call_ollama_cli(_ollama_model(), prompt)
+        if text:
+            hints = _parse_llm_hints(text)
+            _HINT_CACHE[cache_key] = hints
+            return list(hints)
+        if reason and (
+            "timed out" in reason.lower() or "could not connect to ollama server" in reason.lower()
+        ):
+            _disable_llm_hints_for_run()
+    except Exception:
+        pass
+    _HINT_CACHE[cache_key] = []
+    return []
+
+
 def _parse_llm_hints(text: str) -> List[str]:
     """Extract hint-like lines from LLM response. Filters noise."""
     if not text or not isinstance(text, str):
