@@ -8,17 +8,41 @@ learning.all(), feedback.all() and aggregate_* derive from events.by_type(...).
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
-    from architecture_feedback import FeedbackRecord
-    from architecture_learning import LearningRecord
     from .event_engine import EventStore
 
 
+try:
+    from architecture_learning import LearningRecord  # type: ignore
+except Exception:
+    @dataclass
+    class LearningRecord:
+        timestamp: float
+        project_root: str
+        modules: List[str]
+        operations: List[Dict[str, Any]]
+        risks: List[str]
+        verify_success: Optional[bool]
+
+
+try:
+    from architecture_feedback import FeedbackRecord  # type: ignore
+except Exception:
+    @dataclass
+    class FeedbackRecord:
+        timestamp: float
+        project_root: str
+        action: str
+        outcome: str
+        target: Optional[str] = None
+        comment: Optional[str] = None
+
+
 def _learning_record_from_event(e: Any) -> "LearningRecord":
-    from architecture_learning import LearningRecord
     return LearningRecord(
         timestamp=e.timestamp,
         project_root=e.input.get("project_root", ""),
@@ -30,7 +54,6 @@ def _learning_record_from_event(e: Any) -> "LearningRecord":
 
 
 def _feedback_record_from_event(e: Any) -> "FeedbackRecord":
-    from architecture_feedback import FeedbackRecord
     outcome = e.output.get("outcome") or (e.result if isinstance(e.result, str) else "")
     return FeedbackRecord(
         timestamp=e.timestamp,
@@ -145,7 +168,6 @@ class LearningView:
 
     def all(self) -> List["LearningRecord"]:
         self._ensure_migrated()
-        from architecture_learning import LearningRecord
         return [_learning_record_from_event(e) for e in self._events.by_type("learn")]
 
     def aggregate_by_action_kind(self) -> Dict[str, Dict[str, Any]]:

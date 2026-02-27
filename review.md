@@ -563,7 +563,7 @@ GET  /history
 
 ---
 
-## 2. Web UI
+## 2. Web UI (legacy direction)
 
 * визуализация графа
 * heatmap централизации

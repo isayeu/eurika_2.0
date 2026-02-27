@@ -2,7 +2,7 @@
 
 **Architecture Awareness Engine** — анализ кода и архитектуры, планирование рефакторинга, применение патчей с бэкапами и учётом прошлого опыта. Целевой цикл: *scan → diagnose → plan → patch → verify → learn* (команда `eurika fix`).
 
-*Требования: Python 3.9+.* Для проверки после `eurika fix` нужен pytest: `pip install pytest` или `pip install -e ".[test]"`.
+*Требования: Python 3.10+.* Для проверки после `eurika fix` нужен pytest: `pip install pytest` или `pip install -e ".[test]"`. Рекомендуется Python 3.12/3.13 для Qt.
 
 **Текущий фокус (по review):** переход от «архитектурного аналитика» к «инженерному инструменту» — полноценный Patch Engine (apply/verify/rollback), автофиксы, единый Event Engine. Детали — в **review.md** и **ROADMAP.md**.
 
@@ -24,8 +24,27 @@ pip install -e ".[test]"
 eurika scan .           # полный скан → self_map.json, smells, summary
 eurika doctor .         # диагностика (report + architect) без патчей
 eurika fix . --dry-run  # план рефакторинга без применения
-eurika serve .          # Web UI на http://127.0.0.1:8765/
+eurika serve .          # JSON API на http://127.0.0.1:8765/api
 ```
+
+### Qt desktop shell (PySide6, Qt-first)
+
+Desktop-first интерфейс поверх CLI/API-ядра:
+
+```bash
+pip install -e ".[test,qt]"
+eurika-qt .
+```
+
+Вкладки Qt-интерфейса:
+
+- **Models** — управление Ollama: Start/Stop, переменные окружения, список моделей, установка
+- **Chat** — чат с Apply/Reject для подтверждения планов; создание вкладок (в т.ч. Terminal) по intent
+- **Commands** — scan/doctor/fix/cycle/explain, live output, stop/cancel
+- **Dashboard** — summary/history, top verify_success, рекомендации по whitelist
+- **Approvals** — approve/reject flow для pending plan
+
+Выбор chat provider/model: `auto`, `openai`, `ollama`. Проект задаётся через picker или аргумент `eurika-qt .`.
 
 Или напрямую: `python eurika_cli.py scan .`.
 
@@ -49,7 +68,7 @@ Fallback-модель для локального OpenAI-compatible endpoint Oll
 
 **CI:** `eurika fix . --quiet` — exit 0 при успехе, 1 при провале verify или ошибках. См. CLI.md § CI/CD.
 - **`eurika explain <module> [path]`** — роль и риски модуля.
-- **`eurika serve [path]`** — Web UI: Dashboard, Summary, History, Diff, Graph, Approve, Explain, Terminal, Ask Architect, Chat. Dashboard включает Core Command Builder для `scan/doctor/fix/cycle/explain` с параметрами runtime/policy/session. См. **UI.md**.
+- **`eurika serve [path]`** — JSON API для интеграций и внешних клиентов (Qt shell и др.).
 
 ## CLI commands
 
@@ -67,7 +86,7 @@ Fallback-модель для локального OpenAI-compatible endpoint Oll
 - **`eurika architect [path]`**: интерпретация в стиле «архитектор проекта» (2–4 предложения). По умолчанию — шаблон; при заданных переменных окружения вызывается LLM (OpenAI или OpenRouter). Опции: `--window N`, `--no-llm`.
 - **`eurika suggest-plan [path]`**: эвристический рефакторинг-план по summary и рискам (или по build_recommendations при наличии self_map). Опция: `--window N`.
 - **`eurika arch-diff old.json new.json`**: сравнивает два снапшота `self_map.json`. Опция `--json`.
-- **`eurika serve [path]`**: Web UI + JSON API (Dashboard, Chat, Graph, /api/summary, /api/history и др.). Опции: `--port`, `--host`.
+- **`eurika serve [path]`**: JSON API only (`/api/*`) для интеграций и UI-клиентов (Qt shell и др.). Опции: `--port`, `--host`.
 - **`eurika learn-github [path]`**: клонирует curated OSS (Django, FastAPI и др.) в `../curated_repos/` (рядом с проектом); `--scan` — scan после clone (ROADMAP 3.0.5.1).
 
 ### AgentCore (experimental)
@@ -120,7 +139,8 @@ Fallback-модель для локального OpenAI-compatible endpoint Oll
 
 ## Документация
 
-- **UI.md** — Web UI: запуск `eurika serve`, вкладки (Dashboard, Summary, History, Diff, Graph, Approve, Explain, Terminal, Ask Architect, Chat), JSON API
+- **UI.md** — legacy reference по архивному Web UI (история, не текущий интерфейс)
+- **MIGRATION_WEB_TO_QT.md** — практический статус миграции интерфейса: что удалено, что осталось, как запускать сейчас
 - **review.md** — разбор, диагноз зрелости, план прорыва (5 этапов)
 - **ROADMAP.md** — план задач, оценка зрелости, «что не хватает», план прорыва, этапы до продуктовой 1.0
 - **REPORT.md** — текущий статус, оценка по review, следующий шаг

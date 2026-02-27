@@ -54,7 +54,7 @@
 
 ## Следующий горизонт (кратко)
 
-- **Состояние v3.0.x:** фазы 2.1–2.9, 3.0, 3.1, 3.1-arch, 3.2, 3.5 — выполнены. Web UI: Dashboard (Core Command Builder), Graph, Approve, Terminal, Ask Architect, Chat.
+- **Состояние v3.0.x:** фазы 2.1–2.9, 3.0, 3.1, 3.1-arch, 3.2, 3.5 — выполнены. Web UI закрыт как legacy; текущий интерфейсный фокус — Qt shell (`qt_app`, `eurika-qt`).
 - **Фокус:** работа над собой — регулярный scan/doctor/fix, добавление функций по запросу, багфиксы, актуализация документации.
 - **Стабилизация:** тесты зелёные, доки соответствуют коду.
 - **Операционность 5/10:** refactor_code_smell 0% success (в WEAK_SMELL_ACTION_PAIRS); extract_block_to_helper работает в guarded-режиме (hybrid: review, auto: deny, target-aware/whitelist); для повышения — допустимо использовать интернет и LLM (промпты, pattern library, curated repos).
@@ -235,6 +235,15 @@
 
 - dogfooding: регулярные циклы scan→doctor→fix на Eurika, report-snapshot, фиксация метрик
 - KPI-фокус: `verify_success_rate` по `smell|action|target` (apply_rate вторичен)
+
+**Update (2026-02-27, Qt/chat hardening + doc sync v3.0.12):**
+
+- Doc sync: pyproject 3.0.12, README/UI/MIGRATION/CHANGELOG/CYCLE_REPORT/REPORT приведены в соответствие с Qt-first этапом.
+- Qt runtime hardening: корректный `closeEvent` в `MainWindow` с shutdown для `QProcess` (`terminate` → `wait` → `kill`) и остановкой health-timer.
+- Stability gate окружения: Qt smoke переведён в изолированный `subprocess`; для нестабильного teardown на Python 3.14 введена рекомендация запускать smoke на 3.12/3.13 (через `EURIKA_QT_SMOKE_PYTHON`).
+- Chat actions hardening: добавлены e2e-сценарии `add/remove tab` по цепочке `interpret -> pending_plan -> применяй -> verify`, чтобы закрыть регрессию класса "удали -> добавь".
+- Operability 3.6 KPI: добавлен controlled whitelist seed (`operation_whitelist.controlled.json`) для 1–2 action-kind с безопасным rollout.
+- UI sync: model controls закреплены на отдельной вкладке `Models`, chat-вкладка оставлена фокусной для диалога/goal-view.
 
 ### Пакет 3.6 — Operability UX (практики из Cursor)
 
@@ -680,9 +689,9 @@
 
 ---
 
-### Фаза 3.5 — Web UI (дашборд поверх JSON API)
+### Фаза 3.5 — Web UI (legacy archive)
 
-**Цель:** веб-интерфейс для просмотра архитектурного анализа, истории эволюции и (опционально) approve/reject операций в hybrid-режиме. Основа — существующий `eurika serve` (GET /api/summary, /api/history, /api/diff). UI не заменяет CLI, а дополняет для пользователей, предпочитающих браузер.
+**Статус:** раздел сохранён как исторический archive. Текущий desktop-first контур — Qt shell (`eurika-qt`), а `eurika serve` работает в API-only режиме (`/api/*`, без static web UI).
 
 **Предпосылки:** JSON API готов (eurika.api, eurika serve). Нужен только frontend.
 
@@ -742,9 +751,9 @@
 
 **Метрики выхода из 3.5.11.A:** пользователь вводит сообщение → получает ответ от Ollama с контекстом проекта; диалог логируется в .eurika/chat_history/.
 
-**Метрики выхода из фазы 3.5 (DoD):**
+**Метрики выхода из фазы 3.5 (DoD, исторические):**
 
-- Пользователь может открыть `http://localhost:8765` (или настроенный порт) и получить рабочий дашборд.
+- Пользователь получает доступ к JSON API (`/api/*`) на `http://localhost:8765` (или настроенном порту).
 - Summary, history, explain доступны через UI без CLI.
 - Документация: CLI.md или отдельный UI.md с инструкцией по запуску и настройке.
 
@@ -834,6 +843,38 @@
 ## 6. Документация
 
 - README, Architecture, CLI.md, THEORY.md
+
+---
+
+## PyTorch (опционально, после стабилизации ядра)
+
+Статус: **не обязательная зависимость** для базового Qt/CLI/API контура.
+
+### Когда подключать
+
+Подключаем PyTorch только при наличии измеримого выигрыша в одном из сценариев:
+
+1. Локальные embeddings/RAG без внешних API.
+2. Локальный классификатор intent/risk/confidence для Universal Task Executor.
+3. Дообучение/ранжирование на outcome-данных (`execute+verify`) для повышения качества планов.
+
+### Критерии входа
+
+- Текущий детерминированный контур стабилен (execute/verify/report, risk-gate, rollback).
+- Есть baseline-метрики качества (intent accuracy, false-positive action rate, verify success rate).
+- Есть офлайн-набор данных (chat+outcome events), достаточный для валидации.
+
+### Принципы интеграции
+
+- `torch` ставится как optional extra (например, `.[ml]`), не в базовый install.
+- По умолчанию fallback на текущий rule-based + LLM контур.
+- Любая ML-ветка должна иметь деградацию в deterministic режим при ошибках/отсутствии модели.
+
+### Метрики успеха
+
+- +N% к точности intent/risk при неизменном или меньшем false-positive rate.
+- Снижение доли лишних уточнений без роста ошибочных исполнений.
+- Рост `verify_success_rate` по `smell|action|target` в контролируемом окне.
 
 ---
 

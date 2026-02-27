@@ -381,9 +381,7 @@ eurika suggest-plan . --window 10
 
 ### eurika serve [path] [--port N] [--host HOST]
 
-HTTP-сервер JSON API для будущего UI (ROADMAP §2.3, 3.5.1). По умолчанию порт 8765, хост 127.0.0.1.
-
-**UI:** `GET /` — web dashboard (ROADMAP 3.5.2–3.5.5) with Dashboard (risk bar, trends), Summary, History, Diff, Explain tabs.
+HTTP-сервер JSON API (`/api/*`) для интеграций и UI-клиентов (в первую очередь Qt shell). По умолчанию порт 8765, хост 127.0.0.1.
 
 **Endpoints:**
 - `GET /api/summary` — architecture summary

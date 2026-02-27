@@ -1,10 +1,8 @@
-"""Analysis layer (graph, scanning, metrics) — façade.
+"""Analysis layer namespace.
 
-For v0.9 this package only re-exports the existing flat analysis modules
-to align with the target layout while keeping behaviour unchanged.
+Keep package import lightweight: submodules are loaded on demand to avoid
+hard dependency on legacy flat modules during startup.
 """
-
-from . import graph, scanner, metrics, cycles, self_map, topology  # noqa: F401
 
 __all__ = ["graph", "scanner", "metrics", "cycles", "self_map", "topology"]
 

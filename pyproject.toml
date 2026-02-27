@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eurika"
-version = "3.0.11"
-description = "Eurika — decision-gated architecture analysis and refactoring assistant"
+version = "3.0.12"
+description = "Eurika — Qt-first architecture analysis and refactoring assistant. CLI/API core, desktop UI (eurika-qt): Commands, Dashboard, Approvals, Models (Ollama), Chat with Apply/Reject."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 
 [tool.eurika]
 verify_timeout = 300
@@ -16,10 +16,12 @@ verify_timeout = 300
 llm = ["openai>=1.0"]
 env = ["python-dotenv>=1.0"]
 test = ["pytest>=7.0"]
+qt = ["PySide6>=6.6"]
 typecheck = ["mypy>=1.10"]
 
 [project.scripts]
 eurika = "eurika_cli:main"
+eurika-qt = "qt_app.main:main"
 
 [tool.setuptools]
 py-modules = ["eurika_cli"]

@@ -1,0 +1,18 @@
+{
+  "meta": {
+    "version": 1,
+    "purpose": "3.6 KPI controlled whitelist seed"
+  },
+  "operations": [
+    {
+      "kind": "remove_unused_import",
+      "allow_in_hybrid": true,
+      "allow_in_auto": true
+    },
+    {
+      "kind": "fix_import",
+      "allow_in_hybrid": true,
+      "allow_in_auto": false
+    }
+  ]
+}

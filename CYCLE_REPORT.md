@@ -1,5 +1,49 @@
 # Отчёт цикла Eurika
 
+## Current state (2026-02-27)
+
+- Интерфейсный контур проекта переведён в **Qt-first** режим (`eurika-qt`, пакет `qt_app/`).
+- Вкладки Qt: **Models**, **Chat**, **Commands**, **Dashboard**, **Approvals**.
+- `eurika serve` работает в **API-only** режиме (`/api/*`), без runtime-раздачи web статики.
+- Исторические snapshot'ы ниже (включая Web UI этапы) сохранены как архив эволюции и не удаляются.
+- Learning-фокус операционности: `verify_success_rate` по `smell|action|target`, с видимостью сигналов в Qt Dashboard.
+
+---
+
+## 76. Snapshot (2026-02-27) — Doc sync + Qt tabs (v3.0.12)
+
+### Scope
+- Синхронизация документации с текущей стадией проекта.
+- **pyproject.toml:** version 3.0.12, requires-python >=3.10, description с Qt-first и списком вкладок.
+- **README:** Qt section обновлён — Models, Chat Apply/Reject, Terminal tab, Commands, Dashboard, Approvals.
+- **CHANGELOG:** добавлена секция v3.0.12 (Models tab, Chat hardening, Terminal via intent, runtime hardening).
+- **UI.md, MIGRATION_WEB_TO_QT.md:** описание текущих Qt-вкладок и возможностей.
+
+### Итог
+Документация приведена в соответствие с Qt-first интерфейсом на этапе v3.0.12.
+
+---
+
+## 75. Snapshot (2026-02-27) — Qt runtime hardening + stability gate + chat actions E2E
+
+### Scope
+- **Runtime hardening (Qt):** в `qt_app/ui/main_window.py` добавлен `closeEvent` с корректным shutdown фоновых процессов:
+  - `QProcess.terminate()` -> `waitForFinished()` -> `kill()` fallback для `ollama` и task-process.
+  - остановка health timer перед закрытием окна.
+- **Stability gate окружения:** `tests/test_qt_smoke.py` переведён на запуск smoke в изолированном subprocess.
+  - Добавлен gate для Python 3.14: рекомендован отдельный интерпретатор 3.12/3.13 через `EURIKA_QT_SMOKE_PYTHON`.
+  - Даже при child teardown-crash родительский pytest не падает.
+- **Chat action hardening (E2E):** расширены сценарии для `ui_add_empty_tab`/`ui_remove_tab` по цепочке `interpret -> pending_plan -> применяй -> verify`.
+  - Закрывается регрессия уровня "удали" -> "добавь".
+- **Operability 3.6 KPI (точечно):**
+  - policy whitelist теперь поддерживает kind-level entry (без обязательного `target_file`) + fallback на versioned controlled whitelist.
+  - добавлен `operation_whitelist.controlled.json` (seed: 1-2 action-kind для осторожного rollout).
+
+### Mitigation plan (runtime incident)
+1. Детачить Qt smoke в child-process (уже сделано).
+2. В CI/ритуале держать отдельный gate для рекомендуемого Python runtime Qt (3.12/3.13).
+3. Сохранять строгий verify/rollback контракт для кодовых изменений через chat executor.
+
 ---
 
 ## 74. Snapshot (2026-02-26) — Target-aware policy + operation whitelist (controlled rollout)

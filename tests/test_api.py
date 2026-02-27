@@ -9,10 +9,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from eurika.api import (
+    get_chat_dialog_state,
     get_summary,
     get_history,
     get_diff,
     get_patch_plan,
+    get_learning_insights,
     get_code_smell_operations,
     get_clean_imports_operations,
     get_pending_plan,
@@ -380,3 +382,98 @@ def test_get_clean_imports_operations_skips_test_files(tmp_path: Path) -> None:
         o.get("kind") == "remove_unused_import" and str(o.get("target_file", "")).startswith("tests/")
         for o in ops
     )
+
+
+def test_get_learning_insights_returns_target_stats_and_recommendations(tmp_path: Path) -> None:
+    """Learning insights should expose what-worked and recommendation blocks."""
+    from eurika.storage import ProjectMemory
+
+    memory = ProjectMemory(tmp_path)
+    op = {
+        "kind": "extract_block_to_helper",
+        "smell_type": "deep_nesting",
+        "target_file": "core.py",
+    }
+    memory.learning.append(
+        project_root=tmp_path,
+        modules=["core.py"],
+        operations=[op],
+        risks=[],
+        verify_success=True,
+    )
+    memory.learning.append(
+        project_root=tmp_path,
+        modules=["core.py"],
+        operations=[op],
+        risks=[],
+        verify_success=True,
+    )
+
+    out = get_learning_insights(tmp_path, top_n=3)
+    what_worked = out.get("what_worked") or []
+    assert what_worked
+    assert what_worked[0].get("target_file") == "core.py"
+    assert float(what_worked[0].get("verify_success_rate")) >= 1.0
+    recs = out.get("recommendations") or {}
+    assert isinstance(recs.get("whitelist_candidates"), list)
+
+
+def test_get_learning_insights_includes_chat_learning_hints(tmp_path: Path) -> None:
+    """Chat history should contribute review-only hints for policy/whitelist."""
+    chat_dir = tmp_path / ".eurika" / "chat_history"
+    chat_dir.mkdir(parents=True, exist_ok=True)
+    records = [
+        {"role": "user", "content": "сохрани в src/new_a.py", "ts": "2026-01-01T00:00:00Z"},
+        {"role": "assistant", "content": "```python\nx=1\n```\n\n[Сохранено в src/new_a.py]", "ts": "2026-01-01T00:00:01Z"},
+        {"role": "user", "content": "save to src/new_a.py", "ts": "2026-01-01T00:00:02Z"},
+        {"role": "assistant", "content": "```python\nx=2\n```\n\n[Сохранено в src/new_a.py]", "ts": "2026-01-01T00:00:03Z"},
+        {"role": "user", "content": "удали src/missing.py", "ts": "2026-01-01T00:00:04Z"},
+        {"role": "assistant", "content": "Не удалось удалить: not a file or does not exist", "ts": "2026-01-01T00:00:05Z"},
+        {"role": "user", "content": "удали src/missing.py", "ts": "2026-01-01T00:00:06Z"},
+        {"role": "assistant", "content": "Не удалось удалить: not a file or does not exist", "ts": "2026-01-01T00:00:07Z"},
+    ]
+    payload = "\n".join(json.dumps(item, ensure_ascii=False) for item in records) + "\n"
+    (chat_dir / "chat.jsonl").write_text(payload, encoding="utf-8")
+
+    out = get_learning_insights(tmp_path, top_n=5)
+    recs = out.get("recommendations") or {}
+    chat_white = recs.get("chat_whitelist_hints") or []
+    chat_review = recs.get("chat_policy_review_hints") or []
+    assert any(
+        item.get("intent") == "save" and item.get("target") == "src/new_a.py"
+        for item in chat_white
+    )
+    assert any(
+        item.get("intent") == "delete" and item.get("target") == "src/missing.py"
+        for item in chat_review
+    )
+
+
+def test_get_chat_dialog_state_returns_active_and_pending(tmp_path: Path) -> None:
+    """Dialog state endpoint should return normalized active/pending blocks."""
+    out_empty = get_chat_dialog_state(tmp_path)
+    assert out_empty.get("active_goal") == {}
+    assert out_empty.get("pending_clarification") == {}
+    assert out_empty.get("pending_plan") == {}
+    assert out_empty.get("last_execution") == {}
+
+    state_path = tmp_path / ".eurika" / "chat_history" / "dialog_state.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        json.dumps(
+            {
+                "active_goal": {"intent": "refactor", "target": "src/a.py", "source": "interpreter"},
+                "pending_clarification": {"original": "сделай как лучше"},
+                "pending_plan": {"intent": "refactor", "token": "abc123", "status": "pending_confirmation"},
+                "last_execution": {"ok": True, "summary": "done"},
+                "noise": "ignored",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    out = get_chat_dialog_state(tmp_path)
+    assert out.get("active_goal", {}).get("intent") == "refactor"
+    assert out.get("pending_clarification", {}).get("original") == "сделай как лучше"
+    assert out.get("pending_plan", {}).get("token") == "abc123"
+    assert out.get("last_execution", {}).get("ok") is True

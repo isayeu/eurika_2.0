@@ -127,6 +127,25 @@ def test_policy_extract_block_weak_pair_review_in_hybrid() -> None:
     assert "weak" in out.reason or "approval" in out.reason
 
 
+def test_policy_hard_blocks_extract_block_for_extract_function_target() -> None:
+    """Known fragile target must be denied in all modes."""
+    op = {
+        "kind": "extract_block_to_helper",
+        "target_file": "eurika/refactor/extract_function.py",
+        "smell_type": "deep_nesting",
+        "description": "extract block",
+    }
+    auto_cfg = PolicyConfig(
+        mode="auto", max_ops=100, max_files=100, allow_test_files=False, auto_apply_max_risk="high",
+    )
+    hybrid_cfg = load_policy_config("hybrid")
+    auto_out = evaluate_operation(op, config=auto_cfg, index=1, seen_files=set())
+    hybrid_out = evaluate_operation(op, config=hybrid_cfg, index=1, seen_files=set())
+    assert auto_out.decision == "deny"
+    assert hybrid_out.decision == "deny"
+    assert "hard blocked target" in auto_out.reason
+
+
 def test_policy_god_class_extract_class_weak_pair_deny_in_auto() -> None:
     """god_class|extract_class in WEAK: deny in auto (CYCLE_REPORT #34 tool_contract)."""
     cfg = PolicyConfig(
@@ -231,6 +250,74 @@ def test_policy_whitelist_allows_auto_for_known_target(tmp_path: Path) -> None:
                         "allow_in_hybrid": True,
                         "allow_in_auto": True,
                     }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    out = evaluate_operation(op, config=cfg, index=1, seen_files=set(), project_root=tmp_path)
+    assert out.decision == "allow"
+    assert "whitelisted target" in out.reason
+
+
+def test_policy_whitelist_kind_only_matches_any_target(tmp_path: Path) -> None:
+    """Kind-only whitelist entry should match any target_file for controlled rollout."""
+    from eurika.storage import SessionMemory
+
+    cfg = PolicyConfig(
+        mode="auto", max_ops=100, max_files=100, allow_test_files=False, auto_apply_max_risk="high",
+    )
+    op = {
+        "kind": "remove_unused_import",
+        "target_file": "pkg/a.py",
+        "description": "cleanup",
+        "params": {"location": "imports"},
+    }
+    mem = SessionMemory(tmp_path)
+    mem.record_verify_failure([op])
+    mem.record_verify_failure([op])
+    wl_path = tmp_path / ".eurika" / "operation_whitelist.json"
+    wl_path.parent.mkdir(parents=True, exist_ok=True)
+    wl_path.write_text(
+        json.dumps(
+            {
+                "operations": [
+                    {"kind": "remove_unused_import", "allow_in_hybrid": True, "allow_in_auto": True}
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    out = evaluate_operation(op, config=cfg, index=1, seen_files=set(), project_root=tmp_path)
+    assert out.decision == "allow"
+    assert "whitelisted target" in out.reason
+
+
+def test_policy_uses_controlled_whitelist_fallback_file(tmp_path: Path) -> None:
+    """When runtime whitelist is absent, controlled repo whitelist fallback should be used."""
+    from eurika.storage import SessionMemory
+
+    cfg = PolicyConfig(
+        mode="auto", max_ops=100, max_files=100, allow_test_files=False, auto_apply_max_risk="low",
+    )
+    op = {
+        "kind": "fix_import",
+        "target_file": "pkg/b.py",
+        "description": "repair import",
+        "params": {"location": "imports"},
+    }
+    mem = SessionMemory(tmp_path)
+    mem.record_verify_failure([op])
+    mem.record_verify_failure([op])
+    (tmp_path / "operation_whitelist.controlled.json").write_text(
+        json.dumps(
+            {
+                "operations": [
+                    {"kind": "fix_import", "allow_in_hybrid": True, "allow_in_auto": True}
                 ]
             },
             ensure_ascii=False,

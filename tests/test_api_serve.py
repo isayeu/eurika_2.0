@@ -627,3 +627,35 @@ def test_normalize_exec_args_allows_explain_module_and_window(tmp_path: Path) ->
     assert args[1] == str(tmp_path)
     assert "--window" in args
     assert "7" in args
+
+
+def test_resolve_project_root_override_accepts_absolute_existing_dir(tmp_path: Path) -> None:
+    """project_root override should accept existing absolute directory."""
+    out, err = api_serve._resolve_project_root_override(tmp_path, str(tmp_path))
+    assert err is None
+    assert out == tmp_path.resolve()
+
+
+def test_resolve_project_root_override_resolves_relative_path(tmp_path: Path) -> None:
+    """Relative project_root should be resolved against server root."""
+    child = tmp_path / "child"
+    child.mkdir(parents=True, exist_ok=True)
+    out, err = api_serve._resolve_project_root_override(tmp_path, "child")
+    assert err is None
+    assert out == child.resolve()
+
+
+def test_resolve_project_root_override_rejects_non_string_payload(tmp_path: Path) -> None:
+    """Non-string project_root payload should be rejected."""
+    out, err = api_serve._resolve_project_root_override(tmp_path, {"bad": 1})
+    assert out is None
+    assert err is not None
+    assert "expected string" in err
+
+
+def test_resolve_project_root_override_rejects_missing_directory(tmp_path: Path) -> None:
+    """Missing project_root path should return explicit validation error."""
+    out, err = api_serve._resolve_project_root_override(tmp_path, str(tmp_path / "missing"))
+    assert out is None
+    assert err is not None
+    assert "not found" in err

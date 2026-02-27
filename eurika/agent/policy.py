@@ -57,6 +57,20 @@ WEAK_SMELL_ACTION_PAIRS: frozenset[tuple[str, str]] = frozenset({
     ("deep_nesting", "refactor_code_smell"),
 })
 
+HARD_BLOCK_OPERATION_TARGETS: frozenset[tuple[str, str]] = frozenset({
+    # Safety rail: self-refactor here frequently produces invalid helper extraction.
+    ("extract_block_to_helper", "eurika/refactor/extract_function.py"),
+})
+
+
+def _hard_block_policy(op: dict[str, Any]) -> tuple[PolicyDecision | None, str | None]:
+    """Block known fragile operation targets regardless of runtime mode."""
+    kind = (op.get("kind") or "").strip()
+    target = (op.get("target_file") or "").strip()
+    if (kind, target) in HARD_BLOCK_OPERATION_TARGETS:
+        return "deny", f"hard blocked target for safety: {target}|{kind}"
+    return None, None
+
 
 def _weak_pair_policy(
     op: dict[str, Any],
@@ -94,24 +108,29 @@ def _load_operation_whitelist(project_root: Path | None) -> list[dict[str, Any]]
     """Load optional operation whitelist from .eurika/operation_whitelist.json."""
     if project_root is None:
         return []
-    p = project_root / ".eurika" / "operation_whitelist.json"
-    if not p.exists():
-        return []
-    try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return []
-    ops = data.get("operations")
-    if not isinstance(ops, list):
-        return []
-    return [x for x in ops if isinstance(x, dict)]
+    candidates = [
+        project_root / ".eurika" / "operation_whitelist.json",
+        project_root / "operation_whitelist.controlled.json",
+    ]
+    for p in candidates:
+        if not p.exists():
+            continue
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        ops = data.get("operations")
+        if isinstance(ops, list):
+            return [x for x in ops if isinstance(x, dict)]
+    return []
 
 
 def _op_matches_whitelist_entry(op: dict[str, Any], entry: dict[str, Any]) -> bool:
-    """Match by kind, target_file and optional smell_type/location."""
+    """Match by kind + optional target_file + optional smell_type/location."""
     if str(entry.get("kind") or "") != str(op.get("kind") or ""):
         return False
-    if str(entry.get("target_file") or "") != str(op.get("target_file") or ""):
+    entry_target = str(entry.get("target_file") or "")
+    if entry_target and entry_target != str(op.get("target_file") or ""):
         return False
     entry_smell = str(entry.get("smell_type") or "")
     if entry_smell and entry_smell != str(op.get("smell_type") or ""):
@@ -182,6 +201,23 @@ def evaluate_operation(
 ) -> OperationPolicyResult:
     """Evaluate one patch operation against configured policy and produce explainability metadata."""
     risk = _estimate_risk(op)
+    hard_decision, hard_reason = _hard_block_policy(op)
+    if hard_decision is not None and hard_reason is not None:
+        explainability = {
+            "why": str(op.get("description") or "No description provided."),
+            "risk": risk,
+            "expected_outcome": _expected_outcome(op),
+            "rollback_plan": "Automatic rollback is triggered on verify failure.",
+            "policy_decision": hard_decision,
+            "policy_reason": hard_reason,
+        }
+        return OperationPolicyResult(
+            decision=hard_decision,
+            risk=risk,
+            reason=hard_reason,
+            explainability=explainability,
+        )
+
     decision, reason = _apply_core_rules(
         op, config=config, index=index, seen_files=seen_files, risk=risk
     )

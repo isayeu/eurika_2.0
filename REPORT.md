@@ -1,6 +1,6 @@
 # REPORT — Текущий статус Eurika
 
-_Обновлено: актуально для ветки v3.0.x (runtime policy + whitelist rollout + UI Core Command Builder)._
+_Обновлено: актуально для ветки v3.0.x (runtime policy + whitelist rollout + Qt-first interface)._
 
 ---
 
@@ -17,10 +17,14 @@ _Обновлено: актуально для ветки v3.0.x (runtime policy
 - Добавлена mini-automation для campaign memory:
   - учёт `verify_success` и кандидаты в whitelist;
   - генерация черновика whitelist: `eurika whitelist-draft`.
-- Web UI доведён до полного покрытия core-сценариев:
-  - Dashboard Core Command Builder для `scan/doctor/fix/cycle/explain`;
-  - безопасная валидация `/api/exec` по матрице разрешённых флагов;
-  - preview/build/copy/run поток, контекстные подсказки и динамика полей.
+- Интерфейс переведён в Qt-first режим:
+  - основной UI-контур: `eurika-qt` (`qt_app/`) — вкладки Models, Chat, Commands, Dashboard, Approvals;
+  - Chat: Apply/Reject для планов, создание вкладок (в т.ч. Terminal) по intent; Models — управление Ollama;
+  - `eurika serve` работает в API-only режиме (`/api/*`);
+  - legacy web static (`eurika/ui/*`) выведен из активного рантайма.
+- Добавлена прозрачность learning-результатов в Dashboard Qt:
+  - top `verify_success` по `smell|action|target`;
+  - рекомендации для whitelist / policy review на основе фактических исходов.
 
 ### Оценка зрелости (по review)
 
@@ -68,6 +72,7 @@ _Обновлено: актуально для ветки v3.0.x (runtime policy
 | `ROADMAP.md` | Текущий план и приоритеты (operability + guarded rollout) |
 | `CYCLE_REPORT.md` | Фактические снапшоты ритуалов и выводы по метрикам |
 | `CLI.md` | Актуальные команды/флаги, включая `whitelist-draft` |
-| `UI.md` | Web UI и Core Command Builder |
+| `UI.md` | Legacy reference по архивному Web UI |
+| `MIGRATION_WEB_TO_QT.md` | Текущий статус миграции интерфейса (API-only + Qt-first) |
 | `DOGFOODING.md` | Практика запусков и верификации в локальном окружении |
 | `CHANGELOG.md` | История релизных изменений |

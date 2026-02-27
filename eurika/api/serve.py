@@ -1,4 +1,4 @@
-"""Minimal HTTP server for JSON API (ROADMAP §2.3, 3.5.1, 3.5.8) and static UI (3.5.2). Stdlib only."""
+"""Minimal HTTP server for JSON API (ROADMAP §2.3, 3.5.1, 3.5.8). Stdlib only."""
 
 from __future__ import annotations
 
@@ -13,9 +13,6 @@ from urllib.parse import parse_qs, urlparse
 
 from eurika.api import get_diff, get_graph, get_history, get_operational_metrics, get_patch_plan, get_pending_plan, get_summary, explain_module, save_approvals
 from eurika.api.chat import chat_send
-
-UI_DIR = Path(__file__).resolve().parent.parent / "ui"
-MIME_TYPES = {".html": "text/html", ".js": "application/javascript", ".css": "text/css", ".ico": "image/x-icon"}
 
 # Whitelist for POST /api/exec (ROADMAP 3.5.8): only eurika subcommands.
 EXEC_WHITELIST = {"scan", "doctor", "fix", "cycle", "explain", "report-snapshot"}
@@ -155,24 +152,6 @@ def _json_response(handler: BaseHTTPRequestHandler, data: dict, status: int = 20
     handler.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
 
 
-def _serve_static(handler: BaseHTTPRequestHandler, file_path: Path) -> bool:
-    """Serve static file; return True if served."""
-    if not file_path.is_file():
-        return False
-    suffix = file_path.suffix.lower()
-    ctype = MIME_TYPES.get(suffix, "application/octet-stream")
-    try:
-        body = file_path.read_bytes()
-    except OSError:
-        return False
-    handler.send_response(200)
-    handler.send_header("Content-Type", ctype)
-    handler.send_header("Content-Length", str(len(body)))
-    handler.end_headers()
-    handler.wfile.write(body)
-    return True
-
-
 def _read_json_body(handler: BaseHTTPRequestHandler) -> dict | None:
     """Read and parse JSON body from POST request."""
     try:
@@ -183,6 +162,34 @@ def _read_json_body(handler: BaseHTTPRequestHandler) -> dict | None:
         return json.loads(body.decode("utf-8"))
     except Exception:
         return None
+
+
+def _resolve_project_root_override(
+    default_root: Path,
+    raw_value: object,
+) -> tuple[Path | None, str | None]:
+    """Resolve optional project_root override from query/body payload."""
+    if raw_value is None:
+        return default_root, None
+    if isinstance(raw_value, list):
+        raw_value = raw_value[0] if raw_value else None
+        if raw_value is None:
+            return default_root, None
+    if not isinstance(raw_value, str):
+        return None, "invalid project_root payload (expected string)"
+    raw = raw_value.strip()
+    if not raw:
+        return default_root, None
+    p = Path(raw).expanduser()
+    if not p.is_absolute():
+        p = (default_root / p)
+    try:
+        resolved = p.resolve()
+    except OSError as e:
+        return None, f"invalid project_root: {e}"
+    if not resolved.exists() or not resolved.is_dir():
+        return None, f"project_root not found or not a directory: {resolved}"
+    return resolved, None
 
 
 def _exec_eurika_command(project_root: Path, command: str, timeout: int | None = 120) -> dict:
@@ -233,25 +240,6 @@ def _exec_eurika_command(project_root: Path, command: str, timeout: int | None =
         return {"error": str(e), "stdout": "", "stderr": str(e), "exit_code": -1}
 
 
-def _try_serve_static_or_ui(
-    handler: BaseHTTPRequestHandler,
-    path: str,
-) -> bool:
-    """Serve UI or static files. Returns True if served (caller should return)."""
-    if path.startswith("/api") or path == "/api":
-        return False
-    if path in ("/", "/index.html", "/ui", "/ui/"):
-        return _serve_static(handler, UI_DIR / "index.html")
-    seg = path.lstrip("/")
-    if seg and ".." not in seg and _serve_static(handler, UI_DIR / seg):
-        return True
-    handler.send_response(404)
-    handler.send_header("Content-Type", "text/plain")
-    handler.end_headers()
-    handler.wfile.write(b"Not found")
-    return True
-
-
 def _dispatch_api_get(
     handler: BaseHTTPRequestHandler,
     project_root: Path,
@@ -269,6 +257,7 @@ def _dispatch_api_get(
     if path.rstrip("/") == "/api":
         _json_response(handler, {
             "eurika": "JSON API",
+            "project_root": str(project_root),
             "endpoints": [
                 "GET /api/summary — architecture summary (project root)",
                 "GET /api/history?window=5 — evolution history",
@@ -358,8 +347,6 @@ def _run_handler(
     query: dict,
     body: dict | None = None,
 ) -> None:
-    if _try_serve_static_or_ui(handler, path):
-        return
     if _dispatch_api_get(handler, project_root, path, query):
         return
     handler.send_response(404)
@@ -518,13 +505,37 @@ def run_server(
             parsed = urlparse(self.path)
             path = parsed.path.rstrip("/") or "/"
             query = parse_qs(parsed.query)
-            _run_handler(self, root, path, query, body=None)
+            selected_root = root
+            if path.startswith("/api"):
+                selected_root, root_err = _resolve_project_root_override(
+                    root,
+                    query.get("project_root"),
+                )
+                if root_err:
+                    _json_response(self, {"error": root_err}, status=400)
+                    return
+                if selected_root is None:
+                    _json_response(self, {"error": "invalid project_root payload"}, status=400)
+                    return
+            _run_handler(self, selected_root, path, query, body=None)
 
         def do_POST(self) -> None:
             parsed = urlparse(self.path)
             path = parsed.path.rstrip("/") or "/"
             body = _read_json_body(self)
-            if _run_post_handler(self, root, path, body):
+            selected_root = root
+            if path.startswith("/api"):
+                selected_root, root_err = _resolve_project_root_override(
+                    root,
+                    (body or {}).get("project_root"),
+                )
+                if root_err:
+                    _json_response(self, {"error": root_err}, status=400)
+                    return
+                if selected_root is None:
+                    _json_response(self, {"error": "invalid project_root payload"}, status=400)
+                    return
+            if _run_post_handler(self, selected_root, path, body):
                 return
             _json_response(
                 self,
@@ -536,7 +547,7 @@ def run_server(
             pass  # quiet by default; override to enable logging
 
     server = HTTPServer((host, port), APIHandler)
-    print(f"Eurika: http://{host}:{port}/  (UI)  http://{host}:{port}/api  (JSON API)")
+    print(f"Eurika: http://{host}:{port}/api  (JSON API)")
     print(f"Project root: {root}")
     server.serve_forever()
 

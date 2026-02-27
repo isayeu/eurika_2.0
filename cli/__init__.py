@@ -1,43 +1,7 @@
-"""CLI layer: handlers for Eurika commands."""
+"""CLI package namespace.
 
-from cli.handlers import (
-    handle_arch_diff,
-    handle_arch_history,
-    handle_arch_summary,
-    handle_help,
-    handle_scan,
-    handle_self_check,
-    handle_agent_arch_evolution,
-    handle_agent_arch_review,
-    handle_agent_action_apply,
-    handle_agent_action_dry_run,
-    handle_agent_action_simulate,
-    handle_agent_cycle,
-    handle_agent_feedback_summary,
-    handle_agent_learning_summary,
-    handle_agent_patch_apply,
-    handle_agent_patch_plan,
-    handle_agent_patch_rollback,
-    handle_agent_prioritize_modules,
-)
+Keep package import side-effect free so submodules can be imported independently
+without pulling full handler graph (important for API usage from Qt shell).
+"""
 
-__all__ = [
-    "handle_help",
-    "handle_scan",
-    "handle_self_check",
-    "handle_arch_summary",
-    "handle_arch_history",
-    "handle_arch_diff",
-    "handle_agent_arch_review",
-    "handle_agent_arch_evolution",
-    "handle_agent_prioritize_modules",
-    "handle_agent_feedback_summary",
-    "handle_agent_action_dry_run",
-    "handle_agent_action_simulate",
-    "handle_agent_action_apply",
-    "handle_agent_patch_plan",
-    "handle_agent_patch_apply",
-    "handle_agent_patch_rollback",
-    "handle_agent_cycle",
-    "handle_agent_learning_summary",
-]
+__all__ = []

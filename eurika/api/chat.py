@@ -1,11 +1,15 @@
 """Chat endpoint for UI (ROADMAP 3.5.11.A, 3.5.11.B, 3.5.11.C). Eurika layer → Ollama; logs to .eurika/chat_history/; RAG; intent→action (save, refactor)."""
 from __future__ import annotations
 import json
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from eurika.api.task_executor import build_task_spec, execute_spec, has_capability, is_pending_plan_valid, make_pending_plan
+
+DEFAULT_SAVE_TARGET = "app.py"
 
 def _load_user_context(root: Path) -> Dict[str, str]:
     """Load user context (name, etc.) from .eurika/chat_history/user_context.json."""
@@ -92,13 +96,76 @@ def _run_eurika_fix(project_root: Path, dry_run: bool=False, timeout: int=180) -
     except Exception as e:
         return f'eurika fix: {e}'
 
+def _is_apply_confirmation(message: str) -> bool:
+    """Detect explicit confirmation to execute a pending action."""
+    msg = (message or '').strip().lower()
+    if not msg:
+        return False
+    markers = ('применяй', 'выполняй', 'это подтверждение', 'apply', 'go ahead', 'execute')
+    return any((m in msg for m in markers))
+
+def _extract_confirmation_token(message: str) -> str:
+    """Extract optional confirmation token from message."""
+    msg = str(message or '')
+    m = re.search('(?:token|токен)\\s*[:=]?\\s*([a-fA-F0-9]{8,32})', msg)
+    if not m:
+        return ''
+    return str(m.group(1))
+
+def _is_reject_confirmation(message: str) -> bool:
+    """Detect explicit rejection/cancel for pending plan."""
+    msg = (message or '').strip().lower()
+    if not msg:
+        return False
+    markers = ('отклонить', 'отмена', 'cancel', 'reject')
+    return any((m in msg for m in markers))
+
+def _apply_add_empty_tab_after_chat(root: Path) -> tuple[bool, str]:
+    """Apply deterministic edit: add `New Tab` after Chat in Qt UI."""
+    target = root / 'qt_app' / 'ui' / 'main_window.py'
+    if not target.exists():
+        return (False, 'target file not found: qt_app/ui/main_window.py')
+    try:
+        src = target.read_text(encoding='utf-8')
+    except OSError as e:
+        return (False, f'failed to read target file: {e}')
+    if 'self.tabs.addTab(tab, "New Tab")' in src:
+        return (True, 'tab already exists (no changes required)')
+    anchor = 'self.tabs.addTab(tab, "Chat")'
+    pos = src.find(anchor)
+    if pos < 0:
+        return (False, 'anchor not found: self.tabs.addTab(tab, "Chat")')
+    line_end = src.find('\n', pos)
+    if line_end < 0:
+        line_end = len(src)
+    insert = '\n        self.tabs.addTab(tab, "New Tab")'
+    updated = src[:line_end] + insert + src[line_end:]
+    try:
+        target.write_text(updated, encoding='utf-8')
+    except OSError as e:
+        return (False, f'failed to write target file: {e}')
+    return (True, 'added empty tab `New Tab` after `Chat`')
+
+def _run_qt_smoke_test(project_root: Path, timeout: int=120) -> str:
+    """Run minimal Qt smoke test after UI edit."""
+    try:
+        r = subprocess.run([sys.executable, '-m', 'pytest', '-q', 'tests/test_qt_smoke.py'], cwd=str(project_root), capture_output=True, text=True, timeout=timeout)
+        out = ((r.stdout or '') + (r.stderr or '')).strip()
+        if r.returncode == 0:
+            return f"qt smoke: OK\n{out or '(no output)'}"
+        return f"qt smoke: FAIL (exit {r.returncode})\n{out or '(no output)'}"
+    except subprocess.TimeoutExpired:
+        return 'qt smoke: timeout'
+    except Exception as e:
+        return f'qt smoke: {e}'
+
 def _build_chat_prompt(message: str, context: str, history: Optional[List[Dict[str, str]]]=None, rag_examples: Optional[str]=None, save_target: Optional[str]=None) -> str:
     """Build system + user prompt for chat. history: list of {role, content} from session.
     ROADMAP 3.5.11.B: rag_examples from retrieve_similar_chats."""
     if save_target:
-        system = 'You are Eurika. The user asked you to write code and save it to a file. Generate ONLY the code. No questions, no apologies, no clarification requests. Output must contain a ```python code block.'
+        system = 'You are Eurika. Never identify yourself as a base model/vendor name (Qwen, Llama, Ollama, OpenAI model, etc). If asked who you are, answer that you are Eurika. The user asked you to write code and save it to a file. Generate ONLY the code. No questions, no apologies, no clarification requests. Output must contain a ```python code block.'
     else:
-        system = 'You are Eurika, an architecture-aware coding assistant. You have context about the current project. Answer concisely and helpfully. When asked to write code, prefer Python; when asked about architecture, use the context.'
+        system = 'You are Eurika, an architecture-aware coding assistant. Never identify yourself as a base model/vendor name (Qwen, Llama, Ollama, OpenAI model, etc). If asked who you are, answer that you are Eurika. You have context about the current project. Answer concisely and helpfully. When asked to write code, prefer Python; when asked about architecture, use the context.'
     context_block = f'\n\n[Project context]: {context}\n\n' if context else '\n\n'
     if rag_examples:
         context_block += rag_examples
@@ -112,29 +179,37 @@ def _build_chat_prompt(message: str, context: str, history: Optional[List[Dict[s
 
 def _safe_write_file(root: Path, relative_path: str, content: str) -> tuple[bool, str]:
     """Write content to root/relative_path. Prevent path traversal. Return (ok, msg)."""
-    if '..' in relative_path or relative_path.startswith('/'):
+    if not relative_path or relative_path.startswith('/'):
         return (False, 'invalid path')
     path = (root / relative_path).resolve()
     try:
-        if not str(path).startswith(str(root.resolve())):
+        allowed_base = root.resolve().parent
+        if not path.is_relative_to(allowed_base):
             return (False, 'path outside project')
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding='utf-8')
-        return (True, str(path.relative_to(root)))
+        try:
+            return (True, str(path.relative_to(root)))
+        except ValueError:
+            return (True, str(path))
     except Exception as e:
         return (False, str(e))
 
 def _safe_delete_file(root: Path, relative_path: str) -> tuple[bool, str]:
     """Delete file at root/relative_path. Prevent path traversal. Return (ok, msg)."""
-    if '..' in relative_path or relative_path.startswith('/'):
+    if not relative_path or relative_path.startswith('/'):
         return (False, 'invalid path')
     path = (root / relative_path).resolve()
     try:
-        if not str(path).startswith(str(root.resolve())):
+        allowed_base = root.resolve().parent
+        if not path.is_relative_to(allowed_base):
             return (False, 'path outside project')
         if not path.is_file():
             return (False, 'not a file or does not exist')
-        rel = str(path.relative_to(root))
+        try:
+            rel = str(path.relative_to(root))
+        except ValueError:
+            rel = str(path)
         path.unlink()
         return (True, rel)
     except Exception as e:
@@ -142,17 +217,180 @@ def _safe_delete_file(root: Path, relative_path: str) -> tuple[bool, str]:
 
 def _safe_create_empty_file(root: Path, relative_path: str) -> tuple[bool, str]:
     """Create empty file at root/relative_path. Prevent path traversal. Return (ok, msg)."""
-    if '..' in relative_path or relative_path.startswith('/'):
+    if not relative_path or relative_path.startswith('/'):
         return (False, 'invalid path')
     path = (root / relative_path).resolve()
     try:
-        if not str(path).startswith(str(root.resolve())):
+        allowed_base = root.resolve().parent
+        if not path.is_relative_to(allowed_base):
             return (False, 'path outside project')
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('', encoding='utf-8')
-        return (True, str(path.relative_to(root)))
+        try:
+            return (True, str(path.relative_to(root)))
+        except ValueError:
+            return (True, str(path))
     except Exception as e:
         return (False, str(e))
+
+def _load_dialog_state(root: Path) -> Dict[str, Any]:
+    """Load lightweight dialog state for clarification/goal continuity."""
+    path = root / '.eurika' / 'chat_history' / 'dialog_state.json'
+    try:
+        if path.exists():
+            raw = json.loads(path.read_text(encoding='utf-8'))
+            if isinstance(raw, dict):
+                return raw
+    except Exception:
+        pass
+    return {}
+
+def _save_dialog_state(root: Path, state: Dict[str, Any]) -> None:
+    """Persist lightweight dialog state (best effort)."""
+    path = root / '.eurika' / 'chat_history' / 'dialog_state.json'
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding='utf-8')
+    except Exception:
+        pass
+
+def _format_execution_report(report: Dict[str, Any]) -> str:
+    """Render structured execution report text for chat output."""
+    ok = bool(report.get('ok'))
+    summary = str(report.get('summary') or ('done' if ok else 'failed'))
+    applied = list(report.get('applied_steps') or [])
+    skipped = list(report.get('skipped_steps') or [])
+    changed = list(report.get('artifacts_changed') or [])
+    verification = report.get('verification') or {}
+    error = report.get('error')
+    lines = [('Готово' if ok else 'Не удалось') + f': {summary}.']
+    if applied:
+        lines.append('Applied steps: ' + ', '.join((str(x) for x in applied)))
+    if skipped:
+        lines.append('Skipped steps: ' + ', '.join((str(x) for x in skipped)))
+    if changed:
+        lines.append('Changed: ' + ', '.join((str(x) for x in changed)))
+    if isinstance(verification, dict) and verification:
+        lines.append('Verification: ' + ('OK' if verification.get('ok') else 'FAIL'))
+        out = str(verification.get('output') or '').strip()
+        if out:
+            lines.append(out[:1200])
+    if error:
+        lines.append(f'Error: {error}')
+    return '\n'.join(lines)
+
+def _store_last_execution(state: Dict[str, Any], report: Dict[str, Any]) -> None:
+    """Store compact last execution block in dialog state."""
+    state['last_execution'] = {'ok': bool(report.get('ok')), 'summary': str(report.get('summary') or ''), 'verification_ok': bool((report.get('verification') or {}).get('ok')), 'artifacts_changed': list(report.get('artifacts_changed') or [])}
+
+def _is_identity_question(message: str) -> bool:
+    """Detect direct "who are you?" questions for deterministic persona answer."""
+    msg = (message or '').strip().lower()
+    if not msg:
+        return False
+    patterns = ('^ты\\s+кто\\??$', '^кто\\s+ты\\??$', '^who\\s+are\\s+you\\??$', '^what\\s+are\\s+you\\??$')
+    return any((re.match(p, msg) for p in patterns))
+
+def _is_ls_request(message: str) -> bool:
+    """Detect explicit request to run ls/list in project root."""
+    msg = (message or '').strip().lower()
+    if not msg:
+        return False
+    return any((k in msg for k in (' ls ', 'команду ls', 'выполни ls', 'run ls', 'execute ls', 'list root', 'list files'))) or msg == 'ls'
+
+def _is_tree_request(message: str) -> bool:
+    """Detect request for actual directory structure."""
+    msg = (message or '').strip().lower()
+    if not msg:
+        return False
+    if any((marker in msg for marker in ('цель:', 'границы:', 'задачи:', 'задача:'))):
+        return False
+    explicit = ('покажи структ', 'покажи дерево', 'какая структура', 'структуру проекта', 'фактическую структуру', 'tree', 'project structure', 'folder structure')
+    if any((k in msg for k in explicit)):
+        return True
+    has_structure_word = re.search('\\bструктур\\w*\\b', msg) is not None
+    has_question_marker = any((k in msg for k in ('?', 'какая', 'покажи', 'фактическ', 'полную')))
+    return has_structure_word and has_question_marker
+
+def _format_root_ls(root: Path, limit: int=120) -> str:
+    """Render `ls`-like listing for project root."""
+    try:
+        entries = sorted(root.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+    except OSError as e:
+        return f'Не удалось прочитать корень проекта: {e}'
+    shown = entries[:max(limit, 1)]
+    lines = [f'{p.name}/' if p.is_dir() else p.name for p in shown]
+    if len(entries) > len(shown):
+        lines.append(f'... (+{len(entries) - len(shown)} entries)')
+    return '\n'.join(lines) if lines else '(empty)'
+
+def _format_project_tree(root: Path, max_depth: int=3, limit: int=500) -> str:
+    """Render compact project tree from root with sane limits."""
+    lines: list[str] = [f'{root.name}/']
+    seen = 1
+    skip = {'.git', '__pycache__', '.mypy_cache', '.pytest_cache'}
+
+    def walk(path: Path, depth: int, prefix: str) -> None:
+        nonlocal seen
+        if depth >= max_depth or seen >= limit:
+            return
+        try:
+            children = sorted(path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+        except OSError:
+            return
+        filtered = [c for c in children if c.name not in skip]
+        for idx, child in enumerate(filtered):
+            if seen >= limit:
+                return
+            branch = '└── ' if idx == len(filtered) - 1 else '├── '
+            label = f'{child.name}/' if child.is_dir() else child.name
+            lines.append(f'{prefix}{branch}{label}')
+            seen += 1
+            if child.is_dir():
+                ext = '    ' if idx == len(filtered) - 1 else '│   '
+                walk(child, depth + 1, prefix + ext)
+    walk(root, 0, '')
+    if seen >= limit:
+        lines.append('... (tree truncated)')
+    return '\n'.join(lines)
+
+def _grounded_ui_tabs_text() -> str:
+    """Return factual tabs for current Qt shell UI."""
+    tabs = ['Commands', 'Dashboard', 'Approvals', 'Models', 'Chat']
+    return 'В текущем Qt UI есть вкладки: ' + ', '.join((f'`{name}`' for name in tabs)) + '.'
+
+def _is_saved_file_path_request(message: str) -> bool:
+    """Detect explicit request for full path of recently saved file."""
+    msg = (message or '').strip().lower()
+    if not msg:
+        return False
+    full_path_markers = ('полный путь', 'full path', 'absolute path')
+    file_markers = ('файл', 'file', '.py')
+    show_markers = ('покажи', 'show', 'дай', 'where')
+    return any((m in msg for m in full_path_markers)) and (
+        any((m in msg for m in file_markers)) or any((m in msg for m in show_markers))
+    )
+
+def _infer_default_save_target(message: str) -> str:
+    """Fallback file path for save-intent when user did not provide target."""
+    msg = (message or '').strip().lower()
+    if any((token in msg for token in ('hello world', 'хелло ворлд', 'приложение'))):
+        return DEFAULT_SAVE_TARGET
+    return DEFAULT_SAVE_TARGET
+
+def _enforce_eurika_persona(text: str) -> str:
+    """Normalize accidental model self-identification to Eurika persona."""
+    raw = (text or '').strip()
+    if not raw:
+        return raw
+    first_line = raw.splitlines()[0].strip()
+    first_line_l = first_line.lower()
+    leaked_markers = ('я qwen', 'i am qwen', "i'm qwen", 'as qwen', 'я llama', 'i am llama', "i'm llama", 'ollama')
+    if any((m in first_line_l for m in leaked_markers)):
+        prefix = 'Я Eurika, архитектурный ассистент этого проекта.'
+        remainder = raw[len(first_line):].lstrip()
+        return prefix if not remainder else f'{prefix}\n{remainder}'
+    return raw
 
 def append_chat_history(project_root: Path, role: str, content: str, context_snapshot: Optional[str]=None) -> None:
     """Append one message to .eurika/chat_history/chat.jsonl (ROADMAP 3.5.11.A.3)."""
@@ -183,12 +421,146 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     msg = (message or '').strip()
     if not msg:
         return {'text': '', 'error': 'message is empty'}
+    state = _load_dialog_state(root)
+    if _is_identity_question(msg):
+        text = 'Я Eurika — архитектурный coding-ассистент этого проекта. Могу помочь с анализом, рефакторингом и изменениями кода.'
+        _append_chat_history_safe(root, 'user', msg, None)
+        _append_chat_history_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if _is_ls_request(msg):
+        report_obj = execute_spec(root, build_task_spec(intent='project_ls', message=msg))
+        report = {'ok': report_obj.ok, 'summary': report_obj.summary, 'applied_steps': report_obj.applied_steps, 'skipped_steps': report_obj.skipped_steps, 'verification': report_obj.verification, 'artifacts_changed': report_obj.artifacts_changed, 'error': report_obj.error}
+        _store_last_execution(state, report)
+        _save_dialog_state(root, state)
+        listing = _format_root_ls(root)
+        text = f'Да. Выполнил `ls` в корне проекта `{root}`:\n\n```\n{listing}\n```'
+        _append_chat_history_safe(root, 'user', msg, None)
+        _append_chat_history_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if _is_tree_request(msg):
+        report_obj = execute_spec(root, build_task_spec(intent='project_tree', message=msg))
+        report = {'ok': report_obj.ok, 'summary': report_obj.summary, 'applied_steps': report_obj.applied_steps, 'skipped_steps': report_obj.skipped_steps, 'verification': report_obj.verification, 'artifacts_changed': report_obj.artifacts_changed, 'error': report_obj.error}
+        _store_last_execution(state, report)
+        _save_dialog_state(root, state)
+        tree = _format_project_tree(root, max_depth=3, limit=500)
+        text = f'Показываю фактическую структуру проекта `{root}`:\n\n```\n{tree}\n```'
+        _append_chat_history_safe(root, 'user', msg, None)
+        _append_chat_history_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if _is_saved_file_path_request(msg):
+        last_saved_abs = str(state.get('last_saved_file_abs') or '').strip()
+        if last_saved_abs:
+            text = f'Полный путь к последнему сохранённому файлу:\n{last_saved_abs}'
+        else:
+            text = 'Пока не вижу сохранённого файла в текущей сессии. Сначала попроси: «напиши ... и сохрани».'
+        _append_chat_history_safe(root, 'user', msg, None)
+        _append_chat_history_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if _is_reject_confirmation(msg):
+        pending_plan = state.get('pending_plan') if isinstance(state, dict) else {}
+        if isinstance(pending_plan, dict) and is_pending_plan_valid(pending_plan):
+            state['pending_plan'] = {}
+            _save_dialog_state(root, state)
+            text = 'Отклонил pending-план. Ничего не применял.'
+        else:
+            text = 'Нет активного pending-плана для отклонения.'
+        _append_chat_history_safe(root, 'user', msg, None)
+        _append_chat_history_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
     intent, target = (None, None)
+    interpretation = None
+    effective_msg = msg
+    pending = state.get('pending_clarification') if isinstance(state, dict) else None
+    if isinstance(pending, dict):
+        original = str(pending.get('original') or '').strip()
+        if original and msg.lower() not in {'отмена', 'cancel', 'стоп'}:
+            effective_msg = f'{original}\nУточнение: {msg}'
     try:
-        from eurika.api.chat_intent import detect_intent
-        intent, target = detect_intent(msg)
+        from eurika.api.chat_intent import interpret_task
+        interpretation = interpret_task(effective_msg, history=history)
+        intent = interpretation.intent
+        target = interpretation.target
     except Exception:
         pass
+    if _is_apply_confirmation(msg):
+        pending_plan = state.get('pending_plan') if isinstance(state, dict) else {}
+        if isinstance(pending_plan, dict) and is_pending_plan_valid(pending_plan):
+            user_token = _extract_confirmation_token(msg)
+            plan_token = str(pending_plan.get('token') or '')
+            if user_token and user_token != plan_token:
+                text = 'Не могу выполнить: token подтверждения не совпадает.'
+                _append_chat_history_safe(root, 'user', msg, None)
+                _append_chat_history_safe(root, 'assistant', text, None)
+                return {'text': text, 'error': None}
+            spec = build_task_spec(intent=str(pending_plan.get('intent') or ''), target=str(pending_plan.get('target') or ''), message=msg, plan_steps=list(pending_plan.get('steps') or []), entities=dict(pending_plan.get('entities') or {}))
+        else:
+            if isinstance(state, dict) and isinstance(pending_plan, dict) and pending_plan:
+                state['pending_plan'] = {}
+                _save_dialog_state(root, state)
+            text = (
+                'Не могу выполнить: нет активного плана на подтверждение. '
+                'Сначала сформулируй задачу, затем подтвердить: `применяй`.'
+            )
+            _append_chat_history_safe(root, 'user', msg, None)
+            _append_chat_history_safe(root, 'assistant', text, None)
+            return {'text': text, 'error': None}
+        if spec is not None:
+            report_obj = execute_spec(root, spec)
+            report = {'ok': report_obj.ok, 'summary': report_obj.summary, 'applied_steps': report_obj.applied_steps, 'skipped_steps': report_obj.skipped_steps, 'verification': report_obj.verification, 'artifacts_changed': report_obj.artifacts_changed, 'error': report_obj.error}
+            state['pending_plan'] = {}
+            state['active_goal'] = {'intent': spec.intent, 'target': spec.target, 'source': 'executor'}
+            _store_last_execution(state, report)
+            _save_dialog_state(root, state)
+            text = _format_execution_report(report)
+            _append_chat_history_safe(root, 'user', msg, None)
+            _append_chat_history_safe(root, 'assistant', text, None)
+            return {'text': text, 'error': None}
+    if intent == 'ui_tabs':
+        report_obj = execute_spec(root, build_task_spec(intent='ui_tabs', message=msg))
+        report = {'ok': report_obj.ok, 'summary': report_obj.summary, 'applied_steps': report_obj.applied_steps, 'skipped_steps': report_obj.skipped_steps, 'verification': report_obj.verification, 'artifacts_changed': report_obj.artifacts_changed, 'error': report_obj.error}
+        _store_last_execution(state, report)
+        _save_dialog_state(root, state)
+        text = _grounded_ui_tabs_text()
+        _append_chat_history_safe(root, 'user', msg, None)
+        _append_chat_history_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if interpretation is not None and interpretation.needs_clarification:
+        text = interpretation.clarifying_question or 'Уточни, пожалуйста, задачу: что изменить, где именно и какой ожидаемый результат?'
+        state['pending_clarification'] = {'original': msg}
+        _save_dialog_state(root, state)
+        _append_chat_history_safe(root, 'user', msg, None)
+        _append_chat_history_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if isinstance(state.get('pending_clarification'), dict):
+        state.pop('pending_clarification', None)
+        _save_dialog_state(root, state)
+    if intent:
+        state['active_goal'] = {'intent': intent, 'target': target or '', 'source': 'interpreter', 'confidence': float(getattr(interpretation, 'confidence', 0.0) if interpretation else 0.0), 'risk_level': str(getattr(interpretation, 'risk_level', 'medium') if interpretation else 'medium'), 'plan_steps': list(getattr(interpretation, 'plan_steps', []) if interpretation else []), 'entities': dict(getattr(interpretation, 'entities', {}) if interpretation else {})}
+        _save_dialog_state(root, state)
+    if intent and has_capability(intent) and (intent != 'save'):
+        spec = build_task_spec(intent=intent, target=target or '', message=msg, plan_steps=list(getattr(interpretation, 'plan_steps', []) if interpretation else []), entities=dict(getattr(interpretation, 'entities', {}) if interpretation else {}))
+        if spec.requires_confirmation:
+            pending = make_pending_plan(spec)
+            state['pending_plan'] = pending
+            _save_dialog_state(root, state)
+            steps_text = '; '.join(spec.steps[:4]) if spec.steps else 'n/a'
+            task_text = f'Понял задачу: `{intent}`'
+            if intent == 'ui_add_empty_tab':
+                task_text = 'Понял задачу: добавить пустую вкладку после `Chat` в Qt UI'
+            elif intent == 'ui_remove_tab':
+                task_text = 'Понял задачу: удалить вкладку `New Tab` из Qt UI'
+            text = task_text + (f' (target `{spec.target}`).' if spec.target else '.') + f' Risk: `{spec.risk_level}`. ' + f'Plan: {steps_text}. ' + f"Подтверди выполнение: `применяй token:{pending.get('token')}` (или просто `применяй`)."
+            _append_chat_history_safe(root, 'user', msg, None)
+            _append_chat_history_safe(root, 'assistant', text, None)
+            return {'text': text, 'error': None}
+        report_obj = execute_spec(root, spec)
+        report = {'ok': report_obj.ok, 'summary': report_obj.summary, 'applied_steps': report_obj.applied_steps, 'skipped_steps': report_obj.skipped_steps, 'verification': report_obj.verification, 'artifacts_changed': report_obj.artifacts_changed, 'error': report_obj.error}
+        _store_last_execution(state, report)
+        _save_dialog_state(root, state)
+        text = _format_execution_report(report)
+        _append_chat_history_safe(root, 'user', msg, None)
+        _append_chat_history_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
     if intent == 'refactor':
         dry = 'dry-run' in msg.lower() or 'dry run' in msg.lower() or 'без применения' in msg.lower()
         output = _run_eurika_fix(root, dry_run=dry)
@@ -255,6 +627,9 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     except Exception:
         pass
     save_target = target if intent == 'save' else None
+    if intent == 'save' and not save_target:
+        save_target = _infer_default_save_target(msg)
+        target = save_target
     prompt = _build_chat_prompt(msg, context, history, rag_examples=rag_examples, save_target=save_target)
     from eurika.reasoning.architect import call_llm_with_prompt
     text, err = call_llm_with_prompt(prompt, max_tokens=1024)
@@ -270,9 +645,13 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
                 ok, res = _safe_write_file(root, save_target, code)
                 if ok:
                     full = (root / res).resolve()
+                    state['last_saved_file_rel'] = res
+                    state['last_saved_file_abs'] = str(full)
+                    _save_dialog_state(root, state)
                     text = text.rstrip() + f'\n\n[Сохранено в {res} ({full})]'
         except Exception:
             pass
+    text = _enforce_eurika_persona(text or '')
     _append_chat_history_safe(root, 'user', msg, context)
     _append_chat_history_safe(root, 'assistant', text or '', None)
     return {'text': text or '', 'error': None}

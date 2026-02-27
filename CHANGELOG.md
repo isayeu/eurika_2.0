@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## v3.0.12 — Qt tabs + Chat hardening + doc sync (2026-02-27)
+
+### Qt UI
+- **Models tab:** управление Ollama (Start/Stop, env vars, список моделей, установка).
+- **Chat Apply/Reject:** кнопки Apply/Reject для `pending_plan`; fallback-активация при наличии `token` в ответе; «применяй» вызывает только `pending_plan`, без fallback на `active_goal`.
+- **Terminal tab via intent:** chat actions `ui_add_empty_tab` / `ui_remove_tab`; intent «создай вкладку Terminal» → `tab_name=Terminal`.
+- **Runtime hardening:** `closeEvent` с terminate/wait/kill для `QProcess`, остановка health timer при закрытии окна.
+
+### Docs
+- Обновлены README, pyproject, UI.md, MIGRATION_WEB_TO_QT.md; добавлен snapshot 76 в CYCLE_REPORT.
+
+---
+
+## Current interface state (2026-02-27)
+
+- **Qt-first UI:** основной пользовательский интерфейс — `eurika-qt` (`qt_app/`).
+- **Вкладки:** Models, Chat, Commands, Dashboard, Approvals.
+- **`eurika serve` is API-only:** сервер обслуживает только JSON endpoints `/api/*`.
+- **Web static UI moved to legacy:** runtime-раздача `eurika/ui/index.html` и `eurika/ui/app.js` удалена; исторические записи ниже сохранены как архив изменений.
+- **Learning visibility in Qt:** Dashboard показывает `verify_success` сигналы по `smell|action|target` и рекомендации для whitelist/policy.
+
+---
+
 ## v3.0.11 — Operability guardrails + UI core parity (2026-02-26)
 
 ### Policy / operability
