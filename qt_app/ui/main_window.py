@@ -1,10 +1,12 @@
 """Main window for Eurika Qt thin-shell UI."""
 from __future__ import annotations
 import json
+import os
 import re
+from pathlib import Path
 from typing import Any
 from PySide6.QtCore import QProcess, QProcessEnvironment, QThread, QTimer, Qt, Signal
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtGui import QCloseEvent, QShowEvent
 from PySide6.QtWidgets import QCheckBox, QComboBox, QFileDialog, QFormLayout, QProgressBar, QGridLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton, QSplitter, QSpinBox, QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget
 from qt_app.adapters.eurika_api_adapter import EurikaApiAdapter
 from qt_app.services.command_service import CommandService
@@ -78,7 +80,9 @@ class MainWindow(QMainWindow):
         self.setWindowTitle('Eurika Qt')
         self.resize(1100, 760)
         self._settings = SettingsService()
-        initial_root = self._settings.get_project_root() or '.'
+        saved_root = self._settings.get_project_root()
+        self._first_run_prompt_pending = not bool(saved_root and saved_root.strip())
+        initial_root = '' if self._first_run_prompt_pending else ((saved_root or '').strip() or '.')
         self._api = EurikaApiAdapter(initial_root)
         self._command_service = CommandService(self)
         self._pending_operations: list[dict[str, Any]] = []
@@ -516,6 +520,25 @@ class MainWindow(QMainWindow):
         self._command_service.command_finished.connect(self._on_command_finished)
         self._command_service.state_changed.connect(self._on_state_changed)
 
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        if self._first_run_prompt_pending:
+            self._first_run_prompt_pending = False
+            QTimer.singleShot(150, self._prompt_project_root_if_empty)
+
+    def _prompt_project_root_if_empty(self) -> None:
+        """First-run UX: when project root is empty, prompt user to select folder."""
+        if self._is_closing:
+            return
+        if os.environ.get('QT_QPA_PLATFORM') == 'offscreen':
+            return
+        if not self.root_edit.text().strip():
+            selected = QFileDialog.getExistingDirectory(
+                self, 'Select project root', '.',
+            )
+            if selected:
+                self._set_project_root(selected)
+
     def _set_project_root(self, value: str) -> None:
         self.root_edit.setText(value)
         self._api.set_project_root(value)
@@ -563,11 +586,32 @@ class MainWindow(QMainWindow):
             return installed
         return (self.chat_ollama_model.text() or "").strip()
 
+    @staticmethod
+    def _validate_project_root(root: str) -> tuple[bool, str]:
+        """Validate project root: exists, is dir, has pyproject.toml or self_map.json. Returns (ok, message)."""
+        if not root or not root.strip():
+            return (False, 'Project root is empty. Select a folder with Browse.')
+        path = Path(root.strip()).resolve()
+        if not path.exists():
+            return (False, f'Path does not exist: {path}')
+        if not path.is_dir():
+            return (False, f'Project root must be a directory: {path}')
+        has_pyproject = (path / 'pyproject.toml').is_file()
+        has_self_map = (path / 'self_map.json').is_file()
+        if has_pyproject or has_self_map:
+            return (True, '')
+        return (False, 'Project root has no pyproject.toml or self_map.json. Run eurika scan first or select a Python project.')
+
     def _run_command(self) -> None:
+        root = self.root_edit.text().strip() or '.'
+        ok, msg = self._validate_project_root(root)
+        if not ok:
+            QMessageBox.warning(self, 'Invalid project root', msg)
+            return
         ollama_model = self._resolve_ollama_model_for_command()
         self._command_service.start(
             command=self.command_combo.currentText(),
-            project_root=self.root_edit.text().strip(),
+            project_root=root,
             module=self.module_edit.text().strip(),
             window=self.window_spin.value(),
             dry_run=self.dry_run_check.isChecked(),
@@ -579,9 +623,10 @@ class MainWindow(QMainWindow):
 
     def _run_fix_team_mode(self) -> None:
         """Run eurika fix . --team-mode from Approvals tab."""
-        root = self.root_edit.text().strip()
-        if not root:
-            QMessageBox.warning(self, 'Project root required', 'Set Project root before running fix.')
+        root = self.root_edit.text().strip() or '.'
+        ok, msg = self._validate_project_root(root)
+        if not ok:
+            QMessageBox.warning(self, 'Invalid project root', msg)
             return
         self.tabs.setCurrentIndex(self.tabs.indexOf(self.commands_tab))
         ollama_model = self._resolve_ollama_model_for_command()
@@ -598,9 +643,10 @@ class MainWindow(QMainWindow):
         )
 
     def _run_apply_approved(self) -> None:
-        root = self.root_edit.text().strip()
-        if not root:
-            QMessageBox.warning(self, 'Project root required', 'Set Project root before running apply-approved.')
+        root = self.root_edit.text().strip() or '.'
+        ok, msg = self._validate_project_root(root)
+        if not ok:
+            QMessageBox.warning(self, 'Invalid project root', msg)
             return
         self.tabs.setCurrentIndex(self.tabs.indexOf(self.commands_tab))
         self._command_service.run_apply_approved(project_root=root)

@@ -2,6 +2,7 @@
 
 ## Current state (2026-02-27)
 
+- **79. Qt MVP flow зафиксирован:** smoke-сценарий: открыть → выбрать проект (Browse) → Commands → scan → Live output → Stop. First-run UX: при пустом project root при первом запуске показывается folder picker.
 - **Qt Hybrid Approvals + Dashboard готовы:** Approvals — Run fix (team-mode) из вкладки, workflow hint, корректный risk из explainability; Dashboard — Top risks, Operational metrics, автообновление при смене project root.
 - **R1 Structural Hardening (частично):** Layer discipline OK — 0 forbidden, 0 layer violations. SMELL_TO_KNOWLEDGE_TOPICS перенесён в eurika.knowledge; self-check выводит LAYER DISCIPLINE блок.
 - Интерфейсный контур проекта переведён в **Qt-first** режим (`eurika-qt`, пакет `qt_app/`).
@@ -9,6 +10,24 @@
 - `eurika serve` работает в **API-only** режиме (`/api/*`), без runtime-раздачи web статики.
 - Исторические snapshot'ы ниже (включая Web UI этапы) сохранены как архив эволюции и не удаляются.
 - Learning-фокус операционности: `verify_success_rate` по `smell|action|target`, с видимостью сигналов в Qt Dashboard.
+
+---
+
+## 79. Snapshot (2026-02-27) — Qt MVP flow + First-run UX
+
+### Scope
+- **Smoke-сценарий в CYCLE_REPORT:** открыть `eurika-qt` → Browse выбрать project root → Commands → Run scan → вывод в Live output → Stop корректно останавливает. Критерий MVP из стартового промпта выполнен.
+- **First-run UX:** при первом запуске (project_root в settings пустой) после show окна автоматически показывается folder picker «Select project root», чтобы пользователь сразу выбрал папку.
+
+### Проверка
+1. Запустить `eurika-qt` (при пустом ~/.eurika/qt_settings.json или без project_root).
+2. После появления окна — диалог выбора папки.
+3. Выбрать проект (например, корень eurika_2.0.Qt) → Dashboard обновляется.
+4. Commands → scan → Run → вывод в Live output.
+5. Stop — процесс останавливается.
+
+### Итог
+Qt MVP Phase 2: smoke flow зафиксирован, first-run prompt улучшает onboarding.
 
 ---
 

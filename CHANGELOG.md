@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## v3.0.15 — Qt MVP Phase 2: smoke flow, first-run UX, project root validation (2026-02-27)
+
+### Qt MVP
+- **Smoke flow в CYCLE_REPORT:** snapshot 79 — открыть → Browse → scan → Live output → Stop.
+- **First-run UX:** при пустом project_root в settings показывается folder picker после show окна.
+- **Project root validation:** перед Run проверяется наличие директории и pyproject.toml или self_map.json; при отсутствии — предупреждение.
+
+---
+
 ## v3.0.14 — R5 completion: 2.2 Recommendation engine + 2.3 @-mentions (2026-02-27)
 
 ### R5 2.2 Recommendation engine

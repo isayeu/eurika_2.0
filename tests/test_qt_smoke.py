@@ -112,3 +112,34 @@ def test_response_requests_confirmation_ignores_no_token_text() -> None:
     text = "Подтвердите выполнение: `применяй`."
     assert MainWindow._response_requests_confirmation(text) is False
 
+
+def test_validate_project_root_rejects_empty() -> None:
+    ok, msg = MainWindow._validate_project_root('')
+    assert ok is False
+    assert 'empty' in msg.lower() or 'browse' in msg.lower()
+
+
+def test_validate_project_root_accepts_path_with_pyproject(tmp_path: Path) -> None:
+    (tmp_path / 'pyproject.toml').write_text('[project]\nname = "test"\n', encoding='utf-8')
+    ok, msg = MainWindow._validate_project_root(str(tmp_path))
+    assert ok is True
+    assert msg == ''
+
+
+def test_validate_project_root_accepts_path_with_self_map(tmp_path: Path) -> None:
+    (tmp_path / 'self_map.json').write_text('{}', encoding='utf-8')
+    ok, msg = MainWindow._validate_project_root(str(tmp_path))
+    assert ok is True
+
+
+def test_validate_project_root_rejects_missing_path() -> None:
+    ok, msg = MainWindow._validate_project_root('/nonexistent/path/xyz')
+    assert ok is False
+    assert 'exist' in msg.lower() or 'not found' in msg.lower()
+
+
+def test_validate_project_root_rejects_dir_without_markers(tmp_path: Path) -> None:
+    ok, msg = MainWindow._validate_project_root(str(tmp_path))
+    assert ok is False
+    assert 'pyproject' in msg.lower() or 'self_map' in msg.lower() or 'scan' in msg.lower()
+
