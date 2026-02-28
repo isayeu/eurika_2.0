@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## v3.0.19 — Operability 5→6 (D): suggest_policy no_op_rate, learning-kpi Next steps (2026-02-28)
+
+### D: Operability 5→6
+- **docs/OPERABILITY_D_PLAN.md:** стратегия повышения verify_success_rate, критерии 6/10.
+- **suggest_policy_from_telemetry:** при no_op_rate>0.5 → EURIKA_CAMPAIGN_ALLOW_LOW_RISK=1.
+- **learning-kpi:** блок «Next steps» — рекомендации (--allow-low-risk-campaign, whitelist-draft, --apply-suggested-policy).
+- **doctor:** no_op_rate в telemetry для suggested policy.
+- **test_suggest_policy_from_telemetry_high_no_op_rate.**
+
+---
+
 ## v3.0.18 — KPI verify_success_rate + Learning from GitHub code smells (2026-02-27)
 
 ### KPI (план A)
