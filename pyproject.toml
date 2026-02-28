@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eurika"
-version = "3.0.16"
+version = "3.0.17"
 description = "Eurika — Qt-first architecture analysis and refactoring assistant. CLI/API core, desktop UI (eurika-qt): Commands, Dashboard, Approvals, Models (Ollama), Chat with Apply/Reject."
 readme = "README.md"
 requires-python = ">=3.10"

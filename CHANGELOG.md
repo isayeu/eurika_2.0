@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## v3.0.17 — R2/R3/R4 gates (2026-02-27)
+
+### Quality gates
+- **R2:** `test_doctor_cycle_r2_state_model_on_self` — doctor возвращает state ∈ {done, error}.
+- **R3:** `test_r3_edge_case_matrix_passes` — pytest -m edge_case.
+- **R4:** `test_r4_dependency_firewall_passes` — dependency firewall в strict mode.
+
+---
+
 ## v3.0.16 — Terminal merge + R1 gate (2026-02-27)
 
 ### Qt
