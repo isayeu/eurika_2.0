@@ -46,7 +46,7 @@ def _clog():
 
 def handle_help(parser: Any) -> int:
     """Print high-level command overview and detailed argparse help (ROADMAP этап 5: 4 product modes)."""
-    print('Eurika — architecture analysis and refactoring assistant (v1.2.6)')
+    print('Eurika — architecture analysis and refactoring assistant (v3.0.13)')
     print()
     print('Product (4 modes):')
     print('  scan [path]              full scan, update artifacts, report')
@@ -104,6 +104,13 @@ def handle_self_check(args: Any) -> int:
     fs_report = _format_file_size_block(path)
     if fs_report:
         print(fs_report, file=sys.stderr)
+    # R5 Self-guard: aggregated health gate
+    from eurika.checks.self_guard import collect_self_guard, format_self_guard_block, self_guard_pass
+
+    guard_result = collect_self_guard(path)
+    print(format_self_guard_block(guard_result), file=sys.stderr)
+    if getattr(args, 'strict', False) and not self_guard_pass(guard_result):
+        return 1
     return code
 
 

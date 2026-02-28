@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## v3.0.13 — R5 Strategic Horizon (2026-02-27)
+
+### R5 Self-guard / Meta-architecture
+- **SELF-GUARD блок** в `eurika self-check`: агрегация layer + file_size + subsystem + complexity budget.
+- **Флаг `--strict`**: `eurika self-check . --strict` → exit 1 при нарушениях (must-split, layer, subsystem bypass).
+- **Complexity budget alarms**: пороги god_module >8, bottleneck >5; алерт при превышении.
+- **Trend alarms**: centralization/complexity/smells increasing из `.eurika/history.json`.
+
+### R5 Intelligence
+- **Risk prediction**: `get_risk_prediction()`, `GET /api/risk_prediction?top_n=10` — top-N модулей по вероятности регрессии (smells + centrality + trends).
+- **SELF-GUARD в Qt GUI**: блок на Dashboard с violations и alarms.
+
+### R5 Extensibility (Plugin interface)
+- **AnalyzerPlugin protocol**: `analyze(project_root) -> List[ArchSmell]`.
+- **Регистрация**: `.eurika/plugins.toml` или `pyproject [tool.eurika.plugins]`.
+- **Агрегация**: `detect_smells_with_plugins`, `GET /api/smells_with_plugins`.
+- Пример: `tests/fixtures/eurika_plugin_example.py`.
+
+### Files
+- `eurika/checks/self_guard.py` — R5 health gate.
+- `eurika/reasoning/risk_prediction.py` — regression risk scoring.
+- `eurika/plugins/` — protocol, registry, aggregate.
+- `docs/R5_STRATEGIC_HORIZON_PLAN.md` — план и критерии готовности.
+
+---
+
 ## v3.0.12 — Qt tabs + Chat hardening + doc sync (2026-02-27)
 
 ### Qt UI

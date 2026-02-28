@@ -18,6 +18,8 @@ from eurika.api import (
     get_operational_metrics,
     get_patch_plan,
     get_pending_plan,
+    get_risk_prediction,
+    get_self_guard,
     get_summary,
     save_approvals,
 )
@@ -38,6 +40,14 @@ class EurikaApiAdapter:
 
     def get_summary(self) -> dict[str, Any]:
         return get_summary(self._root())
+
+    def get_self_guard(self) -> dict[str, Any]:
+        """R5: SELF-GUARD health gate (violations, trend alarms, complexity budget)."""
+        return get_self_guard(self._root())
+
+    def get_risk_prediction(self, top_n: int = 10) -> dict[str, Any]:
+        """R5: Top modules by regression risk."""
+        return get_risk_prediction(self._root(), top_n=top_n)
 
     def get_history(self, window: int = 5) -> dict[str, Any]:
         return get_history(self._root(), window=window)

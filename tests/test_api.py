@@ -10,14 +10,17 @@ if str(ROOT) not in sys.path:
 
 from eurika.api import (
     get_chat_dialog_state,
-    get_summary,
-    get_history,
     get_diff,
-    get_patch_plan,
+    get_history,
     get_learning_insights,
+    get_patch_plan,
+    get_pending_plan,
+    get_risk_prediction,
+    get_self_guard,
+    get_smells_with_plugins,
+    get_summary,
     get_code_smell_operations,
     get_clean_imports_operations,
-    get_pending_plan,
     save_approvals,
 )
 
@@ -46,6 +49,37 @@ def test_get_summary_with_self_map(tmp_path: Path) -> Path:
     assert "system" in data
     assert "modules" in data["system"]
     assert "maturity" in data
+    json.dumps(data)
+
+
+def test_get_self_guard_returns_dict(tmp_path: Path) -> None:
+    """get_self_guard returns dict with violations and alarms."""
+    data = get_self_guard(tmp_path)
+    assert "forbidden_count" in data
+    assert "layer_viol_count" in data
+    assert "must_split_count" in data
+    assert "pass" in data
+    assert "trend_alarms" in data
+    assert "complexity_budget_alarms" in data
+    json.dumps(data)
+
+
+def test_get_risk_prediction_returns_dict(tmp_path: Path) -> None:
+    """get_risk_prediction returns dict with predictions list."""
+    data = get_risk_prediction(tmp_path, top_n=5)
+    assert "predictions" in data
+    assert isinstance(data["predictions"], list)
+    json.dumps(data)
+
+
+def test_get_smells_with_plugins_returns_dict(tmp_path: Path) -> None:
+    """get_smells_with_plugins returns eurika_smells, plugin_smells, merged."""
+    data = get_smells_with_plugins(tmp_path)
+    assert "eurika_smells" in data
+    assert "plugin_smells" in data
+    assert "merged" in data
+    assert isinstance(data["eurika_smells"], list)
+    assert isinstance(data["merged"], list)
     json.dumps(data)
 
 

@@ -207,6 +207,14 @@ class MainWindow(QMainWindow):
         self.dashboard_risks_text.setPlaceholderText('Run scan to see risks')
         risks_layout.addWidget(self.dashboard_risks_text)
         layout.addWidget(risks_group)
+        self_guard_group = QGroupBox('SELF-GUARD (R5)')
+        self_guard_layout = QVBoxLayout(self_guard_group)
+        self.dashboard_self_guard_text = QTextEdit()
+        self.dashboard_self_guard_text.setReadOnly(True)
+        self.dashboard_self_guard_text.setMaximumHeight(80)
+        self.dashboard_self_guard_text.setPlaceholderText('Run scan to see SELF-GUARD status')
+        self_guard_layout.addWidget(self.dashboard_self_guard_text)
+        layout.addWidget(self_guard_group)
         ops_group = QGroupBox('Operational metrics')
         ops_layout = QFormLayout(ops_group)
         self.dashboard_apply_rate = QLabel('-')
@@ -619,6 +627,16 @@ class MainWindow(QMainWindow):
             self.dashboard_maturity.setText(summary.get('error', '-'))
             self.dashboard_trends.setText('-')
             self.dashboard_risks_text.setPlainText('')
+            guard = self._api.get_self_guard()
+            if guard.get('pass'):
+                self.dashboard_self_guard_text.setPlainText('PASS')
+            else:
+                parts = []
+                if guard.get('must_split_count', 0) > 0:
+                    parts.append(f"{guard['must_split_count']} must-split")
+                if guard.get('complexity_budget_alarms'):
+                    parts.extend(guard['complexity_budget_alarms'])
+                self.dashboard_self_guard_text.setPlainText('; '.join(parts) if parts else 'Scan required')
             self.dashboard_apply_rate.setText('-')
             self.dashboard_rollback_rate.setText('-')
             self.dashboard_median_verify.setText('-')
@@ -639,6 +657,24 @@ class MainWindow(QMainWindow):
             self.dashboard_risks_text.setPlainText('\n'.join(risk_lines))
         else:
             self.dashboard_risks_text.setPlainText('')
+        guard = self._api.get_self_guard()
+        if guard.get('pass'):
+            self.dashboard_self_guard_text.setPlainText('PASS (0 violations, 0 alarms)')
+        else:
+            lines = []
+            if guard.get('must_split_count', 0) > 0:
+                lines.append(f"Violations: {guard['must_split_count']} must-split")
+            if guard.get('forbidden_count', 0) > 0:
+                lines.append(f"{guard['forbidden_count']} forbidden imports")
+            if guard.get('layer_viol_count', 0) > 0:
+                lines.append(f"{guard['layer_viol_count']} layer violations")
+            if guard.get('subsystem_bypass_count', 0) > 0:
+                lines.append(f"{guard['subsystem_bypass_count']} subsystem bypass")
+            if guard.get('trend_alarms'):
+                lines.append('Trend alarms: ' + '; '.join(guard['trend_alarms']))
+            if guard.get('complexity_budget_alarms'):
+                lines.append('Complexity budget: ' + '; '.join(guard['complexity_budget_alarms']))
+            self.dashboard_self_guard_text.setPlainText('\n'.join(lines) if lines else '-')
         metrics = self._api.get_operational_metrics(window=10)
         if isinstance(metrics, dict) and not metrics.get('error'):
             self.dashboard_apply_rate.setText(str(metrics.get('apply_rate', '-')))

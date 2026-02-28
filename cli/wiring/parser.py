@@ -129,6 +129,7 @@ def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
     self_check_parser.add_argument("--format", "-f", choices=["text", "markdown"], default="text", help="Output format (default: text)")
     self_check_parser.add_argument("--color", action="store_true", default=None, dest="color", help="Force color output (default: auto from TTY)")
     self_check_parser.add_argument("--no-color", action="store_false", dest="color", help="Disable color output")
+    self_check_parser.add_argument("--strict", action="store_true", help="R5: exit 1 if self-guard violations (layer, file size)")
 
     report_parser = subparsers.add_parser("report", help="Print architecture summary + evolution report (no rescan)")
     report_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")

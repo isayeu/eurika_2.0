@@ -11,7 +11,20 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import parse_qs, urlparse
 
-from eurika.api import get_diff, get_graph, get_history, get_operational_metrics, get_patch_plan, get_pending_plan, get_summary, explain_module, save_approvals
+from eurika.api import (
+    get_diff,
+    get_graph,
+    get_history,
+    get_operational_metrics,
+    get_patch_plan,
+    get_pending_plan,
+    get_risk_prediction,
+    get_self_guard,
+    get_smells_with_plugins,
+    get_summary,
+    explain_module,
+    save_approvals,
+)
 from eurika.api.chat import chat_send
 
 # Whitelist for POST /api/exec (ROADMAP 3.5.8): only eurika subcommands.
@@ -250,6 +263,17 @@ def _dispatch_api_get(
     if path == "/api/summary":
         _json_response(handler, get_summary(project_root))
         return True
+    if path == "/api/self_guard":
+        _json_response(handler, get_self_guard(project_root))
+        return True
+    if path == "/api/risk_prediction":
+        top_n = int(query.get("top_n", [10])[0])
+        _json_response(handler, get_risk_prediction(project_root, top_n=top_n))
+        return True
+    if path == "/api/smells_with_plugins":
+        include = query.get("include_plugins", ["1"])[0].lower() not in ("0", "false", "no")
+        _json_response(handler, get_smells_with_plugins(project_root, include_plugins=include))
+        return True
     if path == "/api/history":
         window = int(query.get("window", [5])[0])
         _json_response(handler, get_history(project_root, window=window))
@@ -260,6 +284,9 @@ def _dispatch_api_get(
             "project_root": str(project_root),
             "endpoints": [
                 "GET /api/summary — architecture summary (project root)",
+                "GET /api/self_guard — R5 SELF-GUARD health gate (violations, alarms)",
+                "GET /api/risk_prediction?top_n=10 — R5 top modules by regression risk",
+                "GET /api/smells_with_plugins?include_plugins=1 — R5 Eurika + plugin smells",
                 "GET /api/history?window=5 — evolution history",
                 "GET /api/diff?old=path/to/old.json&new=path/to/new.json — diff two self_maps",
                 "GET /api/doctor?window=5&no_llm=0 — full report + architect (ROADMAP 3.5.1)",

@@ -65,6 +65,64 @@ def get_summary(project_root: Path) -> Dict[str, Any]:
     summary = build_summary(graph, smells)
     return summary
 
+
+def get_risk_prediction(project_root: Path, top_n: int = 10) -> Dict[str, Any]:
+    """R5 2.1: Top modules by regression risk (smells + centrality + trends)."""
+    from eurika.reasoning.risk_prediction import predict_module_regression_risk
+    root = Path(project_root).resolve()
+    predictions = predict_module_regression_risk(root, top_n=top_n)
+    return {"predictions": predictions}
+
+
+def get_smells_with_plugins(
+    project_root: Path,
+    *,
+    include_plugins: bool = True,
+) -> Dict[str, Any]:
+    """R5 3.3: Eurika smells + plugin smells for unified report."""
+    from eurika.plugins import detect_smells_with_plugins, merge_smells_for_report
+
+    root = Path(project_root).resolve()
+    eurika, plugin_results = detect_smells_with_plugins(root, include_plugins=include_plugins)
+    merged = merge_smells_for_report(eurika, plugin_results)
+    return {
+        "eurika_smells": [
+            {"type": s.type, "nodes": s.nodes, "severity": s.severity, "description": s.description}
+            for s in eurika
+        ],
+        "plugin_smells": [
+            {"plugin": pid, "count": len(smells)}
+            for pid, smells in plugin_results
+        ],
+        "merged": [
+            {"type": s.type, "nodes": s.nodes, "severity": s.severity, "description": s.description}
+            for s in merged
+        ],
+    }
+
+
+def get_self_guard(project_root: Path) -> Dict[str, Any]:
+    """R5: SELF-GUARD aggregated health gate for GUI/API."""
+    from eurika.checks.self_guard import collect_self_guard
+    root = Path(project_root).resolve()
+    result = collect_self_guard(root)
+    return {
+        "forbidden_count": result.forbidden_count,
+        "layer_viol_count": result.layer_viol_count,
+        "subsystem_bypass_count": result.subsystem_bypass_count,
+        "must_split_count": result.must_split_count,
+        "candidates_count": result.candidates_count,
+        "trend_alarms": result.trend_alarms,
+        "complexity_budget_alarms": result.complexity_budget_alarms,
+        "pass": (
+            result.forbidden_count == 0
+            and result.layer_viol_count == 0
+            and result.subsystem_bypass_count == 0
+            and result.must_split_count == 0
+        ),
+    }
+
+
 def get_pending_plan(project_root: Path) -> Dict[str, Any]:
     """Load pending plan from .eurika/pending_plan.json for approve UI (ROADMAP 3.5.6)."""
     from cli.orchestration.team_mode import has_pending_plan, load_pending_plan
