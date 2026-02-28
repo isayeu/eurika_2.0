@@ -215,6 +215,14 @@ class MainWindow(QMainWindow):
         self.dashboard_self_guard_text.setPlaceholderText('Run scan to see SELF-GUARD status')
         self_guard_layout.addWidget(self.dashboard_self_guard_text)
         layout.addWidget(self_guard_group)
+        risk_pred_group = QGroupBox('Risk prediction (R5)')
+        risk_pred_layout = QVBoxLayout(risk_pred_group)
+        self.dashboard_risk_pred_text = QTextEdit()
+        self.dashboard_risk_pred_text.setReadOnly(True)
+        self.dashboard_risk_pred_text.setMaximumHeight(70)
+        self.dashboard_risk_pred_text.setPlaceholderText('Run scan to see top modules by regression risk')
+        risk_pred_layout.addWidget(self.dashboard_risk_pred_text)
+        layout.addWidget(risk_pred_group)
         ops_group = QGroupBox('Operational metrics')
         ops_layout = QFormLayout(ops_group)
         self.dashboard_apply_rate = QLabel('-')
@@ -637,6 +645,7 @@ class MainWindow(QMainWindow):
                 if guard.get('complexity_budget_alarms'):
                     parts.extend(guard['complexity_budget_alarms'])
                 self.dashboard_self_guard_text.setPlainText('; '.join(parts) if parts else 'Scan required')
+            self.dashboard_risk_pred_text.setPlainText('')
             self.dashboard_apply_rate.setText('-')
             self.dashboard_rollback_rate.setText('-')
             self.dashboard_median_verify.setText('-')
@@ -675,6 +684,13 @@ class MainWindow(QMainWindow):
             if guard.get('complexity_budget_alarms'):
                 lines.append('Complexity budget: ' + '; '.join(guard['complexity_budget_alarms']))
             self.dashboard_self_guard_text.setPlainText('\n'.join(lines) if lines else '-')
+        rp = self._api.get_risk_prediction(top_n=5)
+        preds = rp.get('predictions') or []
+        if preds:
+            rp_lines = [f"{p.get('module', '?')}: {p.get('score', 0)} ({', '.join(p.get('reasons', [])[:3])})" for p in preds]
+            self.dashboard_risk_pred_text.setPlainText('\n'.join(rp_lines))
+        else:
+            self.dashboard_risk_pred_text.setPlainText('')
         metrics = self._api.get_operational_metrics(window=10)
         if isinstance(metrics, dict) and not metrics.get('error'):
             self.dashboard_apply_rate.setText(str(metrics.get('apply_rate', '-')))

@@ -261,7 +261,8 @@ def _dispatch_api_get(
 ) -> bool:
     """Dispatch GET /api/* routes. Returns True if handled."""
     if path == "/api/summary":
-        _json_response(handler, get_summary(project_root))
+        include_plugins = query.get("include_plugins", ["0"])[0].lower() in ("1", "true", "yes")
+        _json_response(handler, get_summary(project_root, include_plugins=include_plugins))
         return True
     if path == "/api/self_guard":
         _json_response(handler, get_self_guard(project_root))
@@ -283,7 +284,7 @@ def _dispatch_api_get(
             "eurika": "JSON API",
             "project_root": str(project_root),
             "endpoints": [
-                "GET /api/summary — architecture summary (project root)",
+                "GET /api/summary?include_plugins=1 — summary (R5: merge plugin smells when 1)",
                 "GET /api/self_guard — R5 SELF-GUARD health gate (violations, alarms)",
                 "GET /api/risk_prediction?top_n=10 — R5 top modules by regression risk",
                 "GET /api/smells_with_plugins?include_plugins=1 — R5 Eurika + plugin smells",

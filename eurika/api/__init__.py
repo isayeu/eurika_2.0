@@ -47,22 +47,34 @@ def get_graph(project_root: Path) -> Dict[str, Any]:
             edges.append({'from': src, 'to': dst})
     return {'nodes': nodes, 'edges': edges}
 
-def get_summary(project_root: Path) -> Dict[str, Any]:
+def get_summary(
+    project_root: Path,
+    *,
+    include_plugins: bool = False,
+) -> Dict[str, Any]:
     """
     Build architecture summary from project_root/self_map.json.
     Returns dict with keys: system, central_modules, risks, maturity.
     If self_map.json is missing, returns {"error": "...", "path": "..."}.
+    R5: include_plugins=True merges plugin smells into summary.
     """
     from eurika.analysis.self_map import build_graph_from_self_map
-    from eurika.smells.detector import detect_architecture_smells
     from eurika.smells.rules import build_summary
     root = Path(project_root).resolve()
     self_map_path = root / 'self_map.json'
     if not self_map_path.exists():
         return {'error': 'self_map.json not found', 'path': str(self_map_path)}
     graph = build_graph_from_self_map(self_map_path)
-    smells = detect_architecture_smells(graph)
-    summary = build_summary(graph, smells)
+    if include_plugins:
+        from eurika.plugins import detect_smells_with_plugins, merge_smells_for_report
+        eurika_smells, plugin_results = detect_smells_with_plugins(root, include_plugins=True)
+        smells = merge_smells_for_report(eurika_smells, plugin_results)
+        summary = build_summary(graph, smells)
+        summary["_plugin_counts"] = [{"plugin": pid, "count": len(s)} for pid, s in plugin_results]
+    else:
+        from eurika.smells.detector import detect_architecture_smells
+        smells = detect_architecture_smells(graph)
+        summary = build_summary(graph, smells)
     return summary
 
 

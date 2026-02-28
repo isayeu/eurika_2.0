@@ -52,6 +52,20 @@ def test_get_summary_with_self_map(tmp_path: Path) -> Path:
     json.dumps(data)
 
 
+def test_get_summary_with_plugins(tmp_path: Path) -> None:
+    """get_summary(include_plugins=True) can merge plugin smells and adds _plugin_counts."""
+    self_map = tmp_path / "self_map.json"
+    self_map.write_text(
+        '{"modules":[{"path":"a.py","lines":10},{"path":"b.py","lines":10}],'
+        '"dependencies":{"a.py":["b"]},"summary":{}}',
+        encoding="utf-8",
+    )
+    data = get_summary(tmp_path, include_plugins=True)
+    assert "error" not in data
+    assert "system" in data
+    assert "_plugin_counts" in data
+
+
 def test_get_self_guard_returns_dict(tmp_path: Path) -> None:
     """get_self_guard returns dict with violations and alarms."""
     data = get_self_guard(tmp_path)
