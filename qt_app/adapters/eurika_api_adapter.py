@@ -19,6 +19,7 @@ from eurika.api import (
     get_operational_metrics,
     get_patch_plan,
     get_pending_plan,
+    preview_operation,
     get_risk_prediction,
     get_self_guard,
     get_summary,
@@ -68,6 +69,10 @@ class EurikaApiAdapter:
 
     def get_pending_plan(self) -> dict[str, Any]:
         return get_pending_plan(self._root())
+
+    def preview_operation(self, op: dict[str, Any]) -> dict[str, Any]:
+        """Preview single-file op: returns old_content, new_content, unified_diff (ROADMAP 3.6.7)."""
+        return preview_operation(self._root(), op)
 
     def save_approvals(self, operations: list[dict[str, Any]]) -> dict[str, Any]:
         return save_approvals(self._root(), operations)

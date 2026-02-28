@@ -15,6 +15,7 @@ from eurika.api import (
     get_learning_insights,
     get_patch_plan,
     get_pending_plan,
+    preview_operation,
     get_risk_prediction,
     get_self_guard,
     get_smells_with_plugins,
@@ -121,6 +122,26 @@ def test_get_diff_returns_json_serializable(tmp_path: Path) -> None:
     assert "maturity" in data
     out = json.dumps(data)
     assert "modules_common" in out or "modules_added" in out
+
+
+def test_preview_operation_remove_unused_import(tmp_path: Path) -> None:
+    """preview_operation returns unified_diff for remove_unused_import when file has unused imports."""
+    (tmp_path / "mod.py").write_text("import json\nimport os\nfrom pathlib import Path\ndef f(): return Path('.')\n")
+    op = {"target_file": "mod.py", "kind": "remove_unused_import", "params": {}}
+    result = preview_operation(tmp_path, op)
+    assert "error" not in result
+    assert "unified_diff" in result
+    assert "import json" in result.get("old_content", "")
+    assert "import json" not in result.get("new_content", "")
+    assert "-import json" in result["unified_diff"] or "-import os" in result["unified_diff"]
+
+
+def test_preview_operation_unsupported_kind(tmp_path: Path) -> None:
+    """preview_operation returns error for unsupported kind."""
+    (tmp_path / "a.py").write_text("x = 1\n")
+    result = preview_operation(tmp_path, {"target_file": "a.py", "kind": "split_module", "params": {}})
+    assert "error" in result
+    assert "not supported" in result["error"].lower()
 
 
 def test_get_patch_plan_returns_none_without_self_map(tmp_path: Path) -> None:

@@ -265,6 +265,7 @@
 | 3.6.4 | Session checkpoint + campaign undo | Снимок состояния перед серией apply; откат всей кампании одним действием                         | ✅ Выполнено: pre-apply checkpoint, `campaign-undo`, e2e rollback кампании (checkpoint -> run_id -> undo) |
 | 3.6.5 | @-mentions / scoped context       | Парсинг @module, @smell в чате; обогащение контекста; target из @module при refactor           | ✅ parse_mentions; примеры: @patch_engine.py, @code_awareness.py, @god_module (scan/doctor) |
 | 3.6.6 | Knowledge в Chat и Planner        | eurika_knowledge + pattern_library + (опционально) PEP/docs в Chat prompt; Knowledge в planner LLM hints | ✅ Chat: _knowledge_topics_for_chat, _fetch_knowledge_for_chat; Planner: _fetch_knowledge_for_planner_hints в ask_ollama_split_hints |
+| 3.6.7 | Approvals diff view               | Полноценный diff preview в Qt Approvals: API preview_operation для single-file ops; панель unified diff при выборе строки | ✅ API preview_operation; POST /api/operation_preview; Qt: diff panel по клику на op |
 
 **DoD для пакета 3.6:** рост `apply_rate`, снижение `rollback_rate`, снижение доли TODO/no-op операций.
 
@@ -293,6 +294,18 @@
 | 3.6.6.3 | Опционально: knowledge в diff hints | Отложено — при build_patch_operations diff_hint уже содержит OSS patterns; Reference можно добавить позже |
 
 **Критерий готовности 3.6.6:** Chat при вопросе «как разбить god_module» получает фрагменты из eurika_knowledge/pattern_library; planner LLM hints содержат Reference по архитектуре.
+
+#### 3.6.7 — Approvals diff view (2026-02-28)
+
+**Цель:** вкладка Approvals показывает реальный diff изменения, а не только описание. Вариант B: только single-file операции.
+
+| Шаг | Что делаем | Артефакты |
+| --- | ---------- | --------- |
+| 3.6.7.1 | API `preview_operation(root, op)` | eurika.api: вызов refactor-хендлеров (remove_unused_imports, extract_block_to_helper, …) в режиме «только вычислить»; возврат old_content, new_content, unified_diff |
+| 3.6.7.2 | Endpoint POST /api/operation_preview | serve.py: body {operation}; ответ для single-file ops |
+| 3.6.7.3 | Qt Approvals diff panel | При выборе строки в approvals_table — вызов API, отображение unified diff в QPlainTextEdit с подсветкой +/- |
+
+**Поддерживаемые kind:** remove_unused_import, remove_cyclic_import, extract_block_to_helper, extract_nested_function, fix_import. split_module, introduce_facade — вне scope (multi-file).
 
 #### Спринт 1 — инженерная декомпозиция (3.6.1 + 3.6.2)
 

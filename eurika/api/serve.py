@@ -23,6 +23,7 @@ from eurika.api import (
     get_smells_with_plugins,
     get_summary,
     explain_module,
+    preview_operation,
     save_approvals,
 )
 from eurika.api.chat import chat_send
@@ -298,6 +299,7 @@ def _dispatch_api_get(
                 "GET /api/operational_metrics?window=10 — apply-rate, rollback-rate, median verify time",
                 "GET /api/pending_plan — team-mode plan for approve UI (ROADMAP 3.5.6)",
                 "GET /api/file?path=... — read file content (for diff preview)",
+                "POST /api/operation_preview — preview single-file op diff (ROADMAP 3.6.7)",
                 "POST /api/approve — save approve/reject decisions to pending_plan.json",
                 "POST /api/exec — run whitelisted eurika command (scan, doctor, fix, cycle, ...)",
                 "POST /api/ask_architect — architect interpretation (returns architect_text from doctor)",
@@ -391,6 +393,20 @@ def _run_post_handler(
     body: dict | None,
 ) -> bool:
     """Handle POST requests. Returns True if handled."""
+    if path == "/api/operation_preview":
+        if not body or "operation" not in body:
+            _json_response(
+                handler,
+                {"error": "JSON body with 'operation' object required"},
+                status=400,
+            )
+            return True
+        op = body.get("operation")
+        if not isinstance(op, dict):
+            _json_response(handler, {"error": "operation must be object"}, status=400)
+            return True
+        _json_response(handler, preview_operation(project_root, op))
+        return True
     if path == "/api/approve":
         if not body or "operations" not in body:
             _json_response(

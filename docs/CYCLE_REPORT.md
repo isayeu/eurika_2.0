@@ -1,7 +1,8 @@
 # Отчёт цикла Eurika
 
-## Current state (2026-02-27)
+## Current state (2026-02-28)
 
+- **88. 3.6.7 Approvals diff view:** API preview_operation, POST /api/operation_preview, Qt diff panel при выборе строки в Approvals. Single-file ops: remove_unused_import, remove_cyclic_import, extract_block_to_helper, extract_nested_function, fix_import. Polygon подготовлен для теста diff.
 - **87. Post-v3.0.18 ritual:** report-snapshot после релиза. modules=255, risk=46, apply_rate=0.93 baseline; 5 skipped (approval_state=pending).
 - **86. KPI 4 — Learning from GitHub для code smells:** DIFF_HINTS для extract_block_to_helper; pattern library long_function/deep_nesting; OSS hints в get_code_smell_operations.
 - **85. KPI verify_success_rate (план A):** `eurika learning-kpi` — by_smell_action + promote/deprioritize; policy dynamic deny из deny_candidates; context_sources.by_target с verify_success_rate для приоритизации.
@@ -18,6 +19,24 @@
 - `eurika serve` работает в **API-only** режиме (`/api/*`), без runtime-раздачи web статики.
 - Исторические snapshot'ы ниже (включая Web UI этапы) сохранены как архив эволюции и не удаляются.
 - Learning-фокус операционности: `verify_success_rate` по `smell|action|target`, с видимостью сигналов в Qt Dashboard.
+
+---
+
+## 88. Snapshot (2026-02-28) — 3.6.7 Approvals diff view
+
+### Scope
+- **preview_operation:** eurika.api — вызов refactor-хендлеров (remove_unused_imports, extract_block_to_helper, …) в режиме «только вычислить»; возврат old_content, new_content, unified_diff.
+- **POST /api/operation_preview:** serve.py, body `{operation}`.
+- **Qt Approvals diff panel:** при выборе строки — вызов preview_operation, отображение unified diff в QPlainTextEdit.
+- **Polygon:** drill state (json, os) для теста diff view и KPI.
+
+### Метрики (report-snapshot)
+- modules=256, risk=46
+- remove_unused_import: 14 success, 13 fail (52%)
+- apply_rate=1.0 (last fix), rollback_rate=0.5
+
+### Итог
+ROADMAP 3.6.7 закрыт. Approvals tab показывает реальный diff при выборе операции.
 
 ---
 

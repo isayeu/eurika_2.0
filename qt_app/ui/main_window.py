@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 from PySide6.QtCore import QProcess, QProcessEnvironment, QThread, QTimer, Qt, Signal
 from PySide6.QtGui import QCloseEvent, QKeyEvent, QShowEvent
-from PySide6.QtWidgets import QCheckBox, QComboBox, QFileDialog, QFormLayout, QProgressBar, QGridLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton, QSizePolicy, QSplitter, QSpinBox, QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QCheckBox, QComboBox, QFileDialog, QFormLayout, QPlainTextEdit, QProgressBar, QGridLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton, QSizePolicy, QSplitter, QSpinBox, QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget
 from qt_app.adapters.eurika_api_adapter import EurikaApiAdapter
 from qt_app.services.command_service import CommandService
 from qt_app.services.settings_service import SettingsService
@@ -484,6 +484,22 @@ network.on('doubleClick', function(params) {{
         header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
         layout.addWidget(self.approvals_table, 1)
+        diff_label = QLabel('Diff preview (select a row):')
+        diff_label.setStyleSheet('color: gray; font-size: 11px;')
+        layout.addWidget(diff_label)
+        self.approvals_diff_text = QPlainTextEdit()
+        self.approvals_diff_text.setReadOnly(True)
+        self.approvals_diff_text.setPlaceholderText('Select an operation row to see the diff.')
+        self.approvals_diff_text.setMinimumHeight(120)
+        self.approvals_diff_text.setFont(self.approvals_diff_text.font())
+        try:
+            from PySide6.QtGui import QFont
+            mono = QFont('Monospace', 9)
+            mono.setStyleHint(QFont.StyleHint.Monospace)
+            self.approvals_diff_text.setFont(mono)
+        except Exception:
+            pass
+        layout.addWidget(self.approvals_diff_text, 1)
         self.tabs.addTab(tab, 'Approvals')
 
     def _build_models_tab(self) -> None:
@@ -759,6 +775,7 @@ network.on('doubleClick', function(params) {{
         self.load_pending_btn.clicked.connect(self._load_pending_plan)
         self.save_approvals_btn.clicked.connect(self._save_approvals)
         self.apply_approved_btn.clicked.connect(self._run_apply_approved)
+        self.approvals_table.itemSelectionChanged.connect(self._on_approval_row_selected)
         self.chat_send_btn.clicked.connect(self._send_chat_message)
         self.chat_clear_btn.clicked.connect(self._clear_chat_session)
         self.chat_apply_btn.clicked.connect(self._apply_pending_chat_plan)
@@ -1127,6 +1144,31 @@ network.on('doubleClick', function(params) {{
             current = str(op.get('team_decision', 'pending')).lower()
             combo.setCurrentText(current if current in {'pending', 'approve', 'reject'} else 'pending')
             self.approvals_table.setCellWidget(index, 4, combo)
+
+    def _on_approval_row_selected(self) -> None:
+        """Load diff preview for selected operation (ROADMAP 3.6.7)."""
+        rows = self.approvals_table.selectionModel().selectedRows()
+        if not rows or not self._pending_operations:
+            self.approvals_diff_text.setPlainText('')
+            return
+        row = rows[0].row()
+        if row < 0 or row >= len(self._pending_operations):
+            self.approvals_diff_text.setPlainText('')
+            return
+        op = self._pending_operations[row]
+        try:
+            result = self._api.preview_operation(op)
+        except Exception as e:
+            self.approvals_diff_text.setPlainText(f'Preview error: {e}')
+            return
+        if result.get('error'):
+            self.approvals_diff_text.setPlainText(f"Error: {result['error']}\n\n{result.get('old_content', '')[:2000]}")
+            return
+        diff = result.get('unified_diff', '')
+        if diff:
+            self.approvals_diff_text.setPlainText(diff)
+        else:
+            self.approvals_diff_text.setPlainText('(no diff — operation would produce no change)')
 
     def _save_approvals(self) -> None:
         if not self._pending_operations:

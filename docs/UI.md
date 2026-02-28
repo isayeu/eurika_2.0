@@ -11,7 +11,7 @@
 | **Commands** | scan/doctor/fix/cycle/explain/report-snapshot/learning-kpi, Run/Stop |
 | **Terminal** | Output команд (scan, doctor, fix…) + поле ввода для shell (ls, pwd, eurika scan .) |
 | **Dashboard** | Summary (modules, deps, cycles, risk, maturity, trends), Top risks, Operational metrics (apply_rate, rollback_rate, median verify), Learning insights; автообновление при смене project root |
-| **Approvals** | Run fix (team-mode), Load plan, approve/reject per row, Save, Run apply-approved; подсказка по workflow |
+| **Approvals** | Run fix (team-mode), Load plan, approve/reject per row, **diff preview** при выборе строки (ROADMAP 3.6.7), Save, Run apply-approved |
 
 ### Chat: @-mentions (ROADMAP 3.6.5)
 
