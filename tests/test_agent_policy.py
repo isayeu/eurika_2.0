@@ -192,6 +192,12 @@ def test_suggest_policy_from_telemetry_high_rollback_rate() -> None:
     assert out.get("EURIKA_AGENT_MAX_OPS") == "40"
 
 
+def test_suggest_policy_from_telemetry_high_no_op_rate() -> None:
+    """High no_op_rate suggests EURIKA_CAMPAIGN_ALLOW_LOW_RISK (OPERABILITY D)."""
+    out = suggest_policy_from_telemetry({"apply_rate": 0.3, "no_op_rate": 0.6})
+    assert out.get("EURIKA_CAMPAIGN_ALLOW_LOW_RISK") == "1"
+
+
 def test_suggest_policy_from_telemetry_empty() -> None:
     """Empty telemetry returns no suggestions."""
     assert suggest_policy_from_telemetry({}) == {}

@@ -287,6 +287,15 @@ def handle_learning_kpi(args: Any) -> int:
             rate = float(r.get("verify_success_rate", 0) or 0) * 100
             lines.append(f"- {pair} @ {tf} (rate={rate:.1f}%)")
         lines.append("")
+    lines.append("### Next steps (D)")
+    lines.append("")
+    rui = next((s for k, s in by_smell_action.items() if "remove_unused_import" in k), None)
+    if rui and int(rui.get("total", 0) or 0) >= 5:
+        rate = 100 * int(rui.get("verify_success", 0) or 0) / max(int(rui.get("total", 1) or 1), 1)
+        lines.append(f"- remove_unused_import rate={rate:.1f}%: try `eurika fix . --no-code-smells --allow-low-risk-campaign`")
+    lines.append("- To promote: run fix, accumulate 2+ verify_success per target, then `eurika whitelist-draft .`")
+    lines.append("- Use `--apply-suggested-policy` when doctor suggests EURIKA_CAMPAIGN_ALLOW_LOW_RISK")
+    lines.append("")
     print("\n".join(lines) if lines else "No learning data yet. Run eurika fix to accumulate.")
     return 0
 

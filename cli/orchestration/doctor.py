@@ -88,6 +88,7 @@ def _suggested_policy_from_last_fix(path: Path) -> dict[str, Any]:
             "telemetry": {
                 "apply_rate": telemetry.get("apply_rate"),
                 "rollback_rate": telemetry.get("rollback_rate"),
+                "no_op_rate": telemetry.get("no_op_rate"),
             },
         }
     except Exception:

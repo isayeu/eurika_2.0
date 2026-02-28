@@ -57,16 +57,19 @@ def _env_int(name: str, default: int) -> int:
 
 
 def suggest_policy_from_telemetry(telemetry: dict) -> dict[str, str]:
-    """Suggest env overrides based on telemetry (ROADMAP 2.7.8). Returns dict of EURIKA_AGENT_* keys."""
+    """Suggest env overrides based on telemetry (ROADMAP 2.7.8, D). Returns dict of EURIKA_* keys."""
     if not telemetry:
         return {}
     out: dict[str, str] = {}
     apply_rate = telemetry.get("apply_rate")
     rollback_rate = telemetry.get("rollback_rate")
+    no_op_rate = telemetry.get("no_op_rate")
     if isinstance(apply_rate, (int, float)) and apply_rate < 0.3:
         out["EURIKA_AGENT_MAX_OPS"] = "40"
     if isinstance(rollback_rate, (int, float)) and rollback_rate > 0.5:
         out["EURIKA_AGENT_MAX_OPS"] = str(min(int(out.get("EURIKA_AGENT_MAX_OPS", "80")), 40))
+    if isinstance(no_op_rate, (int, float)) and no_op_rate > 0.5:
+        out["EURIKA_CAMPAIGN_ALLOW_LOW_RISK"] = "1"
     return out
 
 
