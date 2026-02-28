@@ -46,7 +46,7 @@ def _clog():
 
 def handle_help(parser: Any) -> int:
     """Print high-level command overview and detailed argparse help (ROADMAP этап 5: 4 product modes)."""
-    print('Eurika — architecture analysis and refactoring assistant (v3.0.15)')
+    print('Eurika — architecture analysis and refactoring assistant (v3.0.16)')
     print()
     print('Product (4 modes):')
     print('  scan [path]              full scan, update artifacts, report')

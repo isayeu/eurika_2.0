@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## v3.0.16 — Terminal merge + R1 gate (2026-02-27)
+
+### Qt
+- **Terminal:** вывод Commands (scan, doctor, fix…) и shell (ls, pwd, eurika scan .) в одной вкладке; поле ввода сохранено.
+
+### R1 Structural Hardening
+- **Gate-тест:** `test_self_check_r1_layer_discipline_on_self` — self-check → LAYER DISCIPLINE: OK.
+- CYCLE_REPORT snapshot 80.
+
+---
+
 ## v3.0.15 — Qt MVP Phase 2: smoke flow, first-run UX, project root validation (2026-02-27)
 
 ### Qt MVP
