@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable, Literal, cast
 
+from .cycle_state import with_cycle_state
 from .logging import get_logger
 
 _LOG = get_logger("orchestration.full_cycle")
@@ -71,7 +72,7 @@ def run_cycle_entry(
 
     def _run_cycle_impl() -> dict[str, Any]:
         if mode == "doctor":
-            return run_doctor_cycle_fn(path, window=window, no_llm=no_llm, online=online)
+            return run_doctor_cycle_fn(path, window=window, no_llm=no_llm, online=online, quiet=quiet)
         if mode == "fix":
             return run_fix_cycle_fn(
                 path,
@@ -119,9 +120,7 @@ def run_cycle_entry(
     if runtime_mode == "assist":
         return _run_cycle_impl()
 
-    from eurika.agent.runtime import run_agent_cycle
-    from eurika.agent import DefaultToolContract
-    from eurika.agent.tools import OrchestratorToolset
+    from eurika.agent import DefaultToolContract, OrchestratorToolset, run_agent_cycle
 
     runtime_mode_lit = cast(Literal["assist", "hybrid", "auto"], runtime_mode)
     contract = DefaultToolContract()
@@ -185,10 +184,16 @@ def run_full_cycle(
     if not quiet:
         _LOG.info("eurika cycle: scan -> doctor -> fix")
     if run_scan(path) != 0:
-        return {"return_code": 1, "report": {}, "operations": [], "modified": [], "verify_success": False, "agent_result": None}
+        return with_cycle_state(
+            {"return_code": 1, "report": {}, "operations": [], "modified": [], "verify_success": False, "agent_result": None},
+            is_error=True,
+        )
     data = run_doctor_cycle_fn(path, window=window, no_llm=no_llm, online=online)
     if data.get("error"):
-        return {"return_code": 1, "report": data, "operations": [], "modified": [], "verify_success": False, "agent_result": None}
+        return with_cycle_state(
+            {"return_code": 1, "report": data, "operations": [], "modified": [], "verify_success": False, "agent_result": None},
+            is_error=True,
+        )
     if not quiet:
         _LOG.info(summary_to_text(data["summary"]))
         _LOG.info("")

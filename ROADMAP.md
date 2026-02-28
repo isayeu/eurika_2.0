@@ -48,7 +48,7 @@
 
 ## План прорыва выполнен
 
-Этапы 1–5 и dogfooding закрыты. Продуктовая 1.0 в смысле плана достигнута.
+Этапы 1–5 закрыты. Продуктовая 1.0 в смысле плана достигнута.
 
 ---
 
@@ -59,6 +59,10 @@
 - **Стабилизация:** тесты зелёные, доки соответствуют коду.
 - **Операционность 5/10:** refactor_code_smell 0% success (в WEAK_SMELL_ACTION_PAIRS); extract_block_to_helper работает в guarded-режиме (hybrid: review, auto: deny, target-aware/whitelist); для повышения — допустимо использовать интернет и LLM (промпты, pattern library, curated repos).
 - **Дальше:** см. «Следующий фокус (после 3.5)» и новый активный бэклог ниже.
+
+### Расширения зависимостей (v3.0.13+)
+
+Установлены и интегрируются: **libcst** (refactor), **litellm** (architect LLM), **rich** (CLI UX), **pydantic**, **watchdog**, **ruff**, **structlog**, **ollama**. См. **docs/DEPENDENCIES.md**.
 
 ### Следующий фокус (после 3.5)
 
@@ -144,10 +148,10 @@
 
 | Поток                  | Что делаем                                                                                                               | Критерий готовности                                                                      |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
-| Layer discipline       | Перепроверка и донастройка карты слоёв (allowed deps + no-upward imports) по факту текущих модулей                       | Dependency guard стабильно ловит нарушения; в CYCLE_REPORT есть «до/после» по violations |
-| Domain vs Presentation | Убираем форматирование отчётов/markdown из domain-кода; domain возвращает структуры, rendering только в reporting/UI/CLI | Для выбранных целевых модулей domain не возвращает форматированный текст                 |
-| Size budget            | Жёстко применяем бюджет размера файлов (>400 warning, >600 split required) в self-check/ритуале                          | Нет новых файлов >600; список >400 прозрачно контролируется                              |
-| Public subsystem API   | Для ключевых подсистем оставляем 1-2 публичные точки входа, остальное private                                            | Для core/analysis/planning/execution/reporting зафиксированы API-границы                 |
+| Layer discipline       | Перепроверка и донастройка карты слоёв (allowed deps + no-upward imports) по факту текущих модулей                       | ✅ 2026-02: SMELL_TO_KNOWLEDGE_TOPICS → eurika.knowledge; 0 violations; self-check LAYER DISCIPLINE блок |
+| Domain vs Presentation | Убираем форматирование отчётов/markdown из domain-кода; domain возвращает структуры, rendering только в reporting/UI/CLI | Для выбранных целевых модулей domain не возвращает форматированный текст (отложено)       |
+| Size budget            | Жёстко применяем бюджет размера файлов (>400 warning, >600 split required) в self-check/ритуале                          | ✅ self-check выводит FILE SIZE LIMITS; список >400 контролируется                         |
+| Public subsystem API   | Для ключевых подсистем оставляем 1-2 публичные точки входа, остальное private                                            | ✅ Architecture.md §0.7; Knowledge добавлен в таблицу                                    |
 
 
 #### Контур R2 — Runtime Robustness (после R1)
@@ -178,12 +182,15 @@
 
 **Цель:** подготовить Eurika к масштабированию без архитектурного долга.
 
+Детальный план: **docs/R4_MODULAR_PLATFORM_PLAN.md**
 
 | Поток                   | Что делаем                                                                                     | Критерий готовности                                |
 | ----------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------- |
 | Subsystem decomposition | Укрепить пакетную изоляцию (core/analysis/planning/execution/reporting) и контракты между ними | Нет прямых «соседских» обходов мимо публичных API  |
 | Dependency firewall     | Автотест графа зависимостей как контракт архитектуры                                           | CI падает при нарушении firewall-правил            |
 | Release hygiene         | Перед релизами: dead code cleanup, TODO hygiene, lint/type/test, clean-start check             | Релизный чеклист выполняется как обязательный gate |
+
+Реализовано: `scripts/release_check.sh`, `docs/RELEASE_CHECKLIST.md`, `docs/DEPENDENCY_FIREWALL.md`; CI (`.github/workflows/ci.yml`) с dependency firewall в strict mode; SubsystemBypassRule, `test_subsystem_imports_via_public_api`, рефакторинг cli/agent и api/prepare через фасады.
 
 
 #### Контур R5 — Strategic Horizon (дальний)
@@ -214,7 +221,7 @@
 - god_class|extract_class в WEAK_SMELL_ACTION_PAIRS + EXTRACT_CLASS_SKIP_PATTERNS (*tool_contract*.py) — защита от повторных ошибок (CYCLE_REPORT #34)
 - extract_block_to_helper в WEAK_SMELL_ACTION_PAIRS (hybrid: review, auto: deny) + target-aware policy по verify_fail history
 - operation whitelist: `.eurika/operation_whitelist.json` для controlled rollout safe targets (CYCLE_REPORT #74)
-- report-snapshot, DOGFOODING
+- report-snapshot
 - Малые рефакторинги + тесты для топ-long/deep функций
 - R3 Typing contract (iterative): целевой mypy-gate расширен до `CLI entry -> orchestration -> API surface -> agent/storage/event-memory/facade -> learning/knowledge -> reasoning -> runtime/tool-contract -> evolution -> smells/core -> analysis/reporting -> checks/utils/storage-sidecar` (80 модулей), подтверждён финальным consolidate-ритуалом (full mypy + targeted regression-pack) и step-7..step-16 валидацией (CYCLE_REPORT #50, #51, #52, #53, #54, #55, #56, #57, #58, #59, #60, #61)
 - Ритуал 2.1: `eurika report-snapshot .` (post R3 typing) выполнен и зафиксирован в CYCLE_REPORT #62
@@ -233,12 +240,13 @@
 
 **Новый бэклог (следующие шаги):**
 
-- dogfooding: регулярные циклы scan→doctor→fix на Eurika, report-snapshot, фиксация метрик
 - KPI-фокус: `verify_success_rate` по `smell|action|target` (apply_rate вторичен)
+- 3.6.5 @-mentions: ✅ выполнено
 
 **Update (2026-02-27, Qt/chat hardening + doc sync v3.0.12):**
 
 - Doc sync: pyproject 3.0.12, README/UI/MIGRATION/CHANGELOG/CYCLE_REPORT/REPORT приведены в соответствие с Qt-first этапом.
+- 3.6.5 @-mentions: parse_mentions (@module, @smell); interpret_task подставляет target из @module при refactor; _build_chat_context обогащается scope (Focus module/smell, risks по scope); тесты.
 - Qt runtime hardening: корректный `closeEvent` в `MainWindow` с shutdown для `QProcess` (`terminate` → `wait` → `kill`) и остановкой health-timer.
 - Stability gate окружения: Qt smoke переведён в изолированный `subprocess`; для нестабильного teardown на Python 3.14 введена рекомендация запускать smoke на 3.12/3.13 (через `EURIKA_QT_SMOKE_PYTHON`).
 - Chat actions hardening: добавлены e2e-сценарии `add/remove tab` по цепочке `interpret -> pending_plan -> применяй -> verify`, чтобы закрыть регрессию класса "удали -> добавь".
@@ -255,15 +263,17 @@
 | 3.6.2 | Critic pass before apply           | Перед применением прогонять критический check плана (imports/API/tests impact)                  | План получает pre-apply verdict (`allow/review/deny`), deny-ops не применяются в auto режиме       |
 | 3.6.3 | Semantic context for planner       | Подмешивать в planner семантически релевантные модули/тесты/историю фейлов                       | ✅ Выполнено: context sources в planner/report/UI; в report-snapshot есть блок "Context effect" (apply/no-op delta) |
 | 3.6.4 | Session checkpoint + campaign undo | Снимок состояния перед серией apply; откат всей кампании одним действием                         | ✅ Выполнено: pre-apply checkpoint, `campaign-undo`, e2e rollback кампании (checkpoint -> run_id -> undo) |
+| 3.6.5 | @-mentions / scoped context       | Парсинг @module, @smell в чате; обогащение контекста; target из @module при refactor           | ✅ parse_mentions; примеры: @patch_engine.py, @code_awareness.py, @god_module (scan/doctor) |
+| 3.6.6 | Knowledge в Chat и Planner        | eurika_knowledge + pattern_library + (опционально) PEP/docs в Chat prompt; Knowledge в planner LLM hints | ✅ Chat: _knowledge_topics_for_chat, _fetch_knowledge_for_chat; Planner: _fetch_knowledge_for_planner_hints в ask_ollama_split_hints |
 
-**DoD для пакета 3.6:** рост `apply_rate`, снижение `rollback_rate`, снижение доли TODO/no-op операций в dogfooding-циклах.
+**DoD для пакета 3.6:** рост `apply_rate`, снижение `rollback_rate`, снижение доли TODO/no-op операций.
 
 **Рекомендуемый порядок внедрения (по спринтам):**
 
 - **Спринт 1 (быстрый эффект):** 3.6.1 + 3.6.2. Сначала управляемый apply (per-op approve), затем pre-apply critic для отсечки рискованных операций.
 - **Спринт 2 (качество планирования):** 3.6.3. Добавить семантический контекст в planner и наблюдать снижение no-op/TODO по long/deep сценариям.
 - **Спринт 3 (безопасность кампаний):** 3.6.4. Ввести session checkpoint и понятный campaign undo для длинных серий apply.
-- **Стабилизация после каждого спринта:** dogfooding + `report-snapshot` + обновление CYCLE_REPORT/ROADMAP по фактическим метрикам.
+- **Стабилизация после каждого спринта:** `report-snapshot` + обновление CYCLE_REPORT/ROADMAP по фактическим метрикам.
 
 **Статус спринтов (факт):**
 
@@ -271,6 +281,18 @@
 - Спринт 2 (3.6.3): ✅ выполнен (context_sources в JSON/API/doctor, UI Dashboard + top context hits + by-target breakdown, CYCLE_REPORT через report-snapshot context effect).
 - Спринт 3 (3.6.4): ✅ выполнен (checkpoint + campaign-undo + e2e подтверждение на безопасном apply-сценарии).
 - R3 Quality Gate для 3.6.4: ✅ закрыт (QG-1 edge-cases, QG-2 integration flow, QG-3 undo playbook, QG-4 ritual confirmation apply-safe + no-op).
+
+#### 3.6.6 — Knowledge в Chat и Planner (в работе)
+
+**Цель:** использовать все источники (eurika_knowledge, pattern_library, PEP/docs) для повышения качества ответов и патчей.
+
+| Шаг | Что делаем | Артефакты |
+| --- | ---------- | --------- |
+| 3.6.6.1 | Knowledge в Chat | ✅ CompositeKnowledgeProvider в chat flow; topics из intent/scope; rate_limit=0 (cache only); inject в prompt как `[Reference]` |
+| 3.6.6.2 | Knowledge в Planner LLM hints | ✅ ask_ollama_split_hints(project_root=...) получает knowledge_snippet; append к prompt |
+| 3.6.6.3 | Опционально: knowledge в diff hints | Отложено — при build_patch_operations diff_hint уже содержит OSS patterns; Reference можно добавить позже |
+
+**Критерий готовности 3.6.6:** Chat при вопросе «как разбить god_module» получает фрагменты из eurika_knowledge/pattern_library; planner LLM hints содержат Reference по архитектуре.
 
 #### Спринт 1 — инженерная декомпозиция (3.6.1 + 3.6.2)
 
@@ -291,7 +313,7 @@
 - deny-операции от critic не проходят в auto режиме;
 - `--apply-approved` стабильно применяет только одобренный поднабор;
 - отчёт фиксирует decision trail по каждой операции (approval + critic + итог apply/skip);
-- regression-набор зелёный, dogfooding-цикл без роста rollback-rate.
+- regression-набор зелёный, без роста rollback-rate.
 
 ---
 
@@ -302,7 +324,7 @@
 
 | #     | Задача                                                                                                                                                                   | Критерий готовности                                                                                                                           |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2.1.1 | Регулярно применять scan/doctor/fix к своей кодовой базе (eurika)                                                                                                        | Ритуал по DOGFOODING.md; артефакты и отчёты обновляются; выявленные проблемы фиксируются или попадают в план                                  |
+| 2.1.1 | Регулярно применять scan/doctor/fix к своей кодовой базе (eurika)                                                                                                        | Артефакты и отчёты обновляются; выявленные проблемы фиксируются или попадают в план                                  |
 | 2.1.2 | Добавление новых функций по запросу; **багфиксы** по результатам прогонов (напр. Knowledge: явная пустая карта `topic_urls={}` → дефолт только при `topic_urls is None`) | Тесты зелёные; REPORT и CHANGELOG обновлены при изменении возможностей или числа тестов                                                       |
 | 2.1.3 | Актуализировать документацию при изменении поведения                                                                                                                     | README, CLI.md, KNOWLEDGE_LAYER.md, ROADMAP соответствуют коду и текущей задаче                                                               |
 | 2.1.4 | Опционально: полный `eurika fix .` без --dry-run на Eurika (с venv)                                                                                                      | ✓ Выполнено: verify 129 passed после багфикса topic_urls                                                                                      |
@@ -399,8 +421,8 @@
 | 2.7.6  | Human-in-the-loop CLI   | Добавить интерактивный approval в `fix` для `hybrid` (approve/reject/skip/all), с `--non-interactive` для CI                                             | CLI-UX покрыт интеграционными тестами; в CI-режиме поведение детерминировано без промптов                              |
 | 2.7.7  | Safety & Rollback Gates | Ужесточить guardrails: обязательный verify-gate, авто-rollback при regressions, лимиты на серию операций                                                 | Нет частично-применённых невалидных сессий; rollback покрыт тестами на fail verify                                     |
 | 2.7.8  | Telemetry & KPIs        | Добавить метрики операционности: apply-rate, rollback-rate, no-op-rate, median verify time                                                               | Метрики выводятся в doctor/fix report и используются для корректировки policy                                          |
-| 2.7.9  | Dogfooding Campaign     | Провести серию dogfooding-прогонов только новым runtime (assist/hybrid/auto) на Eurika                                                                   | Минимум 3 стабильных цикла подряд без шумовых TODO-патчей; тесты зелёные                                               |
-| 2.7.10 | Docs & Migration        | Обновить CLI.md, ROADMAP, DOGFOODING, CYCLE_REPORT с новым режимом runtime и правилами эксплуатации                                                      | Документация синхронизирована с кодом; сценарии запуска/отката описаны и проверены                                     |
+| 2.7.9  | Stability Campaign      | Провести серию прогонов runtime (assist/hybrid/auto) на Eurika                                                                   | Минимум 3 стабильных цикла подряд без шумовых TODO-патчей; тесты зелёные                                               |
+| 2.7.10 | Docs & Migration        | Обновить CLI.md, ROADMAP, CYCLE_REPORT с новым режимом runtime и правилами эксплуатации                                                      | Документация синхронизирована с кодом; сценарии запуска/отката описаны и проверены                                     |
 
 
 **Порядок внедрения (рекомендуемый):** 2.7.1 -> 2.7.2 -> 2.7.3 -> 2.7.4 -> 2.7.5 -> 2.7.6 -> 2.7.7 -> 2.7.8 -> 2.7.9 -> 2.7.10.
@@ -415,15 +437,15 @@
 - 2.7.6 Human-in-the-loop CLI — approve/reject/A/R/s в hybrid; --non-interactive для CI (детерминировано, без stdin); tests/test_hitl_cli.py (non_interactive, isatty, mocked input)
 - 2.7.7 Safety & Rollback Gates — обязательный verify, auto_rollback при fail; backup=True; enrich_report_with_rescan → rollback при metrics_worsened; tests/test_safety_rollback_gates.py; policy max_ops/max_files
 - 2.7.8 Telemetry & KPIs — apply-rate, rollback-rate, no-op-rate, median_verify_time_ms; telemetry в fix report; report-snapshot и doctor (last_fix_telemetry); no-op репортинг прозрачен для campaign/session skip (`campaign_skipped`, `session_skipped`) и согласован с telemetry (`skipped_count`, `no_op_rate`); suggest_policy_from_telemetry; aggregate_operational_metrics (rolling); /api/operational_metrics; Dashboard card
-- 2.7.9 Dogfooding Campaign — 3 стабильных цикла подряд; verify ✓, тесты зелёные; split_module architecture_planner → build_plan, build_action_plan
-- 2.7.10 Docs & Migration — CLI.md, ROADMAP, DOGFOODING, CYCLE_REPORT обновлены; runtime-режимы и telemetry описаны; добавлен операторский сценарий controlled re-apply через `--allow-campaign-retry`
+- 2.7.9 Stability Campaign — 3 стабильных цикла подряд; verify ✓, тесты зелёные; split_module architecture_planner → build_plan, build_action_plan
+- 2.7.10 Docs & Migration — CLI.md, ROADMAP, CYCLE_REPORT обновлены; runtime-режимы и telemetry описаны; добавлен операторский сценарий controlled re-apply через `--allow-campaign-retry`
 
 **Метрики выхода из фазы 2.7 (DoD):**
 
 - apply-rate в `eurika fix` устойчиво растёт, а no-op-rate снижается относительно базовой линии.
 - В `hybrid` режиме пользователь контролирует medium/high-risk операции без потери воспроизводимости.
 - Каждый применённый патч имеет machine-readable rationale и rollback trail.
-- По итогам dogfooding новые режимы не ухудшают verify-success и не повышают шум в git diff.
+- Новые режимы не ухудшают verify-success и не повышают шум в git diff.
 
 ### Фаза 2.8 — Декомпозиция слоёв и анти-монолитный контур (по review v2.7.0)
 
@@ -461,7 +483,7 @@
 - Уменьшение централизации по файлам: `cli/orchestrator.py`, `eurika_cli.py`, `architecture_planner.py`, `patch_apply.py` больше не являются top outliers по LOC/смешению ролей.
 - Импорт-контракт слоёв формализован и автоматически проверяется.
 - Runtime (assist/hybrid/auto) сохраняет поведение и тестовую стабильность после декомпозиции.
-- В dogfooding нет всплеска no-op/rollback-rate из-за структурных изменений.
+- Нет всплеска no-op/rollback-rate из-за структурных изменений.
 
 #### Детализация 2.8.3 — Orchestrator Split (план коммитов)
 
@@ -1003,7 +1025,7 @@
 
 ### Dogfooding
 
-- Провести полный цикл на самом проекте Eurika: scan → doctor → fix --dry-run. Инструкция — **DOGFOODING.md** (в т.ч. про venv для verify).
+- Провести полный цикл на самом проекте Eurika: scan → doctor → fix --dry-run.
 
 ---
 
@@ -1011,7 +1033,7 @@
 
 > Доказать, что можешь сделать инструмент, который **меняет код** — а не только анализирует его.
 
-Продуктовая 1.0 в полном смысле = после выполнения этапов 1–5 (Patch Engine, 3 автофикса, Verify, Event Engine, CLI 4 режима) и dogfooding.
+Продуктовая 1.0 в полном смысле = после выполнения этапов 1–5 (Patch Engine, 3 автофикса, Verify, Event Engine, CLI 4 режима).
 
 ---
 

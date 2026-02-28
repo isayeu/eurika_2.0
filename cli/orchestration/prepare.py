@@ -86,7 +86,7 @@ def _drop_noop_append_ops(
 
 def _is_weak_pair(op: OperationRecord) -> bool:
     """True if op is a historically low-success smell|action pair."""
-    from eurika.agent.policy import WEAK_SMELL_ACTION_PAIRS
+    from eurika.agent import WEAK_SMELL_ACTION_PAIRS
     kind = (op.get("kind") or "").strip()
     smell = (op.get("smell_type") or "").strip()
     return (smell, kind) in WEAK_SMELL_ACTION_PAIRS
@@ -464,7 +464,7 @@ def prepare_fix_cycle_operations(
     )
     context_sources: dict[str, Any] = {}
     try:
-        from eurika.reasoning.context_sources import build_context_sources
+        from eurika.reasoning.architect import build_context_sources
 
         context_sources = build_context_sources(path, operations)
         operations = _apply_context_priority(operations, context_sources)

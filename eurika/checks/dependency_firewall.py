@@ -47,6 +47,27 @@ class LayerViolation:
     target_layer: int
 
 
+@dataclass(frozen=True)
+class SubsystemBypassRule:
+    """R4: External clients must use package facade, not internal submodules."""
+
+    path_pattern: str
+    forbidden_import_prefix: str
+
+
+@dataclass(frozen=True)
+class SubsystemBypassViolation:
+    path: str
+    imported_module: str
+
+
+@dataclass(frozen=True)
+class SubsystemBypassException:
+    path_pattern: str
+    allowed_import_prefix: str
+    reason: str = ""
+
+
 DEFAULT_RULES: tuple[ImportRule, ...] = (
     # CLI must use patch_engine facade, not patch_apply directly.
     ImportRule(path_pattern="cli/", forbidden_imports=("patch_apply",)),
@@ -136,6 +157,27 @@ DEFAULT_LAYER_IMPORT_RULES: tuple[LayerImportRule, ...] = (
 
 
 DEFAULT_LAYER_EXCEPTIONS: tuple[LayerException, ...] = ()
+
+
+DEFAULT_SUBSYSTEM_BYPASS_RULES: tuple[SubsystemBypassRule, ...] = (
+    # R4: External clients use package facade, not internal submodules.
+    SubsystemBypassRule(path_pattern="eurika/reasoning/", forbidden_import_prefix="eurika.knowledge.base"),
+    SubsystemBypassRule(path_pattern="cli/", forbidden_import_prefix="eurika.agent.policy"),
+    SubsystemBypassRule(path_pattern="cli/", forbidden_import_prefix="eurika.agent.runtime"),
+    SubsystemBypassRule(path_pattern="cli/", forbidden_import_prefix="eurika.agent.tools"),
+    SubsystemBypassRule(path_pattern="eurika/api/", forbidden_import_prefix="eurika.reasoning.context_sources"),
+    SubsystemBypassRule(path_pattern="cli/", forbidden_import_prefix="eurika.reasoning.context_sources"),
+    SubsystemBypassRule(path_pattern="architecture_planner", forbidden_import_prefix="eurika.reasoning.planner_patch_ops"),
+)
+
+DEFAULT_SUBSYSTEM_BYPASS_EXCEPTIONS: tuple[SubsystemBypassException, ...] = (
+    # R4: Legacy planner scripts at project root; migrate to eurika.reasoning.planner in Phase B.2
+    SubsystemBypassException(
+        path_pattern="architecture_planner",
+        allowed_import_prefix="eurika.reasoning.planner_patch_ops",
+        reason="Legacy planner build_patch_plan; migrate to facade",
+    ),
+)
 
 
 def _path_matches(rel_path: str, pattern: str) -> bool:
@@ -243,6 +285,48 @@ def _is_exception(
             if imported_module == prefix or imported_module.startswith(prefix + "."):
                 return True
     return False
+
+
+def _is_subsystem_exception(
+    rel_path: str,
+    imported_module: str,
+    exceptions: Iterable[SubsystemBypassException],
+) -> bool:
+    for ex in exceptions:
+        if not _path_matches(rel_path, ex.path_pattern):
+            continue
+        prefix = ex.allowed_import_prefix
+        if imported_module == prefix or imported_module.startswith(prefix + "."):
+            return True
+    return False
+
+
+def collect_subsystem_bypass_violations(
+    root: Path,
+    *,
+    rules: Iterable[SubsystemBypassRule] = DEFAULT_SUBSYSTEM_BYPASS_RULES,
+    exceptions: Iterable[SubsystemBypassException] = DEFAULT_SUBSYSTEM_BYPASS_EXCEPTIONS,
+) -> list[SubsystemBypassViolation]:
+    """R4: Find imports that bypass package facades (use internal submodules directly)."""
+    violations: list[SubsystemBypassViolation] = []
+    for path in _collect_project_py_files(root):
+        rel = path.relative_to(root).as_posix()
+        try:
+            imported_modules = _extract_import_modules(path.read_text(encoding="utf-8"))
+        except OSError:
+            continue
+        for rule in rules:
+            if not _path_matches(rel, rule.path_pattern):
+                continue
+            for module in imported_modules:
+                if module == rule.forbidden_import_prefix or module.startswith(
+                    rule.forbidden_import_prefix + "."
+                ):
+                    if not _is_subsystem_exception(rel, module, exceptions):
+                        violations.append(
+                            SubsystemBypassViolation(path=rel, imported_module=module)
+                        )
+    return violations
 
 
 def collect_layer_violations(

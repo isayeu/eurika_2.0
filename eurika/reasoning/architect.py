@@ -11,9 +11,15 @@ Produces a short "architect's take" on the codebase from summary + history + pat
 """
 from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+
+from .context_sources import build_context_sources  # noqa: F401
+
 if TYPE_CHECKING:
     from eurika.knowledge import KnowledgeProvider
     from eurika.storage.events import Event
+
+__all__ = ["build_context_sources", "call_llm_with_prompt", "interpret"]
+
 
 def _format_recent_events(events: List['Event'], max_chars: int=500) -> str:
     """Format recent patch/learn events for architect prompt (ROADMAP 3.2.3)."""
@@ -256,6 +262,36 @@ def _build_ollama_cli_prompt(summary: Dict[str, Any], history: Dict[str, Any], p
     patch_desc = _build_llm_patch_desc(patch_plan)
     return f"You are a software architect. Reply in exactly 2 short sentences.\nSentence 1: architecture risk level. Sentence 2: one highest-impact refactoring.\n\nMetrics: modules={modules}, dependencies={deps}, cycles={cycles}, maturity={maturity}\nTop risk: {top_risk}\nTrends: complexity={trends.get('complexity', 'unknown')}, smells={trends.get('smells', 'unknown')}, centralization={trends.get('centralization', 'unknown')}{patch_desc}"
 
+def _call_litellm(prompt: str, max_tokens: int = 350) -> tuple[str | None, str | None]:
+    """Try litellm first (unified OpenAI/Ollama/OpenRouter). Returns (text, None) or (None, reason)."""
+    try:
+        import litellm
+    except ImportError:
+        return (None, 'litellm not installed')
+    import os
+    api_key = os.environ.get('OPENAI_API_KEY')
+    base = os.environ.get('OPENAI_BASE_URL') or ''
+    model = os.environ.get('OPENAI_MODEL') or os.environ.get('OLLAMA_OPENAI_MODEL', 'qwen2.5-coder:7b')
+    if 'openrouter' in base.lower():
+        model = f'openrouter/{model}' if not model.startswith('openrouter/') else model
+    elif api_key and not base:
+        model = model if '/' in model else f'openai/{model}'
+    elif not model.startswith('ollama/'):
+        model = f'ollama/{model.split("/")[-1]}'
+    timeout = float(os.environ.get('EURIKA_LLM_TIMEOUT_SEC', '60'))
+    try:
+        r = litellm.completion(
+            model=model,
+            messages=[{'role': 'user', 'content': prompt}],
+            max_tokens=max_tokens,
+            timeout=timeout,
+        )
+        if r and r.choices and r.choices[0].message.content:
+            return (r.choices[0].message.content.strip(), None)
+        return (None, 'empty litellm response')
+    except Exception as e:
+        return (None, str(e))
+
 def _call_llm_architect(client: Any, model: str, prompt: str, max_tokens: int=350) -> tuple[str | None, str | None]:
     """Call OpenAI chat completions and normalize response shape."""
     import os
@@ -269,16 +305,30 @@ def _call_llm_architect(client: Any, model: str, prompt: str, max_tokens: int=35
         return (None, str(e))
 
 def _call_ollama_cli(model: str, prompt: str) -> tuple[str | None, str | None]:
-    """Fallback path via local `ollama run` CLI when HTTP endpoints are unavailable."""
+    """Fallback path via local `ollama run` CLI when HTTP endpoints are unavailable.
+    EURIKA_OLLAMA_CLI_TIMEOUT_SEC: 0=unlimited, else seconds (default 120)."""
     import os
     import subprocess
-    cli_timeout_sec = int(os.environ.get('EURIKA_OLLAMA_CLI_TIMEOUT_SEC', '45'))
+    raw = os.environ.get('EURIKA_OLLAMA_CLI_TIMEOUT_SEC', '120')
+    try:
+        val = int(raw) if raw else 120
+        cli_timeout_sec = None if val <= 0 else val
+    except (ValueError, TypeError):
+        cli_timeout_sec = 120
+    if cli_timeout_sec:
+        _trace_architect(f"ollama CLI: waiting up to {cli_timeout_sec}s...")
 
-    def _run_once(timeout_sec: int | None=None) -> tuple[str | None, str | None]:
-        if timeout_sec is None:
-            timeout_sec = cli_timeout_sec
+    def _run_once(timeout_sec: int | None = None) -> tuple[str | None, str | None]:
+        t = timeout_sec if timeout_sec is not None else cli_timeout_sec
         try:
-            r = subprocess.run(['ollama', 'run', model, prompt], capture_output=True, text=True, timeout=timeout_sec, check=False)
+            r = subprocess.run(
+                ['ollama', 'run', model, prompt],
+                capture_output=True,
+                text=True,
+                timeout=t,
+                check=False,
+                stdin=subprocess.DEVNULL,
+            )
         except FileNotFoundError:
             return (None, 'ollama CLI not found in PATH')
         except Exception as e:
@@ -293,7 +343,14 @@ def _call_ollama_cli(model: str, prompt: str) -> tuple[str | None, str | None]:
 
     def _model_ready_reason() -> str | None:
         try:
-            r = subprocess.run(['ollama', 'show', model], capture_output=True, text=True, timeout=20, check=False)
+            r = subprocess.run(
+                ['ollama', 'show', model],
+                capture_output=True,
+                text=True,
+                timeout=20,
+                check=False,
+                stdin=subprocess.DEVNULL,
+            )
         except Exception as e:
             return str(e)
         if r.returncode == 0:
@@ -313,61 +370,118 @@ def _call_ollama_cli(model: str, prompt: str) -> tuple[str | None, str | None]:
             readiness_issue = _model_ready_reason()
             if readiness_issue:
                 return (None, readiness_issue)
-            return (None, f'{reason} (cli timeout={cli_timeout_sec}s)')
+            return (None, f'{reason}' + (f' (cli timeout={cli_timeout_sec}s)' if cli_timeout_sec else ''))
         return (None, reason)
     except Exception as e:
         return (None, str(e))
 
+def _should_use_litellm_first() -> bool:
+    """Use litellm only when remote API (OpenAI/OpenRouter); skip for local Ollama (litellm has ~20s extra latency)."""
+    import os
+    api_key = os.environ.get('OPENAI_API_KEY')
+    base = (os.environ.get('OPENAI_BASE_URL') or '').lower()
+    if not api_key:
+        return False
+    if 'openrouter' in base or ('127.0.0.1' not in base and 'localhost' not in base):
+        return True
+    return False
+
+def _trace_architect(msg: str) -> None:
+    import logging
+    logging.getLogger("eurika.reasoning.architect").info(f"eurika: architect — {msg}")
+
 def _llm_interpret(summary: Dict[str, Any], history: Dict[str, Any], patch_plan: Optional[Dict[str, Any]]=None, knowledge_snippet: str='', recent_events_snippet: str='') -> tuple[str | None, str | None]:
     """Call LLM for a short architect take. Returns (text, None) on success, (None, reason) on failure.
 
-    Env: OPENAI_API_KEY (required), OPENAI_BASE_URL (e.g. OpenRouter), OPENAI_MODEL (e.g. mistralai/...).
-    knowledge_snippet: optional pre-formatted reference knowledge to append to the prompt.
+    Local Ollama: ollama CLI first (fast), then ollama HTTP. openai's /v1/chat/completions is ~40x slower than native ollama run.
+    Remote API (OpenAI/OpenRouter): litellm -> primary -> ollama fallbacks.
     """
-    primary_client, primary_model, init_reason = _init_primary_openai_client()
     prompt = _build_llm_prompt(summary=summary, history=history, patch_plan=patch_plan, knowledge_snippet=knowledge_snippet, recent_events_snippet=recent_events_snippet)
-    primary_reason = init_reason
-    if primary_client and primary_model:
-        llm_text, primary_call_reason = _call_llm_architect(primary_client, primary_model, prompt)
-        if llm_text:
-            return (llm_text, None)
-        primary_reason = primary_call_reason
-    fallback_client, fallback_model, fallback_init_reason = _init_ollama_fallback_client()
-    fallback_reason = fallback_init_reason
-    if fallback_client and fallback_model:
-        fallback_text, fallback_call_reason = _call_llm_architect(fallback_client, fallback_model, prompt)
-        if fallback_text:
-            return (fallback_text, None)
-        fallback_reason = fallback_call_reason
-    cli_model = fallback_model or 'qwen2.5-coder:7b'
+    if _should_use_litellm_first():
+        _trace_architect("trying litellm (remote API)...")
+        litellm_text, litellm_reason = _call_litellm(prompt, max_tokens=350)
+        if litellm_text:
+            _trace_architect("litellm ok")
+            return (litellm_text, None)
+        _trace_architect(f"litellm failed: {litellm_reason}; trying primary OpenAI...")
+        primary_client, primary_model, init_reason = _init_primary_openai_client()
+        primary_reason = init_reason or litellm_reason
+        if primary_client and primary_model:
+            llm_text, primary_call_reason = _call_llm_architect(primary_client, primary_model, prompt)
+            if llm_text:
+                _trace_architect("primary OpenAI ok")
+                return (llm_text, None)
+            _trace_architect(f"primary failed: {primary_call_reason}; trying ollama HTTP...")
+            primary_reason = primary_call_reason
+        fallback_client, fallback_model, fallback_init_reason = _init_ollama_fallback_client()
+        fallback_reason = fallback_init_reason
+        if fallback_client and fallback_model:
+            fallback_text, fallback_call_reason = _call_llm_architect(fallback_client, fallback_model, prompt)
+            if fallback_text:
+                _trace_architect("ollama HTTP ok")
+                return (fallback_text, None)
+            _trace_architect(f"ollama HTTP failed: {fallback_call_reason}; trying ollama CLI...")
+            fallback_reason = fallback_call_reason
+        cli_model = fallback_model or 'qwen2.5-coder:7b'
+        _trace_architect(f"trying ollama CLI (model={cli_model})...")
+        cli_prompt = _build_ollama_cli_prompt(summary, history, patch_plan)
+        cli_text, cli_reason = _call_ollama_cli(cli_model, cli_prompt)
+        if cli_text:
+            _trace_architect("ollama CLI ok")
+            return (cli_text, None)
+        return (None, f"primary failed ({primary_reason or 'unknown'}); ollama HTTP failed ({fallback_reason or 'unknown'}); ollama CLI failed ({cli_reason or 'unknown'})")
+    import os
+    cli_model = os.environ.get('OLLAMA_OPENAI_MODEL', 'qwen2.5-coder:7b')
+    _trace_architect(f"trying ollama CLI first (model={cli_model})...")
     cli_prompt = _build_ollama_cli_prompt(summary, history, patch_plan)
     cli_text, cli_reason = _call_ollama_cli(cli_model, cli_prompt)
     if cli_text:
+        _trace_architect("ollama CLI ok")
         return (cli_text, None)
-    return (None, f"primary LLM failed ({primary_reason or 'unknown'}); ollama HTTP fallback failed ({fallback_reason or 'unknown'}); ollama CLI fallback failed ({cli_reason or 'unknown'})")
+    _trace_architect(f"ollama CLI failed: {cli_reason}; trying ollama HTTP...")
+    fallback_client, fallback_model, fallback_init_reason = _init_ollama_fallback_client()
+    if fallback_client and fallback_model:
+        fallback_text, _ = _call_llm_architect(fallback_client, fallback_model, prompt)
+        if fallback_text:
+            _trace_architect("ollama HTTP ok")
+            return (fallback_text, None)
+    return (None, f"ollama CLI failed ({cli_reason or 'unknown'}); ollama HTTP failed ({fallback_init_reason or 'unknown'})")
 
 def call_llm_with_prompt(prompt: str, max_tokens: int=1024) -> tuple[str | None, str | None]:
-    """Call LLM with custom prompt. Same chain: primary -> ollama HTTP -> ollama CLI.
+    """Call LLM with custom prompt. Local Ollama: CLI first (fast), then HTTP. Remote: litellm -> primary -> ollama.
     ROADMAP 3.5.11: chat_send uses this."""
+    if not _should_use_litellm_first():
+        import os
+        cli_model = os.environ.get('OLLAMA_OPENAI_MODEL', 'qwen2.5-coder:7b')
+        cli_text, _ = _call_ollama_cli(cli_model, prompt)
+        if cli_text:
+            return (cli_text, None)
+        fallback_client, fallback_model, fallback_init_reason = _init_ollama_fallback_client()
+        if fallback_client and fallback_model:
+            text, _ = _call_llm_architect(fallback_client, fallback_model, prompt, max_tokens=max_tokens)
+            if text:
+                return (text, None)
+        return (None, f"ollama CLI and HTTP failed ({fallback_init_reason or 'unknown'})")
+    text, _ = _call_litellm(prompt, max_tokens=max_tokens)
+    if text:
+        return (text, None)
     primary_client, primary_model, init_reason = _init_primary_openai_client()
-    primary_reason = init_reason
     if primary_client and primary_model:
         text, err = _call_llm_architect(primary_client, primary_model, prompt, max_tokens=max_tokens)
         if text:
             return (text, None)
-        primary_reason = err
+        init_reason = err
     fallback_client, fallback_model, fallback_init_reason = _init_ollama_fallback_client()
-    fallback_reason = fallback_init_reason
     if fallback_client and fallback_model:
         text, err = _call_llm_architect(fallback_client, fallback_model, prompt, max_tokens=max_tokens)
         if text:
             return (text, None)
-        fallback_reason = err
+        fallback_init_reason = err
     cli_model = fallback_model or 'qwen2.5-coder:7b'
     cli_text, cli_reason = _call_ollama_cli(cli_model, prompt)
     if cli_text:
         return (cli_text, None)
-    return (None, f"primary LLM failed ({primary_reason or 'unknown'}); ollama HTTP fallback failed ({fallback_reason or 'unknown'}); ollama CLI fallback failed ({cli_reason or 'unknown'})")
+    return (None, f"primary failed ({init_reason or 'unknown'}); ollama HTTP failed ({fallback_init_reason or 'unknown'}); ollama CLI failed ({cli_reason or 'unknown'})")
 
 def interpret_architecture(summary: Dict[str, Any], history: Dict[str, Any], use_llm: bool=True, verbose: bool=True, patch_plan: Optional[Dict[str, Any]]=None, knowledge_provider: Optional['KnowledgeProvider']=None, knowledge_topic: Optional[Union[str, List[str]]]=None, recent_events: Optional[List['Event']]=None) -> str:
     """
@@ -386,10 +500,13 @@ def interpret_architecture(summary: Dict[str, Any], history: Dict[str, Any], use
     return text
 
 def interpret_architecture_with_meta(summary: Dict[str, Any], history: Dict[str, Any], use_llm: bool=True, verbose: bool=True, patch_plan: Optional[Dict[str, Any]]=None, knowledge_provider: Optional['KnowledgeProvider']=None, knowledge_topic: Optional[Union[str, List[str]]]=None, recent_events: Optional[List['Event']]=None) -> tuple[str, Dict[str, Any]]:
-    """Return architect text with runtime metadata about degraded mode/fallbacks."""
-    import sys
+    """Return architect text with runtime metadata about degraded mode/fallbacks.
+    R2 Fallback: knowledge resolution failures yield empty snippet; cycle completes deterministically."""
     meta: Dict[str, Any] = {'use_llm': bool(use_llm), 'llm_used': False, 'degraded_mode': False, 'degraded_reasons': []}
-    knowledge_snippet = _resolve_knowledge_snippet(knowledge_provider, knowledge_topic)
+    try:
+        knowledge_snippet = _resolve_knowledge_snippet(knowledge_provider, knowledge_topic)
+    except Exception:
+        knowledge_snippet = ''
     recent_snippet = _format_recent_events(recent_events) if recent_events else ''
     if use_llm:
         llm_text, reason = _llm_interpret(summary, history, patch_plan, knowledge_snippet, recent_snippet)
@@ -406,13 +523,10 @@ def interpret_architecture_with_meta(summary: Dict[str, Any], history: Dict[str,
                     llm_text += ref_block
             return (llm_text, meta)
         meta['degraded_mode'] = True
-        if reason:
-            if verbose:
-                print(f'eurika: architect: using template — {reason}', file=sys.stderr)
-            meta['degraded_reasons'].append(f'llm_unavailable:{reason}')
-        else:
-            meta['degraded_reasons'].append('llm_unavailable:unknown')
+        _trace_architect(f"LLM failed, using template — {reason or 'unknown'}")
+        meta['degraded_reasons'].append(f'llm_unavailable:{reason or "unknown"}')
     else:
+        _trace_architect("LLM disabled (--no-llm), using template")
         meta['degraded_mode'] = True
         meta['degraded_reasons'].append('llm_disabled')
     return (_template_interpret(summary, history, patch_plan, knowledge_snippet, recent_snippet), meta)

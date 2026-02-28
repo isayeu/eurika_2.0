@@ -15,6 +15,7 @@ from eurika.checks.dependency_firewall import (
     LayerException,
     collect_dependency_violations,
     collect_layer_violations,
+    collect_subsystem_bypass_violations,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LAYER_FIREWALL_EXCEPTIONS: tuple[LayerException, ...] = (
     # No active exceptions; keep tuple for explicit future waivers.
 )
+
 
 
 def test_no_forbidden_imports() -> None:
@@ -55,4 +57,17 @@ def test_layer_firewall_contract_soft_start() -> None:
             f"{v.path} -> {v.imported_module} (L{v.source_layer} -> L{v.target_layer})"
             for v in violations
         )
+    )
+
+
+def test_subsystem_imports_via_public_api() -> None:
+    """R4: External clients use package facades, not internal submodules.
+
+    Modules outside package X must not import from X.internal_module when
+    X exposes the needed symbols via __all__ or public submodules.
+    """
+    violations = collect_subsystem_bypass_violations(ROOT)
+    assert not violations, (
+        "Subsystem bypass violations (R4). Use package facade, or add SubsystemBypassException: "
+        + "; ".join(f"{v.path} -> {v.imported_module}" for v in violations)
     )

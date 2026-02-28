@@ -67,14 +67,18 @@ L6: CLI             ← command parsing, dispatch, orchestration wiring
 
 ### 0.6 Verification
 
-Автоматическая проверка: `tests/test_dependency_guard.py` (ROADMAP 2.8.2).
+Автоматическая проверка: `tests/test_dependency_guard.py`, `tests/test_dependency_firewall.py` (ROADMAP 2.8.2, R4).
+
 - `test_no_forbidden_imports` — строгий guard для явных запрещённых импортов.
-- `test_layer_firewall_contract_soft_start` — проверка layer-контракта L0–L6 в soft-start режиме.
-  Для hard-gate режима в CI включить `EURIKA_STRICT_LAYER_FIREWALL=1`.
-- Текущее состояние R4: **0 нарушений / 0 waiver-исключений** в baseline.
-- Временные допуски (если появятся) фиксируются только в `LAYER_FIREWALL_EXCEPTIONS` (обязателен `reason`).
+- `test_layer_firewall_contract_soft_start` — проверка layer-контракта L0–L6 в soft-start режиме. Для hard-gate в CI: `EURIKA_STRICT_LAYER_FIREWALL=1`.
+- `test_subsystem_imports_via_public_api` (R4) — запрет обхода фасадов (SubsystemBypassRule).
+- Текущее состояние: **0 нарушений** layer / subsystem.
+- Временные допуски фиксируются в `LAYER_FIREWALL_EXCEPTIONS` или `DEFAULT_SUBSYSTEM_BYPASS_EXCEPTIONS` (обязателен `reason`).
+
+Подробно: **docs/DEPENDENCY_FIREWALL.md**.
+
 Команды:
-- `pytest tests/test_dependency_guard.py -v`
+- `pytest tests/test_dependency_guard.py tests/test_dependency_firewall.py -v`
 - `EURIKA_STRICT_LAYER_FIREWALL=1 pytest tests/test_dependency_guard.py -v`
 
 ### 0.7 API Boundaries (ROADMAP 3.1-arch.2)
@@ -84,10 +88,11 @@ L6: CLI             ← command parsing, dispatch, orchestration wiring
 | Подсистема | Публичные точки входа |
 |------------|------------------------|
 | **Storage** | `ProjectMemory`, `event_engine`, `SessionMemory` |
-| **Agent** | `run_agent_cycle`, `DefaultToolContract` |
+| **Agent** | `run_agent_cycle`, `DefaultToolContract`, `OrchestratorToolset`, `WEAK_SMELL_ACTION_PAIRS` |
 | **Patch Engine** | `apply_and_verify`, `apply_patch`, `verify_patch`, `rollback_patch` |
 | **Planning** | `build_patch_plan`, `build_plan`, `build_action_plan` (architecture_planner) |
-| **Reasoning** | `advisor`, `architect`, `planner` |
+| **Knowledge** | `SMELL_TO_KNOWLEDGE_TOPICS`, providers |
+| **Reasoning** | `advisor`, `architect` (вкл. `build_context_sources`), `planner` |
 | **CLI orchestration** | `run_doctor_cycle`, `run_full_cycle`, `prepare_fix_cycle_operations`, `execute_fix_apply_stage` |
 | **CLI wiring** | `build_parser`, `dispatch_command` |
 
@@ -100,7 +105,7 @@ L6: CLI             ← command parsing, dispatch, orchestration wiring
 | >400 LOC | Кандидат на разбиение |
 | >600 LOC | Обязательно делить |
 
-Проверка: `eurika self-check .` выводит блок FILE SIZE LIMITS; отдельно: `python -m eurika.checks.file_size [path]`.
+Проверка: `eurika self-check .` выводит блоки LAYER DISCIPLINE (R1) и FILE SIZE LIMITS; отдельно: `python -m eurika.checks.file_size [path]`.
 
 ---
 
