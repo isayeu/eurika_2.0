@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 
-SUPPORTED_COMMANDS = {"scan", "doctor", "fix", "cycle", "explain"}
+SUPPORTED_COMMANDS = {"scan", "doctor", "fix", "cycle", "explain", "report-snapshot", "learning-kpi"}
 
 
 def build_cli_args(
@@ -38,6 +38,8 @@ def build_cli_args(
         return args
 
     args.append(root)
+    if command in {"report-snapshot", "learning-kpi"}:
+        return args
     if command in {"doctor", "fix", "cycle"} and window > 0:
         args.extend(["--window", str(window)])
     if command in {"doctor", "cycle"} and no_llm:

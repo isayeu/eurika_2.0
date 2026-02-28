@@ -46,7 +46,7 @@ def _clog():
 
 def handle_help(parser: Any) -> int:
     """Print high-level command overview and detailed argparse help (ROADMAP этап 5: 4 product modes)."""
-    print('Eurika — architecture analysis and refactoring assistant (v3.0.17)')
+    print('Eurika — architecture analysis and refactoring assistant (v3.0.18)')
     print()
     print('Product (4 modes):')
     print('  scan [path]              full scan, update artifacts, report')
@@ -54,7 +54,7 @@ def handle_help(parser: Any) -> int:
     print('  fix [path]              full cycle: scan → plan → patch → verify')
     print('  explain <module> [path] role and risks of a module')
     print()
-    print('Other: report, report-snapshot, campaign-undo, architect, suggest-plan, arch-summary, arch-history, history, arch-diff, self-check, clean-imports, serve')
+    print('Other: report, report-snapshot, learning-kpi, campaign-undo, architect, suggest-plan, arch-summary, arch-history, history, arch-diff, self-check, clean-imports, serve')
     print('Advanced: eurika agent <cmd>  (patch-plan, patch-apply, patch-rollback, cycle, ...)')
     print()
     print('  --help after any command for details.')
@@ -239,6 +239,55 @@ def handle_report_snapshot(args: Any) -> int:
     from report.report_snapshot import format_report_snapshot
 
     print(format_report_snapshot(path))
+    return 0
+
+
+def handle_learning_kpi(args: Any) -> int:
+    """KPI verify_success_rate by smell|action|target + recommendations (ROADMAP KPI focus)."""
+    path = args.path.resolve()
+    if _check_path(path) != 0:
+        return 1
+    from eurika.api import get_learning_insights
+
+    top_n = int(getattr(args, "top_n", 5) or 5)
+    insights = get_learning_insights(path, top_n=top_n)
+    if getattr(args, "json", False):
+        print(json.dumps(insights, indent=2, ensure_ascii=False))
+        return 0
+    by_smell_action = insights.get("by_smell_action") or {}
+    recs = insights.get("recommendations") or {}
+    whitelist = recs.get("whitelist_candidates") or []
+    deny = recs.get("policy_deny_candidates") or []
+    lines = ["## KPI verify_success_rate (ROADMAP)", ""]
+    if by_smell_action:
+        lines.append("### by_smell_action")
+        lines.append("")
+        for key, s in sorted(by_smell_action.items(), key=lambda x: -float(x[1].get("verify_success", 0) / max(x[1].get("total", 1), 1))):
+            total = int(s.get("total", 0) or 0)
+            vs = int(s.get("verify_success", 0) or 0)
+            vf = int(s.get("verify_fail", 0) or 0)
+            rate = round(100 * vs / total, 1) if total else 0
+            lines.append(f"- **{key}** total={total}, verify_success={vs}, verify_fail={vf}, rate={rate}%")
+        lines.append("")
+    if whitelist:
+        lines.append("### Promote (whitelist candidates)")
+        lines.append("")
+        for r in whitelist[:top_n]:
+            tf = r.get("target_file", "?")
+            pair = f"{r.get('smell_type', '?')}|{r.get('action_kind', '?')}"
+            rate = float(r.get("verify_success_rate", 0) or 0) * 100
+            lines.append(f"- {pair} @ {tf} (rate={rate:.1f}%)")
+        lines.append("")
+    if deny:
+        lines.append("### Deprioritize (policy deny candidates)")
+        lines.append("")
+        for r in deny[:top_n]:
+            tf = r.get("target_file", "?")
+            pair = f"{r.get('smell_type', '?')}|{r.get('action_kind', '?')}"
+            rate = float(r.get("verify_success_rate", 0) or 0) * 100
+            lines.append(f"- {pair} @ {tf} (rate={rate:.1f}%)")
+        lines.append("")
+    print("\n".join(lines) if lines else "No learning data yet. Run eurika fix to accumulate.")
     return 0
 
 

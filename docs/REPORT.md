@@ -42,6 +42,8 @@ _Обновлено: актуально для ветки v3.0.x (runtime policy
 ## Текущий рабочий фокус
 
 1. Рост `verify_success_rate` по `smell|action|target` (а не только общий apply-rate).
+   - `eurika learning-kpi [path]` — KPI блок, promote/deprioritize рекомендации.
+   - Policy динамический deny из deny_candidates; context prioritization по rate.
 2. Точечный rollout risky ops через whitelist + campaign learning.
 3. Эксплуатационная стабильность UI/CLI как единого контура запуска ритуалов.
 

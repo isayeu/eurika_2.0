@@ -2,6 +2,10 @@
 
 ## Current state (2026-02-27)
 
+- **87. Post-v3.0.18 ritual:** report-snapshot после релиза. modules=255, risk=46, apply_rate=0.93 baseline; 5 skipped (approval_state=pending).
+- **86. KPI 4 — Learning from GitHub для code smells:** DIFF_HINTS для extract_block_to_helper; pattern library long_function/deep_nesting; OSS hints в get_code_smell_operations.
+- **85. KPI verify_success_rate (план A):** `eurika learning-kpi` — by_smell_action + promote/deprioritize; policy dynamic deny из deny_candidates; context_sources.by_target с verify_success_rate для приоритизации.
+- **84. Post-v3.0.17 ritual:** report-snapshot после релиза R2/R3/R4 gates. risk_score=46, apply_rate=0.93, rollback_rate=0.6; learning: extract_block_to_helper 5%, remove_unused_import 38%.
 - **83. R4 gate:** `test_r4_dependency_firewall_passes` — EURIKA_STRICT_LAYER_FIREWALL=1 pytest test_dependency_guard + test_dependency_firewall. DEPENDENCY_FIREWALL, API_BOUNDARIES.
 - **82. R3 gate:** `test_r3_edge_case_matrix_passes` — pytest -m edge_case должен проходить. EDGE_CASE_MATRIX.
 - **81. R2 gate:** `test_doctor_cycle_r2_state_model_on_self` — doctor на проекте возвращает state ∈ {done, error}, валидный state_history. FALLBACK_AUDIT, LOGGING_R2.
@@ -14,6 +18,49 @@
 - `eurika serve` работает в **API-only** режиме (`/api/*`), без runtime-раздачи web статики.
 - Исторические snapshot'ы ниже (включая Web UI этапы) сохранены как архив эволюции и не удаляются.
 - Learning-фокус операционности: `verify_success_rate` по `smell|action|target`, с видимостью сигналов в Qt Dashboard.
+
+---
+
+## 87. Snapshot (2026-02-27) — Post-v3.0.18 ritual
+
+report-snapshot после релиза v3.0.18. modules=255, risk=46, apply_rate baseline 0.93; 5 ops skipped (pending).
+
+---
+
+## 86. Snapshot (2026-02-27) — KPI 4 Learning from GitHub для code smells
+
+### Scope
+- **DIFF_HINTS:** (long_function, extract_block_to_helper), (deep_nesting, extract_block_to_helper) с конкретными подсказками.
+- **REMEDIATION_HINTS:** long_function, deep_nesting в eurika.smells.detector.
+- **Pattern library:** extract_patterns_from_repos собирает long_function, deep_nesting через CodeAwareness; learn-github --build-patterns обогащает .eurika/pattern_library.json.
+- **get_code_smell_operations:** при наличии pattern_library добавляет в description суффикс (OSS: Django, FastAPI).
+
+### Итог
+KPI 4 — pattern library и hints для extract_block_to_helper/extract_nested_function.
+
+---
+
+## 85. Snapshot (2026-02-27) — KPI verify_success_rate (план A)
+
+### Scope
+- **CLI `eurika learning-kpi [path]`:** KPI блок по smell|action|target, promote (whitelist candidates), deprioritize (policy deny candidates). `--json`, `--top-n`.
+- **Policy:** динамический deny из `get_learning_insights` deny_candidates — при rate<0.25, total>=3, совпадение smell|action|target: auto→deny, hybrid→review.
+- **Context sources:** `by_target[target].verify_success_rate` из learning; `_apply_context_priority` учитывает rate (high≥0.5 +1, low<0.25 −1), tiebreak по rate.
+
+### Итог
+KPI flow зафиксирован. docs/KPI_VERIFY_SUCCESS_RATE_PLAN.md.
+
+---
+
+## 84. Snapshot (2026-02-27) — Post-v3.0.17 ritual
+
+### Scope
+- report-snapshot после релиза v3.0.17 (R2/R3/R4 gates).
+- Метрики: risk_score=46, apply_rate=0.93, rollback_rate=0.6; median_verify_time 149882 ms.
+- Learning: extract_block_to_helper 5% (2/41), remove_unused_import 38% (5/13); split_module, extract_nested_function — 0%.
+
+### Итог
+Ритуал закрыт. Следующий фокус — KPI verify_success_rate (ROADMAP бэклог) или направление A/B/C.
 
 ---
 

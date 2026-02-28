@@ -42,6 +42,8 @@ REMEDIATION_HINTS: Dict[str, str] = {
     "bottleneck": "Introduce facade or adapter to distribute dependents; avoid single point of failure.",
     "hub": "Extract coherent sub-graphs; consider splitting by domain or layer.",
     "cyclic_dependency": "Break the cycle: invert dependency, introduce abstraction layer, or extract shared code.",
+    "long_function": "Extract nested def to module level, or extract if/for/while body to helper; max 3 params.",
+    "deep_nesting": "Extract innermost block to helper; pass closure vars as args; flatten step-by-step.",
 }
 
 

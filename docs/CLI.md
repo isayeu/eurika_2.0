@@ -136,7 +136,9 @@ eurika cycle . --no-clean-imports
 | Применить фиксы и проверить | `eurika fix . --quiet` | scan → plan → apply → verify; минимум вывода; exit 1 при провале pytest или ухудшении метрик |
 | Только план (dry-run) | `eurika fix . --dry-run --quiet` | Построить план без применения; exit 0; для проверки «что было бы сделано» |
 | Полный ритуал без LLM | `eurika cycle . --quiet --no-llm` | scan → doctor (шаблон) → fix; не требует OPENAI_API_KEY |
-| Learning from GitHub | `eurika learn-github .` | Клонирует curated OSS (Django, FastAPI и др.) в `../curated_repos/` (рядом с проектом); `--scan` — scan после clone (ROADMAP 3.0.5.1) |
+| Learning from GitHub | `eurika learn-github . --scan --build-patterns` | Клонирует curated OSS; `--build-patterns` — pattern library (god_module, long_function, deep_nesting) в `.eurika/pattern_library.json` |
+| KPI verify_success_rate | `eurika learning-kpi .` | По smell\|action\|target, promote/deprioritize рекомендации |
+| Report snapshot | `eurika report-snapshot .` | CYCLE_REPORT-style markdown из doctor/fix артефактов |
 
 **Требования:** `pip install pytest` для verify (или задать `--verify-cmd` / `[tool.eurika] verify_cmd` в pyproject.toml для Django и др.). При ModuleNotFoundError/NameError Eurika пробует авто-фикс (create stub или add constant) и повторяет verify. Артефакты: `eurika_fix_report.json`, `.eurika/`.
 
@@ -202,7 +204,7 @@ eurika arch-diff self_map_old.json self_map_new.json
 **Опции:**
 - `--config PATH` — путь к JSON с репозиториями (по умолчанию `docs/curated_repos.example.json`)
 - `--scan` — запустить `eurika scan` для каждого клонированного репо
-- `--build-patterns` — построить pattern library из репо с `self_map.json`, сохранить в `.eurika/pattern_library.json` (ROADMAP 3.0.5.3). Architect использует OSS-примеры в блоке Reference.
+- `--build-patterns` — построить pattern library из репо с `self_map.json`, сохранить в `.eurika/pattern_library.json` (ROADMAP 3.0.5.3, KPI 4). Architect использует OSS-примеры. Code smells (long_function, deep_nesting) извлекаются через CodeAwareness и обогащают get_code_smell_operations.
 - `--search QUERY` — поиск репо через GitHub API (вместо curated list). Пример: `language:python stars:>1000`. Для большего rate limit задайте `GITHUB_TOKEN`.
 - `--search-limit N` — макс. число репо из --search (по умолчанию 5)
 
@@ -245,6 +247,28 @@ Summary + evolution report без повторного сканирования.
 ```bash
 eurika report .
 eurika report . --json --window 5
+```
+
+---
+
+### eurika learning-kpi [path] [--json] [--top-n N]
+
+KPI verify_success_rate по smell|action|target (ROADMAP KPI focus). Выводит by_smell_action, promote (whitelist candidates), deprioritize (policy deny candidates).
+
+```bash
+eurika learning-kpi .
+eurika learning-kpi . --json
+eurika learning-kpi . --top-n 10
+```
+
+---
+
+### eurika report-snapshot [path]
+
+Генерирует CYCLE_REPORT-style markdown из `eurika_doctor_report.json` и `eurika_fix_report.json` для вставки в docs/CYCLE_REPORT.md.
+
+```bash
+eurika report-snapshot .
 ```
 
 ---

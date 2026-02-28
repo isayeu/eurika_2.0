@@ -139,6 +139,11 @@ def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
     snapshot_parser = subparsers.add_parser("report-snapshot", help="Print CYCLE_REPORT-style markdown from doctor/fix artifacts (for updating CYCLE_REPORT.md)")
     snapshot_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
 
+    learning_kpi_parser = subparsers.add_parser("learning-kpi", help="KPI verify_success_rate by smell|action|target + recommendations (ROADMAP)")
+    learning_kpi_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
+    learning_kpi_parser.add_argument("--json", action="store_true", help="Output JSON (machine-readable)")
+    learning_kpi_parser.add_argument("--top-n", type=int, default=5, metavar="N", help="Top N for promote/deprioritize (default: 5)")
+
     whitelist_draft_parser = subparsers.add_parser(
         "whitelist-draft",
         help="Generate operation whitelist draft from campaign verify_success candidates",

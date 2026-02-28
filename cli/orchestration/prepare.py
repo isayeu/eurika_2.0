@@ -103,16 +103,17 @@ def _apply_context_priority(
     operations: list[OperationRecord],
     context_sources: dict[str, Any],
 ) -> list[OperationRecord]:
-    """Boost operations with stronger semantic context signals."""
+    """Boost operations with stronger semantic context signals. KPI A.4: verify_success_rate in tiebreak."""
     rejected_targets = set(context_sources.get("campaign_rejected_targets") or [])
     fail_targets = set(context_sources.get("recent_verify_fail_targets") or [])
     by_target = context_sources.get("by_target") or {}
-    scored: list[tuple[int, int, OperationRecord]] = []
+    scored: list[tuple[int, float, int, OperationRecord]] = []
     for idx, op in enumerate(operations):
         target = str(op.get("target_file") or "")
         ctx = by_target.get(target) or {}
         tests = ctx.get("related_tests") or []
         neighbors = ctx.get("neighbor_modules") or []
+        rate = ctx.get("verify_success_rate")
         hits: list[str] = []
         score = 0
         if target in fail_targets:
@@ -127,12 +128,20 @@ def _apply_context_priority(
         if neighbors:
             score += 1
             hits.append("neighbor_modules")
+        if rate is not None:
+            if rate >= 0.5:
+                score += 1
+                hits.append("high_verify_rate")
+            elif rate < 0.25:
+                score -= 1
+                hits.append("low_verify_rate")
         op2 = dict(op)
         op2["context_score"] = score
         op2["context_hits"] = hits
-        scored.append((-score, idx, op2))
+        rate_tiebreak = -(rate if rate is not None else 0.0)
+        scored.append((-score, rate_tiebreak, idx, op2))
     scored.sort()
-    return [item[2] for item in scored]
+    return [item[3] for item in scored]
 
 
 def _approval_state_from_policy(decision: str) -> str:

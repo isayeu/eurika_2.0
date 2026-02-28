@@ -40,7 +40,7 @@ eurika-qt .
 
 - **Models** — управление Ollama: Start/Stop, переменные окружения, список моделей, установка
 - **Chat** — чат с Apply/Reject для подтверждения планов; создание вкладок (в т.ч. Terminal) по intent
-- **Commands** — scan/doctor/fix/cycle/explain, live output, stop/cancel
+- **Commands** — scan/doctor/fix/cycle/explain/report-snapshot/learning-kpi, live output, stop/cancel
 - **Dashboard** — summary/history, top verify_success, рекомендации по whitelist
 - **Approvals** — approve/reject flow для pending plan
 
@@ -87,7 +87,9 @@ Fallback-модель для локального OpenAI-compatible endpoint Oll
 - **`eurika suggest-plan [path]`**: эвристический рефакторинг-план по summary и рискам (или по build_recommendations при наличии self_map). Опция: `--window N`.
 - **`eurika arch-diff old.json new.json`**: сравнивает два снапшота `self_map.json`. Опция `--json`.
 - **`eurika serve [path]`**: JSON API only (`/api/*`) для интеграций и UI-клиентов (Qt shell и др.). Опции: `--port`, `--host`.
-- **`eurika learn-github [path]`**: клонирует curated OSS (Django, FastAPI и др.) в `../curated_repos/` (рядом с проектом); `--scan` — scan после clone (ROADMAP 3.0.5.1).
+- **`eurika learn-github [path]`**: клонирует curated OSS (Django, FastAPI и др.) в `../curated_repos/`; `--scan` — scan после clone; `--build-patterns` — pattern library (включая long_function/deep_nesting).
+- **`eurika learning-kpi [path]`**: KPI verify_success_rate по smell|action|target, promote/deprioritize рекомендации. `--json`, `--top-n`.
+- **`eurika report-snapshot [path]`**: CYCLE_REPORT-style markdown из doctor/fix артефактов.
 
 ### AgentCore (experimental)
 

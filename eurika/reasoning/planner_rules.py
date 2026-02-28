@@ -55,9 +55,17 @@ DIFF_HINTS: Dict[tuple[str, str], List[str]] = {
         "Extract nested function to module level; pass parent scope vars as parameters (max 3).",
         "Prefer largest self-contained nested def; avoid nonlocal/global.",
     ],
+    ("long_function", "extract_block_to_helper"): [
+        "Extract if/for/while body (5+ lines) to helper; pass used outer vars as parameters (max 3).",
+        "Choose block with fewest external refs; helper name from block purpose (e.g. _format_item).",
+    ],
     ("long_function", "refactor_code_smell"): [
         "Extract coherent block (if/for/while body) to helper; or extract nested def to module level.",
         "Reduce cyclomatic complexity; aim for single responsibility per function.",
+    ],
+    ("deep_nesting", "extract_block_to_helper"): [
+        "Extract innermost if/for/while body to helper; pass closure vars as args.",
+        "Flatten step-by-step; start with smallest extractable block.",
     ],
     ("deep_nesting", "refactor_code_smell"): [
         "Extract nested block (if/for/while body) into helper; pass used outer vars as args.",

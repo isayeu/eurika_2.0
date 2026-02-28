@@ -28,7 +28,7 @@ from eurika.api import (
 from eurika.api.chat import chat_send
 
 # Whitelist for POST /api/exec (ROADMAP 3.5.8): only eurika subcommands.
-EXEC_WHITELIST = {"scan", "doctor", "fix", "cycle", "explain", "report-snapshot"}
+EXEC_WHITELIST = {"scan", "doctor", "fix", "cycle", "explain", "report-snapshot", "learning-kpi"}
 EXEC_TIMEOUT_MIN = 1
 EXEC_TIMEOUT_MAX = 3600
 _FLAG_TAKES_VALUE = 1
@@ -95,6 +95,7 @@ EXEC_ALLOWED_FLAGS: dict[str, dict[str, int]] = {
         "--window": _FLAG_TAKES_VALUE,
     },
     "report-snapshot": {},
+    "learning-kpi": {"--json": _FLAG_IS_BOOL, "--top-n": _FLAG_TAKES_VALUE},
 }
 
 

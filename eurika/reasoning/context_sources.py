@@ -95,6 +95,34 @@ def _neighbor_modules(project_root: Path, target_file: str, limit: int = 5) -> l
     return neighbors
 
 
+def _target_learning_rates(root: Path, operations: list[dict[str, Any]]) -> dict[str, float]:
+    """Map target -> min verify_success_rate across ops targeting it (KPI A.4)."""
+    try:
+        from eurika.api import get_learning_insights
+
+        insights = get_learning_insights(root, top_n=30)
+        by_target_list = insights.get("by_target") or []
+        rate_by_key: dict[str, float] = {}
+        for r in by_target_list:
+            k = f"{r.get('smell_type') or '?'}|{r.get('action_kind') or '?'}|{r.get('target_file') or '?'}"
+            rate_by_key[k] = float(r.get("verify_success_rate", 0) or 0)
+        target_mins: dict[str, float] = {}
+        for op in operations:
+            target = str(op.get("target_file") or "").replace("\\", "/")
+            if not target:
+                continue
+            kind = str(op.get("kind") or "")
+            smell = str(op.get("smell_type") or "")
+            key = f"{smell}|{kind}|{target}"
+            rate = rate_by_key.get(key, 0.0)
+            if target not in target_mins:
+                target_mins[target] = 1.0
+            target_mins[target] = min(target_mins[target], rate)
+        return target_mins
+    except Exception:
+        return {}
+
+
 def build_context_sources(project_root: Path, operations: list[dict[str, Any]]) -> dict[str, Any]:
     """Build semantic context payload and per-target signals for planner/reporting."""
     root = Path(project_root).resolve()
@@ -115,17 +143,23 @@ def build_context_sources(project_root: Path, operations: list[dict[str, Any]]) 
         if t and t not in verify_fail_targets:
             verify_fail_targets.append(t)
 
+    target_rates = _target_learning_rates(root, operations)
+
     by_target: dict[str, dict[str, Any]] = {}
     for op in operations:
-        target = str(op.get("target_file") or "")
+        target = str(op.get("target_file") or "").replace("\\", "/")
         if not target:
             continue
         if target in by_target:
             continue
-        by_target[target] = {
+        entry: dict[str, Any] = {
             "related_tests": _related_tests(root, target),
             "neighbor_modules": _neighbor_modules(root, target),
         }
+        rate = target_rates.get(target)
+        if rate is not None:
+            entry["verify_success_rate"] = round(rate, 4)
+        by_target[target] = entry
 
     return {
         "recent_verify_fail_targets": verify_fail_targets[:10],

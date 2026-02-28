@@ -104,6 +104,60 @@ def _target_verify_fail_count(project_root: Path | None, op: dict[str, Any]) -> 
         return 0
 
 
+_deny_candidates_cache: dict[str, list[dict[str, Any]]] = {}
+
+
+def _load_deny_candidates(project_root: Path | None) -> list[dict[str, Any]]:
+    """Load policy deny candidates from learning insights (KPI: rate<0.25, total>=3). Cached per project_root."""
+    if project_root is None:
+        return []
+    key = str(project_root.resolve())
+    if key in _deny_candidates_cache:
+        return _deny_candidates_cache[key]
+    try:
+        from eurika.api import get_learning_insights
+
+        insights = get_learning_insights(project_root, top_n=20)
+        recs = insights.get("recommendations") or {}
+        deny = recs.get("policy_deny_candidates") or []
+        _deny_candidates_cache[key] = deny
+        return deny
+    except Exception:
+        return []
+
+
+def _deny_candidates_policy(
+    op: dict[str, Any],
+    *,
+    mode: str,
+    project_root: Path | None,
+) -> tuple[PolicyDecision | None, str | None]:
+    """Return policy override when op matches learning-based deny candidate (smell|action|target, rate<0.25)."""
+    deny = _load_deny_candidates(project_root)
+    if not deny:
+        return None, None
+    kind = str(op.get("kind") or "")
+    smell = str(op.get("smell_type") or "")
+    target = str(op.get("target_file") or "").replace("\\", "/")
+    for r in deny:
+        r_kind = str(r.get("action_kind") or "")
+        r_smell = str(r.get("smell_type") or "")
+        if r_kind != kind or r_smell != smell:
+            continue
+        rt = str(r.get("target_file") or "").replace("\\", "/")
+        if rt and rt != target:
+            continue
+        rate = float(r.get("verify_success_rate", 0) or 0)
+        total = int(r.get("total", 0) or 0)
+        if total >= 3 and rate < 0.25:
+            if mode == "auto":
+                return "deny", f"learning: {smell}|{kind}@{target} rate={rate:.0%} (total={total}) — deny in auto"
+            if mode == "hybrid":
+                return "review", f"learning: {smell}|{kind}@{target} rate={rate:.0%} (total={total}) — review recommended"
+        break
+    return None, None
+
+
 def _load_operation_whitelist(project_root: Path | None) -> list[dict[str, Any]]:
     """Load optional operation whitelist from .eurika/operation_whitelist.json."""
     if project_root is None:
@@ -236,6 +290,14 @@ def evaluate_operation(
         elif config.mode == "hybrid" and decision != "deny":
             decision = "review"
             reason = f"target has repeated verify failures (count={fail_count})"
+
+    dc_decision, dc_reason = _deny_candidates_policy(
+        op, mode=config.mode, project_root=project_root
+    )
+    if dc_decision is not None and dc_reason is not None:
+        if decision != "deny":
+            decision = dc_decision
+            reason = dc_reason
 
     wl_decision, wl_reason = _whitelist_policy_override(
         op, mode=config.mode, project_root=project_root

@@ -27,6 +27,7 @@ def dispatch_command(parser: argparse.ArgumentParser, args: Any) -> int:
         "history": lambda: handlers.handle_arch_history(args),
         "report": lambda: handlers.handle_report(args),
         "report-snapshot": lambda: handlers.handle_report_snapshot(args),
+        "learning-kpi": lambda: handlers.handle_learning_kpi(args),
         "whitelist-draft": lambda: handlers.handle_whitelist_draft(args),
         "campaign-undo": lambda: handlers.handle_campaign_undo(args),
         "explain": lambda: handlers.handle_explain(args),

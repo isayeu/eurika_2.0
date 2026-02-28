@@ -134,7 +134,7 @@ class MainWindow(QMainWindow):
         controls = QGroupBox('Core Command Panel')
         controls_layout = QFormLayout(controls)
         self.command_combo = QComboBox()
-        self.command_combo.addItems(['scan', 'doctor', 'fix', 'cycle', 'explain'])
+        self.command_combo.addItems(['scan', 'doctor', 'fix', 'cycle', 'explain', 'report-snapshot', 'learning-kpi'])
         controls_layout.addRow('Command', self.command_combo)
         self.module_edit = QLineEdit()
         self.module_edit.setPlaceholderText('Required for explain: eurika/api/serve.py')
@@ -561,6 +561,10 @@ class MainWindow(QMainWindow):
             mod = self.module_edit.text().strip() or '<module>'
             parts.append(mod)
         parts.append(root)
+        if cmd in {'report-snapshot', 'learning-kpi'}:
+            self.preview_label.setText(' '.join(parts))
+            self.module_edit.setEnabled(False)
+            return
         if cmd in {'doctor', 'fix', 'cycle', 'explain'}:
             parts.extend(['--window', str(self.window_spin.value())])
         if self.dry_run_check.isChecked() and cmd in {'fix', 'cycle'}:

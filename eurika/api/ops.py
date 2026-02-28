@@ -87,6 +87,7 @@ def _build_extract_block_op(
     extra_params: Optional[List[str]] = None,
     *,
     smell_type: str = "deep_nesting",
+    root: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """Build extract_block_to_helper operation payload."""
     params: Dict[str, Any] = {
@@ -96,13 +97,13 @@ def _build_extract_block_op(
     }
     if extra_params:
         params["extra_params"] = extra_params
+    desc = f"Extract nested block from {rel_path}:{location} (line {block_start_line}, {line_count} lines)"
+    if root:
+        desc += _load_code_smell_oss_hints(root, smell_type)
     return {
         "target_file": rel_path,
         "kind": "extract_block_to_helper",
-        "description": (
-            f"Extract nested block from {rel_path}:{location} "
-            f"(line {block_start_line}, {line_count} lines)"
-        ),
+        "description": desc,
         "diff": f"# Extracted block to {helper_name}",
         "smell_type": smell_type,
         "params": params,
@@ -115,18 +116,20 @@ def _build_extract_nested_op(
     nested_name: str,
     line_count: int,
     extra_params: Optional[List[str]] = None,
+    *,
+    root: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """Build extract_nested_function operation payload."""
     params: Dict[str, Any] = {"location": location, "nested_function_name": nested_name}
     if extra_params:
         params["extra_params"] = extra_params
+    desc = f"Extract nested function {nested_name} from {rel_path}:{location} ({line_count} lines)"
+    if root:
+        desc += _load_code_smell_oss_hints(root, "long_function")
     return {
         "target_file": rel_path,
         "kind": "extract_nested_function",
-        "description": (
-            f"Extract nested function {nested_name} "
-            f"from {rel_path}:{location} ({line_count} lines)"
-        ),
+        "description": desc,
         "diff": f"# Extracted {nested_name} to module level",
         "smell_type": "long_function",
         "params": params,
@@ -208,6 +211,26 @@ def _emit_code_smell_todo() -> bool:
     )
 
 
+def _load_code_smell_oss_hints(root: Path, smell_type: str) -> str:
+    """Load OSS pattern hints for code smells (KPI 4). Returns short suffix for description."""
+    lib_path = root / ".eurika" / "pattern_library.json"
+    if not lib_path.exists():
+        return ""
+    try:
+        from eurika.learning.pattern_library import load_pattern_library
+
+        lib = load_pattern_library(lib_path)
+        entries = lib.get(smell_type) or []
+        if not entries:
+            return ""
+        projects = sorted({str(e.get("project", "")) for e in entries[:5] if e.get("project")})[:3]
+        if projects:
+            return f" (OSS: {', '.join(projects)})"
+    except Exception:
+        pass
+    return ""
+
+
 def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
     """
     Build patch operations for code-level smells (long_function, deep_nesting).
@@ -215,6 +238,7 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
     Uses CodeAwareness.find_smells. For long_function: tries extract_nested_function first;
     if no nested def, tries suggest_extract_block (if/for/while body); else TODO if emit_todo.
     For deep_nesting: suggest_extract_block when EURIKA_DEEP_NESTING_MODE in (heuristic, hybrid).
+    KPI 4: OSS hints from pattern_library when available.
     """
     from code_awareness import CodeAwareness
     from eurika.refactor.extract_function import (
@@ -246,7 +270,7 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
                             continue
                         ops.append(
                             _build_extract_nested_op(
-                                rel, smell.location, nested_name, line_count, extra_params or None
+                                rel, smell.location, nested_name, line_count, extra_params or None, root=root
                             )
                         )
                         fixed_locations.add(loc_key)
@@ -263,6 +287,7 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
                             line_count,
                             extra or None,
                             smell_type="long_function",
+                            root=root,
                         )
                     )
                     fixed_locations.add(loc_key)
@@ -276,7 +301,7 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
                         helper_name, block_line, line_count, extra = block_suggestion
                         ops.append(
                             _build_extract_block_op(
-                                rel, smell.location, helper_name, block_line, line_count, extra or None
+                                rel, smell.location, helper_name, block_line, line_count, extra or None, root=root
                             )
                         )
                         fixed_locations.add(loc_key)

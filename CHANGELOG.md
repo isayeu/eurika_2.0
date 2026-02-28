@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## v3.0.18 — KPI verify_success_rate + Learning from GitHub code smells (2026-02-27)
+
+### KPI (план A)
+- **`eurika learning-kpi [path]`:** KPI блок по smell|action|target, promote (whitelist candidates), deprioritize (policy deny candidates). `--json`, `--top-n`.
+- **Policy:** динамический deny из learning deny_candidates (rate<0.25, total≥3).
+- **Context sources:** `by_target.verify_success_rate` для приоритизации; high rate +1, low rate −1.
+
+### Qt
+- **Commands:** добавлены report-snapshot, learning-kpi в dropdown; Run вывод в Terminal.
+
+### KPI 4 — Pattern library для code smells
+- **DIFF_HINTS:** (long_function, extract_block_to_helper), (deep_nesting, extract_block_to_helper).
+- **REMEDIATION_HINTS:** long_function, deep_nesting в detector.
+- **Pattern library:** extract_patterns_from_repos собирает long_function, deep_nesting через CodeAwareness.
+- **get_code_smell_operations:** OSS hints (OSS: Django, FastAPI) в description при наличии pattern_library.
+
+---
+
 ## v3.0.17 — R2/R3/R4 gates (2026-02-27)
 
 ### Quality gates
