@@ -37,3 +37,6 @@
 - [x] eurika.api get_patch_plan: trace через logging
 - [x] core_handlers doctor: progress через logging
 - [x] orchestration (prepare, apply_stage, fix_cycle, full_cycle) уже использовали get_logger
+- [x] runtime_scan: "self_map.json written" через eurika.scan logger
+- [x] core_handlers: _err, self-check, fix/cycle project headers через _clog
+- [x] agent_handlers: fix summary, decision summary, verify-failure help, _run_cycle_with_mode через _ALOG

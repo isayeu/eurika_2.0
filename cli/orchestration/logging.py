@@ -33,7 +33,7 @@ def configure_cli_logging(*, quiet: bool = False, verbose: bool = False) -> None
         h.setFormatter(logging.Formatter("%(message)s"))
         root.addHandler(h)
         root.propagate = False
-    for child in ("orchestration", "reasoning", "api"):
+    for child in ("orchestration", "reasoning", "api", "scan", "agent_handlers"):
         logging.getLogger(f"eurika.{child}").setLevel(level)
     _configured = True
 

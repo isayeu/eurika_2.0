@@ -1,12 +1,17 @@
 """AgentCore-related CLI handlers.
 
-Extracted from cli.handlers to reduce its size and fan-out.
+Extracted from cli.handlers to reduce its size and fan-out. R2: stderr output via logger.
 """
 from __future__ import annotations
+
 import json
 import sys
 from pathlib import Path
 from typing import Any
+
+from cli.orchestration.logging import get_logger
+
+_ALOG = get_logger("agent_handlers")
 from action_plan import ActionPlan
 from agent_core import InputEvent
 from agent_core_arch_review import ArchReviewAgentCore
@@ -211,30 +216,33 @@ def handle_agent_patch_apply(args: Any) -> int:
         return 1
     return 0
 
-def _print_fix_summary(operations: list, modified: list, verify_success: bool | None, dry_run: bool=False) -> None:
-    """Print human-readable fix summary (Killer UX). Always shows completion."""
+def _print_fix_summary(operations: list, modified: list, verify_success: bool | None, dry_run: bool = False) -> None:
+    """Log human-readable fix summary (R2: via logger, respects --quiet)."""
     kind_counts: dict[str, int] = {}
     for op in operations:
-        k = op.get('kind') or 'refactor_module'
+        k = op.get("kind") or "refactor_module"
         kind_counts[k] = kind_counts.get(k, 0) + 1
-    parts = [f'{n} {k}' for k, n in sorted(kind_counts.items())]
-    ops_str = ', '.join(parts) if parts else '0'
-    print('--- Eurika fix complete ---', file=sys.stderr)
+    parts = [f"{n} {k}" for k, n in sorted(kind_counts.items())]
+    ops_str = ", ".join(parts) if parts else "0"
+    _ALOG.info("--- Eurika fix complete ---")
     if not operations:
-        print('0 operations (nothing to apply)', file=sys.stderr)
+        _ALOG.info("0 operations (nothing to apply)")
     elif dry_run:
-        print(f'Would apply: {ops_str}', file=sys.stderr)
-        targets = [op.get('target_file', '?') for op in operations if op.get('target_file')]
+        _ALOG.info("Would apply: %s", ops_str)
+        targets = [op.get("target_file", "?") for op in operations if op.get("target_file")]
         if targets:
-            print(f"Targets: {', '.join(targets[:5])}{('...' if len(targets) > 5 else '')}", file=sys.stderr)
+            _ALOG.info("Targets: %s", ", ".join(targets[:5]) + ("..." if len(targets) > 5 else ""))
     else:
-        print(f"Modified: {len(modified)} file(s) — {', '.join(modified[:5])}{('...' if len(modified) > 5 else '')}", file=sys.stderr)
-        print(f'Operations: {ops_str}', file=sys.stderr)
-        if kind_counts.get('remove_cyclic_import', 0) > 0:
-            print(f"  → Broke {kind_counts['remove_cyclic_import']} cyclic dependency(ies)", file=sys.stderr)
-        status = '✓ passed' if verify_success else '✗ failed'
-        print(f'Verify: {status}', file=sys.stderr)
-    print(file=sys.stderr)
+        _ALOG.info(
+            "Modified: %s file(s) — %s",
+            len(modified),
+            ", ".join(modified[:5]) + ("..." if len(modified) > 5 else ""),
+        )
+        _ALOG.info("Operations: %s", ops_str)
+        if kind_counts.get("remove_cyclic_import", 0) > 0:
+            _ALOG.info("  → Broke %s cyclic dependency(ies)", kind_counts["remove_cyclic_import"])
+        status = "✓ passed" if verify_success else "✗ failed"
+        _ALOG.info("Verify: %s", status)
 
 
 def _decision_summary_from_report(report: dict[str, Any]) -> dict[str, int]:
@@ -270,20 +278,17 @@ def _decision_summary_from_report(report: dict[str, Any]) -> dict[str, int]:
 
 
 def _print_decision_summary(report: dict[str, Any], *, quiet: bool) -> None:
-    """Print concise decision summary for operator UX."""
+    """Log concise decision summary (R2: via logger)."""
     if quiet:
         return
     summary = _decision_summary_from_report(report)
     if not any(summary.values()):
         return
-    print(
-        (
-            "Decision summary: "
-            f"blocked by policy={summary['blocked_by_policy']}, "
-            f"critic={summary['blocked_by_critic']}, "
-            f"human={summary['blocked_by_human']}"
-        ),
-        file=sys.stderr,
+    _ALOG.info(
+        "Decision summary: blocked by policy=%s, critic=%s, human=%s",
+        summary["blocked_by_policy"],
+        summary["blocked_by_critic"],
+        summary["blocked_by_human"],
     )
 
 def _print_verify_failure_help(
@@ -292,29 +297,29 @@ def _print_verify_failure_help(
     dry_run: bool,
     verify_success: bool,
 ) -> None:
-    """Print user-facing help when verify failed and changes were not rolled back automatically."""
+    """Log user-facing help when verify failed (R2: via logger)."""
     if report.get("verify", {}).get("success") or dry_run or verify_success:
         return
     stderr = (report.get("verify") or {}).get("stderr") or ""
     rollback_info = report.get("rollback") or {}
     vm = report.get("verify_metrics") or {}
-    print(file=sys.stderr)
     if rollback_info.get("reason") == "metrics_worsened":
-        print(
-            f"Metrics worsened (health {vm.get('before_score')} → {vm.get('after_score')}); changes rolled back.",
-            file=sys.stderr,
+        _ALOG.warning(
+            "Metrics worsened (health %s → %s); changes rolled back.",
+            vm.get("before_score"),
+            vm.get("after_score"),
         )
     elif rollback_info.get("done"):
-        print("Tests failed; changes rolled back automatically.", file=sys.stderr)
+        _ALOG.warning("Tests failed; changes rolled back automatically.")
     else:
         run_id = report.get("run_id")
-        print("Tests failed. To restore files from backup:", file=sys.stderr)
+        _ALOG.warning("Tests failed. To restore files from backup:")
         if run_id:
-            print(f"  eurika agent patch-rollback --run-id {run_id} .", file=sys.stderr)
+            _ALOG.warning("  eurika agent patch-rollback --run-id %s .", run_id)
         else:
-            print("  eurika agent patch-rollback .", file=sys.stderr)
+            _ALOG.warning("  eurika agent patch-rollback .")
     if "No module named pytest" in stderr or "pytest: command not found" in stderr:
-        print("To run verification after fix, install pytest: pip install pytest", file=sys.stderr)
+        _ALOG.warning("To run verification after fix, install pytest: pip install pytest")
 
 
 def _run_cycle_with_mode(args: Any, mode: str='fix') -> int:
@@ -322,10 +327,10 @@ def _run_cycle_with_mode(args: Any, mode: str='fix') -> int:
     import time
     path = args.path.resolve()
     if not path.exists():
-        print(f'Error: path does not exist: {path}', file=sys.stderr)
+        _ALOG.error("Error: path does not exist: %s", path)
         return 1
     if not path.is_dir():
-        print(f'Error: path is not a directory: {path}', file=sys.stderr)
+        _ALOG.error("Error: path is not a directory: %s", path)
         return 1
     from cli.orchestrator import run_cycle
     quiet = getattr(args, 'quiet', False)
@@ -360,7 +365,7 @@ def _run_cycle_with_mode(args: Any, mode: str='fix') -> int:
             time.sleep(interval)
     except KeyboardInterrupt:
         if interval > 0 and not quiet:
-            print('\neurika: interrupted (Ctrl+C)', file=sys.stderr)
+            _ALOG.info("\neurika: interrupted (Ctrl+C)")
     return last_code
 
 def handle_agent_cycle(args: Any) -> int:

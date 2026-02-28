@@ -36,8 +36,8 @@ _WHITELIST_DRAFT_ALLOWED_KINDS = frozenset(
 
 
 def _err(msg: str) -> None:
-    """Print unified error message to stderr."""
-    print(f'eurika: {msg}', file=sys.stderr)
+    """Log unified error message (R2: via logger, respects --quiet)."""
+    _clog().error("eurika: %s", msg)
 
 
 def _clog():
@@ -77,7 +77,7 @@ def handle_scan(args: Any) -> int:
     exit_code = 0
     for i, path in enumerate(paths):
         if len(paths) > 1:
-            print(f"\n--- Project {i + 1}/{len(paths)}: {path} ---\n", file=sys.stderr)
+            _clog().info("\n--- Project %s/%s: %s ---\n", i + 1, len(paths), path)
         if _check_path(path) != 0:
             exit_code = 1
             continue
@@ -92,23 +92,23 @@ def handle_self_check(args: Any) -> int:
     path = args.path.resolve()
     if _check_path(path) != 0:
         return 1
-    print('eurika: self-check — analyzing project architecture...', file=sys.stderr)
+    _clog().info("eurika: self-check — analyzing project architecture...")
     fmt = getattr(args, 'format', 'text')
     color = getattr(args, 'color', None)
     code = run_scan(path, format=fmt, color=color)
     # Layer discipline (R1, Architecture.md §0)
     lf_report = _format_layer_discipline_block(path)
     if lf_report:
-        print(lf_report, file=sys.stderr)
+        _clog().info("%s", lf_report)
     # File size limits (ROADMAP 3.1-arch.3)
     fs_report = _format_file_size_block(path)
     if fs_report:
-        print(fs_report, file=sys.stderr)
+        _clog().info("%s", fs_report)
     # R5 Self-guard: aggregated health gate
     from eurika.checks.self_guard import collect_self_guard, format_self_guard_block, self_guard_pass
 
     guard_result = collect_self_guard(path)
-    print(format_self_guard_block(guard_result), file=sys.stderr)
+    _clog().info("%s", format_self_guard_block(guard_result))
     if getattr(args, 'strict', False) and not self_guard_pass(guard_result):
         return 1
     return code
@@ -533,7 +533,7 @@ def handle_fix(args: Any) -> int:
     exit_code = 0
     for i, path in enumerate(paths):
         if len(paths) > 1:
-            print(f"\n--- Project {i + 1}/{len(paths)}: {path} ---\n", file=sys.stderr)
+            _clog().info("\n--- Project %s/%s: %s ---\n", i + 1, len(paths), path)
         if getattr(args, 'apply_suggested_policy', False):
             sugg = load_suggested_policy_for_apply(path)
             if sugg:
@@ -568,7 +568,7 @@ def handle_cycle(args: Any) -> int:
     exit_code = 0
     for i, path in enumerate(paths):
         if len(paths) > 1:
-            print(f"\n--- Project {i + 1}/{len(paths)}: {path} ---\n", file=sys.stderr)
+            _clog().info("\n--- Project %s/%s: %s ---\n", i + 1, len(paths), path)
         if getattr(args, 'apply_suggested_policy', False):
             sugg = load_suggested_policy_for_apply(path)
             if sugg:
