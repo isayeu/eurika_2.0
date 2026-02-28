@@ -322,24 +322,24 @@ def _build_hints_and_params(project_root: str, smell_type: str, action_kind: str
         info = suggest_god_module_split_hint(graph, name, top_n=5)
         split_params = {'imports_from': info.get('imports_from', []), 'imported_by': info.get('imported_by', [])}
         split_params = _sanitize_split_params(project_root, name, split_params)
-        llm_hints = _llm_split_hints(smell_type, name, info)
+        llm_hints = _llm_split_hints(project_root, smell_type, name, info)
         for h in llm_hints:
             if h and h not in hints:
                 hints.append(h)
     elif action_kind == 'introduce_facade':
         callers = suggest_facade_candidates(graph, name, top_n=5)
         split_params = {'callers': callers} if callers else None
-        llm_hints = _llm_split_hints(smell_type, name, {'callers': callers or []})
+        llm_hints = _llm_split_hints(project_root, smell_type, name, {'callers': callers or []})
         for h in llm_hints:
             if h and h not in hints:
                 hints.append(h)
     return (hints, split_params)
 
-def _llm_split_hints(smell_type: str, name: str, graph_context: Dict[str, Any]) -> List[str]:
-    """Call Ollama for split hints when smell is god_module/hub/bottleneck (ROADMAP 2.9.2). Returns [] on failure."""
+def _llm_split_hints(project_root: str, smell_type: str, name: str, graph_context: Dict[str, Any]) -> List[str]:
+    """Call Ollama for split hints when smell is god_module/hub/bottleneck (ROADMAP 2.9.2, 3.6.6). Returns [] on failure."""
     try:
         from eurika.reasoning.planner_llm import ask_ollama_split_hints
-        return ask_ollama_split_hints(smell_type, name, graph_context)
+        return ask_ollama_split_hints(smell_type, name, graph_context, project_root=project_root)
     except Exception:
         return []
 

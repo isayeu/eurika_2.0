@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QProcess, QTimer, Signal
+from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, Signal
 
 from qt_app.services.command_builder import build_cli_args
 
@@ -50,6 +50,8 @@ class CommandService(QObject):
         dry_run: bool = False,
         no_llm: bool = False,
         no_clean_imports: bool = False,
+        team_mode: bool = False,
+        ollama_model: str = "",
     ) -> None:
         if self._process.state() != QProcess.NotRunning:
             self.error_line.emit("A command is already running.")
@@ -64,6 +66,7 @@ class CommandService(QObject):
                 dry_run=dry_run,
                 no_llm=no_llm,
                 no_clean_imports=no_clean_imports,
+                team_mode=team_mode,
             )
         except ValueError as exc:
             self.error_line.emit(str(exc))
@@ -75,15 +78,19 @@ class CommandService(QObject):
         self.command_started.emit(self._active_command)
         self._set_state("running")
         self._process.setWorkingDirectory(root)
+        if ollama_model.strip():
+            env = QProcessEnvironment.systemEnvironment()
+            env.insert("OLLAMA_OPENAI_MODEL", ollama_model.strip())
+            self._process.setProcessEnvironment(env)
         self._process.start(sys.executable, full_args)
 
     def run_apply_approved(self, *, project_root: str) -> None:
         if self._process.state() != QProcess.NotRunning:
             self.error_line.emit("A command is already running.")
             return
-        root = str(Path(project_root).resolve())
+        root = str(Path(project_root or ".").resolve())
         args = ["-m", "eurika_cli", "fix", root, "--apply-approved"]
-        self._active_command = "eurika fix --apply-approved"
+        self._active_command = f"eurika fix {root} --apply-approved"
         self.command_started.emit(self._active_command)
         self._set_state("running")
         self._process.setWorkingDirectory(root)

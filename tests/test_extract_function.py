@@ -235,6 +235,30 @@ def outer():
     assert f"{helper_name}(depth, node)" in content or f"{helper_name}(node, depth)" in content
 
 
+def test_extract_block_to_helper_passes_loop_variable(tmp_path: Path) -> None:
+    """extract_block_to_helper includes loop variable in extra_params for for-loop body."""
+    code = '''
+out = []
+def process(items):
+    for x in items:
+        y = len(x)
+        z = y + 1
+        out.append(z)
+'''
+    (tmp_path / "mod.py").write_text(code)
+    s = suggest_extract_block(tmp_path / "mod.py", "process", min_lines=3)
+    assert s is not None, "for-loop body should be extractable"
+    helper_name, block_line, _, extra = s
+    assert "x" in extra, "loop variable x must be in extra_params"
+    out = extract_block_to_helper(tmp_path / "mod.py", "process", block_line, helper_name, extra)
+    assert out is not None
+    (tmp_path / "mod.py").write_text(out)
+    ns: dict = {}
+    exec(compile((tmp_path / "mod.py").read_text(), "mod.py", "exec"), ns)
+    ns["process"](["a", "bc"])
+    assert ns["out"] == [2, 3], "len(a)+1=2, len(bc)+1=3"
+
+
 def test_suggest_extract_block_skips_nested_parent_with_closure_dependencies(tmp_path: Path) -> None:
     """suggest_extract_block returns None when block depends on outer-scope closure vars."""
     code = """

@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 from .apply_stage import write_fix_report
 from .contracts import DecisionSummary, FixReport, OperationRecord, PatchPlan
+from .cycle_state import with_cycle_state
 from .deps import FixCycleDeps
 from .logging import get_logger
 from .models import FixCycleContext
@@ -16,8 +17,11 @@ _LOG = get_logger("orchestration.fix_cycle")
 
 def _filter_executable_operations(
     operations: list[OperationRecord],
+    *,
+    team_override: bool = False,
 ) -> tuple[list[OperationRecord], list[dict[str, Any]], dict[str, str], list[str]]:
-    """Apply hard decision gate: only approved + critic allow/review are executable."""
+    """Apply hard decision gate: only approved + critic allow/review are executable.
+    When team_override=True (apply-approved path), team approval bypasses critic verdict."""
     executable: list[OperationRecord] = []
     skipped_meta: list[dict[str, Any]] = []
     skipped_reasons: dict[str, str] = {}
@@ -25,10 +29,13 @@ def _filter_executable_operations(
     for op in operations:
         approval_state = str(op.get("approval_state", "approved"))
         critic_verdict = str(op.get("critic_verdict", "allow"))
+        decision_source = str(op.get("decision_source") or "")
         target = str(op.get("target_file") or "")
         reason = ""
         if approval_state != "approved":
             reason = f"approval_state={approval_state}"
+        elif team_override and decision_source == "team":
+            pass  # team approved: bypass critic
         elif critic_verdict not in {"allow", "review"}:
             reason = f"critic_verdict={critic_verdict}"
         if reason:
@@ -205,27 +212,35 @@ def run_fix_cycle_impl(
 
         approved, payload = load_approved_operations(path)
         if not payload:
-            return {
-                "return_code": 1,
-                "report": {"error": "No pending plan. Run eurika fix . --team-mode first."},
-                "operations": [],
-                "modified": [],
-                "verify_success": False,
-                "agent_result": None,
-            }
-        if not approved:
-            return {
-                "return_code": 0,
-                "report": {
-                    "message": "No operations approved. Edit .eurika/pending_plan.json and set team_decision='approve'."
+            return with_cycle_state(
+                {
+                    "return_code": 1,
+                    "report": {"error": "No pending plan. Run eurika fix . --team-mode first."},
+                    "operations": [],
+                    "modified": [],
+                    "verify_success": False,
+                    "agent_result": None,
                 },
-                "operations": [],
-                "modified": [],
-                "verify_success": True,
-                "agent_result": None,
-            }
+                is_error=True,
+            )
+        if not approved:
+            return with_cycle_state(
+                {
+                    "return_code": 0,
+                    "report": {
+                        "message": "No operations approved. Edit .eurika/pending_plan.json and set team_decision='approve'."
+                    },
+                    "operations": [],
+                    "modified": [],
+                    "verify_success": True,
+                    "agent_result": None,
+                },
+                is_error=False,
+            )
         patch_plan = dict(payload.get("patch_plan") or {}, operations=approved)
-        approved, _, skipped_reasons, skipped_files = _filter_executable_operations(approved)
+        approved, _, skipped_reasons, skipped_files = _filter_executable_operations(
+            approved, team_override=True
+        )
         if not approved:
             op_results = []
             for target, reason in skipped_reasons.items():
@@ -249,14 +264,17 @@ def run_fix_cycle_impl(
             _attach_decision_summary(report)
             attach_fix_telemetry(report, [])
             write_fix_report(path, report, quiet)
-            return {
-                "return_code": 0,
-                "report": report,
-                "operations": [],
-                "modified": [],
-                "verify_success": True,
-                "agent_result": None,
-            }
+            return with_cycle_state(
+                {
+                    "return_code": 0,
+                    "report": report,
+                    "operations": [],
+                    "modified": [],
+                    "verify_success": True,
+                    "agent_result": None,
+                },
+                is_error=False,
+            )
         patch_plan = dict(patch_plan, operations=approved)
         result = type(
             "R",
@@ -312,25 +330,30 @@ def run_fix_cycle_impl(
             saved = save_pending_plan(path, patch_early, ops_early, policy_dec, session_id)
             if not quiet:
                 _LOG.info(f"Team mode: plan saved to {saved}")
-                _LOG.info(
-                    "Edit team_decision='approve' for desired ops, then run: eurika fix . --apply-approved"
+            _LOG.info(
+                "Edit team_decision='approve' for desired ops, then run: eurika fix . --apply-approved"
                 )
-            return {
-                "return_code": early.get("return_code", 0),
-                "report": dict(
-                    early.get("report", {}),
-                    message=f"Plan saved to {saved}. Run eurika fix . --apply-approved after review.",
-                ),
-                "operations": ops_early,
-                "modified": [],
-                "verify_success": None,
-                "agent_result": early.get("agent_result"),
-                "dry_run": True,
-            }
+            rc = early.get("return_code", 0)
+            return with_cycle_state(
+                {
+                    "return_code": rc,
+                    "report": dict(
+                        early.get("report", {}),
+                        message=f"Plan saved to {saved}. Run eurika fix . --apply-approved after review.",
+                    ),
+                    "operations": ops_early,
+                    "modified": [],
+                    "verify_success": None,
+                    "agent_result": early.get("agent_result"),
+                    "dry_run": True,
+                },
+                is_error=(rc != 0),
+            )
         if isinstance(early, dict) and isinstance(early.get("report"), dict):
             attach_fix_telemetry(early["report"], early.get("operations", []))
             write_fix_report(path, early["report"], quiet)
-        return early
+        early["dry_run"] = dry_run
+        return with_cycle_state(early, is_error=(early.get("return_code", 0) != 0))
 
     if team_mode:
         from cli.orchestration.team_mode import save_pending_plan
@@ -343,18 +366,21 @@ def run_fix_cycle_impl(
             _LOG.info(
                 "Edit team_decision='approve' and approved_by for desired ops, then run: eurika fix . --apply-approved",
             )
-        return {
-            "return_code": 0,
-            "report": {
-                "message": f"Plan saved to {saved}. Run eurika fix . --apply-approved after review.",
-                "policy_decisions": policy_decisions,
+        return with_cycle_state(
+            {
+                "return_code": 0,
+                "report": {
+                    "message": f"Plan saved to {saved}. Run eurika fix . --apply-approved after review.",
+                    "policy_decisions": policy_decisions,
+                },
+                "operations": operations,
+                "modified": [],
+                "verify_success": None,
+                "agent_result": result,
+                "dry_run": True,
             },
-            "operations": operations,
-            "modified": [],
-            "verify_success": None,
-            "agent_result": result,
-            "dry_run": True,
-        }
+            is_error=False,
+        )
 
     planned_ops = list(operations)
     if approve_ops or reject_ops:
@@ -366,15 +392,18 @@ def run_fix_cycle_impl(
         if selection_error:
             report = {"error": selection_error}
             write_fix_report(path, report, quiet)
-            return {
-                "return_code": 1,
-                "report": report,
-                "operations": [],
-                "modified": [],
-                "verify_success": False,
-                "agent_result": result,
-                "dry_run": dry_run,
-            }
+            return with_cycle_state(
+                {
+                    "return_code": 1,
+                    "report": report,
+                    "operations": [],
+                    "modified": [],
+                    "verify_success": False,
+                    "agent_result": result,
+                    "dry_run": dry_run,
+                },
+                is_error=True,
+            )
     else:
         approved_ops, rejected_ops = select_hybrid_operations(
             operations,
@@ -389,15 +418,18 @@ def run_fix_cycle_impl(
     if patch_plan is None:
         report = {"error": "Internal error: missing patch plan after prepare stage."}
         write_fix_report(path, report, quiet)
-        return {
-            "return_code": 1,
-            "report": report,
-            "operations": [],
-            "modified": [],
-            "verify_success": False,
-            "agent_result": result,
-            "dry_run": dry_run,
-        }
+        return with_cycle_state(
+            {
+                "return_code": 1,
+                "report": report,
+                "operations": [],
+                "modified": [],
+                "verify_success": False,
+                "agent_result": result,
+                "dry_run": dry_run,
+            },
+            is_error=True,
+        )
     patch_plan = dict(patch_plan, operations=operations)
     rejected_files = [
         str(op.get("target_file", ""))
@@ -440,15 +472,18 @@ def run_fix_cycle_impl(
         _attach_decision_summary(report)
         attach_fix_telemetry(report, planned_ops)
         write_fix_report(path, report, quiet)
-        return {
-            "return_code": 0,
-            "report": report,
-            "operations": [],
-            "modified": [],
-            "verify_success": True,
-            "agent_result": result,
-            "dry_run": dry_run,
-        }
+        return with_cycle_state(
+            {
+                "return_code": 0,
+                "report": report,
+                "operations": [],
+                "modified": [],
+                "verify_success": True,
+                "agent_result": result,
+                "dry_run": dry_run,
+            },
+            is_error=False,
+        )
 
     if dry_run:
         if not quiet:

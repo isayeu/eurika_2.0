@@ -404,7 +404,8 @@ class OSSPatternProvider(KnowledgeProvider):
 
 
 class CompositeKnowledgeProvider(KnowledgeProvider):
-    """Объединяет несколько провайдеров: по каждой теме запрашивает всех и склеивает фрагменты."""
+    """Объединяет несколько провайдеров: по каждой теме запрашивает всех и склеивает фрагменты.
+    R2 Fallback: при сбое одного провайдера остальные всё равно обрабатываются (degraded mode)."""
 
     def __init__(self, providers: List[KnowledgeProvider]) -> None:
         self.providers = list(providers)
@@ -412,7 +413,10 @@ class CompositeKnowledgeProvider(KnowledgeProvider):
     def query(self, topic: str) -> StructuredKnowledge:
         all_fragments: List[Dict[str, Any]] = []
         for p in self.providers:
-            kn = p.query(topic)
+            try:
+                kn = p.query(topic)
+            except Exception:
+                continue
             if not kn.is_empty():
                 for f in kn.fragments:
                     frag = dict(f)

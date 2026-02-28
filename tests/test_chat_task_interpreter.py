@@ -1,6 +1,6 @@
 """Tests for structured chat task interpretation."""
 
-from eurika.api.chat_intent import interpret_task
+from eurika.api.chat_intent import interpret_task, parse_mentions
 
 
 def test_interpret_task_detects_ui_tabs_intent() -> None:
@@ -26,6 +26,7 @@ def test_interpret_task_detects_add_terminal_tab_request() -> None:
     out = interpret_task("создай вкладку Terminal, с эмулятором терминала")
     assert out.intent == "ui_add_empty_tab"
     assert out.target == "qt_app/ui/main_window.py"
+    assert out.entities.get("tab_name") == "Terminal"
     assert out.confidence >= 0.8
 
 
@@ -41,6 +42,31 @@ def test_interpret_task_marks_ambiguous_imperative_for_clarification() -> None:
     assert out.intent == "ambiguous_request"
     assert out.needs_clarification is True
     assert out.clarifying_question
+
+
+def test_parse_mentions_extracts_module_and_smell() -> None:
+    """Examples from actual scan: god_module @ patch_engine.py, code_awareness.py."""
+    m = parse_mentions("рефактори @patch_engine.py с учётом @god_module")
+    assert m["modules"] == ["patch_engine.py"]
+    assert "god_module" in m["smells"]
+    assert "Scope" in m["scope_note"]
+
+
+def test_parse_mentions_extracts_multiple_modules() -> None:
+    """Examples from scan: cli/core_handlers, eurika/api/chat."""
+    m = parse_mentions("проверь @cli/core_handlers.py и @eurika/api/chat.py")
+    assert "cli/core_handlers.py" in m["modules"]
+    assert "eurika/api/chat.py" in m["modules"]
+
+
+def test_interpret_task_refactor_with_at_module_uses_as_target() -> None:
+    """ROADMAP 3.6.5: refactor + @module sets target from mention.
+    Example from scan risks: god_module @ patch_engine.py (severity=14).
+    """
+    out = interpret_task("рефактори @patch_engine.py")
+    assert out.intent == "refactor"
+    assert out.target == "patch_engine.py"
+    assert out.entities.get("scope_modules") == "patch_engine.py"
 
 
 def test_interpret_task_preserves_existing_refactor_intent() -> None:

@@ -16,7 +16,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, List
 from eurika.smells.rules import build_recommendations
-from eurika.evolution.diff import diff_to_text
 from eurika.smells.detector import ArchSmell, detect_architecture_smells
 from eurika.smells.rules import compute_health, health_summary
 from eurika.storage import ProjectMemory

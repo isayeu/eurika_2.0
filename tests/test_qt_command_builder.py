@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 import sys
 
 import pytest
@@ -33,4 +34,35 @@ def test_build_cli_args_fix_options() -> None:
     assert "7" in args
     assert "--dry-run" in args
     assert "--no-clean-imports" in args
+
+
+def test_build_cli_args_doctor_no_llm() -> None:
+    args = build_cli_args(
+        command="doctor",
+        project_root=".",
+        window=5,
+        no_llm=True,
+    )
+    assert args[0] == "doctor"
+    assert "--no-llm" in args
+    assert "--window" in args
+
+
+def test_doctor_no_llm_runs_from_ui_args() -> None:
+    """Verify doctor --no-llm completes when invoked as the Qt UI would."""
+    args = build_cli_args(
+        command="doctor",
+        project_root=str(ROOT),
+        window=5,
+        no_llm=True,
+    )
+    full_args = [sys.executable, "-m", "eurika_cli"] + args
+    result = subprocess.run(
+        full_args,
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        timeout=90,
+    )
+    assert result.returncode == 0, f"doctor --no-llm failed: {result.stderr}"
 

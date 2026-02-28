@@ -12,9 +12,28 @@ import shlex
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
+
+TASK_BACKUP_DIR = ".eurika_backups"
+
+
+def _task_backup_before_write(
+    root: Path, target_file: str, path: Path, run_id: str | None = None
+) -> str | None:
+    """Backup file to .eurika_backups/<run_id>/ before modifying. Returns backup_dir or None on error."""
+    try:
+        if run_id is None:
+            run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        backup_root = root / TASK_BACKUP_DIR / run_id
+        backup_path = backup_root / target_file
+        backup_path.parent.mkdir(parents=True, exist_ok=True)
+        backup_path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+        return str(backup_root)
+    except OSError:
+        return None
 
 
 RiskLevel = str  # low | medium | high
@@ -193,6 +212,7 @@ def _execute_ui_add_empty_tab(root: Path, spec: TaskSpec) -> ExecutionReport:
         line_end = len(src)
     insert_snippet = f'\n        self.tabs.addTab(QWidget(), "{tab_name}")'
     updated = src[:line_end] + insert_snippet + src[line_end:]
+    _task_backup_before_write(root, "qt_app/ui/main_window.py", target_file)
     target_file.write_text(updated, encoding="utf-8")
     verify = _verify()
     return ExecutionReport(
@@ -238,6 +258,7 @@ def _execute_ui_remove_tab(root: Path, spec: TaskSpec) -> ExecutionReport:
             error=None if verify.get("ok") else "smoke failed",
         )
     updated = re.sub(r"\n{3,}", "\n\n", updated)
+    _task_backup_before_write(root, "qt_app/ui/main_window.py", target_file)
     target_file.write_text(updated, encoding="utf-8")
     verify = _verify()
     return ExecutionReport(
@@ -297,6 +318,10 @@ def _execute_save(root: Path, spec: TaskSpec) -> ExecutionReport:
     code = spec.entities.get("code", "")
     if not code.strip():
         return ExecutionReport(ok=False, summary="save failed", error="no code extracted")
+    path = (root / spec.target).resolve()
+    if _within_root(root, path) and path.exists() and path.is_file():
+        target_rel = str(path.relative_to(root))
+        _task_backup_before_write(root, target_rel, path)
     ok, msg = _safe_write_file(root, spec.target, code)
     return ExecutionReport(
         ok=ok,
@@ -492,6 +517,7 @@ def _execute_code_edit_patch(root: Path, spec: TaskSpec) -> ExecutionReport:
             },
             artifacts_changed=[target],
         )
+    _task_backup_before_write(root, target, path)
     try:
         path.write_text(patched, encoding="utf-8")
     except OSError as exc:
@@ -621,8 +647,11 @@ def _execute_code_edit_patch_batch(root: Path, spec: TaskSpec, operations_json: 
         )
 
     written: List[Path] = []
+    batch_run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     try:
         for path, patched in staged.items():
+            rel = str(path.relative_to(root))
+            _task_backup_before_write(root, rel, path, run_id=batch_run_id)
             path.write_text(patched, encoding="utf-8")
             written.append(path)
     except OSError as exc:

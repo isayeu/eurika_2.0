@@ -1,8 +1,9 @@
-"""Intent detection for Chat (ROADMAP 3.5.11.C).
+"""Intent detection for Chat (ROADMAP 3.5.11.C, 3.6.5).
 
 Includes:
 - legacy detect_intent(...) for direct command-like actions;
-- interpret_task(...) with confidence + clarification hints.
+- interpret_task(...) with confidence + clarification hints;
+- parse_mentions(...) for @module, @smell, @risk scoped context (ROADMAP 3.6.5).
 """
 from __future__ import annotations
 import json
@@ -11,6 +12,52 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 MAX_STRUCTURED_PATCH_OPS = 20
+
+KNOWN_SMELL_TYPES = frozenset(
+    ("god_module", "hub", "bottleneck", "cyclic_dependency", "cyclic", "long_function", "deep_nesting")
+)
+
+
+def parse_mentions(message: str) -> Dict[str, Any]:
+    """Extract @-mentions for scoped context (ROADMAP 3.6.5).
+
+    Returns dict with:
+      - modules: list of module/file paths (e.g. @patch_engine.py, @cli/core_handlers.py)
+      - smells: list of smell types (e.g. @god_module, @bottleneck)
+      - scope_note: human-readable scope for context
+
+    Examples (from eurika scan/doctor):
+      "рефактори @patch_engine.py" -> modules=[patch_engine.py], target for refactor
+      "рефактори @code_awareness.py с учётом @god_module" -> modules + smells
+      "проверь @cli/core_handlers.py" -> scope on long_function candidate
+    """
+    msg = str(message or "")
+    modules: List[str] = []
+    smells: List[str] = []
+    seen_mod: set[str] = set()
+    seen_smell: set[str] = set()
+    # @identifier — identifier can be path (contains / or .py) or smell type
+    for m in re.finditer(r"@([a-zA-Z0-9_./\-]+)", msg):
+        raw = m.group(1).strip()
+        if not raw:
+            continue
+        norm = raw.replace("\\", "/")
+        if norm in KNOWN_SMELL_TYPES or norm == "cyclic":
+            s = "cyclic_dependency" if norm == "cyclic" else norm
+            if s not in seen_smell:
+                smells.append(s)
+                seen_smell.add(s)
+        elif "/" in norm or norm.endswith(".py") or (len(norm) > 2 and "." in norm):
+            if norm not in seen_mod and re.match(r"^[a-zA-Z0-9_./\-]+$", norm):
+                modules.append(norm)
+                seen_mod.add(norm)
+    parts: List[str] = []
+    if modules:
+        parts.append(f"@{' '.join(modules)}")
+    if smells:
+        parts.append(f"smells:{','.join(smells)}")
+    scope_note = (" [Scope: " + "; ".join(parts) + "]" if parts else "")
+    return {"modules": modules, "smells": smells, "scope_note": scope_note}
 MAX_STRUCTURED_PATCH_TEXT = 20_000
 
 
@@ -261,8 +308,16 @@ def interpret_task(message: str, history: Optional[List[Dict[str, str]]] = None)
             plan_steps=["read factual Qt tabs", "return exact tab list"],
         )
 
+    mentions = parse_mentions(msg_raw)
     intent, target = detect_intent(msg_raw)
     if intent:
+        if intent == "refactor" and (not target or target == ".") and mentions.get("modules"):
+            target = mentions["modules"][0]
+        entities: Dict[str, str] = {}
+        if mentions.get("modules"):
+            entities["scope_modules"] = ",".join(mentions["modules"])
+        if mentions.get("smells"):
+            entities["scope_smells"] = ",".join(mentions["smells"])
         confidence = 0.9 if target else 0.78
         return TaskInterpretation(
             intent=intent,
@@ -273,6 +328,7 @@ def interpret_task(message: str, history: Optional[List[Dict[str, str]]] = None)
             actions=sectioned.get("actions_lines", []),
             risk_level=_risk_for_intent(intent),
             requires_confirmation=_risk_for_intent(intent) != "low",
+            entities=entities,
             plan_steps=_plan_for_intent(intent, target),
         )
 

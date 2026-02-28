@@ -7,15 +7,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-# smell_type → knowledge topics (ROADMAP 2.9.3). Used when EURIKA_KNOWLEDGE_TOPIC not set.
-SMELL_TO_KNOWLEDGE_TOPICS: dict[str, list[str]] = {
-    "god_module": ["architecture_refactor", "module_structure"],
-    "bottleneck": ["architecture_refactor"],
-    "hub": ["architecture_refactor", "module_structure"],
-    "cyclic_dependency": ["cyclic_imports"],
-    "long_function": ["pep_8"],
-    "deep_nesting": ["pep_8"],
-}
+from eurika.knowledge import SMELL_TO_KNOWLEDGE_TOPICS
 
 
 def _parse_smell_for_knowledge(risk: str) -> str | None:
@@ -118,9 +110,16 @@ def run_doctor_cycle(
     window: int = 5,
     no_llm: bool = False,
     online: bool = False,
+    quiet: bool = False,
 ) -> dict[str, Any]:
-    """Run diagnostics cycle: summary + history + patch_plan + architect. No I/O to stdout/stderr. ROADMAP 2.9.4, 3.0.3."""
+    """Run diagnostics cycle: summary + history + patch_plan + architect. ROADMAP 2.9.4, 3.0.3."""
     from eurika.api import get_summary, get_history, get_patch_plan, get_recent_events
+
+    from .logging import get_logger
+
+    _log = get_logger("orchestration.doctor")
+
+    _log.info("eurika: doctor — loading summary...")
     from eurika.knowledge import (
         CompositeKnowledgeProvider,
         LocalKnowledgeProvider,
@@ -133,10 +132,23 @@ def run_doctor_cycle(
 
     summary = get_summary(path)
     if summary.get("error"):
-        return {"error": summary.get("error", "unknown")}
+        from .cycle_state import with_cycle_state
+        return with_cycle_state({"error": summary.get("error", "unknown")}, is_error=True)
+    _log.info("eurika: doctor — loading history...")
     history = get_history(path, window=window)
-    patch_plan = get_patch_plan(path, window=window)
+    _log.info("eurika: doctor — loading patch plan (LLM hints disabled for speed)...")
+    prev = os.environ.pop("EURIKA_USE_LLM_HINTS", None)
+    try:
+        os.environ["EURIKA_USE_LLM_HINTS"] = "0"
+        patch_plan = get_patch_plan(path, window=window)
+    finally:
+        if prev is not None:
+            os.environ["EURIKA_USE_LLM_HINTS"] = prev
+        else:
+            os.environ.pop("EURIKA_USE_LLM_HINTS", None)
+    _log.info("eurika: doctor — loading recent events...")
     recent_events = get_recent_events(path, limit=5, types=("patch", "learn"))
+    _log.info("eurika: doctor — building knowledge provider...")
     use_llm = not no_llm
     cache_dir = path / ".eurika" / "knowledge_cache"
     ttl = float(os.environ.get("EURIKA_KNOWLEDGE_TTL", "86400"))
@@ -149,7 +161,9 @@ def run_doctor_cycle(
         OfficialDocsProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=online, rate_limit_seconds=rate_limit),
         ReleaseNotesProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=online, rate_limit_seconds=rate_limit),
     ])
+    _log.info("eurika: doctor — resolving knowledge topics...")
     knowledge_topic = knowledge_topics_from_env_or_summary(summary)
+    _log.info("eurika: doctor — step 3/4: calling architect (LLM)" if use_llm else "eurika: doctor — step 3/4: calling architect (template)")
     architect_text, architect_meta = interpret_architecture_with_meta(
         summary, history, use_llm=use_llm, patch_plan=patch_plan,
         knowledge_provider=knowledge_provider, knowledge_topic=knowledge_topic,
@@ -182,7 +196,8 @@ def run_doctor_cycle(
             out["campaign_checkpoint"] = checkpoint
     except Exception:
         pass
-    return out
+    from .cycle_state import with_cycle_state
+    return with_cycle_state(out, is_error=False)
 
 
 # TODO (eurika): refactor long_function 'run_doctor_cycle' — consider extracting helper

@@ -10,7 +10,8 @@ from __future__ import annotations
 import os
 import re
 import time
-from typing import Any, Dict, List
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 _HINT_CALLS = 0
 _HINT_BUDGET_START = 0.0
@@ -239,16 +240,63 @@ def _parse_llm_hints(text: str) -> List[str]:
     return hints[:5]  # At most 5 hints
 
 
+def _fetch_knowledge_for_planner_hints(project_root: str | Path, smell_type: str, max_chars: int = 500) -> str:
+    """Fetch knowledge snippet for planner LLM prompt (ROADMAP 3.6.6). Cache-only (rate_limit=0)."""
+    try:
+        from eurika.knowledge import (
+            CompositeKnowledgeProvider,
+            LocalKnowledgeProvider,
+            OfficialDocsProvider,
+            OSSPatternProvider,
+            PEPProvider,
+            ReleaseNotesProvider,
+            SMELL_TO_KNOWLEDGE_TOPICS,
+            StructuredKnowledge,
+        )
+        root = Path(project_root)
+        topics = list(SMELL_TO_KNOWLEDGE_TOPICS.get(smell_type, ["architecture_refactor"]))
+        cache_dir = root / ".eurika" / "knowledge_cache"
+        ttl = float(os.environ.get("EURIKA_KNOWLEDGE_TTL", "86400"))
+        oss_path = root / ".eurika" / "pattern_library.json"
+        provider = CompositeKnowledgeProvider([
+            LocalKnowledgeProvider(root / "eurika_knowledge.json"),
+            OSSPatternProvider(oss_path),
+            PEPProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=False, rate_limit_seconds=0),
+            OfficialDocsProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=False, rate_limit_seconds=0),
+            ReleaseNotesProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=False, rate_limit_seconds=0),
+        ])
+        all_fragments: List[Dict[str, Any]] = []
+        for t in topics[:3]:
+            kn = provider.query(t.strip())
+            if isinstance(kn, StructuredKnowledge) and (not kn.is_empty()):
+                for f in kn.fragments:
+                    if isinstance(f, dict):
+                        all_fragments.append(f)
+        if not all_fragments:
+            return ""
+        lines: List[str] = []
+        for f in all_fragments[:5]:
+            title = f.get("title") or f.get("name", "")
+            content = f.get("content") or f.get("text") or str(f)
+            lines.append(f"- {title}: {content[:250]}".rstrip() + ("..." if len(str(content)) > 250 else ""))
+        snip = "\n".join(lines)
+        return snip[:max_chars] + ("..." if len(snip) > max_chars else "")
+    except Exception:
+        return ""
+
+
 def ask_ollama_split_hints(
     smell_type: str,
     module_name: str,
     graph_context: Dict[str, Any],
+    *,
+    project_root: Optional[str | Path] = None,
 ) -> List[str]:
     """
-    Ask Ollama for split/facade suggestions (ROADMAP 2.9.2).
+    Ask Ollama for split/facade suggestions (ROADMAP 2.9.2, 3.6.6).
 
     Returns list of hint strings; empty on failure or when disabled.
-    Uses _call_ollama_cli from architect (CLI fallback path).
+    When project_root is provided, prompt is enriched with Knowledge Layer (ROADMAP 3.6.6).
     """
     if not _use_llm_hints():
         return []
@@ -257,7 +305,11 @@ def ask_ollama_split_hints(
     prompt = _build_planner_prompt(smell_type, module_name, graph_context)
     if not prompt:
         return []
-    cache_key = (smell_type, module_name)
+    if project_root:
+        knowledge_snippet = _fetch_knowledge_for_planner_hints(project_root, smell_type)
+        if knowledge_snippet:
+            prompt = f"{prompt}\n\nReference (from documentation):\n{knowledge_snippet}"
+    cache_key = (smell_type, module_name, str(project_root or ""))
     cached = _HINT_CACHE.get(cache_key)
     if cached is not None:
         return list(cached)

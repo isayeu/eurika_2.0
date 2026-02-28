@@ -11,8 +11,10 @@ from .base import (
     StaticAnalyzerProvider,
     StructuredKnowledge,
 )
+from .topics import SMELL_TO_KNOWLEDGE_TOPICS
 
 __all__ = [
+    "SMELL_TO_KNOWLEDGE_TOPICS",
     "CompositeKnowledgeProvider",
     "KnowledgeProvider",
     "LocalKnowledgeProvider",

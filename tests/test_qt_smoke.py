@@ -53,6 +53,9 @@ def test_qt_main_window_smoke() -> None:
         tab_names = [window.tabs.tabText(i) for i in range(window.tabs.count())]
         assert "Models" in tab_names
         assert "Chat" in tab_names
+        assert "Terminal" in tab_names
+        assert window.terminal_emulator_input is not None
+        assert window.terminal_emulator_output is not None
         window.close()
         app.quit()
         print("SMOKE_OK")

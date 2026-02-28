@@ -20,7 +20,7 @@ def test_chat_send_llm_error_tolerates_history_write_failure(tmp_path: Path, mon
     import eurika.reasoning.architect as architect_mod
 
     monkeypatch.setattr(intent_mod, "detect_intent", lambda _msg: (None, None))
-    monkeypatch.setattr(chat_mod, "_build_chat_context", lambda _root: "ctx")
+    monkeypatch.setattr(chat_mod, "_build_chat_context", lambda _root, scope=None: "ctx")
     monkeypatch.setattr(architect_mod, "call_llm_with_prompt", lambda _prompt, max_tokens=1024: ("", "llm offline"))
     monkeypatch.setattr(chat_mod, "append_chat_history", lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("disk full")))
 
@@ -37,7 +37,7 @@ def test_chat_send_save_intent_allows_one_level_up_path(tmp_path: Path, monkeypa
 
     monkeypatch.setattr(intent_mod, "detect_intent", lambda _msg: ("save", "../hack.py"))
     monkeypatch.setattr(intent_mod, "extract_code_block", lambda _text: "x = 1\n")
-    monkeypatch.setattr(chat_mod, "_build_chat_context", lambda _root: "ctx")
+    monkeypatch.setattr(chat_mod, "_build_chat_context", lambda _root, scope=None: "ctx")
     monkeypatch.setattr(architect_mod, "call_llm_with_prompt", lambda _prompt, max_tokens=1024: ("```python\nx = 1\n```", None))
 
     out = chat_mod.chat_send(tmp_path, "save it")
@@ -54,7 +54,7 @@ def test_chat_send_save_intent_blocks_path_above_parent(tmp_path: Path, monkeypa
 
     monkeypatch.setattr(intent_mod, "detect_intent", lambda _msg: ("save", "../../hack.py"))
     monkeypatch.setattr(intent_mod, "extract_code_block", lambda _text: "x = 1\n")
-    monkeypatch.setattr(chat_mod, "_build_chat_context", lambda _root: "ctx")
+    monkeypatch.setattr(chat_mod, "_build_chat_context", lambda _root, scope=None: "ctx")
     monkeypatch.setattr(architect_mod, "call_llm_with_prompt", lambda _prompt, max_tokens=1024: ("```python\nx = 1\n```", None))
 
     out = chat_mod.chat_send(tmp_path, "save it")
@@ -71,7 +71,7 @@ def test_chat_send_save_intent_writes_code_and_marks_output(tmp_path: Path, monk
 
     monkeypatch.setattr(intent_mod, "detect_intent", lambda _msg: ("save", "foo.py"))
     monkeypatch.setattr(intent_mod, "extract_code_block", lambda _text: "x = 1\n")
-    monkeypatch.setattr(chat_mod, "_build_chat_context", lambda _root: "ctx")
+    monkeypatch.setattr(chat_mod, "_build_chat_context", lambda _root, scope=None: "ctx")
     monkeypatch.setattr(architect_mod, "call_llm_with_prompt", lambda _prompt, max_tokens=1024: ("```python\nx = 1\n```", None))
 
     out = chat_mod.chat_send(tmp_path, "save it")
@@ -88,7 +88,7 @@ def test_chat_send_save_intent_without_target_uses_default_app_py(tmp_path: Path
 
     monkeypatch.setattr(intent_mod, "detect_intent", lambda _msg: ("save", None))
     monkeypatch.setattr(intent_mod, "extract_code_block", lambda _text: "print('Hello, World!')\n")
-    monkeypatch.setattr(chat_mod, "_build_chat_context", lambda _root: "ctx")
+    monkeypatch.setattr(chat_mod, "_build_chat_context", lambda _root, scope=None: "ctx")
     monkeypatch.setattr(
         architect_mod,
         "call_llm_with_prompt",
@@ -102,6 +102,43 @@ def test_chat_send_save_intent_without_target_uses_default_app_py(tmp_path: Path
     assert (tmp_path / "app.py").read_text(encoding="utf-8") == "print('Hello, World!')\n"
 
 
+def test_chat_send_show_report_returns_doctor_report_without_llm(tmp_path: Path, monkeypatch) -> None:
+    """When user asks for report and eurika_doctor_report.json exists, return formatted report without LLM."""
+    import eurika.api.chat as chat_mod
+
+    doctor_data = {
+        "summary": {
+            "system": {"modules": 42, "dependencies": 20, "cycles": 0},
+            "risks": ["god_module @ foo.py (severity=10.00)"],
+        },
+        "architect": "Short architect take.",
+    }
+    (tmp_path / "eurika_doctor_report.json").write_text(
+        json.dumps(doctor_data), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "покажи отчет")
+    assert out.get("error") is None
+    text = out.get("text") or ""
+    assert "42" in text or "Модули" in text or "god_module" in text
+
+
+def test_chat_send_show_report_no_file_returns_hint(tmp_path: Path, monkeypatch) -> None:
+    """When no report exists, return hint to run scan/doctor."""
+    import eurika.api.chat as chat_mod
+
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "сформируй отчет")
+    assert out.get("error") is None
+    assert "scan" in (out.get("text") or "").lower() or "doctor" in (out.get("text") or "").lower()
+
+
 def test_chat_send_full_path_query_returns_saved_file_abs_path(tmp_path: Path, monkeypatch) -> None:
     """After save, full-path query should return deterministic absolute path."""
     import eurika.api.chat as chat_mod
@@ -110,7 +147,7 @@ def test_chat_send_full_path_query_returns_saved_file_abs_path(tmp_path: Path, m
 
     monkeypatch.setattr(intent_mod, "detect_intent", lambda _msg: ("save", "foo.py"))
     monkeypatch.setattr(intent_mod, "extract_code_block", lambda _text: "x = 1\n")
-    monkeypatch.setattr(chat_mod, "_build_chat_context", lambda _root: "ctx")
+    monkeypatch.setattr(chat_mod, "_build_chat_context", lambda _root, scope=None: "ctx")
     monkeypatch.setattr(
         architect_mod,
         "call_llm_with_prompt",
@@ -208,7 +245,7 @@ def test_chat_send_rewrites_model_identity_leak(tmp_path: Path, monkeypatch) -> 
     import eurika.reasoning.architect as architect_mod
 
     monkeypatch.setattr(intent_mod, "detect_intent", lambda _msg: (None, None))
-    monkeypatch.setattr(chat_mod, "_build_chat_context", lambda _root: "ctx")
+    monkeypatch.setattr(chat_mod, "_build_chat_context", lambda _root, scope=None: "ctx")
     monkeypatch.setattr(
         architect_mod,
         "call_llm_with_prompt",

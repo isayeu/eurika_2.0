@@ -272,6 +272,35 @@ def _block_line_count(block: List[ast.stmt]) -> int:
     last = block[-1]
     return (last.end_lineno or last.lineno or 0) - (first.lineno or 0) + 1
 
+
+def _names_bound_by_block_node(node: ast.AST) -> Set[str]:
+    """Names that a For/With/AsyncFor node binds (loop vars, with-vars)."""
+    result: Set[str] = set()
+    if isinstance(node, (ast.For, ast.AsyncFor)):
+        target = getattr(node, "target", None)
+        if isinstance(target, ast.Name):
+            result.add(target.id)
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            for elt in target.elts:
+                if isinstance(elt, ast.Name):
+                    result.add(elt.id)
+    elif isinstance(node, ast.With):
+        items = getattr(node, "items", None)
+        if items is not None:
+            for item in items:
+                var = getattr(item, "optional_vars", None)
+                if isinstance(var, ast.Name):
+                    result.add(var.id)
+                elif isinstance(var, (ast.Tuple, ast.List)):
+                    for elt in var.elts:
+                        if isinstance(elt, ast.Name):
+                            result.add(elt.id)
+        else:
+            var = getattr(node, "optional_vars", None)
+            if isinstance(var, ast.Name):
+                result.add(var.id)
+    return result
+
 def _names_used_in_statements(stmts: List[ast.stmt]) -> Set[str]:
     """Collect names loaded in statements."""
     loaded: Set[str] = set()
@@ -354,11 +383,13 @@ def suggest_extract_block(file_path: Path, function_name: str, *, min_lines: int
                     writes_to_params = assigned & parent_params
                     free_names = used - assigned
                     used_from_outer = free_names & parent_params
+                    block_bound = _names_bound_by_block_node(node) & free_names
+                    extra_count = len(used_from_outer | block_bound)
                     unresolved = free_names - parent_locals - module_bound - builtin_names
                     if (
                         not unresolved
                         and not writes_to_params
-                        and len(used_from_outer) <= max_extra_params
+                        and extra_count <= max_extra_params
                     ):
                         line_count = _block_line_count(body)
                         if line_count >= min_lines:
@@ -376,7 +407,11 @@ def suggest_extract_block(file_path: Path, function_name: str, *, min_lines: int
     used = _names_used_in_statements(body)
     assigned = _names_assigned_in_statements(body)
     used_from_outer = (used - assigned) & parent_params
-    extra_params = sorted(used_from_outer)
+    block_bound = _names_bound_by_block_node(block_node) & (used - assigned)
+    all_extra = used_from_outer | block_bound
+    if len(all_extra) > max_extra_params:
+        all_extra = used_from_outer
+    extra_params = sorted(all_extra)
     helper_name = f'_extracted_block_{block_node.lineno}'
     return (helper_name, block_node.lineno, line_count, extra_params)
 
@@ -417,6 +452,11 @@ def extract_block_to_helper(file_path: Path, parent_function_name: str, block_st
     if not candidates:
         return None
     block_node, body, _, _ = sorted(candidates, key=lambda item: (item[2], -item[3], getattr(item[0], 'lineno', 10 ** 9)))[0]
+    block_bound = _names_bound_by_block_node(block_node)
+    body_used = _names_used_in_statements(body) - _names_assigned_in_statements(body)
+    for name in sorted(block_bound & body_used):
+        if name not in extra:
+            extra.append(name)
 
     def replace_body_with_call(node: ast.AST) -> bool:
         if node is block_node:

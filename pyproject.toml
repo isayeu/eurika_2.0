@@ -12,12 +12,30 @@ requires-python = ">=3.10"
 [tool.eurika]
 verify_timeout = 300
 
+[tool.pytest.ini_options]
+markers = [
+    "edge_case: R3 edge-case matrix — empty/huge input, model/network error, memory write",
+]
+addopts = "-ra -q"
+
 [project.optional-dependencies]
-llm = ["openai>=1.0"]
+llm = ["openai>=1.0", "litellm>=1.0"]
 env = ["python-dotenv>=1.0"]
-test = ["pytest>=7.0"]
+test = ["pytest>=7.0", "pytest-cov>=4.0"]
 qt = ["PySide6>=6.6"]
 typecheck = ["mypy>=1.10"]
+# Refactor: libcst для round-trip AST (сохранение комментариев и форматирования)
+refactor = ["libcst>=1.0"]
+# CLI: rich для прогресс-баров, таблиц, подсветки вывода
+cli = ["rich>=13.0"]
+# Дополнительные утилиты (watchdog, ruff, structlog, ollama, pydantic)
+extras = ["pydantic>=2.0", "watchdog>=4.0", "ruff>=0.8", "structlog>=24.0", "ollama>=0.3"]
+# Всё вместе (для установки: pip install -e ".[test,qt,refactor,cli,extras]")
+full = [
+    "openai>=1.0", "litellm>=1.0", "python-dotenv>=1.0", "pytest>=7.0",
+    "PySide6>=6.6", "libcst>=1.0", "rich>=13.0",
+    "pydantic>=2.0", "watchdog>=4.0", "ruff>=0.8", "structlog>=24.0", "ollama>=0.3",
+]
 
 [project.scripts]
 eurika = "eurika_cli:main"

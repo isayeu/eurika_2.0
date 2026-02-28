@@ -17,6 +17,7 @@ def build_cli_args(
     dry_run: bool = False,
     no_llm: bool = False,
     no_clean_imports: bool = False,
+    team_mode: bool = False,
 ) -> list[str]:
     """Return argument vector for `python -m eurika_cli` execution."""
     if command not in SUPPORTED_COMMANDS:
@@ -45,5 +46,7 @@ def build_cli_args(
         args.append("--dry-run")
     if command in {"fix", "cycle"} and no_clean_imports:
         args.append("--no-clean-imports")
+    if command in {"fix", "cycle"} and team_mode:
+        args.append("--team-mode")
     return args
 

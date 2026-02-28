@@ -110,9 +110,10 @@ def run_doctor_cycle(
     window: int = 5,
     no_llm: bool = False,
     online: bool = False,
+    quiet: bool = False,
 ) -> dict[str, Any]:
     """Compatibility wrapper; delegated to orchestration.doctor."""
-    return _doctor_run_doctor_cycle(path, window=window, no_llm=no_llm, online=online)
+    return _doctor_run_doctor_cycle(path, window=window, no_llm=no_llm, online=online, quiet=quiet)
 
 
 def run_full_cycle(

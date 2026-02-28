@@ -37,6 +37,16 @@ def test_execute_ui_add_empty_tab_updates_file(tmp_path: Path) -> None:
     assert "qt_app/ui/main_window.py" in report.artifacts_changed
     updated = file_path.read_text(encoding="utf-8")
     assert 'self.tabs.addTab(QWidget(), "New Tab")' in updated
+    # Backup created before modification
+    backup_root = tmp_path / ".eurika_backups"
+    assert backup_root.exists()
+    run_dirs = sorted(backup_root.iterdir())
+    assert len(run_dirs) >= 1
+    backup_file = run_dirs[-1] / "qt_app" / "ui" / "main_window.py"
+    assert backup_file.exists()
+    backup_content = backup_file.read_text(encoding="utf-8")
+    assert "New Tab" not in backup_content
+    assert 'self.tabs.addTab(tab, "Chat")' in backup_content
 
 
 def test_execute_ui_add_empty_tab_with_terminal_name(tmp_path: Path) -> None:

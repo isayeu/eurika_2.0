@@ -1,8 +1,9 @@
 """
-Remove unused imports from Python file (AST-based).
+Remove unused imports from Python file (AST-based, or libcst when available).
 
 Used for Remove Dead Code / Killer-feature: detects imports that are never
-referenced in the file and removes them.
+referenced in the file and removes them. When libcst is installed, uses it
+for round-trip (preserves comments and formatting); otherwise stdlib ast.
 """
 
 from __future__ import annotations
@@ -12,10 +13,32 @@ from pathlib import Path
 from typing import Optional, Set
 
 
+def _remove_unused_imports_libcst(content: str, filename: str = "") -> Optional[str]:
+    """Use libcst codemod when available. Returns new content or None on error/no-op."""
+    try:
+        from libcst.codemod import CodemodContext, transform_module
+        from libcst.codemod.commands.remove_unused_imports import RemoveUnusedImportsCommand
+    except ImportError:
+        return None
+    try:
+        ctx = CodemodContext(filename=filename)
+        transformer = RemoveUnusedImportsCommand(ctx)
+        result = transform_module(transformer, content)
+        if not hasattr(result, "code"):
+            return None
+        new_content = result.code
+        if new_content == content:
+            return None
+        return new_content
+    except Exception:
+        return None
+
+
 def remove_unused_imports(file_path: Path) -> Optional[str]:
     """
     Remove all unused imports from a Python file.
 
+    When libcst is installed, uses it (preserves comments/formatting). Otherwise stdlib ast.
     An import is considered unused if the bound name is never referenced
     in a load context (read, not assigned). Handles:
     - `import foo`, `import foo as f`
@@ -29,6 +52,10 @@ def remove_unused_imports(file_path: Path) -> Optional[str]:
         content = file_path.read_text(encoding="utf-8")
     except OSError:
         return None
+
+    libcst_result = _remove_unused_imports_libcst(content, str(file_path))
+    if libcst_result is not None:
+        return libcst_result
 
     try:
         tree = ast.parse(content)

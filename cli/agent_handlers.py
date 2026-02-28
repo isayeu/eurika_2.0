@@ -212,7 +212,7 @@ def handle_agent_patch_apply(args: Any) -> int:
     return 0
 
 def _print_fix_summary(operations: list, modified: list, verify_success: bool | None, dry_run: bool=False) -> None:
-    """Print human-readable fix summary (Killer UX)."""
+    """Print human-readable fix summary (Killer UX). Always shows completion."""
     kind_counts: dict[str, int] = {}
     for op in operations:
         k = op.get('kind') or 'refactor_module'
@@ -220,7 +220,9 @@ def _print_fix_summary(operations: list, modified: list, verify_success: bool | 
     parts = [f'{n} {k}' for k, n in sorted(kind_counts.items())]
     ops_str = ', '.join(parts) if parts else '0'
     print('--- Eurika fix complete ---', file=sys.stderr)
-    if dry_run:
+    if not operations:
+        print('0 operations (nothing to apply)', file=sys.stderr)
+    elif dry_run:
         print(f'Would apply: {ops_str}', file=sys.stderr)
         targets = [op.get('target_file', '?') for op in operations if op.get('target_file')]
         if targets:
@@ -342,7 +344,7 @@ def _run_cycle_with_mode(args: Any, mode: str='fix') -> int:
             modified = out['modified']
             verify_success = out['verify_success']
             dry_run = out.get('dry_run', False)
-            if not quiet and (operations or dry_run):
+            if not quiet:
                 _print_fix_summary(operations, modified=modified, verify_success=verify_success, dry_run=dry_run)
                 _print_decision_summary(report, quiet=quiet)
             if dry_run:

@@ -10,6 +10,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+# Timeout for fix/cycle subprocess that invokes architect (LLM): 10 min
+CYCLE_LLM_TIMEOUT = 600
+
 
 def test_fix_quiet_exit_code_success(tmp_path: Path) -> None:
     """CI: eurika fix . --quiet returns 0 when verify passes."""
@@ -21,7 +24,7 @@ def test_fix_quiet_exit_code_success(tmp_path: Path) -> None:
     (proj / "tests" / "test_a.py").write_text("def test_ok(): assert True\n")
     (proj / "pyproject.toml").write_text("[tool.pytest.ini_options]\ntestpaths=['tests']\n")
     subprocess.run([sys.executable, "-m", "eurika_cli", "scan", str(proj)], cwd=ROOT, capture_output=True, timeout=30)
-    result = subprocess.run([sys.executable, "-m", "eurika_cli", "fix", "--quiet", str(proj)], cwd=ROOT, capture_output=True, text=True, timeout=60)
+    result = subprocess.run([sys.executable, "-m", "eurika_cli", "fix", "--quiet", str(proj)], cwd=ROOT, capture_output=True, text=True, timeout=CYCLE_LLM_TIMEOUT)
     assert result.returncode == 0, f"CI: fix --quiet should exit 0 on success. stderr: {result.stderr}"
 
 
@@ -57,7 +60,7 @@ def test_fix_dry_run_on_self() -> None:
     Product command eurika fix --dry-run: same flow as agent cycle --dry-run.
     Ensures the main entry point (fix) runs scan → arch-review → patch-plan without apply.
     """
-    result = subprocess.run([sys.executable, '-m', 'eurika_cli', 'fix', '--dry-run', str(ROOT)], cwd=ROOT, capture_output=True, text=True, timeout=60)
+    result = subprocess.run([sys.executable, '-m', 'eurika_cli', 'fix', '--dry-run', str(ROOT)], cwd=ROOT, capture_output=True, text=True, timeout=CYCLE_LLM_TIMEOUT)
     assert result.returncode == 0, f'stderr: {result.stderr}'
     assert (
         '"patch_plan"' in result.stdout
@@ -91,7 +94,7 @@ def test_cycle_dry_run_on_self() -> None:
     Cycle --dry-run: scan → arch-review → patch-plan, no apply.
     Verifies patch_plan JSON in stdout, no files modified.
     """
-    result = subprocess.run([sys.executable, '-m', 'eurika_cli', 'agent', 'cycle', '--dry-run', str(ROOT)], cwd=ROOT, capture_output=True, text=True, timeout=60)
+    result = subprocess.run([sys.executable, '-m', 'eurika_cli', 'agent', 'cycle', '--dry-run', str(ROOT)], cwd=ROOT, capture_output=True, text=True, timeout=CYCLE_LLM_TIMEOUT)
     assert result.returncode == 0, f'stderr: {result.stderr}'
     assert (
         '"patch_plan"' in result.stdout
@@ -160,7 +163,7 @@ def test_cycle_dry_run_on_minimal_project(tmp_path: Path) -> None:
     (proj / 'tests' / '__init__.py').write_text('', encoding='utf-8')
     (proj / 'tests' / 'test_a.py').write_text('def test_ok(): assert True\n', encoding='utf-8')
     (proj / 'pyproject.toml').write_text("[tool.pytest.ini_options]\ntestpaths = ['tests']\n", encoding='utf-8')
-    result = subprocess.run([sys.executable, '-m', 'eurika_cli', 'agent', 'cycle', '--dry-run', str(proj)], cwd=ROOT, capture_output=True, text=True, timeout=60)
+    result = subprocess.run([sys.executable, '-m', 'eurika_cli', 'agent', 'cycle', '--dry-run', str(proj)], cwd=ROOT, capture_output=True, text=True, timeout=CYCLE_LLM_TIMEOUT)
     assert result.returncode == 0, f'stderr: {result.stderr}'
 
 
@@ -248,6 +251,45 @@ def test_doctor_handles_network_unavailable_without_crash(tmp_path: Path) -> Non
     assert "llm_disabled" in (runtime.get("degraded_reasons") or [])
 
 
+def test_doctor_quiet_suppresses_progress_messages(tmp_path: Path) -> None:
+    """R2 Logging: doctor --quiet suppresses progress messages to stderr."""
+    _minimal_self_map(tmp_path / "self_map.json", ["a.py"], {})
+    result = subprocess.run(
+        [sys.executable, "-m", "eurika_cli", "doctor", "--no-llm", "--quiet", str(tmp_path)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0
+    stderr = result.stderr or ""
+    assert "loading summary" not in stderr
+    assert "step 1/4" not in stderr
+    assert "step 3/4" not in stderr
+    assert "eurika_doctor_report.json written" not in stderr
+    assert "ARCHITECTURE SUMMARY" in result.stdout or "architect" in result.stdout.lower()
+
+
+def test_doctor_llm_unavailable_falls_back_to_template(tmp_path: Path) -> None:
+    """R2 Fallback: when LLM is requested but all paths fail, doctor returns template with degraded_mode."""
+    from unittest.mock import patch
+
+    from cli.orchestration.doctor import run_doctor_cycle
+
+    _minimal_self_map(tmp_path / "self_map.json", ["a.py"], {})
+    with patch(
+        "eurika.reasoning.architect._llm_interpret",
+        return_value=(None, "ollama CLI failed; ollama HTTP failed"),
+    ):
+        out = run_doctor_cycle(tmp_path, window=3, no_llm=False, online=False)
+    assert "error" not in out
+    assert "architect_text" in out and len(out["architect_text"]) > 0
+    runtime = out.get("runtime") or {}
+    assert runtime.get("degraded_mode") is True
+    reasons = runtime.get("degraded_reasons") or []
+    assert any("llm_unavailable" in r for r in reasons)
+
+
 def test_doctor_suggested_policy_block(tmp_path: Path) -> None:
     """Doctor shows Suggested policy block when fix report has low apply_rate (ROADMAP 2.9.4)."""
     (tmp_path / "eurika_fix_report.json").write_text(
@@ -263,13 +305,13 @@ def test_doctor_suggested_policy_block(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     result = subprocess.run(
-        [sys.executable, "-m", "eurika_cli", "doctor", str(tmp_path)],
+        [sys.executable, "-m", "eurika_cli", "doctor", "--no-llm", str(tmp_path)],
         cwd=ROOT,
         capture_output=True,
         text=True,
         timeout=30,
     )
-    assert "Suggested policy" in result.stdout
+    assert "Suggested policy" in result.stdout, f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
     assert "EURIKA_AGENT_MAX_OPS" in result.stdout or "export" in result.stdout
 
 
@@ -343,7 +385,7 @@ def test_cycle_full_apply_then_rollback(tmp_path: Path) -> None:
     (proj / 'tests' / '__init__.py').write_text('', encoding='utf-8')
     (proj / 'tests' / 'test_center.py').write_text('from center import value\ndef test_value(): assert value() == 42\n', encoding='utf-8')
     (proj / 'pyproject.toml').write_text("[tool.pytest.ini_options]\ntestpaths = ['tests']\n", encoding='utf-8')
-    result = subprocess.run([sys.executable, '-m', 'eurika_cli', 'agent', 'cycle', '--quiet', str(proj)], cwd=ROOT, capture_output=True, text=True, timeout=90)
+    result = subprocess.run([sys.executable, '-m', 'eurika_cli', 'agent', 'cycle', '--quiet', str(proj)], cwd=ROOT, capture_output=True, text=True, timeout=CYCLE_LLM_TIMEOUT)
     assert result.returncode == 0, f'stderr: {result.stderr}\nstdout: {result.stdout[:1000]}'
     data = _parse_final_json(result.stdout)
     if data and 'rescan_diff' in data:
@@ -377,7 +419,7 @@ def test_fix_cycle_includes_clean_imports_ops(tmp_path: Path) -> None:
 
     result = subprocess.run(
         [sys.executable, "-m", "eurika_cli", "fix", "--dry-run", str(proj)],
-        cwd=ROOT, capture_output=True, text=True, timeout=60,
+        cwd=ROOT, capture_output=True, text=True, timeout=CYCLE_LLM_TIMEOUT,
     )
     assert result.returncode == 0, f"stderr: {result.stderr}\nstdout: {result.stdout[:800]}"
     data = _parse_final_json(result.stdout)
@@ -399,8 +441,8 @@ def test_fix_no_clean_imports_excludes_clean_ops(tmp_path: Path) -> None:
     (proj / "pyproject.toml").write_text("[tool.pytest.ini_options]\ntestpaths=['tests']\n", encoding="utf-8")
     subprocess.run([sys.executable, "-m", "eurika_cli", "scan", str(proj)], cwd=ROOT, capture_output=True, timeout=30)
 
-    r1 = subprocess.run([sys.executable, "-m", "eurika_cli", "fix", "--dry-run", str(proj)], cwd=ROOT, capture_output=True, text=True, timeout=60)
-    r2 = subprocess.run([sys.executable, "-m", "eurika_cli", "fix", "--dry-run", "--no-clean-imports", str(proj)], cwd=ROOT, capture_output=True, text=True, timeout=60)
+    r1 = subprocess.run([sys.executable, "-m", "eurika_cli", "fix", "--dry-run", str(proj)], cwd=ROOT, capture_output=True, text=True, timeout=CYCLE_LLM_TIMEOUT)
+    r2 = subprocess.run([sys.executable, "-m", "eurika_cli", "fix", "--dry-run", "--no-clean-imports", str(proj)], cwd=ROOT, capture_output=True, text=True, timeout=CYCLE_LLM_TIMEOUT)
     assert r1.returncode == 0 and r2.returncode == 0
     d1 = _parse_final_json(r1.stdout)
     d2 = _parse_final_json(r2.stdout)
@@ -438,8 +480,8 @@ def deep_foo(x):
     (proj / "pyproject.toml").write_text("[tool.pytest.ini_options]\ntestpaths=['tests']\n", encoding="utf-8")
     subprocess.run([sys.executable, "-m", "eurika_cli", "scan", str(proj)], cwd=ROOT, capture_output=True, timeout=30)
 
-    r1 = subprocess.run([sys.executable, "-m", "eurika_cli", "fix", "--dry-run", str(proj)], cwd=ROOT, capture_output=True, text=True, timeout=60)
-    r2 = subprocess.run([sys.executable, "-m", "eurika_cli", "fix", "--dry-run", "--no-code-smells", str(proj)], cwd=ROOT, capture_output=True, text=True, timeout=60)
+    r1 = subprocess.run([sys.executable, "-m", "eurika_cli", "fix", "--dry-run", str(proj)], cwd=ROOT, capture_output=True, text=True, timeout=CYCLE_LLM_TIMEOUT)
+    r2 = subprocess.run([sys.executable, "-m", "eurika_cli", "fix", "--dry-run", "--no-code-smells", str(proj)], cwd=ROOT, capture_output=True, text=True, timeout=CYCLE_LLM_TIMEOUT)
     assert r1.returncode == 0 and r2.returncode == 0
     d1 = _parse_final_json(r1.stdout)
     d2 = _parse_final_json(r2.stdout)
@@ -674,7 +716,7 @@ def test_run_doctor_cycle_wrapper_delegates_to_orchestration_module() -> None:
     with patch("cli.orchestrator._doctor_run_doctor_cycle", return_value=expected) as mock_doctor:
         out = run_doctor_cycle(ROOT, window=7, no_llm=True)
     assert out == expected
-    mock_doctor.assert_called_once_with(ROOT, window=7, no_llm=True, online=False)
+    mock_doctor.assert_called_once_with(ROOT, window=7, no_llm=True, online=False, quiet=False)
 
 
 def test_run_full_cycle_wrapper_delegates_to_orchestration_module() -> None:

@@ -16,7 +16,7 @@ from eurika.reasoning.planner_types import ArchitecturePlan
 from architecture_planner_build_plan import build_plan
 from architecture_planner_build_action_plan import build_action_plan
 if TYPE_CHECKING:
-    from eurika.analysis.graph import ProjectGraph
+    pass
 from architecture_planner_build_patch_plan import build_patch_plan
 
 # TODO: Refactor architecture_planner.py (god_module -> split_module)

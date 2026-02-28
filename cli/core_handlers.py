@@ -39,6 +39,11 @@ def _err(msg: str) -> None:
     """Print unified error message to stderr."""
     print(f'eurika: {msg}', file=sys.stderr)
 
+
+def _clog():
+    from cli.orchestration.logging import get_logger
+    return get_logger("core_handlers")
+
 def handle_help(parser: Any) -> int:
     """Print high-level command overview and detailed argparse help (ROADMAP этап 5: 4 product modes)."""
     print('Eurika — architecture analysis and refactoring assistant (v1.2.6)')
@@ -91,11 +96,44 @@ def handle_self_check(args: Any) -> int:
     fmt = getattr(args, 'format', 'text')
     color = getattr(args, 'color', None)
     code = run_scan(path, format=fmt, color=color)
+    # Layer discipline (R1, Architecture.md §0)
+    lf_report = _format_layer_discipline_block(path)
+    if lf_report:
+        print(lf_report, file=sys.stderr)
     # File size limits (ROADMAP 3.1-arch.3)
     fs_report = _format_file_size_block(path)
     if fs_report:
         print(fs_report, file=sys.stderr)
     return code
+
+
+def _format_layer_discipline_block(path: Path) -> str:
+    """Return layer discipline report for self-check (R1, Architecture.md §0.6)."""
+    from eurika.checks.dependency_firewall import (
+        collect_dependency_violations,
+        collect_layer_violations,
+    )
+
+    root = path
+    forbidden = collect_dependency_violations(root)
+    layer_viol = collect_layer_violations(root)
+    if not forbidden and not layer_viol:
+        return "\nLAYER DISCIPLINE: OK (0 forbidden, 0 layer violations)\n"
+    lines = ["", "LAYER DISCIPLINE (R1, Architecture.md §0.6)", ""]
+    if forbidden:
+        lines.append("Forbidden imports:")
+        for v in forbidden[:10]:
+            lines.append(f"  - {v.path} -> {v.forbidden_module}")
+        if len(forbidden) > 10:
+            lines.append(f"  ... +{len(forbidden) - 10} more")
+        lines.append("")
+    if layer_viol:
+        lines.append("Layer violations (upward):")
+        for v in layer_viol[:10]:
+            lines.append(f"  - {v.path} -> {v.imported_module} (L{v.source_layer}->L{v.target_layer})")
+        if len(layer_viol) > 10:
+            lines.append(f"  ... +{len(layer_viol) - 10} more")
+    return "\n".join(lines)
 
 
 def _format_file_size_block(path: Path) -> str:
@@ -323,15 +361,32 @@ def handle_doctor(args: Any) -> int:
     from eurika.smells.rules import summary_to_text
     for i, path in enumerate(paths):
         if len(paths) > 1:
-            print(f"\n--- Project {i + 1}/{len(paths)}: {path} ---\n", file=sys.stderr)
+            _clog().info(f"\n--- Project {i + 1}/{len(paths)}: {path} ---\n")
         if _check_path(path) != 0:
             exit_code = 1
             continue
-        data = run_cycle(path, mode='doctor', runtime_mode=getattr(args, 'runtime_mode', 'assist'), window=getattr(args, 'window', 5), no_llm=getattr(args, 'no_llm', False), online=getattr(args, 'online', False))
+        no_llm = getattr(args, 'no_llm', False)
+        _clog().info('eurika: doctor — step 1/4: loading summary, history, architect...')
+        if not no_llm:
+            _clog().info('eurika: doctor — step 2/4: architect will use LLM (Ollama/OpenAI) — may take 30s–3min')
+        use_rich = False
+        try:
+            from rich.console import Console
+            _rich_console = Console(file=sys.stderr)
+            use_rich = sys.stderr.isatty()
+        except ImportError:
+            pass
+        quiet_doc = getattr(args, 'quiet', False)
+        if use_rich and not no_llm:
+            with _rich_console.status('[bold green]Loading architect...', spinner='dots'):
+                data = run_cycle(path, mode='doctor', runtime_mode=getattr(args, 'runtime_mode', 'assist'), window=getattr(args, 'window', 5), no_llm=no_llm, online=getattr(args, 'online', False), quiet=quiet_doc)
+        else:
+            data = run_cycle(path, mode='doctor', runtime_mode=getattr(args, 'runtime_mode', 'assist'), window=getattr(args, 'window', 5), no_llm=no_llm, online=getattr(args, 'online', False), quiet=quiet_doc)
         if data.get('error'):
             _err(data['error'])
             exit_code = 1
             continue
+        _clog().info('eurika: doctor — step 4/4: rendering report')
         summary = data['summary']
         history = data['history']
         patch_plan = data['patch_plan']
@@ -399,7 +454,7 @@ def handle_doctor(args: Any) -> int:
         try:
             report_path = path / 'eurika_doctor_report.json'
             report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding='utf-8')
-            print(f'\neurika: eurika_doctor_report.json written to {report_path}', file=sys.stderr)
+            _clog().info(f'eurika: eurika_doctor_report.json written to {report_path}')
         except Exception:
             pass
     return exit_code

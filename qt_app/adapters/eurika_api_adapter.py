@@ -82,8 +82,8 @@ class EurikaApiAdapter:
         )
         old_values = {key: os.environ.get(key) for key in keys}
         try:
-            os.environ["EURIKA_LLM_TIMEOUT_SEC"] = str(max(1, timeout_sec))
-            os.environ["EURIKA_OLLAMA_CLI_TIMEOUT_SEC"] = str(max(5, timeout_sec))
+            os.environ["EURIKA_LLM_TIMEOUT_SEC"] = str(timeout_sec if timeout_sec > 0 else 3600)
+            os.environ["EURIKA_OLLAMA_CLI_TIMEOUT_SEC"] = str(timeout_sec if timeout_sec > 0 else 0)
             if provider == "openai":
                 if openai_model.strip():
                     os.environ["OPENAI_MODEL"] = openai_model.strip()

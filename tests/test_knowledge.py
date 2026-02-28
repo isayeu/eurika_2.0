@@ -148,6 +148,24 @@ def test_composite_knowledge_provider_merges_fragments() -> None:
     assert '[a] From A' in titles
     assert '[b] From B' in titles
 
+def test_composite_knowledge_provider_skips_failing_provider() -> None:
+    """R2 Fallback: when one provider raises, Composite skips it and uses others."""
+    class StubOk(KnowledgeProvider):
+        def query(self, topic: str):
+            return StructuredKnowledge(topic=topic, source='ok', fragments=[{'title': 'OK', 'content': 'ok'}], meta={})
+
+    class StubRaises(KnowledgeProvider):
+        def query(self, topic: str):
+            raise RuntimeError("network down")
+
+    comp = CompositeKnowledgeProvider([StubOk(), StubRaises(), StubOk()])
+    k = comp.query('x')
+    assert k.source == 'composite'
+    assert len(k.fragments) == 2  # two StubOk, StubRaises skipped
+    titles = [f['title'] for f in k.fragments]
+    assert titles == ['[ok] OK', '[ok] OK']
+
+
 def test_official_docs_provider_topic_not_in_map() -> None:
     """OfficialDocsProvider with empty map returns empty for any topic."""
     p = OfficialDocsProvider(topic_urls={})

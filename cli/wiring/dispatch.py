@@ -10,6 +10,12 @@ from cli import handlers
 
 def dispatch_command(parser: argparse.ArgumentParser, args: Any) -> int:
     """Dispatch parsed CLI args to the matching command handler."""
+    from cli.orchestration.logging import configure_cli_logging
+
+    quiet = getattr(args, "quiet", False)
+    verbose = getattr(args, "verbose", False)
+    configure_cli_logging(quiet=quiet, verbose=verbose)
+
     if args.command is None:
         return handlers.handle_help(parser)
 

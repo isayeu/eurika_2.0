@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .contracts import FixReport, OperationRecord, PatchPlan, SafetyGatesPayload, TelemetryPayload
+from .cycle_state import with_cycle_state
 from .logging import get_logger
 
 _LOG = get_logger("orchestration.apply_stage")
@@ -54,15 +55,18 @@ def build_fix_dry_run_result(
         )
     except Exception:
         pass
-    return {
-        "return_code": 0,
-        "report": report,
-        "operations": operations,
-        "modified": [],
-        "verify_success": None,
-        "agent_result": result,
-        "dry_run": True,
-    }
+    return with_cycle_state(
+        {
+            "return_code": 0,
+            "report": report,
+            "operations": operations,
+            "modified": [],
+            "verify_success": None,
+            "agent_result": result,
+            "dry_run": True,
+        },
+        is_error=False,
+    )
 
 
 def prepare_rescan_before(path: Path, backup_dir_name: str) -> Path:
@@ -421,12 +425,15 @@ def build_fix_cycle_result(
 ) -> dict[str, Any]:
     """Build final run_fix_cycle result payload."""
     return_code = 1 if report.get("errors") or not report["verify"].get("success") else 0
-    return {
-        "return_code": return_code,
-        "report": report,
-        "operations": operations,
-        "modified": modified,
-        "verify_success": verify_success,
-        "agent_result": result,
-        "dry_run": False,
-    }
+    return with_cycle_state(
+        {
+            "return_code": return_code,
+            "report": report,
+            "operations": operations,
+            "modified": modified,
+            "verify_success": verify_success,
+            "agent_result": result,
+            "dry_run": False,
+        },
+        is_error=(return_code != 0),
+    )
