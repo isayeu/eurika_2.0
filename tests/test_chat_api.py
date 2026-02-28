@@ -791,6 +791,23 @@ def test_append_chat_history_records_timezone_aware_utc_timestamp(tmp_path: Path
     assert "T" in ts
 
 
+def test_build_chat_context_with_scope_includes_focus_and_prioritize(tmp_path: Path) -> None:
+    """R5 2.3: @-mentions scope enriches context with focus, prioritize hint, and scoped risks."""
+    from eurika.api.chat import _build_chat_context
+
+    (tmp_path / "self_map.json").write_text(
+        '{"modules":[{"path":"a.py","lines":10},{"path":"b.py","lines":10}],'
+        '"dependencies":{"a.py":["b.py"]},"summary":{"files":2,"total_lines":20}}',
+        encoding="utf-8",
+    )
+    scope = {"modules": ["a.py"], "smells": ["god_module"]}
+    ctx = _build_chat_context(tmp_path, scope=scope)
+    assert "Focus module(s): a.py" in ctx
+    assert "Focus smell(s): god_module" in ctx
+    assert "Prioritize answers regarding the focused scope" in ctx
+    assert "Project:" in ctx or "Scoped module details" in ctx
+
+
 def test_append_chat_history_truncates_content_and_context(tmp_path: Path) -> None:
     """append_chat_history should cap content and context snapshot lengths."""
     from eurika.api.chat import append_chat_history

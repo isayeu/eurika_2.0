@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## v3.0.14 — R5 completion: 2.2 Recommendation engine + 2.3 @-mentions (2026-02-27)
+
+### R5 2.2 Recommendation engine
+- **Learning stats в приоритизации:** `priority_from_graph(learning_stats=...)` учитывает verify_success/verify_fail по smell|action|target.
+- `_build_patch_plan_inputs` передаёт merged learning stats в `priority_from_graph`.
+- Бонус к приоритету для модулей с высоким success rate.
+
+### R5 2.3 Контекстные подсказки (@-mentions)
+- **@-mentions в chat:** `@module` и `@smell` сужают контекст; LLM получает Focus module(s)/smell(s).
+- **Scoped module details:** fan-in, fan-out для упомянутых модулей из графа.
+- **Фильтрация risks:** по scope modules и scope smells (только релевантные risks в промпте).
+- **Prioritize hint:** «Prioritize answers regarding the focused scope when relevant.»
+
+### Tests
+- `test_priority_from_graph_with_learning_stats`, `test_build_chat_context_with_scope_includes_focus_and_prioritize`.
+
+---
+
 ## v3.0.13 — R5 Strategic Horizon (2026-02-27)
 
 ### R5 Self-guard / Meta-architecture

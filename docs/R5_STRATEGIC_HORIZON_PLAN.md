@@ -32,7 +32,7 @@
 |-----|----------|-----------|
 | 2.1 | Risk prediction | Оценка «вероятность регрессии» для модуля на основе history + smells ✓ |
 | 2.2 | Recommendation engine | Учёт learning stats, past success rate в приоритизации операций ✓ |
-| 2.3 | Контекстные подсказки | @-mentions в chat → фокус на конкретных модулях/smells |
+| 2.3 | Контекстные подсказки | @-mentions в chat → фокус на конкретных модулях/smells ✓ |
 
 ---
 
@@ -86,3 +86,4 @@ API: `GET /api/smells_with_plugins` — объединённый список sm
 - [x] Risk prediction хотя бы для top-N модулей (`get_risk_prediction`, `/api/risk_prediction`)
 - [x] SELF-GUARD в Qt GUI (dashboard блок)
 - [x] Plugin interface (протокол + пример): `AnalyzerPlugin`, `.eurika/plugins.toml`, `pyproject [tool.eurika.plugins]`, `tests/fixtures/eurika_plugin_example.py`
+- [x] R5 2.3: @-mentions в chat — scope-контекст (Focus module/smell, Scoped module details, фильтрация risks, Prioritize hint)

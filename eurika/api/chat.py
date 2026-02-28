@@ -35,9 +35,10 @@ def _save_user_context(root: Path, data: Dict[str, str]) -> None:
 def _build_chat_context(root: Path, scope: Optional[Dict[str, Any]] = None) -> str:
     """Build context snippet from summary + recent_events + user context for chat prompt.
 
-    ROADMAP 3.6.5: when scope has modules/smells from @-mentions, enrich context.
+    ROADMAP 3.6.5, R5 2.3: when scope has modules/smells from @-mentions, enrich context
+    with scoped module details and filtered risks. Prioritize answers regarding the scope.
     """
-    from eurika.api import get_recent_events, get_summary
+    from eurika.api import get_graph, get_recent_events, get_summary
     lines: List[str] = []
     if scope:
         scope_parts: List[str] = []
@@ -46,7 +47,25 @@ def _build_chat_context(root: Path, scope: Optional[Dict[str, Any]] = None) -> s
         if scope.get('smells'):
             scope_parts.append(f"Focus smell(s): {', '.join(scope['smells'])}")
         if scope_parts:
-            lines.append('[Scope: ' + '; '.join(scope_parts) + ']')
+            lines.append('[Scope: ' + '; '.join(scope_parts) + ']. Prioritize answers regarding the focused scope when relevant.')
+        # R5 2.3: add scoped module details (fan-in, fan-out) from graph
+        if scope.get('modules'):
+            try:
+                graph_data = get_graph(root)
+                if graph_data and not graph_data.get('error'):
+                    nodes = graph_data.get('nodes') or []
+                    scope_mods = scope['modules']
+                    details: List[str] = []
+                    for node in nodes:
+                        nid = node.get('id', '')
+                        if any(m in nid or nid.endswith(m) for m in scope_mods):
+                            fi = node.get('fan_in', 0)
+                            fo = node.get('fan_out', 0)
+                            details.append(f"{nid} (fan-in={fi}, fan-out={fo})")
+                    if details:
+                        lines.append('Scoped module details: ' + '; '.join(details[:5]))
+            except Exception:
+                pass
     try:
         uc = _load_user_context(root)
         if uc:
@@ -65,11 +84,13 @@ def _build_chat_context(root: Path, scope: Optional[Dict[str, Any]] = None) -> s
             risks = summary.get('risks') or []
             if risks:
                 scope_modules = set(scope.get('modules') or []) if scope else set()
+                scope_smells = set((s or '').lower() for s in (scope.get('smells') or [])) if scope else set()
+                filtered = risks
                 if scope_modules:
-                    filtered = [r for r in risks if any(m in str(r) for m in scope_modules)]
-                    risks_to_show = filtered[:5] if filtered else risks[:3]
-                else:
-                    risks_to_show = risks[:3]
+                    filtered = [r for r in filtered if any(m in str(r) for m in scope_modules)]
+                if scope_smells:
+                    filtered = [r for r in filtered if any(s in str(r).lower() for s in scope_smells)]
+                risks_to_show = filtered[:5] if filtered else (risks[:3] if not (scope_modules or scope_smells) else filtered[:5])
                 if risks_to_show:
                     lines.append(f"Risks: {'; '.join((str(r) for r in risks_to_show))}.")
     except Exception:
