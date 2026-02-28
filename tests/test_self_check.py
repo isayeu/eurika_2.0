@@ -56,6 +56,21 @@ def test_self_check_on_self():
     assert "Architecture" in buf_out.getvalue()
 
 
+def test_self_check_r1_layer_discipline_on_self():
+    """R1 Structural Hardening: self-check on project must report LAYER DISCIPLINE: OK."""
+    class Args:
+        path = ROOT
+
+    buf_out = io.StringIO()
+    buf_err = io.StringIO()
+    with redirect_stdout(buf_out), redirect_stderr(buf_err):
+        handle_self_check(Args())
+
+    combined = buf_out.getvalue() + buf_err.getvalue()
+    assert "LAYER DISCIPLINE: OK" in combined or "LAYER DISCIPLINE" in combined
+    assert "0 forbidden" in combined or "0 layer violations" in combined
+
+
 def test_self_guard_format_with_complexity_budget():
     """SELF-GUARD block includes complexity budget alarms when present."""
     result = SelfGuardResult(

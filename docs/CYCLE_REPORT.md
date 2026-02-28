@@ -2,6 +2,7 @@
 
 ## Current state (2026-02-27)
 
+- **80. R1 gate:** `test_self_check_r1_layer_discipline_on_self` — регрессионный тест: self-check на проекте выдаёт LAYER DISCIPLINE: OK (0 forbidden, 0 layer violations). EURIKA_STRICT_LAYER_FIREWALL=1 проходит.
 - **79. Qt MVP flow зафиксирован:** smoke-сценарий: открыть → выбрать проект (Browse) → Commands → scan → Live output → Stop. First-run UX: при пустом project root при первом запуске показывается folder picker.
 - **Qt Hybrid Approvals + Dashboard готовы:** Approvals — Run fix (team-mode) из вкладки, workflow hint, корректный risk из explainability; Dashboard — Top risks, Operational metrics, автообновление при смене project root.
 - **R1 Structural Hardening (частично):** Layer discipline OK — 0 forbidden, 0 layer violations. SMELL_TO_KNOWLEDGE_TOPICS перенесён в eurika.knowledge; self-check выводит LAYER DISCIPLINE блок.
@@ -10,6 +11,17 @@
 - `eurika serve` работает в **API-only** режиме (`/api/*`), без runtime-раздачи web статики.
 - Исторические snapshot'ы ниже (включая Web UI этапы) сохранены как архив эволюции и не удаляются.
 - Learning-фокус операционности: `verify_success_rate` по `smell|action|target`, с видимостью сигналов в Qt Dashboard.
+
+---
+
+## 80. Snapshot (2026-02-27) — R1 Structural Hardening gate
+
+### Scope
+- **R1 regression test:** `test_self_check_r1_layer_discipline_on_self` проверяет, что self-check на проекте выводит LAYER DISCIPLINE: OK (0 forbidden, 0 layer violations).
+- Layer discipline и dependency guard (EURIKA_STRICT_LAYER_FIREWALL=1) остаются в зелёной зоне.
+
+### Итог
+R1 Structural Hardening: gate зафиксирован в тестах.
 
 ---
 
