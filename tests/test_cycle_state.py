@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from cli.orchestration.cycle_state import (
     CycleState,
@@ -124,6 +129,18 @@ def test_doctor_cycle_includes_error_state_on_summary_error(tmp_path: Path) -> N
         assert out["state"] == "error"
         assert is_valid_state_history(out["state_history"]) is True
         assert out["state_history"] == ["thinking", "error"]
+
+
+def test_doctor_cycle_r2_state_model_on_self() -> None:
+    """R2 Runtime Robustness: doctor on project returns valid state."""
+    from cli.orchestration import run_doctor_cycle
+    from cli.orchestration.cycle_state import is_valid_state_history
+
+    out = run_doctor_cycle(ROOT, no_llm=True)
+    assert "state" in out
+    assert "state_history" in out
+    assert out["state"] in ("done", "error")
+    assert is_valid_state_history(out["state_history"]) is True
 
 
 def test_fix_apply_approved_missing_plan_returns_error_state(tmp_path: Path) -> None:

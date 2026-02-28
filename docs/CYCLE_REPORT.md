@@ -2,6 +2,9 @@
 
 ## Current state (2026-02-27)
 
+- **83. R4 gate:** `test_r4_dependency_firewall_passes` — EURIKA_STRICT_LAYER_FIREWALL=1 pytest test_dependency_guard + test_dependency_firewall. DEPENDENCY_FIREWALL, API_BOUNDARIES.
+- **82. R3 gate:** `test_r3_edge_case_matrix_passes` — pytest -m edge_case должен проходить. EDGE_CASE_MATRIX.
+- **81. R2 gate:** `test_doctor_cycle_r2_state_model_on_self` — doctor на проекте возвращает state ∈ {done, error}, валидный state_history. FALLBACK_AUDIT, LOGGING_R2.
 - **80. R1 gate:** `test_self_check_r1_layer_discipline_on_self` — регрессионный тест: self-check на проекте выдаёт LAYER DISCIPLINE: OK (0 forbidden, 0 layer violations). EURIKA_STRICT_LAYER_FIREWALL=1 проходит.
 - **79. Qt MVP flow зафиксирован:** smoke-сценарий: открыть → выбрать проект (Browse) → Commands → scan → Live output → Stop. First-run UX: при пустом project root при первом запуске показывается folder picker.
 - **Qt Hybrid Approvals + Dashboard готовы:** Approvals — Run fix (team-mode) из вкладки, workflow hint, корректный risk из explainability; Dashboard — Top risks, Operational metrics, автообновление при смене project root.
@@ -11,6 +14,39 @@
 - `eurika serve` работает в **API-only** режиме (`/api/*`), без runtime-раздачи web статики.
 - Исторические snapshot'ы ниже (включая Web UI этапы) сохранены как архив эволюции и не удаляются.
 - Learning-фокус операционности: `verify_success_rate` по `smell|action|target`, с видимостью сигналов в Qt Dashboard.
+
+---
+
+## 83. Snapshot (2026-02-27) — R4 Modular Platform gate
+
+### Scope
+- **R4 gate-тест:** `test_r4_dependency_firewall_passes` — запускает dependency guard (layer + subsystem bypass) в strict mode, assert exit 0.
+- SubsystemBypassRule, layer firewall — зафиксированы. release_check.sh, API_BOUNDARIES, DEPENDENCY_FIREWALL.
+
+### Итог
+R4 Modular Platform: dependency firewall как gate.
+
+---
+
+## 82. Snapshot (2026-02-27) — R3 Quality Gate
+
+### Scope
+- **R3 gate-тест:** `test_r3_edge_case_matrix_passes` — запускает pytest -m edge_case в subprocess, assert exit 0.
+- Edge-case matrix (EDGE_CASE_MATRIX): пустой/огромный вход, model error, memory, cycle state.
+
+### Итог
+R3 Quality Gate: edge-case block зафиксирован как gate.
+
+---
+
+## 81. Snapshot (2026-02-27) — R2 Runtime Robustness gate
+
+### Scope
+- **R2 gate-тест:** `test_doctor_cycle_r2_state_model_on_self` — doctor на проекте возвращает state и state_history. State ∈ {done, error}, history valid (thinking → done|error).
+- State model (cycle_state.py), fallback (FALLBACK_AUDIT), logging (LOGGING_R2) — зафиксированы.
+
+### Итог
+R2 Runtime Robustness: gate зафиксирован.
 
 ---
 
