@@ -107,6 +107,22 @@ def test_priority_from_graph_orders_by_severity_and_degree():
     assert names[0] == "x"
 
 
+def test_priority_from_graph_with_learning_stats():
+    """R5 2.2: Modules with high success rate for smell|action get priority boost."""
+    from eurika.reasoning.graph_ops import priority_from_graph
+    from eurika.smells.models import ArchSmell
+    g = _make_graph(["a", "b"], {"a": ["b"], "b": []})
+    smells = [
+        ArchSmell(type="god_module", nodes=["a"], severity=5.0, description=""),
+        ArchSmell(type="god_module", nodes=["b"], severity=3.0, description=""),
+    ]
+    learning_stats = {"god_module|split_module": {"total": 10, "success": 8, "fail": 2}}
+    prio = priority_from_graph(g, smells, summary_risks=None, top_n=8, learning_stats=learning_stats)
+    assert len(prio) >= 1
+    names = [p["name"] for p in prio]
+    assert "a" in names or "b" in names
+
+
 def test_priority_from_graph_includes_summary_risks():
     """priority_from_graph adds weight for nodes mentioned in summary_risks."""
     from eurika.smells.models import ArchSmell

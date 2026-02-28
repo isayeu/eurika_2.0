@@ -85,15 +85,17 @@ def targets_from_graph(
     smells: List[Any],
     summary_risks: Optional[List[str]] = None,
     top_n: int = 8,
+    learning_stats: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Build explicit targets (target_file, kind) from graph structure (ROADMAP 3.1.4).
+    Build explicit targets (target_file, kind) from graph structure (ROADMAP 3.1.4, R5 2.2).
 
     Uses graph.nodes and graph.edges: only nodes present in the graph,
-    kind derived from smells, ordering from priority_from_graph.
-    Planner uses this to initiate operations from graph structure.
+    kind derived from smells, ordering from priority_from_graph (with learning_stats).
     """
-    priorities = priority_from_graph(graph, smells, summary_risks, top_n)
+    priorities = priority_from_graph(
+        graph, smells, summary_risks, top_n, learning_stats=learning_stats
+    )
     smells_by_node: Dict[str, List[str]] = {}
     for s in smells:
         for node in s.nodes:
@@ -152,25 +154,49 @@ def _degree_bonus(fi: int, fo: int, smell_types: List[str]) -> float:
     return bonus
 
 
+def _add_learning_bonus(
+    scores: Dict[str, float],
+    reasons: Dict[str, List[str]],
+    learning_stats: Optional[Dict[str, Dict[str, Any]]],
+) -> None:
+    """R5 2.2: Boost modules where smell|action has high past success rate."""
+    if not learning_stats:
+        return
+    for node in list(scores.keys()):
+        smell_types = reasons.get(node, [])
+        if not smell_types:
+            continue
+        kind = refactor_kind_for_smells(smell_types)
+        for st in smell_types:
+            key = f"{st}|{kind}"
+            d = learning_stats.get(key, {})
+            total = d.get("total", 0) or 0
+            if total < 1:
+                continue
+            success = d.get("success", 0) or 0
+            rate = success / total
+            scores[node] = scores.get(node, 0.0) + rate * 2.0
+            break
+
+
 def priority_from_graph(
     graph: ProjectGraph,
     smells: List[Any],
     summary_risks: Optional[List[str]] = None,
     top_n: int = 8,
+    learning_stats: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Return ordered list of modules for refactoring (ROADMAP 3.1.1).
+    Return ordered list of modules for refactoring (ROADMAP 3.1.1, R5 2.2).
 
-    Combines severity (from smells), graph structure (degree, fan-in, fan-out),
-    and summary risks. Higher degree modules that appear in smells are prioritized
-    (more impactful to fix). Hub/bottleneck get extra weight.
-
-    Returns:
-        List of {"name": node_path, "reasons": [smell_type, ...]} sorted by priority.
+    Combines severity, graph structure (degree, fan-in, fan-out), summary risks,
+    and learning stats (past success rate for smell|action). Higher success =
+    higher priority (fixes that tend to work).
     """
     fan = graph.fan_in_out()
     scores, reasons = _init_scores_from_smells(smells)
     _add_summary_risk_bonus(scores, reasons, summary_risks)
+    _add_learning_bonus(scores, reasons, learning_stats)
 
     for node in list(scores.keys()):
         fi, fo = fan.get(node, (0, 0))

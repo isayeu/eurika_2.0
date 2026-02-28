@@ -299,12 +299,13 @@ def get_history(project_root: Path, window: int=5) -> Dict[str, Any]:
     return {'trends': history.trend(window=window), 'regressions': history.detect_regressions(window=window), 'evolution_report': history.evolution_report(window=window), 'points': [asdict(p) for p in points]}
 
 def _build_patch_plan_inputs(root: Path, window: int) -> tuple[Any, Any, Dict[str, Any], Dict[str, Any], Any] | None:
-    """Build graph/smells/summary/history/priorities inputs for patch planning."""
+    """Build graph/smells/summary/history/priorities inputs for patch planning (R5 2.2: learning_stats in priorities)."""
     from eurika.analysis.self_map import build_graph_from_self_map
     from eurika.reasoning.graph_ops import priority_from_graph
     from eurika.smells.detector import detect_architecture_smells
     from eurika.smells.rules import build_summary
     from eurika.storage import ProjectMemory
+    from eurika.storage.global_memory import get_merged_learning_stats
     self_map_path = root / 'self_map.json'
     if not self_map_path.exists():
         return None
@@ -317,7 +318,17 @@ def _build_patch_plan_inputs(root: Path, window: int) -> tuple[Any, Any, Dict[st
     memory = ProjectMemory(root)
     history = memory.history
     history_info = {'trends': history.trend(window=window), 'regressions': history.detect_regressions(window=window), 'evolution_report': history.evolution_report(window=window)}
-    priorities = priority_from_graph(graph, smells, summary_risks=summary.get('risks'), top_n=8)
+    learning_stats = None
+    try:
+        learning_stats = get_merged_learning_stats(root)
+    except Exception:
+        pass
+    priorities = priority_from_graph(
+        graph, smells,
+        summary_risks=summary.get('risks'),
+        top_n=8,
+        learning_stats=learning_stats,
+    )
     return (graph, smells, summary, history_info, priorities)
 
 def _optional_learning_and_self_map(memory: Any, self_map_path: Path) -> tuple[Any, Any]:

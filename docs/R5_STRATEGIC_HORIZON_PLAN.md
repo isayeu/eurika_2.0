@@ -30,8 +30,8 @@
 
 | Шаг | Действие | Результат |
 |-----|----------|-----------|
-| 2.1 | Risk prediction | Оценка «вероятность регрессии» для модуля на основе history + smells |
-| 2.2 | Recommendation engine | Учёт learning stats, past success rate в приоритизации операций |
+| 2.1 | Risk prediction | Оценка «вероятность регрессии» для модуля на основе history + smells ✓ |
+| 2.2 | Recommendation engine | Учёт learning stats, past success rate в приоритизации операций ✓ |
 | 2.3 | Контекстные подсказки | @-mentions в chat → фокус на конкретных модулях/smells |
 
 ---
