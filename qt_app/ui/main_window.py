@@ -166,12 +166,6 @@ class MainWindow(QMainWindow):
         action_row.addWidget(self.stop_btn)
         controls_layout.addRow('Execute', action_row)
         layout.addWidget(controls)
-        terminal_box = QGroupBox('Live output')
-        terminal_layout = QVBoxLayout(terminal_box)
-        self.terminal = QTextEdit()
-        self.terminal.setReadOnly(True)
-        terminal_layout.addWidget(self.terminal)
-        layout.addWidget(terminal_box, 1)
         self.tabs.addTab(tab, 'Commands')
 
     def _build_dashboard_tab(self) -> None:
@@ -409,17 +403,18 @@ class MainWindow(QMainWindow):
         self._build_terminal_tab()
 
     def _build_terminal_tab(self) -> None:
-        """Terminal tab with minimal shell emulator: input + output."""
-        tab = QWidget()
+        """Terminal tab: output from Commands + manual shell commands, input for shell."""
+        self.terminal_tab = tab = QWidget()
         layout = QVBoxLayout(tab)
         emulator_box = QGroupBox('Terminal')
         emulator_box.setStyleSheet('QGroupBox { color: #0f0; }')
+        emulator_box.setToolTip('Output from Commands (scan, doctor, fix…) and manual shell. Cwd = project root.')
         emulator_layout = QVBoxLayout(emulator_box)
         terminal_style = 'background-color: #000; color: #0f0; font-family: monospace;'
         self.terminal_emulator_output = QTextEdit()
         self.terminal_emulator_output.setReadOnly(True)
         self.terminal_emulator_output.setStyleSheet(terminal_style)
-        self.terminal_emulator_output.setPlaceholderText('Output of shell commands. Cwd = project root.')
+        self.terminal_emulator_output.setPlaceholderText('Output from Commands (Run) or enter command below (ls, pwd, eurika scan .).')
         emulator_layout.addWidget(self.terminal_emulator_output, 1)
         input_row = QHBoxLayout()
         input_row.addWidget(QLabel('$'))
@@ -652,16 +647,17 @@ class MainWindow(QMainWindow):
         self._command_service.run_apply_approved(project_root=root)
 
     def _on_command_started(self, command_line: str) -> None:
-        self.terminal.append(f'$ {command_line}')
+        self.terminal_emulator_output.append(f'$ {command_line}')
+        self.tabs.setCurrentWidget(self.terminal_tab)
 
     def _append_stdout(self, line: str) -> None:
-        self.terminal.append(line)
+        self.terminal_emulator_output.append(line)
 
     def _append_stderr(self, line: str) -> None:
-        self.terminal.append(f'[stderr] {line}')
+        self.terminal_emulator_output.append(f'[stderr] {line}')
 
     def _on_command_finished(self, exit_code: int) -> None:
-        self.terminal.append(f'[done] exit_code={exit_code}')
+        self.terminal_emulator_output.append(f'[done] exit_code={exit_code}')
         self._refresh_dashboard()
 
     def _on_state_changed(self, state: str) -> None:

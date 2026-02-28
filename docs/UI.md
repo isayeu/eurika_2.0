@@ -8,7 +8,8 @@
 |---------|------------|
 | **Models** | Управление Ollama: Start/Stop, переменные окружения, список моделей, установка |
 | **Chat** | Чат с Apply/Reject для планов; @-mentions для scope; создание вкладок (в т.ч. Terminal) по intent |
-| **Commands** | scan/doctor/fix/cycle/explain, live output, stop/cancel |
+| **Commands** | scan/doctor/fix/cycle/explain, Run/Stop |
+| **Terminal** | Output команд (scan, doctor, fix…) + поле ввода для shell (ls, pwd, eurika scan .) |
 | **Dashboard** | Summary (modules, deps, cycles, risk, maturity, trends), Top risks, Operational metrics (apply_rate, rollback_rate, median verify), Learning insights; автообновление при смене project root |
 | **Approvals** | Run fix (team-mode), Load plan, approve/reject per row, Save, Run apply-approved; подсказка по workflow |
 
