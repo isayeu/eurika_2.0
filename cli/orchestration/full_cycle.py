@@ -185,13 +185,38 @@ def run_full_cycle(
         _LOG.info("eurika cycle: scan -> doctor -> fix")
     if run_scan(path) != 0:
         return with_cycle_state(
-            {"return_code": 1, "report": {}, "operations": [], "modified": [], "verify_success": False, "agent_result": None},
+            {
+                "return_code": 1,
+                "report": {
+                    "runtime": {
+                        "degraded_mode": True,
+                        "degraded_reasons": ["scan_failed"],
+                    },
+                },
+                "operations": [],
+                "modified": [],
+                "verify_success": False,
+                "agent_result": None,
+            },
             is_error=True,
         )
     data = run_doctor_cycle_fn(path, window=window, no_llm=no_llm, online=online)
     if data.get("error"):
+        report = dict(data)
+        if not report.get("runtime"):
+            report["runtime"] = {
+                "degraded_mode": True,
+                "degraded_reasons": ["doctor_error"],
+            }
         return with_cycle_state(
-            {"return_code": 1, "report": data, "operations": [], "modified": [], "verify_success": False, "agent_result": None},
+            {
+                "return_code": 1,
+                "report": report,
+                "operations": [],
+                "modified": [],
+                "verify_success": False,
+                "agent_result": None,
+            },
             is_error=True,
         )
     if not quiet:

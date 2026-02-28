@@ -134,7 +134,15 @@ def run_doctor_cycle(
     summary = get_summary(path)
     if summary.get("error"):
         from .cycle_state import with_cycle_state
-        return with_cycle_state({"error": summary.get("error", "unknown")}, is_error=True)
+
+        err = {"error": summary.get("error", "unknown")}
+        err["runtime"] = {
+            "degraded_mode": True,
+            "degraded_reasons": ["summary_unavailable"],
+            "llm_used": False,
+            "use_llm": not no_llm,
+        }
+        return with_cycle_state(err, is_error=True)
     _log.info("eurika: doctor — loading history...")
     history = get_history(path, window=window)
     _log.info("eurika: doctor — loading patch plan (LLM hints disabled for speed)...")

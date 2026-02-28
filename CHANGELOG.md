@@ -9,7 +9,7 @@ All notable changes to this project will be documented in this file.
 - **suggest_policy_from_telemetry:** при no_op_rate>0.5 → EURIKA_CAMPAIGN_ALLOW_LOW_RISK=1.
 - **learning-kpi:** блок «Next steps» — рекомендации (--allow-low-risk-campaign, whitelist-draft, --apply-suggested-policy).
 - **doctor:** no_op_rate в telemetry для suggested policy.
-- **test_suggest_policy_from_telemetry_high_no_op_rate.**
+- **test_suggest_policy_from_telemetry_high_no_op_rate**
 
 ---
 

@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 from eurika.api import (
     get_chat_dialog_state,
     explain_module,
+    get_graph,
     get_history,
     get_learning_insights,
     get_operational_metrics,
@@ -40,6 +41,10 @@ class EurikaApiAdapter:
 
     def get_summary(self) -> dict[str, Any]:
         return get_summary(self._root())
+
+    def get_graph(self) -> dict[str, Any]:
+        """Dependency graph for UI: {nodes, edges} in vis-network format."""
+        return get_graph(self._root())
 
     def get_self_guard(self) -> dict[str, Any]:
         """R5: SELF-GUARD health gate (violations, trend alarms, complexity budget)."""

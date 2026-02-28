@@ -6,8 +6,8 @@ import re
 from pathlib import Path
 from typing import Any
 from PySide6.QtCore import QProcess, QProcessEnvironment, QThread, QTimer, Qt, Signal
-from PySide6.QtGui import QCloseEvent, QShowEvent
-from PySide6.QtWidgets import QCheckBox, QComboBox, QFileDialog, QFormLayout, QProgressBar, QGridLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton, QSplitter, QSpinBox, QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget
+from PySide6.QtGui import QCloseEvent, QKeyEvent, QShowEvent
+from PySide6.QtWidgets import QCheckBox, QComboBox, QFileDialog, QFormLayout, QProgressBar, QGridLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton, QSizePolicy, QSplitter, QSpinBox, QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget
 from qt_app.adapters.eurika_api_adapter import EurikaApiAdapter
 from qt_app.services.command_service import CommandService
 from qt_app.services.settings_service import SettingsService
@@ -15,6 +15,36 @@ _ANSI_STRIP_RE = re.compile('\\x1b\\[[0-?]*[ -/]*[@-~]|\\x1b\\][^\\x07\\x1b]*(?:
 _OLLAMA_PULL_PCT_RE = re.compile('(\\d+)\\s*%')
 _OLLAMA_PULL_MB_GB_RE = re.compile('(\\d+)\\s*MB\\s*/\\s*([\\d.]+)\\s*GB')
 _TUI_COMMANDS = frozenset(('htop', 'top', 'vim', 'vi', 'nano', 'less', 'more', 'watch', 'mc'))
+
+def _create_graph_page(view: Any, explain_callback: Any) -> Any:
+    """Create QWebEnginePage that intercepts eurika:explain/ for double-click Explain."""
+    try:
+        from PySide6.QtWebEngineCore import QWebEnginePage
+
+        class GraphPage(QWebEnginePage):
+            def __init__(self, parent: Any, on_explain: Any) -> None:
+                super().__init__(parent)
+                self._on_explain = on_explain
+
+            def acceptNavigationRequest(self, url: Any, _typ: int, _is_main_frame: bool) -> bool:
+                u = url.url() if hasattr(url, 'url') else str(url)
+                if u.startswith('eurika:explain/'):
+                    from urllib.parse import unquote
+                    mod = unquote(u.split('/', 1)[1] or '')
+                    if mod and callable(self._on_explain):
+                        self._on_explain(mod)
+                    return False
+                return super().acceptNavigationRequest(url, _typ, _is_main_frame)
+
+        return GraphPage(view, explain_callback)
+    except ImportError:
+        return None
+
+
+def _default_start_directory() -> str:
+    """Start directory for folder picker: home, so user can navigate anywhere."""
+    return os.path.expanduser('~') or os.path.abspath('/')
+
 
 def _strip_ansi(text: str) -> str:
     """Remove ANSI escape sequences for display in plain text widget."""
@@ -48,6 +78,56 @@ def _is_tui_command(cmd: str) -> bool:
     first = (cmd.strip().split() or [''])[0].lower()
     name = first.split('/')[-1] if first else ''
     return name in _TUI_COMMANDS
+
+
+class TerminalLineEdit(QLineEdit):
+    """QLineEdit with command history (Up/Down arrows)."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._history: list[str] = []
+        self._history_index = -1
+        self._pending_from_history: str | None = None
+
+    def add_to_history(self, cmd: str) -> None:
+        cmd = cmd.strip()
+        if not cmd:
+            return
+        if self._history and self._history[-1] == cmd:
+            return
+        self._history.append(cmd)
+        # Keep last 500 commands
+        if len(self._history) > 500:
+            self._history.pop(0)
+        self._history_index = -1
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        key = event.key()
+        if key == Qt.Key_Up:
+            if not self._history:
+                super().keyPressEvent(event)
+                return
+            if self._history_index < 0:
+                self._pending_from_history = self.text()
+            self._history_index = min(len(self._history) - 1, self._history_index + 1)
+            self.setText(self._history[-(self._history_index + 1)])
+            event.accept()
+            return
+        if key == Qt.Key_Down:
+            if self._history_index <= 0:
+                self._history_index = -1
+                self.setText(self._pending_from_history or '')
+                self._pending_from_history = None
+                event.accept()
+                return
+            self._history_index -= 1
+            self.setText(self._history[-(self._history_index + 1)])
+            event.accept()
+            return
+        self._history_index = -1
+        self._pending_from_history = None
+        super().keyPressEvent(event)
+
 
 class ChatWorker(QThread):
     """Background worker for chat requests to avoid UI freeze."""
@@ -122,6 +202,7 @@ class MainWindow(QMainWindow):
         root_layout.addWidget(self.tabs, 1)
         self._build_commands_tab()
         self._build_dashboard_tab()
+        self._build_graph_tab()
         self._build_approve_tab()
         self._build_models_tab()
         self._build_chat_tab()
@@ -147,11 +228,19 @@ class MainWindow(QMainWindow):
         self.dry_run_check = QCheckBox('--dry-run')
         self.no_llm_check = QCheckBox('--no-llm')
         self.no_clean_imports_check = QCheckBox('--no-clean-imports')
+        self.no_code_smells_check = QCheckBox('--no-code-smells')
+        self.no_code_smells_check.setChecked(True)
+        self.no_code_smells_check.setToolTip('Exclude refactor_code_smell (long_function, deep_nesting) from plan')
+        self.allow_low_risk_campaign_check = QCheckBox('--allow-low-risk-campaign')
+        self.allow_low_risk_campaign_check.setChecked(True)
+        self.allow_low_risk_campaign_check.setToolTip('Allow low-risk ops (e.g. remove_unused_import) through campaign skip (OPERABILITY D)')
         self.team_mode_check = QCheckBox('--team-mode')
         self.team_mode_check.setToolTip('Propose only: save plan to .eurika/pending_plan.json, then use Approvals tab')
         options_row.addWidget(self.dry_run_check)
         options_row.addWidget(self.no_llm_check)
         options_row.addWidget(self.no_clean_imports_check)
+        options_row.addWidget(self.no_code_smells_check)
+        options_row.addWidget(self.allow_low_risk_campaign_check)
         options_row.addWidget(self.team_mode_check)
         options_row.addStretch(1)
         controls_layout.addRow('Options', options_row)
@@ -238,6 +327,135 @@ class MainWindow(QMainWindow):
         learning_layout.addWidget(self.learning_widget_text)
         layout.addWidget(learning)
         self.tabs.addTab(tab, 'Dashboard')
+
+    def _build_graph_tab(self) -> None:
+        """Graph tab: lazy-load QWebEngineView on first use to avoid startup crashes."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        row = QHBoxLayout()
+        self.refresh_graph_btn = QPushButton('Refresh graph')
+        self.refresh_graph_btn.setToolTip('Load dependency graph from self_map.json (run scan first)')
+        row.addWidget(self.refresh_graph_btn)
+        self.graph_hint = QLabel('Run eurika scan . to generate self_map.json')
+        self.graph_hint.setStyleSheet('color: gray; font-size: 11px;')
+        row.addWidget(self.graph_hint, 1)
+        layout.addLayout(row)
+        self.graph_placeholder = QWidget()
+        self.graph_placeholder_layout = QVBoxLayout(self.graph_placeholder)
+        self.graph_placeholder_layout.setContentsMargins(0, 0, 0, 0)
+        self._graph_web_view: QWidget | None = None
+        self._graph_table_fallback: QTextEdit | None = None
+        self._graph_webengine_available: bool | None = None
+        layout.addWidget(self.graph_placeholder, 1)
+        self.graph_tab_index = self.tabs.addTab(tab, 'Graph')
+
+    def _on_tab_changed(self, index: int) -> None:
+        """Lazy-load Graph WebEngine when user first opens Graph tab."""
+        if index == self.graph_tab_index:
+            self._ensure_graph_widget()
+            self._refresh_graph()
+
+    def _on_graph_node_explain(self, module: str) -> None:
+        """Handle double-click on graph node: show Explain for module (ROADMAP 3.5.7)."""
+        text, err = self._api.explain_module(module, window=self.window_spin.value())
+        if err:
+            QMessageBox.warning(self, f'Explain: {module}', err)
+            return
+        msg = (text or '').strip()
+        if not msg:
+            msg = 'No explanation available.'
+        QMessageBox.information(self, f'Explain: {module}', msg)
+
+    def _ensure_graph_widget(self) -> None:
+        """Lazy-create WebEngine or fallback on first use (avoids startup crashes)."""
+        if self._graph_webengine_available is not None:
+            return
+        try:
+            from PySide6.QtWebEngineWidgets import QWebEngineView
+            view = QWebEngineView()
+            page = _create_graph_page(view, self._on_graph_node_explain)
+            if page is not None:
+                view.setPage(page)
+            view.setMinimumHeight(300)
+            view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            self.graph_placeholder_layout.addWidget(view)
+            self._graph_web_view = view
+            self._graph_webengine_available = True
+        except ImportError:
+            self._graph_webengine_available = False
+            fallback = QTextEdit()
+            fallback.setReadOnly(True)
+            fallback.setPlaceholderText('QWebEngineWidgets not available. Install PySide6-Addons.')
+            self.graph_placeholder_layout.addWidget(fallback)
+            self._graph_table_fallback = fallback
+
+    def _refresh_graph(self) -> None:
+        """Load graph from API and render in WebEngine or fallback."""
+        self._ensure_graph_widget()
+        data = self._api.get_graph()
+        error = data.get('error')
+        if error:
+            msg = f'{error}\nPath: {data.get("path", "")}'
+            if self._graph_web_view is not None:
+                self._render_graph_html({'nodes': [], 'edges': [], 'error': msg})
+            elif self._graph_table_fallback is not None:
+                self._graph_table_fallback.setPlainText(msg)
+            if self.graph_hint:
+                self.graph_hint.setText('No graph — run eurika scan . first')
+            return
+        nodes = data.get('nodes') or []
+        edges = data.get('edges') or []
+        if self._graph_web_view is not None:
+            self._render_graph_html({'nodes': nodes, 'edges': edges})
+        elif self._graph_table_fallback is not None:
+            lines = [f'Nodes: {len(nodes)}, Edges: {len(edges)}']
+            for n in nodes[:50]:
+                lines.append(f"  {n.get('id', '')} (fan-in: {n.get('fan_in', 0)}, fan-out: {n.get('fan_out', 0)})")
+            if len(nodes) > 50:
+                lines.append(f'  ... and {len(nodes) - 50} more')
+            self._graph_table_fallback.setPlainText('\n'.join(lines))
+        if self.graph_hint:
+            self.graph_hint.setText(f'{len(nodes)} modules, {len(edges)} dependencies')
+
+    def _render_graph_html(self, payload: dict[str, Any]) -> None:
+        """Render vis-network graph in QWebEngineView via embedded HTML."""
+        nodes = payload.get('nodes') or []
+        edges = payload.get('edges') or []
+        err_msg = payload.get('error', '')
+        if err_msg:
+            err_esc = err_msg.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            html = f'<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><pre style="padding:1em;color:#c00">{err_esc}</pre></body></html>'
+        else:
+            nodes_js = json.dumps(nodes, ensure_ascii=False).replace('</', '<\\/')
+            edges_js = json.dumps(edges, ensure_ascii=False).replace('</', '<\\/')
+            html = f'''<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<style>
+html, body {{ margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }}
+#net {{ position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; }}
+</style></head>
+<body><div id="net"></div>
+<script>
+var nodes = new vis.DataSet({nodes_js});
+var edges = new vis.DataSet({edges_js});
+var container = document.getElementById('net');
+var data = {{ nodes: nodes, edges: edges }};
+var options = {{
+  nodes: {{ shape: 'dot', size: 12, font: {{ size: 10 }} }},
+  edges: {{ arrows: 'to' }},
+  physics: {{ barnesHut: {{ gravitationalConstant: -3000, centralGravity: 0.1, springLength: 100 }} }}
+}};
+var network = new vis.Network(container, data, options);
+network.on('doubleClick', function(params) {{
+  if (params.nodes && params.nodes[0]) {{
+    var mod = params.nodes[0];
+    window.location = 'eurika:explain/' + encodeURIComponent(mod);
+  }}
+}});
+</script></body></html>'''
+        if self._graph_web_view is not None:
+            self._graph_web_view.setHtml(html, 'https://unpkg.com/')
 
     def _build_approve_tab(self) -> None:
         tab = QWidget()
@@ -418,7 +636,7 @@ class MainWindow(QMainWindow):
         emulator_layout.addWidget(self.terminal_emulator_output, 1)
         input_row = QHBoxLayout()
         input_row.addWidget(QLabel('$'))
-        self.terminal_emulator_input = QLineEdit()
+        self.terminal_emulator_input = TerminalLineEdit()
         self.terminal_emulator_input.setStyleSheet(terminal_style)
         self.terminal_emulator_input.setPlaceholderText('Enter command and press Return (e.g. ls, pwd, eurika scan .)')
         self.terminal_emulator_input.returnPressed.connect(self._run_terminal_emulator_command)
@@ -430,20 +648,58 @@ class MainWindow(QMainWindow):
         self.terminal_emulator_stop_btn.setEnabled(False)
         self.terminal_emulator_stop_btn.clicked.connect(self._stop_terminal_emulator)
         input_row.addWidget(self.terminal_emulator_stop_btn)
+        self.terminal_emulator_clear_btn = QPushButton('Clear')
+        self.terminal_emulator_clear_btn.clicked.connect(self._clear_terminal_emulator)
+        input_row.addWidget(self.terminal_emulator_clear_btn)
         emulator_layout.addLayout(input_row)
         layout.addWidget(emulator_box, 1)
         self.tabs.addTab(tab, 'Terminal')
         self._terminal_process: QProcess | None = None
+        self._terminal_cwd: str = ''  # Set in _on_root_edited / startup
+
+    def _clear_terminal_emulator(self) -> None:
+        """Clear terminal output area."""
+        self.terminal_emulator_output.clear()
+
+    def _handle_cd_command(self, cmd: str, cwd: str) -> str | None:
+        """Handle cd command: return new absolute path or None on error."""
+        parts = cmd.split(None, 1)
+        target = (parts[1].strip() if len(parts) > 1 else '').strip()
+        if not target:
+            target = os.environ.get('HOME', cwd)
+        base = Path(cwd).resolve()
+        try:
+            new_path = (base / target).resolve()
+            if not new_path.is_dir():
+                self.terminal_emulator_output.append(f'$ {cmd}')
+                self.terminal_emulator_output.append(f'[cd] No such directory: {new_path}')
+                return None
+            return str(new_path)
+        except OSError as e:
+            self.terminal_emulator_output.append(f'$ {cmd}')
+            self.terminal_emulator_output.append(f'[cd] {e}')
+            return None
 
     def _run_terminal_emulator_command(self) -> None:
         cmd = (self.terminal_emulator_input.text() or '').strip()
         if not cmd:
             return
+        self.terminal_emulator_input.add_to_history(cmd)
         if _is_tui_command(cmd):
             self.terminal_emulator_output.append(f'$ {cmd}\n[Note] TUI programs (htop, vim, nano, less, etc.) need a real terminal.\nUse: ls, pwd, eurika scan ., or run htop in an external terminal.')
             self.terminal_emulator_input.clear()
             return
-        cwd = self.root_edit.text().strip() or '.'
+        cwd = self._terminal_cwd or self.root_edit.text().strip() or '.'
+        cwd = str(Path(cwd).resolve())
+        # Handle cd as built-in: change terminal cwd instead of spawning process
+        if cmd == 'cd' or cmd.startswith('cd '):
+            _new_cwd = self._handle_cd_command(cmd, cwd)
+            if _new_cwd is not None:
+                self._terminal_cwd = _new_cwd
+                self.terminal_emulator_output.append(f'$ {cmd}')
+                self.terminal_emulator_output.append(_new_cwd)
+            self.terminal_emulator_input.clear()
+            return
         self.terminal_emulator_output.append(f'$ {cmd}')
         self.terminal_emulator_input.clear()
         self.terminal_emulator_input.setEnabled(False)
@@ -491,10 +747,14 @@ class MainWindow(QMainWindow):
         self.dry_run_check.toggled.connect(self._sync_preview)
         self.no_llm_check.toggled.connect(self._sync_preview)
         self.no_clean_imports_check.toggled.connect(self._sync_preview)
+        self.no_code_smells_check.toggled.connect(self._sync_preview)
+        self.allow_low_risk_campaign_check.toggled.connect(self._sync_preview)
         self.team_mode_check.toggled.connect(self._sync_preview)
         self.run_btn.clicked.connect(self._run_command)
         self.stop_btn.clicked.connect(self._command_service.stop)
         self.refresh_dashboard_btn.clicked.connect(self._refresh_dashboard)
+        self.refresh_graph_btn.clicked.connect(self._refresh_graph)
+        self.tabs.currentChanged.connect(self._on_tab_changed)
         self.run_team_mode_btn.clicked.connect(self._run_fix_team_mode)
         self.load_pending_btn.clicked.connect(self._load_pending_plan)
         self.save_approvals_btn.clicked.connect(self._save_approvals)
@@ -529,7 +789,7 @@ class MainWindow(QMainWindow):
             return
         if not self.root_edit.text().strip():
             selected = QFileDialog.getExistingDirectory(
-                self, 'Select project root', '.',
+                self, 'Select project root', _default_start_directory(),
             )
             if selected:
                 self._set_project_root(selected)
@@ -538,13 +798,21 @@ class MainWindow(QMainWindow):
         self.root_edit.setText(value)
         self._api.set_project_root(value)
         self._settings.set_project_root(value)
+        root_resolved = str(Path(value or '.').resolve()) if value else ''
+        if hasattr(self, '_terminal_cwd'):
+            self._terminal_cwd = root_resolved
         self._load_chat_preferences()
         self._refresh_chat_goal_view()
         self._refresh_dashboard()
+        if self.tabs.currentIndex() == self.graph_tab_index:
+            self._refresh_graph()
         self._sync_preview()
 
     def _select_root(self) -> None:
-        selected = QFileDialog.getExistingDirectory(self, 'Select project root', self.root_edit.text() or '.')
+        start = (self.root_edit.text() or '').strip()
+        if not start or not Path(start).exists():
+            start = _default_start_directory()
+        selected = QFileDialog.getExistingDirectory(self, 'Select project root', start)
         if selected:
             self._set_project_root(selected)
 
@@ -573,6 +841,10 @@ class MainWindow(QMainWindow):
             parts.append('--no-llm')
         if self.no_clean_imports_check.isChecked() and cmd in {'fix', 'cycle'}:
             parts.append('--no-clean-imports')
+        if self.no_code_smells_check.isChecked() and cmd in {'fix', 'cycle'}:
+            parts.append('--no-code-smells')
+        if self.allow_low_risk_campaign_check.isChecked() and cmd in {'fix', 'cycle'}:
+            parts.append('--allow-low-risk-campaign')
         if self.team_mode_check.isChecked() and cmd in {'fix', 'cycle'}:
             parts.append('--team-mode')
         self.preview_label.setText(' '.join(parts))
@@ -616,6 +888,8 @@ class MainWindow(QMainWindow):
             dry_run=self.dry_run_check.isChecked(),
             no_llm=self.no_llm_check.isChecked(),
             no_clean_imports=self.no_clean_imports_check.isChecked(),
+            no_code_smells=self.no_code_smells_check.isChecked(),
+            allow_low_risk_campaign=self.allow_low_risk_campaign_check.isChecked(),
             team_mode=self.team_mode_check.isChecked(),
             ollama_model=ollama_model,
         )
@@ -637,6 +911,8 @@ class MainWindow(QMainWindow):
             dry_run=False,
             no_llm=False,
             no_clean_imports=self.no_clean_imports_check.isChecked(),
+            no_code_smells=self.no_code_smells_check.isChecked(),
+            allow_low_risk_campaign=self.allow_low_risk_campaign_check.isChecked(),
             team_mode=True,
             ollama_model=ollama_model,
         )
@@ -662,11 +938,53 @@ class MainWindow(QMainWindow):
 
     def _on_command_finished(self, exit_code: int) -> None:
         self.terminal_emulator_output.append(f'[done] exit_code={exit_code}')
+        cmd = getattr(self._command_service, 'active_command', '') or ''
+        if 'fix' in cmd or 'cycle' in cmd:
+            summary = self._format_fix_report_summary()
+            if summary:
+                self.terminal_emulator_output.append(summary)
         self._refresh_dashboard()
+
+    def _format_fix_report_summary(self) -> str:
+        """Brief summary from eurika_fix_report.json after fix/cycle."""
+        root = Path(self.root_edit.text().strip() or '.').resolve()
+        report_path = root / 'eurika_fix_report.json'
+        if not report_path.exists():
+            return ''
+        try:
+            data = json.loads(report_path.read_text(encoding='utf-8'))
+        except (OSError, json.JSONDecodeError):
+            return ''
+        parts: list[str] = []
+        if data.get('dry_run'):
+            parts.append('Dry run — no changes applied.')
+            ops = data.get('patch_plan', {}).get('operations') or data.get('operations') or []
+            parts.append(f'Planned: {len(ops)} operation(s).')
+            return ' — '.join(parts)
+        msg = data.get('message', '').strip()
+        if msg:
+            parts.append(msg)
+        modified = data.get('modified') or []
+        m_count = len(modified)
+        verify = data.get('verify') or {}
+        gates = data.get('safety_gates') or {}
+        verify_ran = gates.get('verify_ran', True)
+        v_ok = verify.get('success') if verify_ran else None
+        rollback = gates.get('rollback_done', False)
+        if m_count > 0:
+            files = ', '.join(modified[:3])
+            if m_count > 3:
+                files += f' (+{m_count - 3} more)'
+            parts.append(f'Modified: {m_count} file(s) — {files}')
+        if verify_ran:
+            parts.append(f'Verify: {"✓" if v_ok else "✗"}')
+        if rollback:
+            parts.append('Rollback: done (verify failed)')
+        return ' | '.join(parts) if parts else ''
 
     def _on_state_changed(self, state: str) -> None:
         self.status_label.setText(f'State: {state}')
-        running = state in {'running', 'stopping'}
+        running = state in {'thinking', 'stopping'}
         self.stop_btn.setEnabled(running)
         self.run_btn.setEnabled(not running)
 
@@ -1304,4 +1622,9 @@ class MainWindow(QMainWindow):
             self._chat_worker.requestInterruption()
             self._chat_worker.wait(1500)
         self._chat_worker = None
+        if self._graph_web_view is not None:
+            try:
+                self._graph_web_view.setHtml('<!DOCTYPE html><html><body></body></html>', 'about:blank')
+            except Exception:
+                pass
         super().closeEvent(event)

@@ -37,6 +37,11 @@
 ### 4. learning-kpi Next steps
 - Блок рекомендаций: «To improve: eurika fix . --no-code-smells --allow-low-risk-campaign».
 
+### 5. Polygon `eurika/polygon.py`
+- Сводный полигон для обучения: DRILL_UNUSED_IMPORTS, DRILL_LONG_FUNCTION, DRILL_DEEP_NESTING.
+- Намеренные ошибки для fix-циклов; после fix — вернуть для следующего прогона.
+- **Verify timeout:** полный pytest может превышать таймаут → verify_fail. Для тренировок: `--verify-cmd "python -m pytest tests/test_clean_imports_cli.py -q"` (обязательно `python -m pytest` — иначе ModuleNotFoundError). См. docs/POLYGON_VERIFY_TIMEOUT.md.
+
 ---
 
 ## Критерий 6/10

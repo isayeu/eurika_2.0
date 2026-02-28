@@ -24,6 +24,13 @@ def run_fix_scan_stage(path: Path, quiet: bool, run_scan: Any) -> bool:
     return run_scan(path) == 0
 
 
+_CODE_SMELL_KINDS = frozenset((
+    "extract_block_to_helper",
+    "extract_nested_function",
+    "refactor_code_smell",
+))
+
+
 def prepend_fix_operations(
     path: Path,
     patch_plan: PatchPlan,
@@ -47,6 +54,10 @@ def prepend_fix_operations(
         if code_smell_ops:
             operations = code_smell_ops + operations
             patch_plan = dict(patch_plan, operations=operations)
+    else:
+        # --no-code-smells: also drop architect-proposed code-smell ops
+        operations = [op for op in operations if (op.get("kind") or "") not in _CODE_SMELL_KINDS]
+        patch_plan = dict(patch_plan, operations=operations)
 
     return patch_plan, operations
 

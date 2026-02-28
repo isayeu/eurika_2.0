@@ -16,16 +16,10 @@ from qt_app.ui.main_window import MainWindow
 
 
 def test_qt_main_window_smoke() -> None:
-    recommended = os.environ.get("EURIKA_QT_SMOKE_PYTHON", "").strip()
-    if sys.version_info >= (3, 14) and not recommended:
-        pytest.skip(
-            "Qt smoke should run under recommended Python (3.12/3.13). "
-            "Set EURIKA_QT_SMOKE_PYTHON to isolated interpreter."
-        )
-
-    python_bin = recommended or sys.executable
+    python_bin = os.environ.get("EURIKA_QT_SMOKE_PYTHON", "").strip() or sys.executable
     smoke_script = textwrap.dedent(
         """
+        import sys
         from PySide6.QtWidgets import QApplication
         from qt_app.ui.main_window import MainWindow
 
@@ -51,14 +45,14 @@ def test_qt_main_window_smoke() -> None:
         assert window.ollama_custom_model_edit is not None
         assert window.ollama_install_btn is not None
         tab_names = [window.tabs.tabText(i) for i in range(window.tabs.count())]
+        assert "Graph" in tab_names
         assert "Models" in tab_names
         assert "Chat" in tab_names
         assert "Terminal" in tab_names
         assert window.terminal_emulator_input is not None
         assert window.terminal_emulator_output is not None
-        window.close()
-        app.quit()
         print("SMOKE_OK")
+        sys.exit(0)
         """
     )
     env = os.environ.copy()

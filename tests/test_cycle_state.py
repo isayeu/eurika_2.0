@@ -55,6 +55,48 @@ def test_is_error_result() -> None:
     assert is_error_result({"return_code": 0, "report": {"verify": {"success": True}}}) is False
 
 
+def test_is_error_result_edge_cases() -> None:
+    """is_error_result edge cases: verify success false, missing report."""
+    assert is_error_result({"return_code": 0, "report": {"verify": {"success": False}}}) is True
+    assert is_error_result({"return_code": 0, "report": {}}) is False  # no verify → not error
+    assert is_error_result({"return_code": 0}) is False
+    assert is_error_result({}) is False
+    assert is_error_result({"report": {"verify": {}}}) is False  # success not False
+    assert is_error_result({"report": {"verify": {"success": True}}}) is False
+
+
+def test_with_cycle_state_matches_is_error_result() -> None:
+    """with_cycle_state output matches is_error_result inference."""
+    err_cases = [
+        {"error": "fail"},
+        {"return_code": 1},
+        {"report": {"verify": {"success": False}}},
+    ]
+    for r in err_cases:
+        assert is_error_result(r) is True
+        out = with_cycle_state(dict(r), is_error=True)
+        assert out["state"] == CycleState.ERROR.value
+        assert out["state_history"] == ["thinking", "error"]
+
+    ok_cases = [
+        {"return_code": 0, "report": {"verify": {"success": True}}},
+        {"return_code": 0, "report": {}},
+    ]
+    for r in ok_cases:
+        assert is_error_result(r) is False
+        out = with_cycle_state(dict(r), is_error=False)
+        assert out["state"] == CycleState.DONE.value
+        assert out["state_history"] == ["thinking", "done"]
+
+
+def test_cycle_state_enum_values() -> None:
+    """CycleState has expected R2 values."""
+    assert CycleState.IDLE.value == "idle"
+    assert CycleState.THINKING.value == "thinking"
+    assert CycleState.ERROR.value == "error"
+    assert CycleState.DONE.value == "done"
+
+
 def test_fix_cycle_result_includes_state_on_success(tmp_path: Path) -> None:
     """Fix cycle success returns state=done and valid state_history."""
     from cli.orchestrator import run_fix_cycle
@@ -118,7 +160,7 @@ def test_doctor_cycle_includes_state_on_success(tmp_path: Path) -> None:
 
 
 def test_doctor_cycle_includes_error_state_on_summary_error(tmp_path: Path) -> None:
-    """Doctor cycle with summary error returns state=error."""
+    """Doctor cycle with summary error returns state=error and degraded runtime."""
     from cli.orchestration import run_doctor_cycle
     from cli.orchestration.cycle_state import is_valid_state_history
 
@@ -129,6 +171,9 @@ def test_doctor_cycle_includes_error_state_on_summary_error(tmp_path: Path) -> N
         assert out["state"] == "error"
         assert is_valid_state_history(out["state_history"]) is True
         assert out["state_history"] == ["thinking", "error"]
+        runtime = out.get("runtime") or {}
+        assert runtime.get("degraded_mode") is True
+        assert "summary_unavailable" in (runtime.get("degraded_reasons") or [])
 
 
 def test_doctor_cycle_r2_state_model_on_self() -> None:
@@ -158,3 +203,54 @@ def test_fix_apply_approved_missing_plan_returns_error_state(tmp_path: Path) -> 
     assert out.get("return_code") == 1
     assert out["state"] == "error"
     assert out["state_history"] == ["thinking", "error"]
+
+
+def test_full_cycle_doctor_error_propagates_state(tmp_path: Path) -> None:
+    """Full cycle when doctor returns error propagates state=error."""
+    from unittest.mock import patch
+
+    from cli.orchestrator import run_doctor_cycle, run_fix_cycle
+    from cli.orchestration.full_cycle import run_full_cycle
+
+    def _doctor_error(path, **kwargs):
+        from cli.orchestration.cycle_state import with_cycle_state
+
+        return with_cycle_state(
+            {"error": "summary_unavailable", "runtime": {"degraded_mode": True}},
+            is_error=True,
+        )
+
+    with patch("runtime_scan.run_scan", return_value=0):
+        out = run_full_cycle(
+            tmp_path,
+            quiet=True,
+            no_llm=True,
+            run_doctor_cycle_fn=_doctor_error,
+            run_fix_cycle_fn=run_fix_cycle,
+        )
+    assert out["state"] == "error"
+    assert out["state_history"] == ["thinking", "error"]
+    assert out.get("return_code") == 1
+
+
+def test_full_cycle_scan_fail_returns_degraded_runtime(tmp_path: Path) -> None:
+    """Full cycle when scan fails returns report.runtime with degraded_reasons."""
+    from unittest.mock import patch
+
+    from cli.orchestrator import run_doctor_cycle, run_fix_cycle
+    from cli.orchestration.full_cycle import run_full_cycle
+
+    with patch("runtime_scan.run_scan", return_value=1):
+        out = run_full_cycle(
+            tmp_path,
+            quiet=True,
+            no_llm=True,
+            run_doctor_cycle_fn=run_doctor_cycle,
+            run_fix_cycle_fn=run_fix_cycle,
+        )
+    assert out.get("return_code") == 1
+    assert out["state"] == "error"
+    report = out.get("report") or {}
+    runtime = report.get("runtime") or {}
+    assert runtime.get("degraded_mode") is True
+    assert "scan_failed" in (runtime.get("degraded_reasons") or [])

@@ -49,9 +49,11 @@
 
 ## 3. Runtime (summary, scan)
 
-**get_summary:** при отсутствии `self_map.json` → `{"error": "...", "path": "..."}`. Doctor возвращает этот объект, full cycle — `return_code=1`.
+**get_summary:** при отсутствии `self_map.json` → `{"error": "...", "path": "..."}`. Doctor возвращает этот объект с `runtime.degraded_mode=True`, `degraded_reasons=["summary_unavailable"]`.
 
-**run_scan:** возвращает exit code. Full cycle при `!= 0` → early return с error.
+**run_scan:** возвращает exit code. Full cycle при `!= 0` → early return с error и `report.runtime.degraded_reasons=["scan_failed"]`.
+
+**full_cycle doctor error:** при `data.get("error")` — если `report` без `runtime`, добавляется `degraded_reasons=["doctor_error"]`.
 
 **Файлы:** `eurika/api/__init__.py`, `cli/orchestration/doctor.py`, `cli/orchestration/full_cycle.py`.
 

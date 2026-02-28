@@ -1,6 +1,14 @@
 """Tests for eurika clean-imports CLI command."""
 from pathlib import Path
 
+
+def test_polygon_module_loads() -> None:
+    """Polygon (OPERABILITY D) — module loads after potential remove_unused_import."""
+    from eurika.polygon import polygon_imports_ok
+
+    assert polygon_imports_ok() == Path(".")
+
+
 def test_clean_imports_dry_run(tmp_path: Path) -> None:
     """clean-imports (no --apply) reports files that would be modified."""
     (tmp_path / 'a.py').write_text('import unused_mod\nx = 1\n')

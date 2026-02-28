@@ -7,6 +7,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, Signal
 
+from cli.orchestration.cycle_state import CycleState
 from qt_app.services.command_builder import build_cli_args
 
 
@@ -22,13 +23,18 @@ class CommandService(QObject):
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._process = QProcess(self)
-        self._state = "idle"
+        self._state = CycleState.IDLE.value
         self._active_command = ""
         self._wire_process()
 
     @property
     def state(self) -> str:
         return self._state
+
+    @property
+    def active_command(self) -> str:
+        """Last executed command string (e.g. 'eurika fix .')."""
+        return self._active_command
 
     def _wire_process(self) -> None:
         self._process.readyReadStandardOutput.connect(self._on_stdout)
@@ -50,6 +56,8 @@ class CommandService(QObject):
         dry_run: bool = False,
         no_llm: bool = False,
         no_clean_imports: bool = False,
+        no_code_smells: bool = False,
+        allow_low_risk_campaign: bool = False,
         team_mode: bool = False,
         ollama_model: str = "",
     ) -> None:
@@ -66,6 +74,8 @@ class CommandService(QObject):
                 dry_run=dry_run,
                 no_llm=no_llm,
                 no_clean_imports=no_clean_imports,
+                no_code_smells=no_code_smells,
+                allow_low_risk_campaign=allow_low_risk_campaign,
                 team_mode=team_mode,
             )
         except ValueError as exc:
@@ -76,7 +86,7 @@ class CommandService(QObject):
         full_args = ["-m", "eurika_cli"] + args
         self._active_command = " ".join(["eurika"] + args)
         self.command_started.emit(self._active_command)
-        self._set_state("running")
+        self._set_state(CycleState.THINKING.value)
         self._process.setWorkingDirectory(root)
         if ollama_model.strip():
             env = QProcessEnvironment.systemEnvironment()
@@ -92,14 +102,14 @@ class CommandService(QObject):
         args = ["-m", "eurika_cli", "fix", root, "--apply-approved"]
         self._active_command = f"eurika fix {root} --apply-approved"
         self.command_started.emit(self._active_command)
-        self._set_state("running")
+        self._set_state(CycleState.THINKING.value)
         self._process.setWorkingDirectory(root)
         self._process.start(sys.executable, args)
 
     def stop(self) -> None:
         if self._process.state() == QProcess.NotRunning:
             return
-        self._set_state("stopping")
+        self._set_state("stopping")  # transient; will become error/done on finish
         self._process.terminate()
         QTimer.singleShot(2000, self._kill_if_still_running)
 
@@ -110,11 +120,11 @@ class CommandService(QObject):
         self._set_state("stopping")
         self._process.terminate()
         if self._process.waitForFinished(timeout_ms):
-            self._set_state("idle")
+            self._set_state(CycleState.IDLE.value)
             return
         self._process.kill()
         self._process.waitForFinished(timeout_ms)
-        self._set_state("idle")
+        self._set_state(CycleState.IDLE.value)
 
     def _kill_if_still_running(self) -> None:
         if self._process.state() != QProcess.NotRunning:
@@ -132,7 +142,10 @@ class CommandService(QObject):
 
     def _on_finished(self, exit_code: int, _exit_status: QProcess.ExitStatus) -> None:
         self.command_finished.emit(exit_code)
-        self._set_state("idle")
+        # R2: explicit state model — emit done/error before returning to idle
+        terminal = CycleState.DONE if exit_code == 0 else CycleState.ERROR
+        self._set_state(terminal.value)
+        QTimer.singleShot(300, lambda: self._set_state(CycleState.IDLE.value))
 
     def _on_error(self, _error: QProcess.ProcessError) -> None:
         msg = self._process.errorString() or "Unknown process error"
