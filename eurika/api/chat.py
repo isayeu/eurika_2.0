@@ -32,27 +32,21 @@ def _save_user_context(root: Path, data: Dict[str, str]) -> None:
     except Exception:
         pass
 
-def _extracted_block_64():
-    out = getattr(e, 'output', None) or {}
-    if not isinstance(out, dict):
-        out = {}
-    modified = out.get('modified', [])
-    parts.append(f'patch: {len(modified)} files')
+def _build_chat_context(root: Path, scope: Optional[Dict[str, Any]] = None) -> str:
+    """Build context snippet from summary + recent_events + user context for chat prompt.
 
-def _extracted_block_64():
-    parts = []
-    for e in events[:3]:
-        if e.type == 'patch':
-            _extracted_block_64()
-        elif e.type == 'learn':
-            parts.append('learn')
-    if parts:
-        lines.append('Recent: ' + '; '.join(parts))
-
-def _build_chat_context(root: Path) -> str:
-    """Build context snippet from summary + recent_events + user context for chat prompt."""
+    ROADMAP 3.6.5: when scope has modules/smells from @-mentions, enrich context.
+    """
     from eurika.api import get_recent_events, get_summary
     lines: List[str] = []
+    if scope:
+        scope_parts: List[str] = []
+        if scope.get('modules'):
+            scope_parts.append(f"Focus module(s): {', '.join(scope['modules'])}")
+        if scope.get('smells'):
+            scope_parts.append(f"Focus smell(s): {', '.join(scope['smells'])}")
+        if scope_parts:
+            lines.append('[Scope: ' + '; '.join(scope_parts) + ']')
     try:
         uc = _load_user_context(root)
         if uc:
@@ -70,13 +64,30 @@ def _build_chat_context(root: Path) -> str:
             lines.append(f'Project: {modules} modules, {deps} deps, {cycles} cycles.')
             risks = summary.get('risks') or []
             if risks:
-                lines.append(f"Risks: {'; '.join((str(r) for r in risks[:3]))}.")
+                scope_modules = set(scope.get('modules') or []) if scope else set()
+                if scope_modules:
+                    filtered = [r for r in risks if any(m in str(r) for m in scope_modules)]
+                    risks_to_show = filtered[:5] if filtered else risks[:3]
+                else:
+                    risks_to_show = risks[:3]
+                if risks_to_show:
+                    lines.append(f"Risks: {'; '.join((str(r) for r in risks_to_show))}.")
     except Exception:
         pass
     try:
         events = get_recent_events(root, limit=3, types=('patch', 'learn'))
         if events:
-            _extracted_block_64()
+            parts: List[str] = []
+            for e in events[:3]:
+                if e.type == 'patch':
+                    out = getattr(e, 'output', None) or {}
+                    if isinstance(out, dict):
+                        modified = out.get('modified', [])
+                        parts.append(f'patch: {len(modified)} files')
+                elif e.type == 'learn':
+                    parts.append('learn')
+            if parts:
+                lines.append('Recent: ' + '; '.join(parts))
     except Exception:
         pass
     return ' '.join(lines) if lines else 'No project context (run eurika scan .)'
@@ -159,9 +170,60 @@ def _run_qt_smoke_test(project_root: Path, timeout: int=120) -> str:
     except Exception as e:
         return f'qt smoke: {e}'
 
-def _build_chat_prompt(message: str, context: str, history: Optional[List[Dict[str, str]]]=None, rag_examples: Optional[str]=None, save_target: Optional[str]=None) -> str:
+def _knowledge_topics_for_chat(intent: str, scope: Optional[Dict[str, Any]]) -> List[str]:
+    """Topics for Knowledge from intent and scope (ROADMAP 3.6.6)."""
+    from eurika.knowledge import SMELL_TO_KNOWLEDGE_TOPICS
+    topics: List[str] = ["python"]
+    if intent in ("refactor", "save", "code_edit_patch", "create"):
+        if "architecture_refactor" not in topics:
+            topics.append("architecture_refactor")
+    if scope and scope.get("smells"):
+        for s in scope["smells"]:
+            smell = (s or "").strip().lower()
+            for t in SMELL_TO_KNOWLEDGE_TOPICS.get(smell, []):
+                if t not in topics:
+                    topics.append(t)
+    return topics
+
+
+def _fetch_knowledge_for_chat(root: Path, topics: List[str], max_chars: int = 800) -> str:
+    """Fetch knowledge snippets from Local + OSSPattern + cached PEP/docs (ROADMAP 3.6.6). rate_limit=0 = cache only."""
+    import os
+    from eurika.knowledge import CompositeKnowledgeProvider, LocalKnowledgeProvider, OfficialDocsProvider, OSSPatternProvider, PEPProvider, ReleaseNotesProvider, StructuredKnowledge
+
+    cache_dir = root / ".eurika" / "knowledge_cache"
+    ttl = float(os.environ.get("EURIKA_KNOWLEDGE_TTL", "86400"))
+    oss_path = root / ".eurika" / "pattern_library.json"
+    provider = CompositeKnowledgeProvider([
+        LocalKnowledgeProvider(root / "eurika_knowledge.json"),
+        OSSPatternProvider(oss_path),
+        PEPProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=False, rate_limit_seconds=0),
+        OfficialDocsProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=False, rate_limit_seconds=0),
+        ReleaseNotesProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=False, rate_limit_seconds=0),
+    ])
+    all_fragments: List[Dict[str, Any]] = []
+    for t in topics[:5]:
+        if not t:
+            continue
+        kn = provider.query(t.strip())
+        if isinstance(kn, StructuredKnowledge) and (not kn.is_empty()):
+            for f in kn.fragments:
+                if isinstance(f, dict):
+                    all_fragments.append(f)
+    if not all_fragments:
+        return ""
+    lines: List[str] = []
+    for i, f in enumerate(all_fragments[:10], 1):
+        title = f.get("title") or f.get("name") or f"Fragment {i}"
+        content = f.get("content") or f.get("text") or str(f)
+        lines.append(f"- {title}: {content[:400]}".rstrip() + ("..." if len(str(content)) > 400 else ""))
+    snip = "\n".join(lines)
+    return snip[:max_chars] + ("..." if len(snip) > max_chars else "")
+
+
+def _build_chat_prompt(message: str, context: str, history: Optional[List[Dict[str, str]]]=None, rag_examples: Optional[str]=None, save_target: Optional[str]=None, knowledge_snippet: Optional[str]=None) -> str:
     """Build system + user prompt for chat. history: list of {role, content} from session.
-    ROADMAP 3.5.11.B: rag_examples from retrieve_similar_chats."""
+    ROADMAP 3.5.11.B: rag_examples from retrieve_similar_chats. ROADMAP 3.6.6: knowledge_snippet from Knowledge Layer."""
     if save_target:
         system = 'You are Eurika. Never identify yourself as a base model/vendor name (Qwen, Llama, Ollama, OpenAI model, etc). If asked who you are, answer that you are Eurika. The user asked you to write code and save it to a file. Generate ONLY the code. No questions, no apologies, no clarification requests. Output must contain a ```python code block.'
     else:
@@ -169,6 +231,8 @@ def _build_chat_prompt(message: str, context: str, history: Optional[List[Dict[s
     context_block = f'\n\n[Project context]: {context}\n\n' if context else '\n\n'
     if rag_examples:
         context_block += rag_examples
+    if knowledge_snippet:
+        context_block += f'\n[Reference (from documentation)]:\n{knowledge_snippet}\n\n'
     if save_target:
         context_block += f'\n[CRITICAL] User requested code to be saved to {save_target}. Reply ONLY with the code in a ```python block. Do NOT ask questions, do NOT apologize, do NOT request clarification. Generate the code immediately. Example format:\n```python\ndef foo(): ...\n```\n\n'
     user_content = message
@@ -297,6 +361,69 @@ def _is_ls_request(message: str) -> bool:
     if not msg:
         return False
     return any((k in msg for k in (' ls ', 'команду ls', 'выполни ls', 'run ls', 'execute ls', 'list root', 'list files'))) or msg == 'ls'
+
+def _is_show_report_request(message: str) -> bool:
+    """Detect request to show scan/doctor report (ROADMAP: chat fast-path without LLM)."""
+    msg = (message or "").strip().lower()
+    if not msg:
+        return False
+    keywords = (
+        "покажи отчет", "покажи отчёт", "сформируй отчет", "сформируй отчёт",
+        "посмотри результат", "покажи результат", "report", "отчет", "отчёт",
+        "doctor report", "scan report", "результат scan", "результат doctor",
+    )
+    return any(k in msg for k in keywords)
+
+
+def _format_doctor_report_for_chat(root: Path) -> str:
+    """Format eurika_doctor_report.json for chat display. No LLM, instant response."""
+    doctor_path = root / "eurika_doctor_report.json"
+    fix_path = root / "eurika_fix_report.json"
+    if not doctor_path.exists() and not fix_path.exists():
+        return "Отчёт не найден. Сначала выполни `eurika scan .` и `eurika doctor .`."
+    try:
+        from report.report_snapshot import format_report_snapshot
+        return format_report_snapshot(root)
+    except Exception:
+        pass
+    if doctor_path.exists():
+        try:
+            doc = json.loads(doctor_path.read_text(encoding="utf-8"))
+            lines: List[str] = ["## Отчёт Doctor (eurika_doctor_report.json)\n"]
+            summary = doc.get("summary", {}) or {}
+            sys_info = summary.get("system", {}) or {}
+            lines.append(f"- **Модули:** {sys_info.get('modules', '?')}")
+            lines.append(f"- **Зависимости:** {sys_info.get('dependencies', '?')}")
+            lines.append(f"- **Циклы:** {sys_info.get('cycles', 0)}")
+            risks = summary.get("risks", [])[:8]
+            if risks:
+                lines.append("- **Риски:**")
+                for r in risks:
+                    lines.append(f"  - {r}")
+            arch = (doc.get("architect") or "").strip()
+            if arch:
+                lines.append(f"\n**Architect:** {arch[:800]}" + ("..." if len(arch) > 800 else ""))
+            ops = doc.get("operational_metrics") or {}
+            if ops:
+                lines.append(f"\n**Метрики:** apply_rate={ops.get('apply_rate')}, rollback_rate={ops.get('rollback_rate')}")
+            return "\n".join(lines)
+        except Exception:
+            return "Не удалось прочитать eurika_doctor_report.json."
+    if fix_path.exists():
+        try:
+            fix = json.loads(fix_path.read_text(encoding="utf-8"))
+            lines = ["## Отчёт Fix (eurika_fix_report.json)\n"]
+            mod = fix.get("modified", [])
+            sk = fix.get("skipped", [])
+            lines.append(f"- **Modified:** {len(mod)}")
+            lines.append(f"- **Skipped:** {len(sk)}")
+            v = fix.get("verify", {}) or {}
+            lines.append(f"- **Verify:** {v.get('success', 'N/A')}")
+            return "\n".join(lines)
+        except Exception:
+            return "Не удалось прочитать eurika_fix_report.json."
+    return "Отчёт не найден."
+
 
 def _is_tree_request(message: str) -> bool:
     """Detect request for actual directory structure."""
@@ -456,6 +583,11 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         _append_chat_history_safe(root, 'user', msg, None)
         _append_chat_history_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
+    if _is_show_report_request(msg):
+        text = _format_doctor_report_for_chat(root)
+        _append_chat_history_safe(root, 'user', msg, None)
+        _append_chat_history_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
     if _is_reject_confirmation(msg):
         pending_plan = state.get('pending_plan') if isinstance(state, dict) else {}
         if isinstance(pending_plan, dict) and is_pending_plan_valid(pending_plan):
@@ -564,7 +696,7 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     if intent == 'refactor':
         dry = 'dry-run' in msg.lower() or 'dry run' in msg.lower() or 'без применения' in msg.lower()
         output = _run_eurika_fix(root, dry_run=dry)
-        text = f'Запустил `eurika fix .`' + (' (dry-run)' if dry else '') + f':\n\n{output}'
+        text = 'Запустил `eurika fix .`' + (' (dry-run)' if dry else '') + f':\n\n{output}'
         _append_chat_history_safe(root, 'user', msg, None)
         _append_chat_history_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
@@ -617,7 +749,21 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         _append_chat_history_safe(root, 'user', msg, None)
         _append_chat_history_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
-    context = _build_chat_context(root)
+    scope = None
+    if interpretation is not None and interpretation.entities:
+        modules = (interpretation.entities.get('scope_modules') or '').split(',')
+        smells = (interpretation.entities.get('scope_smells') or '').split(',')
+        if modules or smells:
+            scope = {'modules': [m.strip() for m in modules if m.strip()], 'smells': [s.strip() for s in smells if s.strip()]}
+    if scope is None:
+        try:
+            from eurika.api.chat_intent import parse_mentions
+            mentions = parse_mentions(msg)
+            if mentions.get('modules') or mentions.get('smells'):
+                scope = mentions
+        except Exception:
+            pass
+    context = _build_chat_context(root, scope=scope)
     rag_examples = None
     try:
         from eurika.api.chat_rag import retrieve_similar_chats, format_rag_examples
@@ -626,11 +772,18 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
             rag_examples = format_rag_examples(examples)
     except Exception:
         pass
+    knowledge_snippet = ""
+    try:
+        topics = _knowledge_topics_for_chat(intent or "", scope)
+        if topics:
+            knowledge_snippet = _fetch_knowledge_for_chat(root, topics)
+    except Exception:
+        pass
     save_target = target if intent == 'save' else None
     if intent == 'save' and not save_target:
         save_target = _infer_default_save_target(msg)
         target = save_target
-    prompt = _build_chat_prompt(msg, context, history, rag_examples=rag_examples, save_target=save_target)
+    prompt = _build_chat_prompt(msg, context, history, rag_examples=rag_examples, save_target=save_target, knowledge_snippet=knowledge_snippet or None)
     from eurika.reasoning.architect import call_llm_with_prompt
     text, err = call_llm_with_prompt(prompt, max_tokens=1024)
     if err:

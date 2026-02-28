@@ -7,10 +7,22 @@
 | Вкладка | Назначение |
 |---------|------------|
 | **Models** | Управление Ollama: Start/Stop, переменные окружения, список моделей, установка |
-| **Chat** | Чат с Apply/Reject для планов; создание вкладок (в т.ч. Terminal) по intent |
+| **Chat** | Чат с Apply/Reject для планов; @-mentions для scope; создание вкладок (в т.ч. Terminal) по intent |
 | **Commands** | scan/doctor/fix/cycle/explain, live output, stop/cancel |
-| **Dashboard** | summary/history, top verify_success, рекомендации по whitelist |
-| **Approvals** | approve/reject flow для pending plan |
+| **Dashboard** | Summary (modules, deps, cycles, risk, maturity, trends), Top risks, Operational metrics (apply_rate, rollback_rate, median verify), Learning insights; автообновление при смене project root |
+| **Approvals** | Run fix (team-mode), Load plan, approve/reject per row, Save, Run apply-approved; подсказка по workflow |
+
+### Chat: @-mentions (ROADMAP 3.6.5)
+
+Сужение контекста через `@module` и `@smell`. Примеры (по данным `eurika scan` / `eurika doctor`):
+
+| Запрос | Результат |
+|--------|-----------|
+| `рефактори @patch_engine.py` | target=patch_engine.py, scope на god_module (severity 14) |
+| `рефактори @code_awareness.py с учётом @god_module` | modules + smells в scope |
+| `проверь @cli/core_handlers.py` | focus на long_function кандидате |
+
+---
 
 Важно: web static UI удалён из рантайма. `eurika serve` работает только JSON API (`/api/*`). Ниже — исторический reference по старому web-контуру.
 

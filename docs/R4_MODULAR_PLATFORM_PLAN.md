@@ -22,7 +22,7 @@
 |------------|-------------------|------|
 | **eurika.storage** | Проверить экспорт `ProjectMemory`, `event_engine`, `SessionMemory` | Добавить недостающее, убрать лишнее из публичного API |
 | **eurika.agent** | `run_agent_cycle`, `DefaultToolContract` | Убедиться, что внутренние модули (`policy`, `tools`, `runtime`) не импортируются извне напрямую |
-| **eurika.reasoning** | `advisor`, `architect`, `planner` | Проверить: кто импортирует `planner_patch_ops`, `context_sources` — только фасады? |
+| **eurika.reasoning** | `advisor`, `architect`, `planner` | ✅ `context_sources` через architect; `planner_patch_ops` — exception для architecture_planner (circular import) |
 | **eurika.refactor** | Модули по действиям | Единый фасад `refactor` с `__all__` по типам операций |
 | **eurika.knowledge** | `SMELL_TO_KNOWLEDGE_TOPICS`, providers | Проверить импорты `eurika.knowledge.base` извне — только через `eurika.knowledge` |
 | **cli.orchestration** | Фасады doctor, fix, full_cycle, prepare, apply_stage | Проверить: handlers импортируют только через `cli.orchestrator` или orchestration `__all__`? |
@@ -36,7 +36,7 @@
    Новые правила типа: «клиенты `eurika.reasoning` не импортируют `eurika.knowledge.base`» (только `eurika.knowledge`).
 
 3. **Документировать публичные API**  
-   В `Architecture.md` или `docs/API_BOUNDARIES.md` — таблица: пакет → публичные точки входа → как импортировать.
+   ✅ `docs/API_BOUNDARIES.md` — таблица: пакет → публичные точки входа → как импортировать.
 
 ---
 
@@ -99,7 +99,7 @@
 |-----|----------|-----------|
 | 3.2.1 | Создать `scripts/release_check.sh` или `make release-check` | Один скрипт, который прогоняет пункты 1–9 |
 | 3.2.2 | Добавить в `docs/RELEASE_CHECKLIST.md` | Документированный чеклист с командами |
-| 3.2.3 | Опционально: pre-commit или CI job `release-hygiene` | Запуск перед merge в main / перед тегом |
+| 3.2.3 | Опционально: pre-commit или CI job `release-hygiene` | ✅ Job `release-hygiene` в `.github/workflows/ci.yml` |
 | 3.2.4 | TODO hygiene: собрать `TODO`/`FIXME` по критичным пакетам | Список для постепенного закрытия |
 | 3.2.5 | Dead code: `ruff` / `vulture` / ручной обзор | Удалить неиспользуемый код в core |
 
@@ -130,4 +130,4 @@
 - [x] CI запускает dependency firewall в strict mode (`.github/workflows/ci.yml`)
 - [x] `scripts/release_check.sh` существует
 - [x] `docs/RELEASE_CHECKLIST.md` описан
-- [x] Аудит выполнён; добавлены SubsystemBypassRule, test_subsystem_imports_via_public_api; cli/agent, api/prepare используют фасады; architecture_planner — exception
+- [x] Аудит выполнён; SubsystemBypassRule, test_subsystem_imports_via_public_api; docs/API_BOUNDARIES.md. architecture_planner migration отложена (circular import planner↔architecture_planner).

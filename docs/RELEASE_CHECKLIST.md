@@ -1,6 +1,6 @@
 # Release Checklist (R4 Release Hygiene)
 
-Обязательный gate перед тегом релиза. См. `docs/R4_MODULAR_PLATFORM_PLAN.md` §3.
+Обязательный gate перед тегом релиза. См. [R4_MODULAR_PLATFORM_PLAN.md](R4_MODULAR_PLATFORM_PLAN.md) §3.
 
 ## Автоматический прогон
 
@@ -38,11 +38,10 @@ source ../.venv/bin/activate
 
 ## CI
 
-GitHub Actions (`.github/workflows/ci.yml`) выполняет:
-- pytest tests/
-- Dependency firewall (strict mode): forbidden imports, layer contract, subsystem bypass
-- Edge-case tests
+GitHub Actions (`.github/workflows/ci.yml`):
+- **test** — pytest, dependency firewall (strict), edge-case tests
+- **release-hygiene** — полный прогон `./scripts/release_check.sh` (после test)
+
+Скрипт работает и локально (venv `../.venv`), и в CI (python/pip из PATH). В CI ruff/mypy при ошибках только предупреждают; локально — блокируют.
 
 См. `docs/DEPENDENCY_FIREWALL.md` для деталей по правилам и исключениям.
-
-Перед merge в main и перед тегом — дополнительно запустить `./scripts/release_check.sh` локально.

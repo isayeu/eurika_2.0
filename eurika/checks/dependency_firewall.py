@@ -171,11 +171,12 @@ DEFAULT_SUBSYSTEM_BYPASS_RULES: tuple[SubsystemBypassRule, ...] = (
 )
 
 DEFAULT_SUBSYSTEM_BYPASS_EXCEPTIONS: tuple[SubsystemBypassException, ...] = (
-    # R4: Legacy planner scripts at project root; migrate to eurika.reasoning.planner in Phase B.2
+    # Circular import: planner -> architecture_planner -> build_patch_plan -> planner.
+    # build_patch_plan must import planner_patch_ops directly until planner/architecture_planner refactor.
     SubsystemBypassException(
         path_pattern="architecture_planner",
         allowed_import_prefix="eurika.reasoning.planner_patch_ops",
-        reason="Legacy planner build_patch_plan; migrate to facade",
+        reason="Circular import; migrate when planner/architecture_planner restructured",
     ),
 )
 

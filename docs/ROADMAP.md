@@ -190,7 +190,7 @@
 | Dependency firewall     | Автотест графа зависимостей как контракт архитектуры                                           | CI падает при нарушении firewall-правил            |
 | Release hygiene         | Перед релизами: dead code cleanup, TODO hygiene, lint/type/test, clean-start check             | Релизный чеклист выполняется как обязательный gate |
 
-Реализовано: `scripts/release_check.sh`, `docs/RELEASE_CHECKLIST.md`, `docs/DEPENDENCY_FIREWALL.md`; CI (`.github/workflows/ci.yml`) с dependency firewall в strict mode; SubsystemBypassRule, `test_subsystem_imports_via_public_api`, рефакторинг cli/agent и api/prepare через фасады.
+Реализовано: `scripts/release_check.sh`, `docs/RELEASE_CHECKLIST.md`, `docs/DEPENDENCY_FIREWALL.md`, `docs/API_BOUNDARIES.md`; CI с job `release-hygiene`; SubsystemBypassRule, рефакторинг через фасады. Миграция architecture_planner отложена (circular import).
 
 
 #### Контур R5 — Strategic Horizon (дальний)

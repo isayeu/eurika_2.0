@@ -16,7 +16,7 @@ from agent_core import (
     Result,
 )
 
-__all__ = [
+__all__ = [  # noqa: F822
     "ArchReviewAgentCore",
     "InputEvent",
     "Context",

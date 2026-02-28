@@ -2,11 +2,37 @@
 
 ## Current state (2026-02-27)
 
+- **Qt Hybrid Approvals + Dashboard готовы:** Approvals — Run fix (team-mode) из вкладки, workflow hint, корректный risk из explainability; Dashboard — Top risks, Operational metrics, автообновление при смене project root.
+- **R1 Structural Hardening (частично):** Layer discipline OK — 0 forbidden, 0 layer violations. SMELL_TO_KNOWLEDGE_TOPICS перенесён в eurika.knowledge; self-check выводит LAYER DISCIPLINE блок.
 - Интерфейсный контур проекта переведён в **Qt-first** режим (`eurika-qt`, пакет `qt_app/`).
 - Вкладки Qt: **Models**, **Chat**, **Commands**, **Dashboard**, **Approvals**.
 - `eurika serve` работает в **API-only** режиме (`/api/*`), без runtime-раздачи web статики.
 - Исторические snapshot'ы ниже (включая Web UI этапы) сохранены как архив эволюции и не удаляются.
 - Learning-фокус операционности: `verify_success_rate` по `smell|action|target`, с видимостью сигналов в Qt Dashboard.
+
+---
+
+## 78. Snapshot (2026-02-27) — Qt Hybrid Approvals + Dashboard MVP
+
+### Scope
+- **Approvals tab:** Run fix (team-mode) — кнопка для создания pending plan без перехода на Commands; workflow hint; risk из explainability.risk при отображении таблицы.
+- **Dashboard tab:** Top risks (из summary.risks), Operational metrics (apply_rate, rollback_rate, median_verify_time_ms); обновление при смене project root.
+- **UI.md:** обновлено описание вкладок.
+
+### Итог
+Hybrid approvals и Dashboard доведены до готовности (MVP из стартового промпта Qt).
+
+---
+
+## 77. Snapshot (2026-02-27) — R1 Layer discipline (Structural Hardening)
+
+### Scope
+- **Layer discipline:** Устранено нарушение L3→L6: `planner_llm` импортировал `cli.orchestration.doctor.SMELL_TO_KNOWLEDGE_TOPICS`. Константа перенесена в `eurika/knowledge/topics.py`; doctor, planner_llm, chat импортируют из `eurika.knowledge`.
+- **self-check:** Добавлен блок LAYER DISCIPLINE (R1). При 0 нарушений: «OK (0 forbidden, 0 layer violations)»; при наличии — список forbidden/layer violations.
+- **Architecture.md:** Обновлены 0.6, 0.7, 0.8 (Knowledge API, self-check output).
+
+### Итог
+Dependency guard стабильно ловит нарушения; EURIKA_STRICT_LAYER_FIREWALL=1 проходит. Size budget и Domain vs Presentation — в плане R1 (итеративно).
 
 ---
 

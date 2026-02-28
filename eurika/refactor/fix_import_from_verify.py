@@ -202,11 +202,11 @@ def _create_stub_module(
             lines.append("    except (json.JSONDecodeError, OSError):")
             lines.append("        return {}")
             lines.append("")
-        elif "FILE" in sym and sym not in [l.strip().split("=")[0].strip() for l in lines if "=" in l]:
+        elif "FILE" in sym and sym not in [ln.strip().split("=")[0].strip() for ln in lines if "=" in ln]:
             lines.append(f"{sym} = Path(\"{base}.json\")")
             lines.append("")
 
-    if not any("def " in l for l in lines) and requested_symbols:
+    if not any("def " in ln for ln in lines) and requested_symbols:
         lines.append(f"def {requested_symbols[0]}():")
         lines.append("    return {}")
         lines.append("")

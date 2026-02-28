@@ -4,7 +4,7 @@
 
 *Требования: Python 3.10+.* Для проверки после `eurika fix` нужен pytest: `pip install pytest` или `pip install -e ".[test]"`. Рекомендуется Python 3.12/3.13 для Qt.
 
-**Текущий фокус (по review):** переход от «архитектурного аналитика» к «инженерному инструменту» — полноценный Patch Engine (apply/verify/rollback), автофиксы, единый Event Engine. Детали — в **review.md** и **ROADMAP.md**.
+**Текущий фокус (по review):** переход от «архитектурного аналитика» к «инженерному инструменту» — полноценный Patch Engine (apply/verify/rollback), автофиксы, единый Event Engine. Детали — в **docs/review.md** и **docs/ROADMAP.md**.
 
 ## Быстрый старт
 
@@ -48,7 +48,7 @@ eurika-qt .
 
 Или напрямую: `python eurika_cli.py scan .`.
 
-**Для LLM (doctor, architect, cycle):** установите `pip install -e ".[test]"` (включает openai, pytest). Без openai LLM не вызывается — вывод шаблонный. Подробнее — **DOGFOODING.md**.
+**Для LLM (doctor, architect, cycle):** установите `pip install -e ".[test]"` (включает openai, pytest). Без openai LLM не вызывается — вывод шаблонный. Подробнее — **docs/DOGFOODING.md**.
 
 **Ollama (локальный LLM):** для architect/cycle с ollama запустите сервер, при необходимости с переменными для AMD GPU:
 ```bash
@@ -66,7 +66,7 @@ Fallback-модель для локального OpenAI-compatible endpoint Oll
 - **`eurika fix [path]`** — полный цикл: scan → plan → patch-apply --apply --verify. Опции: `--window N`, `--dry-run`, `--quiet`, `--no-clean-imports`.
 - **`eurika cycle [path]`** — ритуал одной командой: scan → doctor (report + architect) → fix. Опции: `--window N`, `--dry-run`, `--quiet`, `--no-llm`, `--no-clean-imports`.
 
-**CI:** `eurika fix . --quiet` — exit 0 при успехе, 1 при провале verify или ошибках. См. CLI.md § CI/CD.
+**CI:** `eurika fix . --quiet` — exit 0 при успехе, 1 при провале verify или ошибках. См. docs/CLI.md § CI/CD.
 - **`eurika explain <module> [path]`** — роль и риски модуля.
 - **`eurika serve [path]`** — JSON API для интеграций и внешних клиентов (Qt shell и др.).
 
@@ -137,19 +137,31 @@ Fallback-модель для локального OpenAI-compatible endpoint Oll
 - **Patch Rollback**: восстановление из бэкапа.
 - **Learning Loop**: после `patch-apply --apply --verify` исходы записываются как события (type=learn) в `.eurika/events.json`; architect использует recent_events в промпте; при arch-review прошлые success rate — для `learned_signals`.
 
+## Зависимости и расширения
+
+Полный список — **docs/DEPENDENCIES.md**. Расширения (v3.0.13+):
+
+- **refactor** — libcst (round-trip AST, сохранение форматирования)
+- **cli** — rich (прогресс, таблицы, подсветка)
+- **extras** — pydantic, watchdog, ruff, structlog, ollama
+
+Установка всего: `pip install -e ".[test,qt,refactor,cli,extras]"`.
+
 ## Документация
 
-- **UI.md** — legacy reference по архивному Web UI (история, не текущий интерфейс)
-- **MIGRATION_WEB_TO_QT.md** — практический статус миграции интерфейса: что удалено, что осталось, как запускать сейчас
-- **review.md** — разбор, диагноз зрелости, план прорыва (5 этапов)
-- **ROADMAP.md** — план задач, оценка зрелости, «что не хватает», план прорыва, этапы до продуктовой 1.0
-- **REPORT.md** — текущий статус, оценка по review, следующий шаг
-- **Architecture.md** — структура системы, замкнутый цикл, Patch Engine (целевой API), направление 2.1
-- **CLI.md** — справочник команд, рекомендуемый цикл
-- **DOGFOODING.md** — ритуал полного цикла на самом Eurika (scan → doctor → fix), про venv
+Все документы — в каталоге **docs/** ([docs/README.md](docs/README.md) — навигация).
+
+- **docs/UI.md** — legacy reference по архивному Web UI (история, не текущий интерфейс)
+- **docs/MIGRATION_WEB_TO_QT.md** — практический статус миграции интерфейса: что удалено, что осталось, как запускать сейчас
+- **docs/review.md** — разбор, диагноз зрелости, план прорыва (5 этапов)
+- **docs/ROADMAP.md** — план задач, оценка зрелости, «что не хватает», план прорыва, этапы до продуктовой 1.0
+- **docs/REPORT.md** — текущий статус, оценка по review, следующий шаг
+- **docs/Architecture.md** — структура системы, замкнутый цикл, Patch Engine (целевой API), направление 2.1
+- **docs/CLI.md** — справочник команд, рекомендуемый цикл
+- **docs/DOGFOODING.md** — ритуал полного цикла на самом Eurika (scan → doctor → fix), про venv
 - **docs/KNOWLEDGE_LAYER.md** — Knowledge Provider Layer (контракт, формат `eurika_knowledge.json`, интеграция с doctor/architect). Пример: `docs/eurika_knowledge.example.json`.
-- **SPEC.md** — контракт проекта (v0.1–v0.4), текущий фокус
-- **THEORY.md** — идеология и философия Eurika
+- **docs/SPEC.md** — контракт проекта (v0.1–v0.4), текущий фокус
+- **docs/THEORY.md** — идеология и философия Eurika
 
 ## Self-analysis ritual
 

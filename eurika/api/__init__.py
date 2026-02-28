@@ -8,7 +8,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
-from .ops import get_clean_imports_operations, get_code_smell_operations
+from .ops import get_clean_imports_operations, get_code_smell_operations  # noqa: F401
 
 def _to_json_safe(obj: Any) -> Any:
     """Convert objects to JSON-serializable form: tuple->list, Path->str."""

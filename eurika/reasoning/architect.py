@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from eurika.knowledge import KnowledgeProvider
     from eurika.storage.events import Event
 
-__all__ = ["build_context_sources", "call_llm_with_prompt", "interpret"]
+__all__ = ["build_context_sources", "call_llm_with_prompt", "interpret_architecture", "interpret_architecture_with_meta"]
 
 
 def _format_recent_events(events: List['Event'], max_chars: int=500) -> str:

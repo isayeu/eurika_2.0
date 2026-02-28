@@ -76,7 +76,6 @@ def detect_god_modules(graph: ProjectGraph) -> List[ArchSmell]:
 def detect_bottlenecks(graph: ProjectGraph) -> List[ArchSmell]:
     fan = graph.fan_in_out()
     fan_in = {n: v[0] for n, v in fan.items()}
-    fan_out = {n: v[1] for n, v in fan.items()}
     mu_in, sigma_in = _degree_stats(fan_in)
     smells: List[ArchSmell] = []
     for n in graph.nodes:
@@ -98,7 +97,6 @@ def detect_bottlenecks(graph: ProjectGraph) -> List[ArchSmell]:
 
 def detect_hubs(graph: ProjectGraph) -> List[ArchSmell]:
     fan = graph.fan_in_out()
-    fan_in = {n: v[0] for n, v in fan.items()}
     fan_out = {n: v[1] for n, v in fan.items()}
     mu_out, sigma_out = _degree_stats(fan_out)
     smells: List[ArchSmell] = []

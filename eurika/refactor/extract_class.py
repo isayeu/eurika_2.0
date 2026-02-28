@@ -173,7 +173,6 @@ def _build_modified_original(tree: ast.AST, target_cls: ast.ClassDef, to_remove:
     import_stmt = f'from {new_module_path} import {new_class_name}'
     for m in to_remove:
         args = m.args
-        self_arg = args.args[0] if args.args else None
         rest_args = [a for a in args.args[1:]] if args.args else []
         arg_names = [getattr(a, 'arg', 'args') for a in rest_args]
         call_args = ', '.join(arg_names)
