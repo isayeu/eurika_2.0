@@ -47,7 +47,7 @@ def test_cli_whitelist_draft_all_kinds_flag() -> None:
 
 def test_run_cycle_uses_runtime_wrapper_for_non_assist() -> None:
     fake = AgentCycleResult(mode="hybrid", stages=["observe", "apply"], payload={"ok": True})
-    with patch("eurika.agent.runtime.run_agent_cycle", return_value=fake):
+    with patch("eurika.agent.run_agent_cycle", return_value=fake):
         out = run_cycle(ROOT, mode="doctor", runtime_mode="hybrid", no_llm=True)
     assert out["ok"] is True
     assert out["agent_runtime"]["mode"] == "hybrid"
