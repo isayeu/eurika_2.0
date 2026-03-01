@@ -1,12 +1,51 @@
 """Chat tool calls (ROADMAP 3.6.8 Phase 1).
 
-Provides git_status, git_diff, git_commit for Chat flow.
-Invoked when user intent is commit-related (e.g. «собери коммит»).
+Provides git_status, git_diff, git_commit, run_eurika_ritual for Chat flow.
+Invoked when user intent is commit-related or ritual-related.
 """
 from __future__ import annotations
 import subprocess
+import sys
 from pathlib import Path
 from typing import Tuple
+
+
+def run_eurika_command(project_root: Path, subcommand: str, *args: str, timeout: int = 180) -> Tuple[bool, str]:
+    """Run eurika CLI subcommand. Returns (ok, output)."""
+    try:
+        r = subprocess.run(
+            [sys.executable, "-m", "eurika_cli", subcommand, str(project_root), *args],
+            cwd=str(project_root),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        out = ((r.stdout or "") + "\n" + (r.stderr or "")).strip()
+        if r.returncode != 0 and not out:
+            out = f"eurika {subcommand} failed (exit {r.returncode})"
+        return (r.returncode == 0, out)
+    except subprocess.TimeoutExpired:
+        return (False, f"eurika {subcommand}: timeout")
+    except Exception as e:
+        return (False, f"eurika {subcommand}: {e}")
+
+
+def run_eurika_ritual(project_root: Path) -> Tuple[bool, str]:
+    """Run scan → doctor → report-snapshot. Returns (ok, combined output)."""
+    parts: list[str] = []
+    steps = [
+        ("scan", []),
+        ("doctor", ["--quiet", "--no-llm"]),
+        ("report-snapshot", []),
+    ]
+    all_ok = True
+    for cmd, extra in steps:
+        ok, out = run_eurika_command(project_root, cmd, *extra, timeout=180)
+        parts.append(f"--- eurika {cmd} ---\n{out[:4000]}{'...' if len(out) > 4000 else ''}")
+        if not ok:
+            all_ok = False
+            break
+    return (all_ok, "\n\n".join(parts))
 
 
 def git_status(project_root: Path) -> Tuple[bool, str]:

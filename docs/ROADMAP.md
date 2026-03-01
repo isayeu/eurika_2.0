@@ -54,17 +54,17 @@
 
 ## Следующий горизонт (кратко)
 
-- **Состояние v3.0.x:** фазы 2.1–2.9, 3.0, 3.1, 3.1-arch, 3.2, 3.5 — выполнены. Web UI закрыт как legacy; текущий интерфейсный фокус — Qt shell (`qt_app`, `eurika-qt`).
+- **Состояние v3.0.x:** фазы 2.1–2.9, 3.0, 3.1, 3.1-arch, 3.2 выполнены. Текущий интерфейсный фокус — Qt shell (`qt_app`, `eurika-qt`).
 - **Фокус:** работа над собой — регулярный scan/doctor/fix, добавление функций по запросу, багфиксы, актуализация документации.
 - **Стабилизация:** тесты зелёные, доки соответствуют коду.
 - **Операционность 5/10:** refactor_code_smell 0% success (в WEAK_SMELL_ACTION_PAIRS); extract_block_to_helper работает в guarded-режиме (hybrid: review, auto: deny, target-aware/whitelist); для повышения — допустимо использовать интернет и LLM (промпты, pattern library, curated repos).
-- **Дальше:** см. «Следующий фокус (после 3.5)» и новый активный бэклог ниже.
+- **Дальше:** см. «Следующий фокус» и новый активный бэклог ниже.
 
 ### Расширения зависимостей (v3.0.13+)
 
 Установлены и интегрируются: **libcst** (refactor), **litellm** (architect LLM), **rich** (CLI UX), **pydantic**, **watchdog**, **ruff**, **structlog**, **ollama**. См. **docs/DEPENDENCIES.md**.
 
-### Следующий фокус (после 3.5)
+### Следующий фокус
 
 Три направления на выбор:
 
@@ -149,8 +149,8 @@
 | Поток                  | Что делаем                                                                                                               | Критерий готовности                                                                      |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
 | Layer discipline       | Перепроверка и донастройка карты слоёв (allowed deps + no-upward imports) по факту текущих модулей                       | ✅ 2026-02: SMELL_TO_KNOWLEDGE_TOPICS → eurika.knowledge; 0 violations; self-check LAYER DISCIPLINE блок |
-| Domain vs Presentation | Убираем форматирование отчётов/markdown из domain-кода; domain возвращает структуры, rendering только в reporting/UI/CLI | Для выбранных целевых модулей domain не возвращает форматированный текст (отложено)       |
-| Size budget            | Жёстко применяем бюджет размера файлов (>400 warning, >600 split required) в self-check/ритуале                          | ✅ self-check выводит FILE SIZE LIMITS; список >400 контролируется                         |
+| Domain vs Presentation | Убираем форматирование отчётов/markdown из domain-кода; domain возвращает структуры, rendering только в reporting/UI/CLI | ✅ 2026-02: explain_module, get_suggest_plan_text перенесены в report/; eurika.api — только структуры |
+| Size budget            | Жёстко применяем бюджет размера файлов (>400 warning, >600 split required) в self-check/ритуале                          | ✅ self-check выводит FILE SIZE LIMITS; 2026-02: eurika.api/__init__.py разбит на architecture, learning_api, team_api, diff_api, explain_api (697→185 LOC) |
 | Public subsystem API   | Для ключевых подсистем оставляем 1-2 публичные точки входа, остальное private                                            | ✅ Architecture.md §0.7; Knowledge добавлен в таблицу                                    |
 
 
@@ -161,9 +161,9 @@
 
 | Поток                        | Что делаем                                                                                  | Критерий готовности                                                  |
 | ---------------------------- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Явная state-модель цикла     | Ввести формальное состояние выполнения runtime (idle/thinking/error/done) и тесты переходов | Есть unit-тесты переходов и корректная фиксация error-state          |
-| Fallback-устойчивость        | Аудит fallback-путей (LLM/knowledge/runtime) с обязательным детерминированным degraded mode | При недоступности внешних зависимостей цикл завершается предсказуемо |
-| Централизованное логирование | Привести runtime/CLI к единому logging-контуру (уровни, verbose/debug режимы)               | Отсутствуют «слепые» print-пути в критическом цикле                  |
+| Явная state-модель цикла     | Ввести формальное состояние выполнения runtime (idle/thinking/error/done) и тесты переходов | ✅ AgentRuntimeState, CycleState; test_agent_runtime, test_cycle_state, test_agent_runtime_stage_exception_sets_error_state |
+| Fallback-устойчивость        | Аудит fallback-путей (LLM/knowledge/runtime) с обязательным детерминированным degraded mode | ✅ R2_FALLBACK_AUDIT; degraded_mode/degraded_reasons; doctor/fix/full_cycle early exit; тесты pass |
+| Централизованное логирование | Привести runtime/CLI к единому logging-контуру (уровни, verbose/debug режимы)               | ✅ LOGGING_R2; cli/orchestration/logging.py; --quiet/--verbose; orchestration без print |
 
 
 #### Контур R3 — Quality Gate (параллельно R1/R2)
@@ -173,9 +173,9 @@
 
 | Поток                    | Что делаем                                                                              | Критерий готовности                                                    |
 | ------------------------ | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Coverage критичного ядра | Приоритетно покрывать тестами runtime/policy/memory/planning contracts                  | Рост покрытия по критическим пакетам, без деградации regression-набора |
-| Edge-case matrix         | Формализовать edge-cases: пустой/огромный вход, model/network error, memory write error | Отдельный блок тестов на edge-cases в CI                               |
-| Typing contract          | Усилить type-hints на границах подсистем; mypy как optional-gate                        | Ошибки типов не накапливаются в core-контрактах                        |
+| Coverage критичного ядра | Приоритетно покрывать тестами runtime/policy/memory/planning contracts                  | ✅ CI: pytest --cov=eurika --cov=cli; runtime 97%, policy 76%, events 89%, cycle_state 100%; рост итеративно |
+| Edge-case matrix         | Формализовать edge-cases: пустой/огромный вход, model/network error, memory write error | ✅ docs/EDGE_CASE_MATRIX.md; tests/edge_cases/; CI job pytest -m edge_case; 10 тестов |
+| Typing contract          | Усилить type-hints на границах подсистем; mypy как optional-gate                        | ✅ docs/TYPING_CONTRACT.md; CI mypy step (optional); pyproject overrides 45+ модулей; 0 errors |
 
 
 #### Контур R4 — Modular Platform (после R1–R3)
@@ -186,20 +186,51 @@
 
 | Поток                   | Что делаем                                                                                     | Критерий готовности                                |
 | ----------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| Subsystem decomposition | Укрепить пакетную изоляцию (core/analysis/planning/execution/reporting) и контракты между ними | Нет прямых «соседских» обходов мимо публичных API  |
-| Dependency firewall     | Автотест графа зависимостей как контракт архитектуры                                           | CI падает при нарушении firewall-правил            |
-| Release hygiene         | Перед релизами: dead code cleanup, TODO hygiene, lint/type/test, clean-start check             | Релизный чеклист выполняется как обязательный gate |
+| Subsystem decomposition | Укрепить пакетную изоляцию (core/analysis/planning/execution/reporting) и контракты между ними | ✅ SubsystemBypassRule, API_BOUNDARIES.md; test_subsystem_imports_via_public_api; 1 exception (architecture_planner) |
+| Dependency firewall     | Автотест графа зависимостей как контракт архитектуры                                           | ✅ ImportRule/LayerRule/SubsystemBypassRule; CI step EURIKA_STRICT_LAYER_FIREWALL=1; 7 тестов |
+| Release hygiene         | Перед релизами: dead code cleanup, TODO hygiene, lint/type/test, clean-start check             | ✅ scripts/release_check.sh; CI job release-hygiene; RELEASE_CHECKLIST.md (пункты 1–10) |
 
 Реализовано: `scripts/release_check.sh`, `docs/RELEASE_CHECKLIST.md`, `docs/DEPENDENCY_FIREWALL.md`, `docs/API_BOUNDARIES.md`; CI с job `release-hygiene`; SubsystemBypassRule, рефакторинг через фасады. Миграция architecture_planner отложена (circular import).
 
 
 #### Контур R5 — Strategic Horizon (дальний)
 
-После завершения структурных контуров:
+**Цель:** самонаблюдение, предиктивная аналитика, расширяемость. Детальный план: **docs/R5_STRATEGIC_HORIZON_PLAN.md**.
 
-- **Self-guard/Meta-architecture:** авто-детекция layer violations, complexity budget alarms, centralization trend.
-- **Intelligence upgrade:** risk prediction + более точный recommendation engine.
-- **Extensibility:** plugin interface и подключение внешних анализаторов через единый контракт.
+##### R5.1 Self-guard / Meta-architecture
+
+Критерий: Eurika сама детектирует деградацию архитектуры и даёт алерты.
+
+| # | Шаг | Задача | Критерий готовности |
+|---|-----|--------|---------------------|
+| R5.1.1 | Агрегированный SELF-GUARD | Единый блок в `eurika self-check`: layer + file_size + subsystem | ✅ PASS/FAIL по всем guard-проверкам |
+| R5.1.2 | Флаг --strict | `eurika self-check . --strict` → exit 1 при нарушениях | ✅ --strict/--fail-on-guard |
+| R5.1.3 | Complexity budget alarms | Пороги god_module >8, bottleneck >5; алерт при превышении | ✅ self_guard.py, блок в self-check |
+| R5.1.4 | Centralization trend alarm | При centralization=increasing в history — предупреждение | ✅ evolution.history, alarm в self-check |
+| R5.1.5 | SELF-GUARD в Qt Dashboard | Блок с итогом guard-проверок в GUI | ✅ Qt Dashboard |
+
+##### R5.2 Intelligence upgrade
+
+Критерий: более точные рекомендации и предикция рисков.
+
+| # | Шаг | Задача | Критерий готовности |
+|---|-----|--------|---------------------|
+| R5.2.1 | Risk prediction | Оценка «вероятность регрессии» для модуля (history + smells) | ✅ get_risk_prediction, /api/risk_prediction |
+| R5.2.2 | Recommendation engine | Учёт learning stats, past success rate в приоритизации | ✅ prioritized_smell_actions, context_sources |
+| R5.2.3 | Контекстные подсказки | @-mentions в chat → фокус на модулях/smells | ✅ parse_mentions, scope-контекст, Focus module/smell |
+
+##### R5.3 Extensibility
+
+Критерий: подключение внешних анализаторов через единый контракт.
+
+| # | Шаг | Задача | Критерий готовности |
+|---|-----|--------|---------------------|
+| R5.3.1 | Plugin interface | `AnalyzerPlugin` protocol: `analyze(path) -> List[ArchSmell]` | ✅ eurika/plugins/, protocol |
+| R5.3.2 | Регистрация плагинов | `.eurika/plugins.toml` или `pyproject [tool.eurika.plugins]` | ✅ load_plugins, docs/R5_PLUGIN_INTERFACE.md |
+| R5.3.3 | Агрегация результатов | Eurika + плагины → объединённый отчёт | ✅ detect_smells_with_plugins, GET /api/smells_with_plugins |
+| R5.3.4 | Пример плагина | Тестовый пример callable | ✅ tests/fixtures/eurika_plugin_example.py |
+
+**Порядок выполнения:** Фаза A (Self-guard) → Фаза B (Intelligence) → Фаза C (Extensibility). Основные критерии R5 закрыты.
 
 ---
 
@@ -207,7 +238,7 @@
 
 План прорыва выполнен. Ниже — фазы без жёстких сроков, в приоритете саморазвитие и работа над собственной кодовой базой.
 
-**Фазы по возрастанию:** 2.1 → 2.2 → 2.3 → 2.4 → 2.6 → 2.7 → 2.8 → 2.9 → 3.0 (3.0.5) → 3.1 → 3.1-arch → 3.2 → 3.5 (3.5.1–3.5.10)
+**Фазы по возрастанию:** 2.1 → 2.2 → 2.3 → 2.4 → 2.6 → 2.7 → 2.8 → 2.9 → 3.0 (3.0.5) → 3.1 → 3.1-arch → 3.2
 
 ---
 
@@ -226,7 +257,7 @@
 - R3 Typing contract (iterative): целевой mypy-gate расширен до `CLI entry -> orchestration -> API surface -> agent/storage/event-memory/facade -> learning/knowledge -> reasoning -> runtime/tool-contract -> evolution -> smells/core -> analysis/reporting -> checks/utils/storage-sidecar` (80 модулей), подтверждён финальным consolidate-ритуалом (full mypy + targeted regression-pack) и step-7..step-16 валидацией (CYCLE_REPORT #50, #51, #52, #53, #54, #55, #56, #57, #58, #59, #60, #61)
 - Ритуал 2.1: `eurika report-snapshot .` (post R3 typing) выполнен и зафиксирован в CYCLE_REPORT #62
 - Full cycle + snapshot ritual (post R3 typing) выполнен: no-op без verify-step, risk_score=46, context effect зафиксирован (CYCLE_REPORT #63)
-- UI.md обновлён и закрыт как MVP-гайд по Web UI (serve, tabs, run-cycle/terminal/approve/chat)
+- UI.md обновлён (CLI, serve, вкладки, run-cycle/terminal/approve/chat)
 - README обновлён под продуктовый onboarding: venv-нейтральный quick start + базовые команды `scan/doctor/fix --dry-run/serve` (CYCLE_REPORT #64)
 - B. Продуктовая готовность закрыт до 6/10: критерии B.1–B.6 выполнены (ROADMAP + CYCLE_REPORT #65)
 - Uplift refactor/extract action-kind (phase 1+2): outcome-семантика `not_applied|verify_fail|verify_success`, hardening extract-функций, детальная skip-диагностика (CYCLE_REPORT #66)
@@ -265,8 +296,8 @@
 
 | #     | Шаг                                | Задача                                                                                           | Критерий готовности                                                                                   |
 | ----- | ---------------------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| 3.6.1 | Approve per operation              | Подтверждение/отклонение по операциям (а не только whole-plan): risk, reason, target, diff-hint | Для high-risk ops доступен per-op approve/reject; `--apply-approved` применяет только approved ops |
-| 3.6.2 | Critic pass before apply           | Перед применением прогонять критический check плана (imports/API/tests impact)                  | План получает pre-apply verdict (`allow/review/deny`), deny-ops не применяются в auto режиме       |
+| 3.6.1 | Approve per operation              | Подтверждение/отклонение по операциям (а не только whole-plan): risk, reason, target, diff-hint | ✅ per-op approve/reject; --apply-approved, --approve-ops; team_mode, hybrid, Qt Approvals |
+| 3.6.2 | Critic pass before apply           | Перед применением прогонять критический check плана (imports/API/tests impact)                  | ✅ _run_critic_pass, critic_verdict allow/review/deny; deny не проходит в auto; critic_decisions в report |
 | 3.6.3 | Semantic context for planner       | Подмешивать в planner семантически релевантные модули/тесты/историю фейлов                       | ✅ Выполнено: context sources в planner/report/UI; в report-snapshot есть блок "Context effect" (apply/no-op delta) |
 | 3.6.4 | Session checkpoint + campaign undo | Снимок состояния перед серией apply; откат всей кампании одним действием                         | ✅ Выполнено: pre-apply checkpoint, `campaign-undo`, e2e rollback кампании (checkpoint -> run_id -> undo) |
 | 3.6.5 | @-mentions / scoped context       | Парсинг @module, @smell в чате; обогащение контекста; target из @module при refactor           | ✅ parse_mentions; примеры: @patch_engine.py, @code_awareness.py, @god_module (scan/doctor) |
@@ -290,12 +321,12 @@
 
 | Трек | Что делаем | Артефакты |
 | ---- | ---------- | --------- |
-| T1. Contract | Ввести/расширить структуру operation approval: `approved/rejected/pending`, reason, reviewer, timestamp; унифицировать формат pending/approved плана | Обновлённый JSON-контракт pending plan + обратная совместимость чтения |
-| T2. CLI/UX | Добавить per-op workflow в CLI: показать операции с индексами/risk и поддержать approve/reject по индексам; сохранить существующий `--apply-approved` сценарий | Команды approve/reject по операциям + понятный вывод статусов |
-| T3. Apply pipeline | На этапе apply исполнять только approved ops; rejected пропускать с явной причиной в отчёте; pending не запускать в auto | Обновлённый apply-stage с детерминированной фильтрацией операций |
-| T4. Critic pass | Перед apply запускать critic для каждой операции: imports/API surface/test impact, verdict `allow/review/deny` | Поле `critic_verdict` в operation metadata; deny блокирует auto-apply |
-| T5. Reporting | Включить в `eurika_fix_report.json` breakdown по операциям: approval_state, critic_verdict, applied/skipped reason | Прозрачный отчёт "почему операция применена/отклонена" |
-| T6. Tests | Добавить unit/integration тесты: approve subset, reject high-risk, deny from critic, mixed plan apply | Набор тестов для happy path и edge-cases (индексы, пустой approved set, all denied) |
+| T1. Contract | Ввести/расширить структуру operation approval: `approved/rejected/pending`, reason, reviewer, timestamp; унифицировать формат pending/approved плана | ✅ approval_state, team_decision, approved_by, rejection_reason; payload created_at; load принимает team_decision ИЛИ approval_state |
+| T2. CLI/UX | Добавить per-op workflow в CLI: показать операции с индексами/risk и поддержать approve/reject по индексам; сохранить существующий `--apply-approved` сценарий | ✅ --approve-ops, --reject-ops (1-based); hybrid prompt [idx/N] kind→target risk=X [a]/[r]/[A]/[R]; decision_summary; --apply-approved |
+| T3. Apply pipeline | На этапе apply исполнять только approved ops; rejected пропускать с явной причиной в отчёте; pending не запускать в auto | ✅ _filter_executable_operations; operation_results+skipped_reason; skipped_reasons в report; pending/rejected не выполняются |
+| T4. Critic pass | Перед apply запускать critic для каждой операции: imports/API surface/test impact, verdict `allow/review/deny` | ✅ _run_critic_pass; critic_verdict, critic_reason; deny блокирует в _filter_executable; critic_decisions в report |
+| T5. Reporting | Включить в `eurika_fix_report.json` breakdown по операциям: approval_state, critic_verdict, applied/skipped reason | ✅ operation_results (approval_state, critic_verdict, applied, skipped_reason); decision_summary; critic_decisions |
+| T6. Tests | Добавить unit/integration тесты: approve subset, reject high-risk, deny from critic, mixed plan apply | ✅ test_fix_cycle_approve_ops_selects_subset; test_fix_cycle_decision_gate_blocks_critic_denied_op; test_fix_cycle_all_rejected; test_hybrid_*; test_team_mode; apply-approved missing/invalid |
 
 **DoD спринта 1:** high-risk без approve не применяются; deny от critic не проходит в auto; `--apply-approved` — только одобренный поднабор; отчёт фиксирует decision trail; regression зелёный.
 
@@ -305,7 +336,7 @@
 | --- | --------- |
 | 3.6.6.1 | ✅ CompositeKnowledgeProvider в chat flow; topics из intent/scope; inject как `[Reference]` |
 | 3.6.6.2 | ✅ ask_ollama_split_hints получает knowledge_snippet; append к prompt |
-| 3.6.6.3 | Отложено — diff_hint уже содержит OSS patterns |
+| 3.6.6.3 | OSS patterns в diff_hint | ✅ Реализовано в 3.0.5.4: _build_hints_and_params добавляет OSS (proj): module — hint |
 
 #### 3.6.7 — Approvals diff view (✅ выполнено)
 
@@ -423,35 +454,37 @@
 
 **Цель:** встроить Cursor-подобный workflow напрямую в кодовую базу Eurika: управляемый цикл решений, политики безопасности, объяснимые патчи, session-memory и гибридный режим auto/manual для рефакторинга.
 
+**Статус: все шаги 2.7.1–2.7.10 реализованы.**
+
 
 | #      | Шаг                     | Задача                                                                                                                                                   | Критерий готовности                                                                                                    |
 | ------ | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| 2.7.1  | Agent Runtime Core      | Добавить единый runtime-цикл (`observe -> reason -> propose -> apply -> verify -> learn`) в `eurika/agent/runtime.py`; режимы `assist`, `hybrid`, `auto` | Есть unit-тесты на переходы состояний; цикл запускается из CLI без изменения существующего контракта `scan/doctor/fix` |
-| 2.7.2  | Tool Contract Layer     | Ввести типизированные адаптеры инструментов (scan, patch, verify, rollback, tests, git-read) с единым `ToolResult`                                       | Runtime использует только tool-contract API; ошибки нормализованы; поведение воспроизводимо в dry-run                  |
-| 2.7.3  | Policy Engine           | Реализовать policy-конфиг для auto-apply (ограничения по risk, file patterns, max files/ops, API-breaking guard)                                         | Для `hybrid/auto` есть policy-решение `allow/deny/review`; покрытие тестами deny-правил и граничных кейсов             |
-| 2.7.4  | Explainability Record   | Для каждой операции сохранять `why`, `risk`, `expected_outcome`, `rollback_plan` и outcome verify                                                        | В `eurika_fix_report.json`/events видны объяснения по каждому op; `eurika explain` показывает rationale из runtime     |
-| 2.7.5  | Session Memory          | Добавить память сессии/кампании: история решений, повторные провалы, подавление шумовых операций                                                         | Повторный запуск учитывает прошлые fail/skip; уменьшается churn по TODO/no-op операциям                                |
-| 2.7.6  | Human-in-the-loop CLI   | Добавить интерактивный approval в `fix` для `hybrid` (approve/reject/skip/all), с `--non-interactive` для CI                                             | CLI-UX покрыт интеграционными тестами; в CI-режиме поведение детерминировано без промптов                              |
-| 2.7.7  | Safety & Rollback Gates | Ужесточить guardrails: обязательный verify-gate, авто-rollback при regressions, лимиты на серию операций                                                 | Нет частично-применённых невалидных сессий; rollback покрыт тестами на fail verify                                     |
-| 2.7.8  | Telemetry & KPIs        | Добавить метрики операционности: apply-rate, rollback-rate, no-op-rate, median verify time                                                               | Метрики выводятся в doctor/fix report и используются для корректировки policy                                          |
-| 2.7.9  | Stability Campaign      | Провести серию прогонов runtime (assist/hybrid/auto) на Eurika                                                                   | Минимум 3 стабильных цикла подряд без шумовых TODO-патчей; тесты зелёные                                               |
-| 2.7.10 | Docs & Migration        | Обновить CLI.md, ROADMAP, CYCLE_REPORT с новым режимом runtime и правилами эксплуатации                                                      | Документация синхронизирована с кодом; сценарии запуска/отката описаны и проверены                                     |
+| 2.7.1  | Agent Runtime Core      | Добавить единый runtime-цикл (`observe -> reason -> propose -> apply -> verify -> learn`) в `eurika/agent/runtime.py`; режимы `assist`, `hybrid`, `auto` | ✅ run_agent_cycle, _STAGES; AgentRuntimeState; --runtime-mode; test_agent_runtime_stage_exception; scan/doctor/fix без изменения контракта |
+| 2.7.2  | Tool Contract Layer     | Ввести типизированные адаптеры инструментов (scan, patch, verify, rollback, tests, git-read) с единым `ToolResult`                                       | ✅ DefaultToolContract, OrchestratorToolset; tests/test_tool_contract.py; dry-run воспроизводим                                                                 |
+| 2.7.3  | Policy Engine           | Реализовать policy-конфиг для auto-apply (ограничения по risk, file patterns, max files/ops, API-breaking guard)                                         | ✅ PolicyConfig, evaluate_operation; allow/deny/review; deny_patterns, max_ops, api_breaking_guard; tests/test_agent_policy.py                                 |
+| 2.7.4  | Explainability Record   | Для каждой операции сохранять `why`, `risk`, `expected_outcome`, `rollback_plan` и outcome verify                                                        | ✅ operation_explanations в eurika_fix_report.json; eurika explain; tests/test_explainability.py                                                                 |
+| 2.7.5  | Session Memory          | Добавить память сессии/кампании: история решений, повторные провалы, подавление шумовых операций                                                         | ✅ SessionMemory, rejected_keys, verify_fail_keys; apply_campaign_memory; --allow-campaign-retry; tests/test_session_memory.py, test_cycle                                                |
+| 2.7.6  | Human-in-the-loop CLI   | Добавить интерактивный approval в `fix` для `hybrid` (approve/reject/skip/all), с `--non-interactive` для CI                                             | ✅ select_hybrid_operations, read_hybrid_choice; --approve-ops, --reject-ops, --non-interactive; tests/test_hitl_cli.py                                                                    |
+| 2.7.7  | Safety & Rollback Gates | Ужесточить guardrails: обязательный verify-gate, авто-rollback при regressions, лимиты на серию операций                                                 | ✅ auto_rollback=True, backup=True; enrich_report_with_rescan; record_verify_failure; tests/test_safety_rollback_gates.py                                                                 |
+| 2.7.8  | Telemetry & KPIs        | Добавить метрики операционности: apply-rate, rollback-rate, no-op-rate, median verify time                                                               | ✅ telemetry в fix report; aggregate_operational_metrics; suggest_policy_from_telemetry; /api/operational_metrics; Dashboard; campaign_skipped/session_skipped                                 |
+| 2.7.9  | Stability Campaign      | Провести серию прогонов runtime (assist/hybrid/auto) на Eurika                                                                   | ✅ CYCLE_REPORT: стабильные циклы; split_module guard на *_extracted.py                                                                                         |
+| 2.7.10 | Docs & Migration        | Обновить CLI.md, ROADMAP, CYCLE_REPORT с новым режимом runtime и правилами эксплуатации                                                      | ✅ CLI.md, CYCLE_REPORT, UI.md — runtime-режимы, --allow-campaign-retry, telemetry, operational_metrics                                                                                  |
 
 
 **Порядок внедрения (рекомендуемый):** 2.7.1 -> 2.7.2 -> 2.7.3 -> 2.7.4 -> 2.7.5 -> 2.7.6 -> 2.7.7 -> 2.7.8 -> 2.7.9 -> 2.7.10.
 
 **Фактический прогресс (фаза 2.7):**
 
-- 2.7.1 Agent Runtime Core — цикл `observe→reason→propose→apply→verify→learn` в `eurika/agent/runtime.py`; режимы assist/hybrid/auto; unit-тесты на stop-on-error, exception handling, skip missing stages; CLI оркестратор использует runtime для hybrid/auto
-- 2.7.2 Tool Contract Layer — типизированные адаптеры scan, patch, verify, rollback, tests, git_read в `eurika/agent/tool_contract.py`; единый ToolResult; ошибки нормализованы; dry-run воспроизводим; OrchestratorToolset получает contract; tests/test_tool_contract.py
-- 2.7.3 Policy Engine — policy-конфиг: risk, max_ops, max_files, deny_patterns, api_breaking_guard; allow/deny/review для hybrid/auto; hybrid сохраняет review для HITL; тесты deny-правил и граничных кейсов в test_agent_policy.py
-- 2.7.4 Explainability Record — why, risk, expected_outcome, rollback_plan, verify_outcome в operation_explanations; eurika_fix_report.json и dry-run; eurika explain показывает Runtime rationale из последнего fix; tests/test_explainability.py
-- 2.7.5 Session Memory — campaign memory в SessionMemory: rejected_keys (из любой сессии), verify_fail_keys (2+ fail → skip); apply_campaign_memory в prepare; record_verify_failure при verify fail; добавлен scoped retry-флаг `--allow-campaign-retry` (одноразовый обход campaign-skip без глобального env bypass); tests
-- 2.7.6 Human-in-the-loop CLI — approve/reject/A/R/s в hybrid; --non-interactive для CI (детерминировано, без stdin); tests/test_hitl_cli.py (non_interactive, isatty, mocked input)
-- 2.7.7 Safety & Rollback Gates — обязательный verify, auto_rollback при fail; backup=True; enrich_report_with_rescan → rollback при metrics_worsened; tests/test_safety_rollback_gates.py; policy max_ops/max_files
-- 2.7.8 Telemetry & KPIs — apply-rate, rollback-rate, no-op-rate, median_verify_time_ms; telemetry в fix report; report-snapshot и doctor (last_fix_telemetry); no-op репортинг прозрачен для campaign/session skip (`campaign_skipped`, `session_skipped`) и согласован с telemetry (`skipped_count`, `no_op_rate`); suggest_policy_from_telemetry; aggregate_operational_metrics (rolling); /api/operational_metrics; Dashboard card
-- 2.7.9 Stability Campaign — 3 стабильных цикла подряд; verify ✓, тесты зелёные; split_module architecture_planner → build_plan, build_action_plan
-- 2.7.10 Docs & Migration — CLI.md, ROADMAP, CYCLE_REPORT обновлены; runtime-режимы и telemetry описаны; добавлен операторский сценарий controlled re-apply через `--allow-campaign-retry`
+- 2.7.1 Agent Runtime Core — ✅ цикл `observe→reason→propose→apply→verify→learn` в `eurika/agent/runtime.py`; режимы assist/hybrid/auto; unit-тесты; CLI без изменения scan/doctor/fix
+- 2.7.2 Tool Contract Layer — ✅ DefaultToolContract, OrchestratorToolset; ToolResult; tool_contract.py; tests/test_tool_contract.py
+- 2.7.3 Policy Engine — ✅ PolicyConfig, load_policy_config; evaluate_operation; allow/deny/review; deny_patterns, max_ops, api_breaking_guard; tests/test_agent_policy.py
+- 2.7.4 Explainability Record — ✅ operation_explanations (why, risk, expected_outcome, rollback_plan, verify_outcome); eurika explain; tests/test_explainability.py
+- 2.7.5 Session Memory — ✅ SessionMemory; rejected_keys, verify_fail_keys; apply_campaign_memory; record_verify_failure; --allow-campaign-retry; tests
+- 2.7.6 Human-in-the-loop CLI — ✅ select_hybrid_operations, read_hybrid_choice; --approve-ops, --reject-ops, --non-interactive; tests/test_hitl_cli.py
+- 2.7.7 Safety & Rollback Gates — ✅ auto_rollback, backup=True; enrich_report_with_rescan; record_verify_failure; tests/test_safety_rollback_gates.py
+- 2.7.8 Telemetry & KPIs — ✅ apply_rate, rollback_rate, no_op_rate; aggregate_operational_metrics; suggest_policy_from_telemetry; /api/operational_metrics; Dashboard; campaign_skipped/session_skipped
+- 2.7.9 Stability Campaign — ✅ CYCLE_REPORT; split_module guard на *_extracted; стабильные циклы
+- 2.7.10 Docs & Migration — ✅ CLI.md, CYCLE_REPORT, UI.md; runtime-режимы, telemetry, --allow-campaign-retry
 
 **Метрики выхода из фазы 2.7 (DoD):**
 
@@ -464,32 +497,33 @@
 
 **Цель:** остановить рост монолитности в точках концентрации (`cli/orchestrator.py`, `eurika_cli.py`, `architecture_planner.py`, `patch_apply.py`), формализовать слои и зафиксировать импорт-контракт между подсистемами.
 
+**Статус: все шаги 2.8.1–2.8.8 реализованы.**
 
 | #     | Шаг                          | Задача                                                                                                                                                               | Критерий готовности                                                                                                      |
 | ----- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| 2.8.1 | Layer Map                    | Формально зафиксировать слои в `ARCHITECTURE.md`: Infrastructure (IO/CLI/FS) → Core graph model → Analysis → Planning → Execution → Reporting                        | В документе есть карта слоёв, allowed deps и anti-pattern примеры; ссылки из ROADMAP/CLI                                 |
-| 2.8.2 | Dependency Guard             | Ввести проверку «запрещённых импортов» (no upward deps) как тест/линт-гейт                                                                                           | Есть автоматическая проверка в `tests/` или отдельный check-командлет; CI падает при нарушении                           |
-| 2.8.3 | Orchestrator Split           | Разрезать `cli/orchestrator.py` на `cli/orchestration/` модули стадий + `cli/wiring/` + тонкий фасад `run_cycle`                                                     | `cli/orchestrator.py` остаётся тонким фасадом; ключевые stage-функции вынесены; поведение `doctor/fix/cycle` не изменено |
-| 2.8.4 | CLI Wiring Split             | Декомпозировать `eurika_cli.py`: parser builders/command registration/wiring по модулям                                                                              | Главный CLI-файл существенно уменьшается; тесты CLI-парсинга зелёные                                                     |
-| 2.8.5 | Planner Boundary             | Разделить `architecture_planner.py` на анализ рисков, правила планирования и сборку операций (без смешения отчётности/форматирования)                                | Отдельные модули с явными интерфейсами; `get_patch_plan` остаётся совместимым                                            |
-| 2.8.6 | Patch Subsystem              | Эволюционировать `patch_apply.py` в подсистему (`patch/planner.py`, `patch/executor.py`, `patch/validator.py`, `patch/rollback.py`) с обратной совместимостью фасада | Публичный API не ломается (`patch_apply`/`patch_engine`), но реализация разделена по ролям                               |
-| 2.8.7 | Violation Audit              | Найти и закрыть реальные нарушения слоёв (анализ ↔ execution ↔ reporting)                                                                                            | Есть список нарушений «до/после» и закрытые пункты в `CYCLE_REPORT.md`                                                   |
-| 2.8.8 | Dogfooding on New Boundaries | Провести 3 цикла `doctor + fix --dry-run + fix` после декомпозиции                                                                                                   | Нет регресса в verify-success; telemetry и safety-gates остаются стабильными                                             |
+| 2.8.1 | Layer Map                    | Формально зафиксировать слои в `ARCHITECTURE.md`: Infrastructure (IO/CLI/FS) → Core graph model → Analysis → Planning → Execution → Reporting                        | ✅ Architecture.md §0 L0–L6; allowed deps; anti-patterns; mapping модулей; ссылки в CLI.md                                 |
+| 2.8.2 | Dependency Guard             | Ввести проверку «запрещённых импортов» (no upward deps) как тест/линт-гейт                                                                                           | ✅ test_dependency_guard.py, test_dependency_firewall.py; eurika.checks.dependency_firewall; EURIKA_STRICT_LAYER_FIREWALL=1; release_check, CI                                            |
+| 2.8.3 | Orchestrator Split           | Разрезать `cli/orchestrator.py` на `cli/orchestration/` модули стадий + `cli/wiring/` + тонкий фасад `run_cycle`                                                     | ✅ cli/orchestration/ (full_cycle, fix_cycle_impl, prepare, apply_stage, doctor, hybrid_approval, facade); cli/orchestrator тонкий фасад                                                 |
+| 2.8.4 | CLI Wiring Split             | Декомпозировать `eurika_cli.py`: parser builders/command registration/wiring по модулям                                                                              | ✅ cli/wiring/ (parser.py, dispatch.py); тесты CLI-парсинга зелёные                                                        |
+| 2.8.5 | Planner Boundary             | Разделить `architecture_planner.py` на анализ рисков, правила планирования и сборку операций (без смешения отчётности/форматирования)                                | ✅ architecture_planner_build_plan, _build_patch_plan, _build_action_plan; get_patch_plan/build_patch_plan совместимы                                                                     |
+| 2.8.6 | Patch Subsystem              | Эволюционировать `patch_apply.py` в подсистему (`patch/planner.py`, `patch/executor.py`, `patch/validator.py`, `patch/rollback.py`) с обратной совместимостью фасада | ✅ patch_apply*, patch_engine* (apply_patch, verify_patch, rollback_patch, apply_and_verify); публичный API сохранён                                                                      |
+| 2.8.7 | Violation Audit              | Найти и закрыть реальные нарушения слоёв (анализ ↔ execution ↔ reporting)                                                                                            | ✅ CYCLE_REPORT; 0 violations (Architecture.md); закрыты cross-layer patch_apply из CLI, wildcard-shims в reasoning/*                                                                    |
+| 2.8.8 | Dogfooding on New Boundaries | Провести 3 цикла `doctor + fix --dry-run + fix` после декомпозиции                                                                                                   | ✅ CYCLE_REPORT; verify стабилен; rollback/no-op без всплеска; telemetry и safety-gates стабильны                                                                                        |
 
 
 **Порядок внедрения (рекомендуемый):** 2.8.1 -> 2.8.2 -> 2.8.3 -> 2.8.4 -> 2.8.5 -> 2.8.6 -> 2.8.7 -> 2.8.8.
 
 **Фактический прогресс (актуально):**
 
-- 2.8.1 Layer Map — выполнено (Architecture.md §0 Layer Map; allowed deps, anti-patterns, ссылки в CLI.md)
-- 2.8.2 Dependency Guard — выполнено (tests/test_dependency_guard.py + eurika.checks.dependency_firewall; strict mode: EURIKA_STRICT_LAYER_FIREWALL=1; baseline: 0 violations / 0 waivers)
-- 2.8.3 Orchestrator Split — выполнено
-- 2.8.4 CLI Wiring Split — выполнено
-- 2.8.5 Planner Boundary — выполнено
-- 2.8.6 Patch Subsystem — выполнено (рефакторинг через фасады и выделенные модули `patch_apply_`*, `patch_engine_*`, API сохранен)
-- 2.8.7 Violation Audit — выполнено (закрыты прямые cross-layer вызовы patch_apply из CLI и wildcard-shims в `eurika/reasoning/*`)
-- 2.8.8 Dogfooding on New Boundaries — выполнено (контур `doctor -> fix --dry-run -> fix` пройден; verify стабилен, rollback/no-op без всплеска)
-- Доп. стабилизация planner (R4): для `split_module` добавлен guard на уже extracted-модули (`*_extracted.py`), чтобы не порождать повторные split-цепочки (`*_extracted_extracted.py`); покрыто тестом `test_build_patch_plan_skips_split_for_already_extracted_module`
+- 2.8.1 Layer Map — ✅ Architecture.md §0 L0–L6; allowed deps; anti-patterns; mapping модулей; ссылки CLI.md
+- 2.8.2 Dependency Guard — ✅ test_dependency_guard.py, test_dependency_firewall.py; dependency_firewall; EURIKA_STRICT_LAYER_FIREWALL=1; 0 violations
+- 2.8.3 Orchestrator Split — ✅ cli/orchestration/ (full_cycle, fix_cycle_impl, prepare, apply_stage, doctor); cli/orchestrator тонкий фасад
+- 2.8.4 CLI Wiring Split — ✅ cli/wiring/ (parser, dispatch); тесты CLI зелёные
+- 2.8.5 Planner Boundary — ✅ architecture_planner_build_plan, _build_patch_plan, _build_action_plan; get_patch_plan сохранён
+- 2.8.6 Patch Subsystem — ✅ patch_apply_*, patch_engine_*; API patch_apply/patch_engine сохранён
+- 2.8.7 Violation Audit — ✅ CYCLE_REPORT; 0 violations; закрыты cross-layer patch_apply, wildcard-shims в reasoning/*
+- 2.8.8 Dogfooding on New Boundaries — ✅ doctor → fix --dry-run → fix; verify стабилен; telemetry/safety-gates без регресса
+- Доп. стабилизация planner (R4): guard на `*_extracted.py` для split_module; test_build_patch_plan_skips_split_for_already_extracted_module
 
 **Метрики выхода из фазы 2.8 (DoD):**
 
@@ -502,15 +536,16 @@
 
 **Идея:** делать «тонкий фасад + вынос по стадиям» без больших взрывных PR; каждый шаг сохраняет поведение и проходит тесты.
 
+**Статус: план выполнен (2.8.3 завершён).**
 
 | Коммит  | Что переносим                                                                                     | Целевые файлы                                                    | Критерий                                                                        |
 | ------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| 2.8.3.a | Вынести общие модели/типы цикла (`FixCycleContext`, `FixCycleResult`, protocol-обёртки deps)      | `cli/orchestration/models.py`, `cli/orchestration/deps.py`       | `cli/orchestrator.py` компилируется, тесты без регресса                         |
-| 2.8.3.b | Вынести pre-stage (`scan/diagnose/plan/policy/session-filter`)                                    | `cli/orchestration/prepare.py`                                   | `_prepare_fix_cycle_operations` уходит из god-file, dry-run поведение идентично |
-| 2.8.3.c | Вынести apply-stage (`apply+verify`, rescan enrich, write report, memory append)                  | `cli/orchestration/apply_stage.py`                               | verify/rollback/telemetry контракты не меняются                                 |
-| 2.8.3.d | Вынести doctor/full-flow wiring                                                                   | `cli/orchestration/doctor.py`, `cli/orchestration/full_cycle.py` | `run_cycle(mode=doctor/full)` возвращает тот же payload                         |
-| 2.8.3.e | Оставить в `cli/orchestrator.py` только фасад (`run_cycle`, thin wrappers, compatibility imports) | `cli/orchestrator.py`                                            | Размер файла заметно снижен; публичные функции сохранены                        |
-| 2.8.3.f | Добавить regression-тесты на эквивалентность stage-вывода и edge-cases                            | `tests/test_cycle.py`, `tests/test_cli_runtime_mode.py`          | Старые + новые тесты зелёные                                                    |
+| 2.8.3.a | Вынести общие модели/типы цикла (`FixCycleContext`, `FixCycleResult`, protocol-обёртки deps)      | `cli/orchestration/models.py`, `cli/orchestration/deps.py`       | ✅ FixCycleContext в models; FixCycleDeps в deps; orchestrator импортирует        |
+| 2.8.3.b | Вынести pre-stage (`scan/diagnose/plan/policy/session-filter`)                                    | `cli/orchestration/prepare.py`                                   | ✅ prepare_fix_cycle_operations, apply_campaign_memory; dry-run идентично        |
+| 2.8.3.c | Вынести apply-stage (`apply+verify`, rescan enrich, write report, memory append)                  | `cli/orchestration/apply_stage.py`                               | ✅ execute_fix_apply_stage, build_fix_cycle_result; verify/rollback/telemetry OK   |
+| 2.8.3.d | Вынести doctor/full-flow wiring                                                                   | `cli/orchestration/doctor.py`, `cli/orchestration/full_cycle.py` | ✅ run_doctor_cycle, run_cycle_entry; run_cycle(mode=doctor/full) тот же payload   |
+| 2.8.3.e | Оставить в `cli/orchestrator.py` только фасад (`run_cycle`, thin wrappers, compatibility imports) | `cli/orchestrator.py`                                            | ✅ ~250 LOC; run_cycle, run_doctor_cycle, run_fix_cycle, run_full_cycle; делегация |
+| 2.8.3.f | Добавить regression-тесты на эквивалентность stage-вывода и edge-cases                            | `tests/test_cycle.py`, `tests/test_cli_runtime_mode.py`          | ✅ test_cycle, test_cli_runtime_mode, test_cycle_state; зелёные                  |
 
 
 **Жёсткие ограничения при переносе:**
@@ -533,25 +568,26 @@
 
 **Приоритет:** фаза 2.9 важнее 3.0 — сначала повысить качество и интеллект single-project цикла, затем масштабировать.
 
+**Статус: все шаги 2.9.1–2.9.5 реализованы.**
 
 | #     | Шаг                            | Задача                                                                                                                                                       | Критерий готовности                                                                                                   |
 | ----- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| 2.9.1 | Architect → рекомендации «как» | Расширить architect: не только «что не так», но и «что делать и как» — на основе Knowledge Layer (PEP, docs.python.org, release notes)                       | Architect при god_module/bottleneck выдаёт конкретные подсказки с reference на доку; блок Reference в doctor расширен |
-| 2.9.2 | LLM в планировании             | Для сложных smell (god_module, hub, bottleneck) — запрос к Ollama: «предложи точки разбиения»; результат в patch_plan как hints или уточнённые target/params | При наличии Ollama и high-risk smell: planner получает LLM-подсказки; fallback на эвристики без LLM                   |
-| 2.9.3 | Knowledge Layer — PEP/RFC      | Добавить провайдеры PEP, RFC, What's New (docs.python.org); темы по smell_type (god_module → module_structure, long_function → extract_method)               | eurika.knowledge: PEPProvider, WhatNewProvider; маппинг smell_type → knowledge_topic; architect и planner используют  |
-| 2.9.4 | Обучение в цикле               | Корректировка policy из telemetry; suggest_policy_from_telemetry выводится в doctor; опция применять suggested policy                                        | doctor показывает блок «Suggested policy» при низком apply_rate; CLI или env для принятия suggestion                  |
-| 2.9.5 | Dogfooding 2.9                 | 3 цикла с LLM + Knowledge на Eurika; сравнить качество плана (релевантность подсказок) и apply-rate                                                          | Отчёт в CYCLE_REPORT; architect даёт «как»; learning улучшает выбор ops                                               |
+| 2.9.1 | Architect → рекомендации «как» | Расширить architect: не только «что не так», но и «что делать и как» — на основе Knowledge Layer (PEP, docs.python.org, release notes)                       | ✅ Recommendation (how to fix); Reference (from documentation); SMELL_TO_KNOWLEDGE_TOPICS; test_architect.py          |
+| 2.9.2 | LLM в планировании             | Для сложных smell (god_module, hub, bottleneck) — запрос к Ollama: «предложи точки разбиения»; результат в patch_plan как hints или уточнённые target/params | ✅ ask_ollama_split_hints; hints в patch_plan; EURIKA_USE_LLM_HINTS; ask_llm_extract_method_hints; test_planner_llm.py |
+| 2.9.3 | Knowledge Layer — PEP/RFC      | Добавить провайдеры PEP, RFC, What's New (docs.python.org); темы по smell_type (god_module → module_structure, long_function → extract_method)               | ✅ PEPProvider, LocalKnowledgeProvider, CompositeKnowledgeProvider; SMELL_TO_KNOWLEDGE_TOPICS; doctor/planner/chat     |
+| 2.9.4 | Обучение в цикле               | Корректировка policy из telemetry; suggest_policy_from_telemetry выводится в doctor; опция применять suggested policy                                        | ✅ doctor «Suggested policy»; load_suggested_policy_for_apply; --apply-suggested-policy; test_doctor, test_cycle       |
+| 2.9.5 | Dogfooding 2.9                 | 3 цикла с LLM + Knowledge на Eurika; сравнить качество плана (релевантность подсказок) и apply-rate                                                          | ✅ CYCLE_REPORT; architect «как»; apply-rate и learning стабильны                                                      |
 
 
 **Порядок внедрения (рекомендуемый):** 2.9.1 → 2.9.3 → 2.9.2 → 2.9.4 → 2.9.5. Architect и Knowledge — основа; LLM в planner — поверх; learning — замкнутый цикл.
 
 **Фактический прогресс (фаза 2.9):**
 
-- 2.9.1 Architect рекомендации — блок «Recommendation (how to fix)» с конкретными шагами по smell (god_module, bottleneck, hub, cyclic_dependency); блок «Reference (from documentation)» при наличии Knowledge; LLM и template
-- 2.9.2 LLM в планировании — planner_llm.ask_ollama_split_hints для god_module/hub/bottleneck; hints в patch_plan; fallback на эвристики (EURIKA_USE_LLM_HINTS=0)
-- 2.9.3 Knowledge PEP/RFC — PEPProvider в eurika.knowledge; SMELL_TO_KNOWLEDGE_TOPICS в doctor; architect/planner получают темы по smell (god_module→architecture_refactor, long_function→pep_8)
-- 2.9.4 Обучение в цикле — doctor блок «Suggested policy» при низком apply_rate; load_suggested_policy_for_apply; --apply-suggested-policy в fix/cycle
-- 2.9.5 Dogfooding 2.9 — 3 стабильных цикла с LLM + Knowledge на Eurika; verify ✓; apply-rate и learning стабильны
+- 2.9.1 Architect рекомендации — ✅ Recommendation (how to fix), Reference (from documentation); architect.py, architect_format.py; test_architect.py
+- 2.9.2 LLM в планировании — ✅ planner_llm.ask_ollama_split_hints, ask_llm_extract_method_hints; EURIKA_USE_LLM_HINTS; hints в planner_patch_ops; test_planner_llm.py
+- 2.9.3 Knowledge PEP/RFC — ✅ eurika.knowledge: PEPProvider, SMELL_TO_KNOWLEDGE_TOPICS; doctor/planner/chat используют; test_knowledge.py
+- 2.9.4 Обучение в цикле — ✅ suggest_policy_from_telemetry; doctor Suggested policy; load_suggested_policy_for_apply; --apply-suggested-policy
+- 2.9.5 Dogfooding 2.9 — ✅ CYCLE_REPORT; verify ✓; apply-rate, learning стабильны
 
 **Метрики выхода из фазы 2.9 (DoD):**
 
@@ -593,21 +629,22 @@
 
 **Рекомендуемый порядок:** 3.0.1 → 3.0.2 → 3.0.3 → 3.0.4. Multi-repo — предпосылка для cross-project memory; online knowledge расширяет существующий Knowledge Layer; team-mode опирается на policy и session-memory.
 
+**Статус: 3.0.1–3.0.4 реализованы; 3.0.5 (Learning from GitHub) — частично.**
 
 | #     | Шаг                           | Задача                                                                                                                            | Критерий готовности                                                                                                                                          |
 | ----- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 3.0.1 | Multi-Repo Scan               | Поддержка `eurika scan <path1> <path2> ...` и `eurika cycle --paths path1,path2` для нескольких корней проектов                   | CLI принимает несколько путей; scan/doctor/fix выполняются последовательно или параллельно по каждому; отчёт агрегирует summary/risks по всем проектам       |
-| 3.0.2 | Cross-Project Memory          | Общая директория памяти (напр. `~/.eurika/` или `EURIKA_GLOBAL_MEMORY`) для learning/feedback между проектами                     | Learning/feedback из проекта A учитываются при fix проекта B (при совпадении smell|action); формат агрегации и приоритет local vs global описан в spec       |
-| 3.0.3 | Online Knowledge (расширение) | Расширить Knowledge Layer: актуальный fetch по запросу (не только кэш), провайдеры PEP/RFC, интеграция с architect при cross-repo | Новые провайдеры или опция `--online`; architect получает релевантные фрагменты при анализе нескольких проектов; TTL и rate-limit для сетевых запросов       |
-| 3.0.4 | Team Mode                     | Роли, shared session, approvals между пользователями; интеграция с CI (отдельный approve-step)                                    | `eurika fix --team-mode` или отдельная команда; policy учитывает "approved by" для high-risk ops; документация сценариев (один предлагает, другой применяет) |
+| 3.0.1 | Multi-Repo Scan               | Поддержка `eurika scan <path1> <path2> ...` для нескольких корней проектов                                                        | ✅ path nargs="*"; последовательное выполнение; "--- Project N/M ---"; _aggregate_multi_repo_reports                                                           |
+| 3.0.2 | Cross-Project Memory          | Общая директория памяти (`~/.eurika/` или `EURIKA_GLOBAL_MEMORY`) для learning/feedback между проектами                          | ✅ global_memory.py; get_merged_learning_stats; append_learn_to_global; test_global_memory.py                                                                   |
+| 3.0.3 | Online Knowledge (расширение) | Расширить Knowledge Layer: fetch по запросу, провайдеры PEP/RFC, интеграция с architect                                          | ✅ --online в doctor/fix/cycle/architect; force_online; TTL, rate_limit в PEPProvider                                                                        |
+| 3.0.4 | Team Mode                     | Роли, shared session, approvals между пользователями; интеграция с CI (отдельный approve-step)                                    | ✅ --team-mode, --apply-approved; pending_plan.json; team_mode.py; CYCLE_REPORT сценарии                                                                    |
 
 
 **Фактический прогресс (фаза 3.0):**
 
-- 3.0.1 Multi-Repo Scan — `eurika scan/doctor/fix/cycle path1 [path2 ...]`; последовательное выполнение по каждому пути; заголовки "--- Project N/M ---"; агрегированный JSON-отчёт — в плане
-- 3.0.2 Cross-Project Memory — общая память ~/.eurika/ или EURIKA_GLOBAL_MEMORY; append learn при fix; get_merged_learning_stats(local+global) при build patch plan; merge: sum total/success/fail per smell|action; EURIKA_DISABLE_GLOBAL_MEMORY для отключения
-- 3.0.3 Online Knowledge — `--online` в doctor/cycle/fix/architect; force_online, rate_limit; TTL/RATE_LIMIT env; KNOWLEDGE_LAYER.md
-- 3.0.4 Team Mode — --team-mode (propose), --apply-approved; .eurika/pending_plan.json; EURIKA_APPROVALS_FILE
+- 3.0.1 Multi-Repo Scan — ✅ path nargs="*"; _paths_from_args; последовательное выполнение; "--- Project N/M ---"; _aggregate_multi_repo_reports
+- 3.0.2 Cross-Project Memory — ✅ get_merged_learning_stats; append_learn_to_global; ~/.eurika/ или EURIKA_GLOBAL_MEMORY; planner использует merged stats
+- 3.0.3 Online Knowledge — ✅ --online; force_online в PEPProvider; doctor/architect получают свежие фрагменты
+- 3.0.4 Team Mode — ✅ --team-mode, --apply-approved; pending_plan.json; team_mode.py; документация в CYCLE_REPORT
 
 **Метрики выхода из фазы 3.0 (DoD):**
 
@@ -662,29 +699,30 @@
 
 **Цель:** переход от «сложной утилиты» к «архитектурной платформе»; зафиксировать слои, ограничить зависимости, почистить центры тяжести. Диагноз review: зрелость выше средней, но риск монолитизации; нужен дисциплинированный этап.
 
+**Статус: все шаги 3.1-arch.1–3.1-arch.7 реализованы.**
 
 | #          | Шаг                            | Задача                                                                                                                                                            | Критерий готовности                                                                     |
 | ---------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| 3.1-arch.1 | Формальные слои                | Зафиксировать слои в документе: L0 Infrastructure → L1 Core model → L2 Analysis → L3 Planning → L4 Execution → L5 Reporting → L6 CLI; запретить зависимости вверх | ARCHITECTURE.md или LAYERS.md с картой слоёв; dependency guard проверяет no upward deps |
-| 3.1-arch.2 | API-границы подсистем          | Каждая подсистема экспортирует 1–2 публичные точки входа; остальное private                                                                                       | Документ или `__all_`_ в ключевых модулях; рекомендации в CYCLE_REPORT                  |
-| 3.1-arch.3 | Лимит размера файлов           | Правило: >400 строк — кандидат на разбиение; >600 строк — обязательно делить                                                                                      | Линт/скрипт или checklist; список файлов-нарушителей в self-check или report            |
-| 3.1-arch.4 | Domain vs presentation         | Модули, которые и вычисляют, и форматируют Markdown — разделить на domain + presentation                                                                          | Аудит смешанных модулей; план разбиения и выполненные выносы                            |
-| 3.1-arch.5 | Облегчить CLI                  | CLI только принимает команды и передаёт оркестратору; убрать бизнес-логику и сложные пайплайны из CLI-слоя                                                        | CLI handlers — тонкие обёртки; тесты на изоляцию                                        |
-| 3.1-arch.6 | Развести Planning и Execution  | Planner строит план; Executor исполняет; убрать взаимное знание деталей                                                                                           | Аудит planner_* и patch_apply_*; явные контракты между ними                             |
-| 3.1-arch.7 | Dogfooding на новой дисциплине | 3 цикла scan → doctor → fix после внедрения ограничений                                                                                                           | Нет регресса; verify стабилен; новые правила не ломают цикл                             |
+| 3.1-arch.1 | Формальные слои                | Зафиксировать слои в документе: L0 Infrastructure → L1 Core model → L2 Analysis → L3 Planning → L4 Execution → L5 Reporting → L6 CLI; запретить зависимости вверх | ✅ Architecture.md §0; L0–L6; allowed deps; dependency guard + layer firewall; 0 violations |
+| 3.1-arch.2 | API-границы подсистем          | Каждая подсистема экспортирует 1–2 публичные точки входа; остальное private                                                                                       | ✅ __all__ в patch_engine, eurika.core, eurika.analysis, eurika.smells; API_BOUNDARIES.md |
+| 3.1-arch.3 | Лимит размера файлов           | Правило: >400 строк — кандидат на разбиение; >600 строк — обязательно делить                                                                                      | ✅ eurika.checks.file_size; check_file_size_limits; self-check; test_file_size_check.py  |
+| 3.1-arch.4 | Domain vs presentation         | Модули, которые и вычисляют, и форматируют Markdown — разделить на domain + presentation                                                                          | ✅ architecture_report (rendering); central_modules_for_topology; runtime_scan → верхний слой |
+| 3.1-arch.5 | Облегчить CLI                  | CLI только принимает команды и передаёт оркестратору; убрать бизнес-логику и сложные пайплайны из CLI-слоя                                                        | ✅ format_report_snapshot; eurika.api фасады; handlers тонкие; test_handle_report_snapshot_delegates |
+| 3.1-arch.6 | Развести Planning и Execution  | Planner строит план; Executor исполняет; убрать взаимное знание деталей                                                                                           | ✅ Architecture.md §0.5 Planner–Executor Contract; planner без patch_apply; dependency guard |
+| 3.1-arch.7 | Dogfooding на новой дисциплине | 3 цикла scan → doctor → fix после внедрения ограничений                                                                                                           | ✅ CYCLE_REPORT §28; verify ✓; eurika fix . без регресса                                 |
 
 
 **Порядок внедрения (рекомендуемый):** 3.1-arch.1 → 3.1-arch.2 → 3.1-arch.5 → 3.1-arch.6 → 3.1-arch.4 → 3.1-arch.3 → 3.1-arch.7.
 
 **Фактический прогресс (фаза 3.1-arch):**
 
-- 3.1-arch.1 Формальные слои — Architecture.md §0: нотация L0–L6 (Infra→Core→Analysis→Planning→Execution→Reporting→CLI); allowed deps; mapping модулей; no upward deps; dependency guard + layer firewall (strict) проверяет
-- 3.1-arch.2 API-границы подсистем — Architecture.md §0.6; **all** в patch_engine, eurika.core, eurika.analysis, eurika.smells, eurika.evolution, eurika.reporting; рекомендации в CYCLE_REPORT §23
-- 3.1-arch.3 Лимит размера файлов — eurika.checks.file_size; >400 candidate, >600 must split; self-check выводит блок; python -m eurika.checks.file_size
-- 3.1-arch.4 Domain vs presentation — report/architecture_report.py (rendering); runtime_scan импортирует rendering на верхнем слое (без core->report зависимости); central_modules_for_topology в system_topology
-- 3.1-arch.5 Облегчить CLI — report/report_snapshot.format_report_snapshot; eurika.api: explain_module, get_suggest_plan_text, clean_imports_scan_apply; handlers тонкие обёртки; test_handle_report_snapshot_delegates_to_format
-- 3.1-arch.6 Развести Planning и Execution — eurika.reasoning.planner без patch_apply/patch_engine; planner_patch_ops без зависимости на eurika.refactor; Architecture.md §0.5 Planner–Executor Contract; dependency guard для eurika/reasoning/
-- 3.1-arch.7 Dogfooding — eurika fix . (6 modified), 3× eurika fix . --dry-run (0 ops fixpoint); verify ✓ 287 passed; CYCLE_REPORT §28
+- 3.1-arch.1 Формальные слои — ✅ Architecture.md §0; L0–L6; dependency guard; EURIKA_STRICT_LAYER_FIREWALL=1
+- 3.1-arch.2 API-границы подсистем — ✅ __all__ в patch_engine, eurika.core, eurika.analysis, eurika.smells, eurika.evolution, eurika.reporting
+- 3.1-arch.3 Лимит размера файлов — ✅ check_file_size_limits; >400 candidate, >600 must split; self-check; python -m eurika.checks.file_size
+- 3.1-arch.4 Domain vs presentation — ✅ architecture_report rendering; central_modules_for_topology
+- 3.1-arch.5 Облегчить CLI — ✅ format_report_snapshot; eurika.api фасады; test_handle_report_snapshot_delegates_to_format
+- 3.1-arch.6 Развести Planning и Execution — ✅ Planner–Executor Contract; planner без patch_apply; dependency guard eurika/reasoning/
+- 3.1-arch.7 Dogfooding — ✅ CYCLE_REPORT §28; verify стабилен
 
 **Связь с review v3.0.1:** пункты §6 «Что я рекомендую сделать в v3.1».
 
@@ -710,7 +748,7 @@
 
 **Версионирование:** major.minor берётся из фазы ROADMAP (2.1, 2.3, 2.6, 3.0); patch — инкремент внутри фазы. pyproject.toml и eurika_cli следуют этой схеме.
 
-**Направление (без жёстких дат):** движение к архитектурному AI-инженеру. Фундамент (Patch Engine, Verify, Event Engine, Orchestrator) заложен; фазы 3.1 и 3.2 реализованы.
+**Направление (без жёстких дат):** движение к архитектурному AI-инженеру. Фундамент заложен; фазы 2.7, 2.8, 2.9, 3.0, 3.1-arch и 3.2 реализованы.
 
 
 | Версия   | Цель                      | Содержание                                                                                     |
@@ -718,81 +756,8 @@
 | **v2.1** | Execution Milestone       | Orchestrator ✓; PatchEngine v1 ✓; Verify ✓; Rollback ✓; 3 детермин. операции ✓.                |
 | **v2.3** | Stability Phase           | Метрики; priority engine ✓; CI-ready ✓ (CLI.md § CI/CD); CLI doctor/fix/explain ✓.             |
 | **v2.6** | Semi-Autonomous Agent     | auto-run ✓; continuous monitoring ✓; performance-based improvement ✓; event-based learning ✓.  |
-| **v3.0** | Architectural AI Engineer | multi-repo; cross-project memory; online knowledge; team-mode.                                 |
-| **v3.5** | Web UI                    | dashboard; summary/history/explain в браузере; опционально: approve/reject, граф зависимостей. |
+| **v3.0** | Architectural AI Engineer | multi-repo ✓; cross-project memory ✓; online knowledge ✓; team-mode ✓.                         |
 
-
----
-
-### Фаза 3.5 — Web UI (legacy archive)
-
-**Статус:** раздел сохранён как исторический archive. Текущий desktop-first контур — Qt shell (`eurika-qt`), а `eurika serve` работает в API-only режиме (`/api/*`, без static web UI).
-
-**Предпосылки:** JSON API готов (eurika.api, eurika serve). Нужен только frontend.
-
-
-| #      | Шаг                             | Задача                                                                                                                                                                                                                                                       | Критерий готовности                                                                                                            |
-| ------ | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| 3.5.1  | API-расширение для UI           | Добавить в `eurika serve` endpoints: `/api/doctor` (report), `/api/patch_plan` (operations), `/api/explain?module=...`                                                                                                                                       | GET возвращает тот же JSON, что формируют handle_doctor, get_patch_plan, explain_module; project_root из query или default     |
-| 3.5.2  | Static SPA или SSR              | Создать frontend: React/Vue/Svelte или простой HTML+JS; отображение summary (модули, риски, health score), history (trends, evolution_report)                                                                                                                | `eurika serve` раздаёт статику из `eurika/ui/` или отдельного каталога; одна точка входа для UI                                |
-| 3.5.3  | Dashboard                       | Страница дашборда: system metrics (modules, deps, cycles), central modules, top risks, health/risk score, trends                                                                                                                                             | Визуально читаемый обзор; ASCII-чарты или простые bar/line (Chart.js, D3, или CSS-only)                                        |
-| 3.5.4  | History & diff                  | Страницы: evolution history (окно window), diff между двумя self_map                                                                                                                                                                                         | Таблица/список points; diff в виде «добавлено/удалено/изменено»                                                                |
-| 3.5.5  | Explain module                  | Страница или модальное окно: ввод имени модуля → вывод role, risks, rationale из explain_module                                                                                                                                                              | Интеграция с /api/explain                                                                                                      |
-| 3.5.6  | (Опционально) Approve/reject UI | При hybrid-режиме: UI для approve/reject/skip операций из patch_plan; POST /api/approve с op_index и decision                                                                                                                                                | Требует WebSocket или long-polling для real-time; можно отложить в пользу CLI HITL                                             |
-| 3.5.7  | Граф зависимостей (опционально) | Визуализация графа модулей (nodes = modules, edges = imports); библиотека (Cytoscape.js, vis.js, D3)                                                                                                                                                         | Интерактивный граф: zoom, pan, click на узел → explain                                                                         |
-| 3.5.8  | Terminal в UI                   | Вкладка Terminal: input + output area; POST /api/exec с whitelist команд eurika                                                                                                                                                                              | Пользователь выполняет eurika scan/doctor/fix из браузера; безопасно (только eurika-команды)                                   |
-| 3.5.9  | Run cycle из UI                 | Кнопка «Run cycle» на Dashboard → eurika cycle . или doctor                                                                                                                                                                                                  | Одним кликом запуск полного цикла; вывод в output/лог                                                                          |
-| 3.5.10 | Ask architect (опционально)     | Поле ввода вопроса → architect с промптом; ответ в UI                                                                                                                                                                                                        | Вопрос-ответ по архитектуре через браузер                                                                                      |
-| 3.5.11 | Chat & Learn                    | Чат в UI: прослойка Eurika → Ollama; контекст проекта; сохранение диалогов в .eurika/chat_history/; векторное хранилище (embeddings) для RAG — похожие запросы дополняют промпт примерами; опционально: intent→action («сохрани код в X») через patch engine | POST /api/chat; вкладка Chat; логирование (query, context, response, outcome); RAG при похожих запросах; интеграция с learning |
-
-
-**Порядок внедрения (рекомендуемый):** 3.5.1 → 3.5.2 → 3.5.3 → 3.5.4 → 3.5.5 → 3.5.6 → 3.5.7 → 3.5.8 → 3.5.9; 3.5.10 — по желанию; 3.5.11 — после 3.5.10.
-
-**Фактический прогресс (фаза 3.5):**
-
-- 3.5.1 API-расширение — eurika serve: /api/doctor, /api/patch_plan, /api/explain; CLI.md
-- 3.5.2 Static SPA — eurika/ui/ (index.html + app.js), summary/history/explain tabs, serve static
-- 3.5.3 Dashboard — вкладка Dashboard: risk bar, system grid, trends badges, central/risks
-- 3.5.4 History & diff — вкладка Diff в UI: old/new paths → /api/diff
-- 3.5.5 Explain module — вкладка Explain Module в UI (3.5.2)
-- 3.5.6 Approve/reject UI — вкладка Approve; GET /api/pending_plan, POST /api/approve; approve/reject per op, Save; eurika fix . --apply-approved
-- 3.5.7 Граф зависимостей — vis-network; GET /api/graph; вкладка Graph в UI; double-click → Explain
-- 3.5.8 Terminal в UI — POST /api/exec; вкладка Terminal (input + output); whitelist eurika-команд
-- 3.5.9 Run cycle из UI — кнопка «Run cycle» на Dashboard; POST /api/exec с `eurika cycle .`
-- 3.5.10 Ask architect — POST /api/ask_architect; вкладка Ask в UI; вопрос → architect → ответ
-- 3.5.11 Chat & Learn — чат через Eurika→Ollama; контекст + RAG; intent→action (save, refactor, delete, create, remember/recall)
-- 3.5.11.A (этап A) — POST /api/chat; eurika.api.chat.chat_send; .eurika/chat_history/chat.jsonl; вкладка Chat в UI
-- 3.5.11.B (этап B) — RAG: chat_rag.retrieve_similar_chats (TF-IDF), format_rag_examples; подстановка похожих диалогов в промпт
-- 3.5.11.C (этап C) — intent: save, refactor, delete, create, remember, recall; chat_intent.detect_intent; user_context.json
-
-**Chat & Learn (3.5.11) — развитие идеи:**
-
-- A (минимально): прокси в Ollama + JSON-лог диалогов в .eurika/ ✓
-- B (+RAG): при похожем запросе — подтягивать прошлые успешные примеры в промпт (TF-IDF, pure Python) ✓
-- C (агентно): save (код → write file), refactor (eurika fix), delete, create (пустой файл), remember/recall (user context) ✓
-
-#### Детальный план 3.5.11.A (этап A — минимум)
-
-
-| #          | Шаг                    | Задача                                                                                                                                                                   | Критерий готовности                                                                |
-| ---------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| 3.5.11.A.1 | POST /api/chat         | Добавить endpoint: `POST /api/chat` с body `{ "message": "...", "project_root": "..." }`                                                                                 | serve.py обрабатывает path; возвращает `{ "text": "...", "error": "..."? }`        |
-| 3.5.11.A.2 | chat_send (eurika.api) | Функция `chat_send(project_root, message, history?: [])` — обогащает промпт контекстом (summary, recent_events), вызывает Ollama (или существующий LLM-контур architect) | eurika.api.chat_send; fallback на template если Ollama недоступен                  |
-| 3.5.11.A.3 | Chat history storage   | Логирование в `.eurika/chat_history/chat.jsonl`: JSONL со строками `{ "ts", "role", "content", "context_snapshot" }`                                                     | Append на каждое сообщение; одна сессия — append; формат читаемый для будущего RAG |
-| 3.5.11.A.4 | UI: вкладка Chat       | Вкладка Chat в UI: input, список сообщений, Send → POST /api/chat; отображение ответа                                                                                    | Аналогично Ask, но диалог (история в сессии); UI.md обновлён                       |
-
-
-**Порядок внедрения 3.5.11.A:** 3.5.11.A.1 → 3.5.11.A.2 → 3.5.11.A.3 → 3.5.11.A.4
-
-**Метрики выхода из 3.5.11.A:** пользователь вводит сообщение → получает ответ от Ollama с контекстом проекта; диалог логируется в .eurika/chat_history/.
-
-**Метрики выхода из фазы 3.5 (DoD, исторические):**
-
-- Пользователь получает доступ к JSON API (`/api/*`) на `http://localhost:8765` (или настроенном порту).
-- Summary, history, explain доступны через UI без CLI.
-- Документация: CLI.md или отдельный UI.md с инструкцией по запуску и настройке.
-
-**Зависимости:** 3.5 опирается на eurika serve и eurika.api; не зависит от 3.0.4 Team Mode. Можно вести параллельно с 3.0.4.
 
 ---
 

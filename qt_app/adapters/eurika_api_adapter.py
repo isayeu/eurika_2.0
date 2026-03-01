@@ -10,9 +10,9 @@ from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
+from report.explain_format import explain_module
 from eurika.api import (
     get_chat_dialog_state,
-    explain_module,
     get_graph,
     get_history,
     get_learning_insights,

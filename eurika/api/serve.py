@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import parse_qs, urlparse
 
+from report.explain_format import explain_module
 from eurika.api import (
     get_diff,
     get_graph,
@@ -22,7 +23,6 @@ from eurika.api import (
     get_self_guard,
     get_smells_with_plugins,
     get_summary,
-    explain_module,
     preview_operation,
     save_approvals,
 )

@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
 pytest.importorskip("PySide6")
 
 from qt_app.ui.main_window import MainWindow
+from qt_app.ui.handlers import ollama_handlers, chat_handlers, command_handlers
 
 
 def test_qt_main_window_smoke() -> None:
@@ -84,56 +85,56 @@ def test_qt_main_window_smoke() -> None:
 
 
 def test_filter_available_ollama_models_returns_matches() -> None:
-    names = MainWindow._filter_available_ollama_models("qwen")
+    names = ollama_handlers.filter_available_ollama_models("qwen")
     assert names
     assert all("qwen" in name for name in names)
 
 
 def test_resolve_ollama_model_to_install_prefers_custom() -> None:
-    model = MainWindow._resolve_ollama_model_to_install("deepseek-r1:14b", "qwen2.5-coder:7b")
+    model = ollama_handlers.resolve_ollama_model_to_install("deepseek-r1:14b", "qwen2.5-coder:7b")
     assert model == "deepseek-r1:14b"
-    fallback = MainWindow._resolve_ollama_model_to_install("", "qwen2.5-coder:7b")
+    fallback = ollama_handlers.resolve_ollama_model_to_install("", "qwen2.5-coder:7b")
     assert fallback == "qwen2.5-coder:7b"
 
 
 def test_response_requests_confirmation_detects_confirm_markers() -> None:
     text = "Подтвердите выполнение: `применяй token:b02d6842ee544f85` (или просто `применяй`)."
-    assert MainWindow._response_requests_confirmation(text) is True
-    assert MainWindow._extract_pending_token_from_text(text) == "b02d6842ee544f85"
+    assert chat_handlers.response_requests_confirmation(text) is True
+    assert chat_handlers.extract_pending_token_from_text(text) == "b02d6842ee544f85"
 
 
 def test_response_requests_confirmation_ignores_no_token_text() -> None:
     text = "Подтвердите выполнение: `применяй`."
-    assert MainWindow._response_requests_confirmation(text) is False
+    assert chat_handlers.response_requests_confirmation(text) is False
 
 
 def test_validate_project_root_rejects_empty() -> None:
-    ok, msg = MainWindow._validate_project_root('')
+    ok, msg = command_handlers.validate_project_root('')
     assert ok is False
     assert 'empty' in msg.lower() or 'browse' in msg.lower()
 
 
 def test_validate_project_root_accepts_path_with_pyproject(tmp_path: Path) -> None:
     (tmp_path / 'pyproject.toml').write_text('[project]\nname = "test"\n', encoding='utf-8')
-    ok, msg = MainWindow._validate_project_root(str(tmp_path))
+    ok, msg = command_handlers.validate_project_root(str(tmp_path))
     assert ok is True
     assert msg == ''
 
 
 def test_validate_project_root_accepts_path_with_self_map(tmp_path: Path) -> None:
     (tmp_path / 'self_map.json').write_text('{}', encoding='utf-8')
-    ok, msg = MainWindow._validate_project_root(str(tmp_path))
+    ok, msg = command_handlers.validate_project_root(str(tmp_path))
     assert ok is True
 
 
 def test_validate_project_root_rejects_missing_path() -> None:
-    ok, msg = MainWindow._validate_project_root('/nonexistent/path/xyz')
+    ok, msg = command_handlers.validate_project_root('/nonexistent/path/xyz')
     assert ok is False
     assert 'exist' in msg.lower() or 'not found' in msg.lower()
 
 
 def test_validate_project_root_rejects_dir_without_markers(tmp_path: Path) -> None:
-    ok, msg = MainWindow._validate_project_root(str(tmp_path))
+    ok, msg = command_handlers.validate_project_root(str(tmp_path))
     assert ok is False
     assert 'pyproject' in msg.lower() or 'self_map' in msg.lower() or 'scan' in msg.lower()
 

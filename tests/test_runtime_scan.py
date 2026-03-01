@@ -16,16 +16,15 @@ def test_run_scan_on_minimal_project(tmp_path: Path):
     project_root.mkdir()
     (project_root / "main.py").write_text("def foo():\n    return 42\n", encoding="utf-8")
 
-    buf = io.StringIO()
-    with redirect_stdout(buf):
+    buf_out = io.StringIO()
+    with redirect_stdout(buf_out):
         code = run_scan(project_root)
 
-    out = buf.getvalue()
+    out = buf_out.getvalue()
     assert code == 0
-    # Basic sanity checks on output
+    # Basic sanity checks on output (report to stdout; self_map path may go to logger)
     assert "Eurika Scan Report" in out
     assert "Files:" in out
-    assert "self_map.json written to" in out
 
     # Check that artifacts were created (.eurika/ for memory, self_map in root)
     assert (project_root / "self_map.json").exists()

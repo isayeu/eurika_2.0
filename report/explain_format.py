@@ -2,7 +2,22 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Callable
+
+
+def explain_module(project_root: Path, module_arg: str, window: int = 5) -> tuple[str | None, str | None]:
+    """
+    Presentation: get explain data and format for CLI/UI.
+    Domain: eurika.api.get_explain_data returns structure; this layer renders it.
+    Returns (formatted_text, error_message).
+    """
+    from eurika.api import get_explain_data
+
+    data, err = get_explain_data(project_root, module_arg, window)
+    if err:
+        return (None, err)
+    return (format_explain_result(data), None)
 
 
 def _default_truncate(raw: str, max_len: int = 200) -> str:

@@ -2,7 +2,19 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
+
+
+def get_suggest_plan_text(project_root: Path, window: int = 5) -> str:
+    """
+    Presentation: get suggest-plan data and format for CLI/UI.
+    Domain: eurika.api.get_suggest_plan_data returns structure; this layer renders it.
+    """
+    from eurika.api import get_suggest_plan_data
+
+    data = get_suggest_plan_data(project_root, window=window)
+    return format_suggest_plan(data)
 
 
 def format_suggest_plan(data: dict[str, Any]) -> str:

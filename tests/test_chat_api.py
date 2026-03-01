@@ -366,6 +366,22 @@ def test_chat_send_ls_request_returns_real_listing_without_llm(tmp_path: Path, m
     assert "README.md" in text
 
 
+def test_chat_send_ritual_request_runs_scan_doctor_report_snapshot(tmp_path: Path, monkeypatch) -> None:
+    """Ritual request should run eurika scan, doctor, report-snapshot (ROADMAP 3.6.8)."""
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='t'\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    import eurika.api.chat as chat_mod
+
+    out = chat_mod.chat_send(tmp_path, "проведи ритуал")
+    text = out.get("text") or ""
+    assert out.get("error") is None
+    assert "eurika scan" in text or "scan" in text.lower()
+    assert "Выполнил ритуал" in text or "ритуал" in text
+
+
 def test_chat_send_git_commit_request_returns_real_status_without_llm(tmp_path: Path, monkeypatch) -> None:
     """Git commit request should return real git status/diff and skip LLM (ROADMAP 3.6.8 Phase 1)."""
     import subprocess

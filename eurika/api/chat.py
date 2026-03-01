@@ -494,6 +494,24 @@ def _format_doctor_report_for_chat(root: Path) -> str:
     return "Отчёт не найден."
 
 
+def _is_ritual_request(message: str) -> bool:
+    """Detect request to run Ritual 2.1: scan → doctor → report-snapshot (ROADMAP 3.6.8).
+    Note: R1–R5 in ROADMAP — это контуры структурного укрепления (код/архитектура), не эта команда.
+    Exclude explicit run_command requests (e.g. 'выполни команду eurika scan .') — those need confirmation."""
+    msg = (message or '').strip().lower()
+    if not msg:
+        return False
+    # "выполни команду X" / "run command X" → run_command, not ritual
+    if re.search(r'(?:выполни|запусти|run|execute)\s+(?:команд[ау]\s+)', msg) or 'run command' in msg:
+        return False
+    keywords = (
+        'проведи ритуал', 'прогони ритуал', 'запусти ритуал', 'run ritual',
+        'прогони scan', 'запусти scan doctor', 'scan doctor', 'scan → doctor',
+        'eurika scan', 'eurika doctor', 'report-snapshot',
+    )
+    return any(k in msg for k in keywords)
+
+
 def _is_git_commit_request(message: str) -> bool:
     """Detect request for git status/diff/commit (ROADMAP 3.6.8 Phase 1)."""
     msg = (message or '').strip().lower()
@@ -760,6 +778,15 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         _append_chat_history_safe(root, 'user', msg, None)
         _append_chat_history_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
+    if _is_ritual_request(msg):
+        from eurika.api.chat_tools import run_eurika_ritual
+        ok, output = run_eurika_ritual(root)
+        text = f"Выполнил ритуал (scan → doctor → report-snapshot):\n\n```\n{output}\n```"
+        if not ok:
+            text = f"Ритуал выполнен с ошибками:\n\n```\n{output}\n```"
+        _append_chat_history_safe(root, 'user', msg, None)
+        _append_chat_history_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None if ok else output}
     if _is_git_commit_request(msg):
         from eurika.api.chat_tools import git_status, git_diff, git_commit as _git_commit_tool
         ok_status, status_out = git_status(root)

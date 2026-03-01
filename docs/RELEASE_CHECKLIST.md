@@ -18,7 +18,7 @@
 | 2 | Edge-case tests | `pytest -m edge_case -v` |
 | 3 | Dependency firewall (strict) | `EURIKA_STRICT_LAYER_FIREWALL=1 pytest tests/test_dependency_guard.py tests/test_dependency_firewall.py -v` |
 | 4 | Lint (ruff) | `ruff check eurika cli` (требует `pip install -e ".[extras]"`) |
-| 5 | Type check (mypy) | `mypy eurika cli` (требует `pip install mypy`; при ошибках в CI — warning) |
+| 5 | Type check (mypy) | `mypy eurika cli` (требует `pip install -e ".[typecheck]"`; при ошибках в CI — warning). См. docs/TYPING_CONTRACT.md |
 | 5a | Coverage (optional) | `pytest tests/ -q --cov=eurika.agent --cov=cli.orchestration --cov-report=term-missing` (требует `pip install pytest-cov`) |
 | 6 | File size limits | `eurika self-check .` (блок FILE SIZE LIMITS) |
 | 7 | Layer discipline | `eurika self-check .` (блок LAYER DISCIPLINE) |

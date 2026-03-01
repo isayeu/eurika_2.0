@@ -434,7 +434,7 @@ def handle_explain(args: Any) -> int:
     path = args.path.resolve()
     if _check_path(path) != 0:
         return 1
-    from eurika.api import explain_module
+    from report.explain_format import explain_module
 
     text, err = explain_module(path, module_arg, window=getattr(args, "window", 5))
     if err:
@@ -746,7 +746,7 @@ def handle_suggest_plan(args: Any) -> int:
     path = args.path.resolve()
     if _check_path(path) != 0:
         return 1
-    from eurika.api import get_suggest_plan_text
+    from report.suggest_plan_format import get_suggest_plan_text
 
     plan = get_suggest_plan_text(path, window=getattr(args, "window", 5))
     if plan.startswith("Error:"):

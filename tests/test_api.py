@@ -24,8 +24,8 @@ from eurika.api import (
     get_code_smell_operations,
     get_clean_imports_operations,
     save_approvals,
-    explain_module,
 )
+from report.explain_format import explain_module
 
 
 def test_get_summary_returns_json_serializable(tmp_path: Path) -> None:

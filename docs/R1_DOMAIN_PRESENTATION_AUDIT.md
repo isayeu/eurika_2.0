@@ -1,7 +1,7 @@
 # R1 Domain vs Presentation — аудит
 
 **Цель (ROADMAP R1):** domain возвращает структуры, rendering только в reporting/UI/CLI.
-**Статус:** отложено; ниже каталог нарушений для будущего плана.
+**Статус (2026-02):** выполнено для eurika.api.
 
 ---
 
@@ -10,8 +10,8 @@
 | Модуль | Нарушение | Рекомендация |
 |--------|-----------|--------------|
 | `eurika/reasoning/architect.py` | ~~_template_interpret~~ | ✅ **Сделано:** `get_architect_data()` возвращает структуру; `format_architect_template` в `report/architect_format.py`; `_template_interpret` делегирует presentation |
-| `eurika/api/__init__.py` | ~~explain_module~~ | ✅ **Сделано:** `get_explain_data()` возвращает структуру; `format_explain_result` в `report/explain_format.py`; `explain_module` — thin wrapper |
-| `eurika/api/__init__.py` | ~~get_suggest_plan_text~~ | ✅ **Сделано:** `get_suggest_plan_data()` возвращает структуру; `format_suggest_plan` в `report/suggest_plan_format.py`; `get_suggest_plan_text` — thin wrapper |
+| `eurika/api/` | ~~explain_module~~ | ✅ **2026-02:** `explain_module` перенесён в `report/explain_format.py`; domain — только `get_explain_data()` |
+| `eurika/api/` | ~~get_suggest_plan_text~~ | ✅ **2026-02:** `get_suggest_plan_text` перенесён в `report/suggest_plan_format.py`; domain — только `get_suggest_plan_data()` |
 | `report/ux.py` | Смешение отчётов и markdown | Уже в presentation; проверить, что core не импортирует |
 
 ---

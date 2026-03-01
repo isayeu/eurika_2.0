@@ -72,6 +72,7 @@ L6: CLI             ← command parsing, dispatch, orchestration wiring
 - `test_no_forbidden_imports` — строгий guard для явных запрещённых импортов.
 - `test_layer_firewall_contract_soft_start` — проверка layer-контракта L0–L6 в soft-start режиме. Для hard-gate в CI: `EURIKA_STRICT_LAYER_FIREWALL=1`.
 - `test_subsystem_imports_via_public_api` (R4) — запрет обхода фасадов (SubsystemBypassRule).
+- `eurika.api` (R1 Size budget): фасад в `__init__.py` (~185 LOC); подмодули architecture, learning_api, team_api, diff_api, explain_api.
 - Текущее состояние: **0 нарушений** layer / subsystem.
 - Временные допуски фиксируются в `LAYER_FIREWALL_EXCEPTIONS` или `DEFAULT_SUBSYSTEM_BYPASS_EXCEPTIONS` (обязателен `reason`).
 

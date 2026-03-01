@@ -29,6 +29,9 @@ jobs:
         run: pytest tests/test_dependency_guard.py tests/test_dependency_firewall.py -v
       - name: Edge-case tests
         run: pytest -m edge_case -v
+      - name: Type check (mypy, optional-gate)
+        run: python -m mypy eurika cli
+        continue-on-error: true
 
   release-hygiene:
     name: release-hygiene
