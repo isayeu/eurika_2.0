@@ -242,14 +242,62 @@ def _fetch_knowledge_for_chat(root: Path, topics: List[str], max_chars: int = 80
     return snip[:max_chars] + ("..." if len(snip) > max_chars else "")
 
 
-def _build_chat_prompt(message: str, context: str, history: Optional[List[Dict[str, str]]]=None, rag_examples: Optional[str]=None, save_target: Optional[str]=None, knowledge_snippet: Optional[str]=None) -> str:
+def _load_chat_feedback_for_prompt(root: Path, max_chars: int = 1200) -> str:
+    """Load few-shot examples from .eurika/chat_feedback.json for prompt injection (ROADMAP 3.6.8 Phase 4)."""
+    path = root / '.eurika' / 'chat_feedback.json'
+    if not path.exists():
+        return ''
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+        entries = list(data.get('entries') or [])
+        if not entries:
+            return ''
+        neg = [e for e in entries if not e.get('helpful', True) and (e.get('clarification') or '').strip()]
+        pos = [e for e in entries if e.get('helpful', True)]
+        ordered = neg[-5:] + pos[-5:]
+        ordered = ordered[-10:]
+        lines: List[str] = []
+        for e in ordered:
+            user_msg = (e.get('user_message') or '')[:150].strip()
+            asst_msg = (e.get('assistant_message') or '')[:120].strip()
+            helpful = e.get('helpful', True)
+            clarification = (e.get('clarification') or '').strip()[:200]
+            if not user_msg:
+                continue
+            if helpful:
+                snip = asst_msg[:80] + ('...' if len(asst_msg) > 80 else '')
+                lines.append(f"- User: {user_msg} → correct: {snip}")
+            elif clarification:
+                lines.append(f"- User: {user_msg} → was wrong; user meant: {clarification}")
+            if len('\n'.join(lines)) >= max_chars:
+                break
+        if not lines:
+            return ''
+        return '\n[Few-shot from past feedback]\n' + '\n'.join(lines[:8]) + '\n'
+    except Exception:
+        return ''
+
+
+INTENT_INTERPRETATION_RULES = """[Intent interpretation (ROADMAP 3.6.8 Phase 2)]
+- Commit / коммит / save to git / закоммитить → User should say «собери коммит»: shows git status+diff, then «применяй» to commit.
+- Ritual / ритуал / полный цикл / scan doctor fix → eurika scan . → eurika doctor . → eurika report-snapshot . → eurika fix .
+- Report / отчёт / doctor report → «покажи отчёт» shows eurika doctor report.
+- Refactor / рефакторинг → «рефактори» + path, or eurika fix .
+- List files / структура → «выполни ls» or «покажи структуру проекта».
+- When user intent matches above, direct them to the exact phrase or explain the command chain."""
+
+
+def _build_chat_prompt(message: str, context: str, history: Optional[List[Dict[str, str]]]=None, rag_examples: Optional[str]=None, save_target: Optional[str]=None, knowledge_snippet: Optional[str]=None, feedback_snippet: Optional[str]=None) -> str:
     """Build system + user prompt for chat. history: list of {role, content} from session.
-    ROADMAP 3.5.11.B: rag_examples from retrieve_similar_chats. ROADMAP 3.6.6: knowledge_snippet from Knowledge Layer."""
+    ROADMAP 3.5.11.B: rag_examples. ROADMAP 3.6.6: knowledge_snippet. ROADMAP 3.6.8 Phase 2: intent rules. Phase 4: feedback_snippet few-shot."""
     if save_target:
         system = 'You are Eurika. Never identify yourself as a base model/vendor name (Qwen, Llama, Ollama, OpenAI model, etc). If asked who you are, answer that you are Eurika. The user asked you to write code and save it to a file. Generate ONLY the code. No questions, no apologies, no clarification requests. Output must contain a ```python code block.'
     else:
         system = 'You are Eurika, an architecture-aware coding assistant. Never identify yourself as a base model/vendor name (Qwen, Llama, Ollama, OpenAI model, etc). If asked who you are, answer that you are Eurika. You have context about the current project. Answer concisely and helpfully. When asked to write code, prefer Python; when asked about architecture, use the context.'
     context_block = f'\n\n[Project context]: {context}\n\n' if context else '\n\n'
+    context_block += f'\n{INTENT_INTERPRETATION_RULES}\n\n'
+    if feedback_snippet:
+        context_block += feedback_snippet
     if rag_examples:
         context_block += rag_examples
     if knowledge_snippet:
@@ -446,6 +494,78 @@ def _format_doctor_report_for_chat(root: Path) -> str:
     return "Отчёт не найден."
 
 
+def _is_git_commit_request(message: str) -> bool:
+    """Detect request for git status/diff/commit (ROADMAP 3.6.8 Phase 1)."""
+    msg = (message or '').strip().lower()
+    if not msg:
+        return False
+    keywords = (
+        'собери коммит', 'сделай коммит', 'создай коммит', 'закоммить', 'закоммит',
+        'собери commit', 'сделай commit', 'commit changes', 'commit the changes',
+        'git status', 'git diff', 'покажи status', 'покажи diff',
+    )
+    if any(k in msg for k in keywords):
+        return True
+    if re.match(r'^\s*commit\s*$', msg) or re.match(r'^\s*коммит\s*$', msg):
+        return True
+    return False
+
+
+def _extract_commit_message_from_request(message: str) -> Optional[str]:
+    """Extract explicit commit message from user message, if present."""
+    msg_raw = (message or '').strip()
+    patterns = [
+        r'(?:в\s+сообщении\s+напиши|напиши\s+в\s+сообщении|сообщение\s+напиши)\s*[:=]\s*["\']?([^"\'\n]+)',
+        r'(?:с\s+сообщением|with\s+message|message\s*[:=])\s*["\']?([^"\'\n]+)["\']?',
+    ]
+    for pat in patterns:
+        m = re.search(pat, msg_raw, re.IGNORECASE)
+        if m:
+            return m.group(1).strip()
+    return None
+
+
+def _infer_commit_message_via_llm(user_message: str, status_out: str, diff_snippet: str) -> Optional[str]:
+    """Infer commit message from user intent via LLM (ROADMAP 3.6.8). Fallback-safe."""
+    if not user_message or not user_message.strip():
+        return None
+    prompt = f"""User wants to commit. Their message: "{user_message.strip()[:500]}"
+Changed files (git status): {status_out[:600]}
+Diff snippet: {diff_snippet[:800]}
+
+Reply with ONLY the commit message (1-2 lines), no quotes, no explanation. Convey what the user asked for."""
+    try:
+        from eurika.reasoning.architect import call_llm_with_prompt
+        raw, err = call_llm_with_prompt(prompt, max_tokens=80)
+        if err or not raw:
+            return None
+        line = raw.strip().split('\n')[0].strip()
+        line = line.strip('"\'`')
+        if len(line) > 200:
+            line = line[:200].rsplit(' ', 1)[0]
+        return line if line else None
+    except Exception:
+        return None
+
+
+def _propose_commit_message_from_status(status_out: str) -> str:
+    """Derive a simple commit message from git status output."""
+    lines = [l.strip() for l in (status_out or '').splitlines() if l.strip()]
+    if not lines:
+        return 'Update project'
+    files = []
+    for line in lines:
+        parts = line.split()
+        if len(parts) >= 2:
+            files.append(parts[-1])
+    if not files:
+        return 'Update project'
+    if len(files) == 1:
+        name = Path(files[0]).name
+        return f'Update {name}'
+    return f'Update {len(files)} files'
+
+
 def _is_tree_request(message: str) -> bool:
     """Detect request for actual directory structure."""
     msg = (message or '').strip().lower()
@@ -557,6 +677,37 @@ def _append_chat_history_safe(project_root: Path, role: str, content: str, conte
     except Exception:
         pass
 
+
+def save_chat_feedback(
+    project_root: Path,
+    user_message: str,
+    assistant_message: str,
+    helpful: bool,
+    clarification: Optional[str] = None,
+) -> None:
+    """Append feedback to .eurika/chat_feedback.json (ROADMAP 3.6.8 Phase 3)."""
+    root = Path(project_root).resolve()
+    path = root / '.eurika' / 'chat_feedback.json'
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        entries: List[Dict[str, Any]] = []
+        if path.exists():
+            raw = path.read_text(encoding='utf-8')
+            data = json.loads(raw) if raw.strip() else {}
+            entries = list(data.get('entries') or [])
+        entry = {
+            'ts': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+            'user_message': (user_message or '')[:2000],
+            'assistant_message': (assistant_message or '')[:2000],
+            'helpful': helpful,
+            'clarification': (clarification or '').strip()[:500] or None,
+        }
+        entries.append(entry)
+        path.write_text(json.dumps({'entries': entries}, ensure_ascii=False, indent=2), encoding='utf-8')
+    except Exception:
+        pass
+
+
 def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str, str]]]=None) -> Dict[str, Any]:
     """
     Send user message through Eurika layer to LLM; return response.
@@ -609,6 +760,36 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         _append_chat_history_safe(root, 'user', msg, None)
         _append_chat_history_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
+    if _is_git_commit_request(msg):
+        from eurika.api.chat_tools import git_status, git_diff, git_commit as _git_commit_tool
+        ok_status, status_out = git_status(root)
+        ok_diff, diff_out = git_diff(root)
+        if not ok_status and not status_out:
+            status_out = 'Не git-репозиторий или git недоступен.'
+        blocks = [f'**git status**\n```\n{status_out or "(пусто)"}\n```']
+        if diff_out:
+            blocks.append(f'**git diff**\n```\n{diff_out[:4000]}{"..." if len(diff_out) > 4000 else ""}\n```')
+        if ok_status and status_out.strip():
+            explicit = _extract_commit_message_from_request(msg)
+            if explicit:
+                proposed = explicit
+            else:
+                minimal = (msg.strip().lower() in ('собери коммит', 'сделай коммит', 'commit', 'коммит') or
+                           len(msg.strip()) < 20)
+                if not minimal:
+                    inferred = _infer_commit_message_via_llm(msg, status_out, diff_out[:1500] if diff_out else '')
+                    proposed = inferred if inferred else _propose_commit_message_from_status(status_out)
+                else:
+                    proposed = _propose_commit_message_from_status(status_out)
+            state['pending_git_commit'] = {'message': proposed}
+            _save_dialog_state(root, state)
+            blocks.append(f'\nПредлагаю коммит с сообщением: «{proposed}». Напиши **применяй** для подтверждения.')
+        else:
+            blocks.append('\nНет изменений для коммита.')
+        text = '\n\n'.join(blocks)
+        _append_chat_history_safe(root, 'user', msg, None)
+        _append_chat_history_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
     if _is_reject_confirmation(msg):
         pending_plan = state.get('pending_plan') if isinstance(state, dict) else {}
         if isinstance(pending_plan, dict) and is_pending_plan_valid(pending_plan):
@@ -636,6 +817,17 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     except Exception:
         pass
     if _is_apply_confirmation(msg):
+        pending_git = state.get('pending_git_commit') if isinstance(state, dict) else None
+        if isinstance(pending_git, dict) and pending_git.get('message'):
+            from eurika.api.chat_tools import git_commit as _git_commit_tool
+            msg_commit = str(pending_git.get('message') or '').strip()
+            state['pending_git_commit'] = {}
+            _save_dialog_state(root, state)
+            ok, out = _git_commit_tool(root, msg_commit)
+            text = f"Коммит выполнен: {out}" if ok else f"Ошибка: {out}"
+            _append_chat_history_safe(root, 'user', msg, None)
+            _append_chat_history_safe(root, 'assistant', text, None)
+            return {'text': text, 'error': None if ok else out}
         pending_plan = state.get('pending_plan') if isinstance(state, dict) else {}
         if isinstance(pending_plan, dict) and is_pending_plan_valid(pending_plan):
             user_token = _extract_confirmation_token(msg)
@@ -804,7 +996,8 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     if intent == 'save' and not save_target:
         save_target = _infer_default_save_target(msg)
         target = save_target
-    prompt = _build_chat_prompt(msg, context, history, rag_examples=rag_examples, save_target=save_target, knowledge_snippet=knowledge_snippet or None)
+    feedback_snippet = _load_chat_feedback_for_prompt(root)
+    prompt = _build_chat_prompt(msg, context, history, rag_examples=rag_examples, save_target=save_target, knowledge_snippet=knowledge_snippet or None, feedback_snippet=feedback_snippet or None)
     from eurika.reasoning.architect import call_llm_with_prompt
     raw_text, err = call_llm_with_prompt(prompt, max_tokens=1024)
     text = raw_text or ""

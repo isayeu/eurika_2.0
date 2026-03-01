@@ -272,48 +272,19 @@
 | 3.6.5 | @-mentions / scoped context       | Парсинг @module, @smell в чате; обогащение контекста; target из @module при refactor           | ✅ parse_mentions; примеры: @patch_engine.py, @code_awareness.py, @god_module (scan/doctor) |
 | 3.6.6 | Knowledge в Chat и Planner        | eurika_knowledge + pattern_library + (опционально) PEP/docs в Chat prompt; Knowledge в planner LLM hints | ✅ Chat: _knowledge_topics_for_chat, _fetch_knowledge_for_chat; Planner: _fetch_knowledge_for_planner_hints в ask_ollama_split_hints |
 | 3.6.7 | Approvals diff view               | Полноценный diff preview в Qt Approvals: API preview_operation для single-file ops; панель unified diff при выборе строки | ✅ API preview_operation; POST /api/operation_preview; Qt: diff panel по клику на op |
+| 3.6.8 | Chat понимание и обучение         | Eurika понимает намерения (не шаблоны); tool calls (git, eurika CLI); обучение из чата при уточнениях | ✅ Phase 1–4: git tools, system prompt, feedback UI, few-shot из feedback |
 
-**DoD для пакета 3.6:** рост `apply_rate`, снижение `rollback_rate`, снижение доли TODO/no-op операций.
+**DoD пакета 3.6:** рост `apply_rate`, снижение `rollback_rate`, снижение доли TODO/no-op операций.
 
-**Рекомендуемый порядок внедрения (по спринтам):**
+**Статус спринтов:**
 
-- **Спринт 1 (быстрый эффект):** 3.6.1 + 3.6.2. Сначала управляемый apply (per-op approve), затем pre-apply critic для отсечки рискованных операций.
-- **Спринт 2 (качество планирования):** 3.6.3. Добавить семантический контекст в planner и наблюдать снижение no-op/TODO по long/deep сценариям.
-- **Спринт 3 (безопасность кампаний):** 3.6.4. Ввести session checkpoint и понятный campaign undo для длинных серий apply.
-- **Стабилизация после каждого спринта:** `report-snapshot` + обновление CYCLE_REPORT/ROADMAP по фактическим метрикам.
+- Спринт 1 (3.6.1 + 3.6.2): ✅ decision gate, critic pass, per-op approve/reject, decision summary
+- Спринт 2 (3.6.3): ✅ context_sources в planner/report/UI, report-snapshot "Context effect"
+- Спринт 3 (3.6.4): ✅ pre-apply checkpoint, campaign-undo, e2e rollback; R3 Quality Gate закрыт
 
-**Статус спринтов (факт):**
+---
 
-- Спринт 1 (3.6.1 + 3.6.2): ✅ выполнен (decision gate, critic pass, per-op approve/reject, decision summary).
-- Спринт 2 (3.6.3): ✅ выполнен (context_sources в JSON/API/doctor, UI Dashboard + top context hits + by-target breakdown, CYCLE_REPORT через report-snapshot context effect).
-- Спринт 3 (3.6.4): ✅ выполнен (checkpoint + campaign-undo + e2e подтверждение на безопасном apply-сценарии).
-- R3 Quality Gate для 3.6.4: ✅ закрыт (QG-1 edge-cases, QG-2 integration flow, QG-3 undo playbook, QG-4 ritual confirmation apply-safe + no-op).
-
-#### 3.6.6 — Knowledge в Chat и Planner (в работе)
-
-**Цель:** использовать все источники (eurika_knowledge, pattern_library, PEP/docs) для повышения качества ответов и патчей.
-
-| Шаг | Что делаем | Артефакты |
-| --- | ---------- | --------- |
-| 3.6.6.1 | Knowledge в Chat | ✅ CompositeKnowledgeProvider в chat flow; topics из intent/scope; rate_limit=0 (cache only); inject в prompt как `[Reference]` |
-| 3.6.6.2 | Knowledge в Planner LLM hints | ✅ ask_ollama_split_hints(project_root=...) получает knowledge_snippet; append к prompt |
-| 3.6.6.3 | Опционально: knowledge в diff hints | Отложено — при build_patch_operations diff_hint уже содержит OSS patterns; Reference можно добавить позже |
-
-**Критерий готовности 3.6.6:** Chat при вопросе «как разбить god_module» получает фрагменты из eurika_knowledge/pattern_library; planner LLM hints содержат Reference по архитектуре.
-
-#### 3.6.7 — Approvals diff view (2026-02-28)
-
-**Цель:** вкладка Approvals показывает реальный diff изменения, а не только описание. Вариант B: только single-file операции.
-
-| Шаг | Что делаем | Артефакты |
-| --- | ---------- | --------- |
-| 3.6.7.1 | API `preview_operation(root, op)` | eurika.api: вызов refactor-хендлеров (remove_unused_imports, extract_block_to_helper, …) в режиме «только вычислить»; возврат old_content, new_content, unified_diff |
-| 3.6.7.2 | Endpoint POST /api/operation_preview | serve.py: body {operation}; ответ для single-file ops |
-| 3.6.7.3 | Qt Approvals diff panel | При выборе строки в approvals_table — вызов API, отображение unified diff в QPlainTextEdit с подсветкой +/- |
-
-**Поддерживаемые kind:** remove_unused_import, remove_cyclic_import, extract_block_to_helper, extract_nested_function, fix_import. split_module, introduce_facade — вне scope (multi-file).
-
-#### Спринт 1 — инженерная декомпозиция (3.6.1 + 3.6.2)
+#### 3.6.1–3.6.2 — Approve per operation + Critic pass (Спринт 1)
 
 **Scope:** управляемое применение операций + pre-apply safety фильтр.
 
@@ -326,13 +297,36 @@
 | T5. Reporting | Включить в `eurika_fix_report.json` breakdown по операциям: approval_state, critic_verdict, applied/skipped reason | Прозрачный отчёт "почему операция применена/отклонена" |
 | T6. Tests | Добавить unit/integration тесты: approve subset, reject high-risk, deny from critic, mixed plan apply | Набор тестов для happy path и edge-cases (индексы, пустой approved set, all denied) |
 
-**DoD спринта 1:**
+**DoD спринта 1:** high-risk без approve не применяются; deny от critic не проходит в auto; `--apply-approved` — только одобренный поднабор; отчёт фиксирует decision trail; regression зелёный.
 
-- high-risk операции не применяются без явного approve;
-- deny-операции от critic не проходят в auto режиме;
-- `--apply-approved` стабильно применяет только одобренный поднабор;
-- отчёт фиксирует decision trail по каждой операции (approval + critic + итог apply/skip);
-- regression-набор зелёный, без роста rollback-rate.
+#### 3.6.6 — Knowledge в Chat и Planner (✅ выполнено)
+
+| Шаг | Артефакты |
+| --- | --------- |
+| 3.6.6.1 | ✅ CompositeKnowledgeProvider в chat flow; topics из intent/scope; inject как `[Reference]` |
+| 3.6.6.2 | ✅ ask_ollama_split_hints получает knowledge_snippet; append к prompt |
+| 3.6.6.3 | Отложено — diff_hint уже содержит OSS patterns |
+
+#### 3.6.7 — Approvals diff view (✅ выполнено)
+
+| Шаг | Артефакты |
+| --- | --------- |
+| 3.6.7.1 | ✅ API `preview_operation(root, op)` — old_content, new_content, unified_diff |
+| 3.6.7.2 | ✅ POST /api/operation_preview |
+| 3.6.7.3 | ✅ Qt Approvals: diff panel по клику на строку |
+
+**Kind:** remove_unused_import, remove_cyclic_import, extract_block_to_helper, extract_nested_function, fix_import.
+
+#### 3.6.8 — Chat понимание и обучение (✅ выполнено)
+
+| Phase | Артефакты |
+|-------|-----------|
+| 1 | ✅ chat_tools.py: git_status, git_diff, git_commit; «собери коммит» → status+diff; «применяй» → commit |
+| 2 | ✅ INTENT_INTERPRETATION_RULES в _build_chat_prompt (коммит→git, ритуал→scan→doctor→fix) |
+| 3 | ✅ Кнопки «Полезно»/«Не то»; QInputDialog уточнения; .eurika/chat_feedback.json |
+| 4 | ✅ _load_chat_feedback_for_prompt; few-shot из feedback в промпт |
+
+**Критерий:** «собери коммит» → реальный git; «нет, я имел в виду X» → учёт уточнения.
 
 ---
 
@@ -800,6 +794,12 @@
 
 **Зависимости:** 3.5 опирается на eurika serve и eurika.api; не зависит от 3.0.4 Team Mode. Можно вести параллельно с 3.0.4.
 
+---
+
+## Архив: выполненные этапы v0.1–1.0
+
+_Ниже — исторические разделы; нумерация 1–7 не связана с фазами 2.x/3.x._
+
 ## Стратегия выхода в 1.0
 
 
@@ -815,7 +815,7 @@
 
 ---
 
-## 1. Архитектурная целостность
+### 1. Архитектурная целостность
 
 - Pipeline: scan → graph → smells → summary → history → diff → report
 - ArchitectureSnapshot как единый объект
@@ -827,20 +827,20 @@
 
 ---
 
-## 2. Architecture History Engine
+### 2. Architecture History Engine
 
-### 2.1 Модель данных
+#### 2.1 Модель данных
 
 - version (pyproject.toml)
 - git_commit (опционально)
 - diff metrics (дельты, не только абсолюты)
 
-### 2.2 Регрессии
+#### 2.2 Регрессии
 
 - god_module, bottleneck, hub — отдельно
 - risk score (0–100)
 
-### 2.3 Будущее
+#### 2.3 Будущее
 
 - JSON API под future UI: `eurika.api` (get_summary, get_history, get_diff), `eurika serve` (GET /api/summary, /api/history, /api/diff)
 

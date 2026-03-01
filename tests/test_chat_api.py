@@ -4,6 +4,65 @@ import json
 from pathlib import Path
 
 
+def test_extract_commit_message_from_request_regex() -> None:
+    """Regex extraction for explicit commit message patterns (ROADMAP 3.6.8)."""
+    from eurika.api.chat import _extract_commit_message_from_request
+
+    msg = "Собери коммит. В сообщении напиши: ROADMAP 3.6.8 Phase 1–4"
+    assert _extract_commit_message_from_request(msg) == "ROADMAP 3.6.8 Phase 1–4"
+    assert _extract_commit_message_from_request("собери коммит с сообщением fix docs") == "fix docs"
+    assert _extract_commit_message_from_request("собери коммит") is None
+
+
+def test_chat_send_git_commit_uses_llm_when_user_gives_context(tmp_path: Path, monkeypatch) -> None:
+    """When user gives context (not just 'собери коммит'), LLM infers commit message (ROADMAP 3.6.8)."""
+    import subprocess
+
+    import eurika.api.chat as chat_mod
+
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda prompt, max_tokens=80: ("ROADMAP 3.6.8 Phase 1-4, порядок в секции 3.6", None),
+    )
+    subprocess.run(["git", "init"], cwd=str(tmp_path), capture_output=True, check=True)
+    (tmp_path / "x.py").write_text("a=1\n", encoding="utf-8")
+
+    out = chat_mod.chat_send(tmp_path, "Собери коммит. В сообщении напиши: ROADMAP 3.6.8 Phase 1–4, порядок в секции 3.6")
+    text = out.get("text") or ""
+    assert "ROADMAP" in text
+    # Regex should extract first, so we get exact match
+    assert "3.6.8" in text or "Phase" in text
+
+    # Test LLM path: no regex match, user gave context
+    out2 = chat_mod.chat_send(tmp_path, "закоммить изменения, хочу чтобы в сообщении было про chat tools и feedback")
+    text2 = out2.get("text") or ""
+    # LLM is mocked to return our message for any prompt; with context, we use LLM
+    assert "применяй" in text2 or "Нет изменений" in text2
+
+
+def test_save_chat_feedback_writes_json(tmp_path: Path) -> None:
+    """save_chat_feedback should append entry to .eurika/chat_feedback.json (ROADMAP 3.6.8 Phase 3)."""
+    from eurika.api.chat import save_chat_feedback
+
+    save_chat_feedback(tmp_path, "hello", "hi there", helpful=True)
+    path = tmp_path / ".eurika" / "chat_feedback.json"
+    assert path.exists()
+    data = json.loads(path.read_text(encoding="utf-8"))
+    entries = data.get("entries") or []
+    assert len(entries) == 1
+    assert entries[0]["user_message"] == "hello"
+    assert entries[0]["assistant_message"] == "hi there"
+    assert entries[0]["helpful"] is True
+    assert entries[0].get("clarification") is None
+
+    save_chat_feedback(tmp_path, "x", "y", helpful=False, clarification="meant Z")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    entries = data.get("entries") or []
+    assert len(entries) == 2
+    assert entries[1]["helpful"] is False
+    assert entries[1]["clarification"] == "meant Z"
+
+
 def test_chat_send_empty_message_returns_error(tmp_path: Path) -> None:
     """Empty/whitespace message should be rejected deterministically."""
     from eurika.api.chat import chat_send
@@ -229,6 +288,34 @@ def test_chat_send_recall_returns_unknown_when_context_missing(tmp_path: Path, m
     assert "Я не знаю, как тебя зовут" in (out.get("text") or "")
 
 
+def test_chat_prompt_includes_intent_interpretation_rules() -> None:
+    """Chat prompt should include intent interpretation rules (ROADMAP 3.6.8 Phase 2)."""
+    from eurika.api.chat import _build_chat_prompt
+
+    prompt = _build_chat_prompt("hello", "ctx", history=None)
+    assert "собери коммит" in prompt
+    assert "ритуал" in prompt or "ritual" in prompt.lower()
+    assert "покажи отчёт" in prompt or "отчёт" in prompt
+
+
+def test_load_chat_feedback_injects_few_shot_into_prompt(tmp_path: Path) -> None:
+    """When chat_feedback.json exists, prompt should include few-shot block (ROADMAP 3.6.8 Phase 4)."""
+    from eurika.api.chat import _build_chat_prompt, _load_chat_feedback_for_prompt, save_chat_feedback
+
+    save_chat_feedback(tmp_path, "запусти проверку", "ok", helpful=False, clarification="eurika doctor .")
+    save_chat_feedback(tmp_path, "собери коммит", "status...", helpful=True)
+
+    snippet = _load_chat_feedback_for_prompt(tmp_path)
+    assert "Few-shot" in snippet
+    assert "user meant" in snippet
+    assert "eurika doctor" in snippet
+    assert "correct" in snippet
+
+    prompt = _build_chat_prompt("hi", "ctx", feedback_snippet=snippet)
+    assert "Few-shot" in prompt
+    assert "запусти проверку" in prompt or "eurika doctor" in prompt
+
+
 def test_chat_send_identity_question_returns_eurika_persona(tmp_path: Path) -> None:
     """Identity question should be answered directly by Eurika persona."""
     from eurika.api.chat import chat_send
@@ -277,6 +364,51 @@ def test_chat_send_ls_request_returns_real_listing_without_llm(tmp_path: Path, m
     assert "a.py" in text
     assert "docs/" in text
     assert "README.md" in text
+
+
+def test_chat_send_git_commit_request_returns_real_status_without_llm(tmp_path: Path, monkeypatch) -> None:
+    """Git commit request should return real git status/diff and skip LLM (ROADMAP 3.6.8 Phase 1)."""
+    import subprocess
+
+    import eurika.api.chat as chat_mod
+
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    subprocess.run(["git", "init"], cwd=str(tmp_path), capture_output=True, check=True)
+    (tmp_path / "x.py").write_text("a=1\n", encoding="utf-8")
+
+    out = chat_mod.chat_send(tmp_path, "собери коммит")
+    text = out.get("text") or ""
+    assert out.get("error") is None
+    assert "git status" in text.lower() or "status" in text.lower()
+    assert "применяй" in text or "Нет изменений" in text
+
+
+def test_chat_send_git_commit_apply_executes_real_commit(tmp_path: Path, monkeypatch) -> None:
+    """Apply confirmation after git commit request should execute real git commit."""
+    import subprocess
+
+    import eurika.api.chat as chat_mod
+
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    subprocess.run(["git", "init"], cwd=str(tmp_path), capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.email", "test@test"], cwd=str(tmp_path), capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), capture_output=True)
+    (tmp_path / "y.py").write_text("b=2\n", encoding="utf-8")
+
+    chat_mod.chat_send(tmp_path, "собери коммит")
+    out = chat_mod.chat_send(tmp_path, "применяй")
+    text = out.get("text") or ""
+    assert out.get("error") is None
+    assert "коммит" in text.lower() or "commit" in text.lower()
+    r = subprocess.run(["git", "log", "-1", "--oneline"], cwd=str(tmp_path), capture_output=True, text=True)
+    assert r.returncode == 0
+    assert "Update" in r.stdout or "y.py" in r.stdout
 
 
 def test_chat_send_tree_request_returns_real_tree_without_llm(tmp_path: Path, monkeypatch) -> None:

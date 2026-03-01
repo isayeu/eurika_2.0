@@ -103,6 +103,8 @@ class MainWindow(QMainWindow):
         self.chat_clear_btn.clicked.connect(lambda: chat_handlers.clear_chat_session(self))
         self.chat_apply_btn.clicked.connect(lambda: chat_handlers.apply_pending_chat_plan(self))
         self.chat_reject_btn.clicked.connect(lambda: chat_handlers.reject_pending_chat_plan(self))
+        self.chat_feedback_helpful_btn.clicked.connect(lambda: chat_handlers.submit_chat_feedback(self, helpful=True))
+        self.chat_feedback_not_btn.clicked.connect(lambda: chat_handlers.submit_chat_feedback(self, helpful=False))
         self.ollama_start_btn.clicked.connect(lambda: ollama_handlers.start_ollama_server(self))
         self.ollama_stop_btn.clicked.connect(lambda: ollama_handlers.stop_ollama_server(self))
         self.ollama_refresh_models_btn.clicked.connect(lambda: ollama_handlers.refresh_ollama_models(self, user_initiated=True))

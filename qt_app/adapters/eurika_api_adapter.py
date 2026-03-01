@@ -25,7 +25,7 @@ from eurika.api import (
     get_summary,
     save_approvals,
 )
-from eurika.api.chat import chat_send as _chat_send
+from eurika.api.chat import chat_send as _chat_send, save_chat_feedback as _save_chat_feedback
 
 
 class EurikaApiAdapter:
@@ -144,6 +144,23 @@ class EurikaApiAdapter:
             timeout_sec=timeout_sec,
         ):
             return _chat_send(self._root(), message, history)
+
+    def save_chat_feedback(
+        self,
+        *,
+        user_message: str,
+        assistant_message: str,
+        helpful: bool,
+        clarification: str | None = None,
+    ) -> None:
+        """Save feedback for last chat exchange (ROADMAP 3.6.8 Phase 3)."""
+        _save_chat_feedback(
+            self._root(),
+            user_message=user_message,
+            assistant_message=assistant_message,
+            helpful=helpful,
+            clarification=clarification,
+        )
 
     def list_ollama_models(self, base_url: str = "http://127.0.0.1:11434") -> list[str]:
         """Return locally installed Ollama model names from /api/tags."""

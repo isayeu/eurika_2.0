@@ -6,7 +6,7 @@ import re
 from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QInputDialog, QMessageBox
 
 from ..main_window_helpers import ChatWorker
 
@@ -221,6 +221,8 @@ def on_chat_result(main: MainWindow, payload: dict[str, Any]) -> None:
         return
     main.chat_transcript.append(_format_chat_line("assistant", text))
     main._chat_history.append({"role": "assistant", "content": text})
+    main.chat_feedback_helpful_btn.setEnabled(True)
+    main.chat_feedback_not_btn.setEnabled(True)
     refresh_chat_goal_view(main)
     activate_pending_controls_from_response(main, text)
     QTimer.singleShot(100, lambda: refresh_chat_goal_view(main))
@@ -273,4 +275,44 @@ def on_chat_finished(main: MainWindow) -> None:
 def clear_chat_session(main: MainWindow) -> None:
     main._chat_history.clear()
     main.chat_transcript.clear()
+    main.chat_feedback_helpful_btn.setEnabled(False)
+    main.chat_feedback_not_btn.setEnabled(False)
     refresh_chat_goal_view(main)
+
+
+def submit_chat_feedback(main: MainWindow, *, helpful: bool) -> None:
+    """Save feedback for last user+assistant exchange (ROADMAP 3.6.8 Phase 3)."""
+    history = getattr(main, "_chat_history", []) or []
+    if len(history) < 2:
+        return
+    user_msg = ""
+    assistant_msg = ""
+    for i in range(len(history) - 1, -1, -1):
+        role = (history[i].get("role") or "").strip()
+        content = (history[i].get("content") or "").strip()
+        if role == "assistant" and not assistant_msg:
+            assistant_msg = content
+        elif role == "user" and not user_msg:
+            user_msg = content
+        if user_msg and assistant_msg:
+            break
+    if not user_msg or not assistant_msg:
+        return
+    clarification: str | None = None
+    if not helpful:
+        text, ok = QInputDialog.getText(
+            main,
+            "Уточнение",
+            "Что имели в виду? (необязательно):",
+            text="",
+        )
+        if ok and text:
+            clarification = text.strip()
+    main._api.save_chat_feedback(
+        user_message=user_msg,
+        assistant_message=assistant_msg,
+        helpful=helpful,
+        clarification=clarification,
+    )
+    main.chat_feedback_helpful_btn.setEnabled(False)
+    main.chat_feedback_not_btn.setEnabled(False)
