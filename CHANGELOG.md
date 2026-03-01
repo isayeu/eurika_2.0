@@ -2,6 +2,78 @@
 
 All notable changes to this project will be documented in this file.
 
+## v3.0.25 — Ритуал 2.1, R2 Logging doc, Coverage gate (2026-03-01)
+
+### Ритуал 2.1
+- report-snapshot: modules=260, risk=46, apply_rate=1.0. CYCLE_REPORT #96.
+
+### R2 Logging
+- **docs/R2_LOGGING.md:** каталог logging в orchestration; 0 слепых print в критическом цикле.
+
+### Coverage / mypy
+- pytest-cov, mypy: добавлены в RELEASE_CHECKLIST (опционально). Coverage eurika.agent + cli.orchestration: 48% (subset).
+
+---
+
+## v3.0.24 — R3 Quality Gate: edge-case matrix, EDGE_CASE_MATRIX sync (2026-03-01)
+
+### R3
+- **EDGE_CASE_MATRIX.md:** добавлен `test_prepare_context_sources_exception_continues` (R2 Fallback).
+- **test_build_patch_operations_empty_input_returns_list:** ROOT=parents[2] (project root) — fix ModuleNotFoundError: patch_plan.
+- Edge-case: 10 tests, `pytest -m edge_case` проходит.
+
+---
+
+## v3.0.23 — Subsystem bypass fix, R2 Fallback audit (2026-02-28)
+
+### R4 Subsystem bypass
+- **prepare.py → eurika.agent.policy:** `is_whitelisted_for_auto` добавлен в фасад `eurika.agent`; CLI импортирует через `eurika.agent`. SELF-GUARD: 0 subsystem bypass.
+
+### R2 Fallback
+- **docs/R2_FALLBACK_AUDIT.md:** каталог fallback-путей (doctor, fix, architect, full cycle). Критерий: при недоступности LLM/knowledge цикл завершается предсказуемо.
+- **test_prepare_context_sources_exception_continues:** R2 edge-case — при Exception в `build_context_sources` prepare продолжает с `context_sources={}`.
+
+### Docs
+- API_BOUNDARIES: `is_whitelisted_for_auto` в eurika.agent.
+
+---
+
+## v3.0.22 — Qt UX: Ollama autostart, runtime-mode auto (2026-02-28)
+
+### Qt
+- **Ollama autostart:** при показе окна, если Ollama недоступен — автоматически переключается вкладка Models и запускается `ollama serve`.
+- **--runtime-mode auto:** при включении Allow low-risk campaign для fix/cycle GUI добавляет `--runtime-mode auto` (polygon drills, whitelist bypass).
+
+### Docs
+- UI.md: Models (autostart), Command Builder (runtime-mode auto), таблица вкладок дополнена Graph.
+- README: Models — упоминание autostart.
+
+---
+
+## v3.0.21 — Polygon long_function + deep_nesting extractable (2026-02-28)
+
+### Polygon drills
+- **DRILL_LONG_FUNCTION:** вложенная `_compute_first_half()` — extract_nested_function в whitelist.
+- **DRILL_DEEP_NESTING:** `polygon_deep_nesting_extractable` — вложенный блок 5+ строк без return; extract_block_to_helper в whitelist.
+- **Whitelist:** extract_nested_function (long_function.py), extract_block_to_helper (deep_nesting.py).
+
+---
+
+## v3.0.20 — Polygon catalog + Operability 6/10 (2026-02-28)
+
+### Polygon
+- **eurika/polygon/** — каталог drills: imports_ok, extractable_block, long_function, deep_nesting.
+- **.eurika/operation_whitelist.json** для polygon (remove_unused_import, extract_block_to_helper).
+- **learning-kpi --polygon** — фильтр по eurika/polygon/, секция Polygon drills.
+- **reset_approvals_after_rollback** — сброс team_decision при verify fail + rollback.
+- **extract_block_to_helper** — _block_has_extracted_call в collect_blocks (защита от рекурсии).
+
+### Operability 6/10 ✅
+- remove_unused_import: 58%; polygon drills: 100% (imports_ok, extractable_block).
+- CYCLE_REPORT #91, #91.1.
+
+---
+
 ## v3.0.19 — Operability 5→6 (D): suggest_policy no_op_rate, learning-kpi Next steps (2026-02-28)
 
 ### D: Operability 5→6

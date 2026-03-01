@@ -7,9 +7,10 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in __import__("sys").path:
-    __import__("sys").path.insert(0, str(ROOT))
+ROOT = Path(__file__).resolve().parents[2]  # project root (tests/edge_cases -> tests -> project)
+_sys = __import__("sys")
+if str(ROOT) not in _sys.path:
+    _sys.path.insert(0, str(ROOT))
 
 
 def _minimal_self_map(path: Path, modules: list[str], deps: dict) -> None:
@@ -128,6 +129,53 @@ def test_build_patch_operations_empty_input_returns_list() -> None:
     )
     assert isinstance(out, list)
     assert len(out) == 0
+
+
+@pytest.mark.edge_case
+def test_prepare_context_sources_exception_continues(tmp_path: Path) -> None:
+    """R2: When build_context_sources raises, prepare continues with empty context_sources."""
+    from unittest.mock import patch
+
+    _minimal_self_map(tmp_path / "self_map.json", ["a.py", "b.py"], {"a.py": ["b"]})
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\n", encoding="utf-8")
+    (tmp_path / "a.py").write_text("import b\nx = 1\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("y = 2\n", encoding="utf-8")
+
+    from cli.orchestration.prepare import prepare_fix_cycle_operations
+
+    fake_result = type("R", (), {})()
+    fake_result.success = True
+    fake_result.output = {
+        "proposals": [
+            {
+                "action": "suggest_patch_plan",
+                "arguments": {
+                    "patch_plan": {
+                        "project_root": str(tmp_path),
+                        "operations": [{"kind": "remove_unused_import", "target_file": "a.py", "diff": "# noop"}],
+                    },
+                },
+            },
+        ],
+    }
+
+    with patch("cli.orchestration.prepare.run_fix_diagnose_stage", return_value=fake_result):
+        with patch("eurika.reasoning.architect.build_context_sources", side_effect=RuntimeError("knowledge unavailable")):
+            early, result, plan, ops = prepare_fix_cycle_operations(
+                tmp_path,
+                runtime_mode="assist",
+                session_id=None,
+                window=5,
+                quiet=True,
+                skip_scan=True,
+                no_clean_imports=True,
+                no_code_smells=True,
+                run_scan=lambda _: 0,
+            )
+    assert early is None  # no early exit
+    assert plan is not None
+    assert result is not None
+    assert result.output.get("context_sources") == {}
 
 
 @pytest.mark.edge_case

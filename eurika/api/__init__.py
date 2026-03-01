@@ -249,8 +249,10 @@ def _chat_learning_recommendations(project_root: Path, top_n: int) -> Dict[str, 
     policy_review_hints = [r for r in rows if int(r.get('total', 0)) >= 2 and int(r.get('fail', 0)) >= 1 and (float(r.get('success_rate', 0.0)) < 0.4)][:top_n]
     return {'chat_whitelist_hints': whitelist_hints, 'chat_policy_review_hints': policy_review_hints}
 
-def get_learning_insights(project_root: Path, top_n: int=5) -> Dict[str, Any]:
-    """Learning insights for UI: what worked and policy/whitelist hints."""
+def get_learning_insights(project_root: Path, top_n: int=5, *, polygon_only: bool=False) -> Dict[str, Any]:
+    """Learning insights for UI: what worked and policy/whitelist hints.
+    polygon_only: filter to eurika/polygon/ targets only (drill view).
+    """
     from eurika.storage import ProjectMemory
     root = Path(project_root).resolve()
     memory = ProjectMemory(root)
@@ -262,6 +264,8 @@ def get_learning_insights(project_root: Path, top_n: int=5) -> Dict[str, Any]:
         for op in rec.operations:
             target = str(op.get('target_file') or '').strip()
             if not target:
+                continue
+            if polygon_only and not target.startswith("eurika/polygon/"):
                 continue
             kind = str(op.get('kind') or 'unknown')
             smell = str(op.get('smell_type') or 'unknown')
@@ -282,6 +286,15 @@ def get_learning_insights(project_root: Path, top_n: int=5) -> Dict[str, Any]:
     whitelist_candidates = [item for item in ordered_targets if int(item.get('total', 0)) >= 2 and float(item.get('verify_success_rate', 0.0)) >= 0.6][:top_n]
     deny_candidates = [item for item in ordered_targets if int(item.get('total', 0)) >= 3 and float(item.get('verify_success_rate', 0.0)) < 0.25][:top_n]
     chat_recs = _chat_learning_recommendations(root, top_n=top_n)
+    if polygon_only:
+        by_smell_action = {}
+        for item in ordered_targets:
+            k = f"{item.get('smell_type', '?')}|{item.get('action_kind', '?')}"
+            if k not in by_smell_action:
+                by_smell_action[k] = {'total': 0, 'verify_success': 0, 'verify_fail': 0}
+            by_smell_action[k]['total'] += int(item.get('total', 0))
+            by_smell_action[k]['verify_success'] += int(item.get('verify_success', 0))
+            by_smell_action[k]['verify_fail'] += int(item.get('verify_fail', 0))
     return {'by_action_kind': by_action_kind, 'by_smell_action': by_smell_action, 'by_target': ordered_targets[:max(top_n, 1) * 2], 'what_worked': ordered_targets[:top_n], 'recommendations': {'whitelist_candidates': whitelist_candidates, 'policy_deny_candidates': deny_candidates, 'chat_whitelist_hints': chat_recs.get('chat_whitelist_hints', []), 'chat_policy_review_hints': chat_recs.get('chat_policy_review_hints', [])}}
 
 def get_history(project_root: Path, window: int=5) -> Dict[str, Any]:

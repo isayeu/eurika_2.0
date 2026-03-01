@@ -208,7 +208,7 @@ def run_fix_cycle_impl(
     patch_plan: PatchPlan | None = None
 
     if apply_approved:
-        from cli.orchestration.team_mode import load_approved_operations
+        from cli.orchestration.team_mode import load_approved_operations, reset_approvals_after_rollback
 
         approved, payload = load_approved_operations(path)
         if not payload:
@@ -305,6 +305,8 @@ def run_fix_cycle_impl(
             rollback_patch=deps["rollback_patch"],
             result=result,
         )
+        if not verify_success and (report.get("rollback") or {}).get("done"):
+            reset_approvals_after_rollback(path)
         return build_fix_cycle_result(report, approved, modified, verify_success, result)
 
     early, result, patch_plan, operations = prepare_fix_cycle_operations(
@@ -340,6 +342,7 @@ def run_fix_cycle_impl(
                     "report": dict(
                         early.get("report", {}),
                         message=f"Plan saved to {saved}. Run eurika fix . --apply-approved after review.",
+                        patch_plan=dict(patch_early) if patch_early else {"operations": ops_early},
                     ),
                     "operations": ops_early,
                     "modified": [],
@@ -371,6 +374,7 @@ def run_fix_cycle_impl(
                 "return_code": 0,
                 "report": {
                     "message": f"Plan saved to {saved}. Run eurika fix . --apply-approved after review.",
+                    "patch_plan": dict(pending_patch_plan) if pending_patch_plan else {"operations": operations},
                     "policy_decisions": policy_decisions,
                 },
                 "operations": operations,

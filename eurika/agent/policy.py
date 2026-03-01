@@ -196,6 +196,16 @@ def _op_matches_whitelist_entry(op: dict[str, Any], entry: dict[str, Any]) -> bo
     return True
 
 
+def is_whitelisted_for_auto(op: dict[str, Any], project_root: Path | None) -> bool:
+    """True if op matches whitelist entry with allow_in_auto (bypass critic high-risk review)."""
+    for entry in _load_operation_whitelist(project_root):
+        if not _op_matches_whitelist_entry(op, entry):
+            continue
+        if bool(entry.get("allow_in_auto", False)):
+            return True
+    return False
+
+
 def _whitelist_policy_override(
     op: dict[str, Any],
     *,

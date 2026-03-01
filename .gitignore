@@ -23,6 +23,8 @@ build/
 
 # Test artifacts
 tests/_tmp_mod.py
+.coverage
+htmlcov/
 
 # Eurika runtime artifacts
 .eurika/

@@ -6,12 +6,13 @@
 
 | Вкладка | Назначение |
 |---------|------------|
-| **Models** | Управление Ollama: Start/Stop, переменные окружения, список моделей, установка |
+| **Models** | Управление Ollama: Start/Stop, переменные окружения, список моделей, установка. **При старте:** если Ollama не запущен — автоматически открывается вкладка и запускается `ollama serve` |
 | **Chat** | Чат с Apply/Reject для планов; @-mentions для scope; создание вкладок (в т.ч. Terminal) по intent |
-| **Commands** | scan/doctor/fix/cycle/explain/report-snapshot/learning-kpi, Run/Stop |
-| **Terminal** | Output команд (scan, doctor, fix…) + поле ввода для shell (ls, pwd, eurika scan .) |
-| **Dashboard** | Summary (modules, deps, cycles, risk, maturity, trends), Top risks, Operational metrics (apply_rate, rollback_rate, median verify), Learning insights; автообновление при смене project root |
+| **Commands** | scan/doctor/fix/cycle/explain/report-snapshot/learning-kpi, Run/Stop, live output |
+| **Dashboard** | Summary (modules, deps, cycles, risk, maturity, trends), Top risks, Operational metrics, Learning insights; автообновление при смене project root |
+| **Graph** | Интерактивный граф зависимостей. Требует `eurika scan .` перед использованием. |
 | **Approvals** | Run fix (team-mode), Load plan, approve/reject per row, **diff preview** при выборе строки (ROADMAP 3.6.7), Save, Run apply-approved |
+| **Terminal** | Output команд (scan, doctor, fix…) + поле ввода для shell (ls, pwd, eurika scan .) |
 
 ### Chat: @-mentions (ROADMAP 3.6.5)
 
@@ -77,7 +78,7 @@ http://127.0.0.1:8765/
 
 - `scan`: `--format`, color flags
 - `doctor`: `--window`, `--no-llm`, `--online`, `--runtime-mode`
-- `fix`/`cycle`: `--dry-run`, `--runtime-mode`, `--non-interactive`, `--session-id`, `--allow-campaign-retry`, `--allow-low-risk-campaign`, `--no-clean-imports`, `--no-code-smells`, `--verify-timeout`, `--interval`, а также `--team-mode` / `--apply-approved`
+- `fix`/`cycle`: `--dry-run`, `--runtime-mode`, `--non-interactive`, `--session-id`, `--allow-campaign-retry`, `--allow-low-risk-campaign`, `--no-clean-imports`, `--no-code-smells`, `--verify-timeout`, `--interval`, а также `--team-mode` / `--apply-approved`. При включении **Allow low-risk campaign** GUI добавляет `--runtime-mode auto` для polygon drills и whitelist bypass
 - `explain`: module + `--window`
 
 Кнопки:

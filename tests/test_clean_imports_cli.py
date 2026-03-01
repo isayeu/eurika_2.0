@@ -9,6 +9,27 @@ def test_polygon_module_loads() -> None:
     assert polygon_imports_ok() == Path(".")
 
 
+def test_polygon_extractable_block_semantics() -> None:
+    """DRILL_EXTRACTABLE_BLOCK — extract_block_to_helper must preserve semantics."""
+    from eurika.polygon import polygon_extractable_block
+
+    assert polygon_extractable_block(5) == 34
+
+
+def test_polygon_long_function_semantics() -> None:
+    """DRILL_LONG_FUNCTION — extract_nested_function must preserve semantics."""
+    from eurika.polygon import polygon_long_function
+
+    assert polygon_long_function() == 55
+
+
+def test_polygon_deep_nesting_extractable_semantics() -> None:
+    """DRILL_DEEP_NESTING — extract_block_to_helper must preserve semantics."""
+    from eurika.polygon import polygon_deep_nesting_extractable
+
+    assert polygon_deep_nesting_extractable(5) == 34
+
+
 def test_clean_imports_dry_run(tmp_path: Path) -> None:
     """clean-imports (no --apply) reports files that would be modified."""
     (tmp_path / 'a.py').write_text('import unused_mod\nx = 1\n')

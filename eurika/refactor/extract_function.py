@@ -373,11 +373,21 @@ def suggest_extract_block(file_path: Path, function_name: str, *, min_lines: int
     block_types = (ast.If, ast.For, ast.While, ast.Try, ast.With)
     candidates: List[Tuple[ast.stmt, List[ast.stmt], int, int]] = []
 
+    def _block_contains_extracted_call(n: ast.AST) -> bool:
+        """True if block (recursively) contains a call to _extracted_block_*."""
+        for node in ast.walk(n):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                if node.func.id.startswith("_extracted_block_"):
+                    return True
+        return False
+
     def collect_blocks(node: ast.AST, depth: int) -> None:
         if isinstance(node, block_types):
             body = getattr(node, 'body', None)
             if body and isinstance(body, list):
-                if not _block_has_control_flow_exit(body):
+                if _block_contains_extracted_call(node):
+                    pass  # skip block that calls already-extracted helper (avoid recursion)
+                elif not _block_has_control_flow_exit(body):
                     used = _names_used_in_statements(body)
                     assigned = _names_assigned_in_statements(body)
                     writes_to_params = assigned & parent_params
@@ -437,15 +447,27 @@ def extract_block_to_helper(file_path: Path, parent_function_name: str, block_st
             break
     if parent_func is None:
         return None
+
+    def _block_has_extracted_call(n: ast.AST) -> bool:
+        """True if block contains a call to _extracted_block_* (avoids recursion)."""
+        for node in ast.walk(n):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                if node.func.id.startswith("_extracted_block_"):
+                    return True
+        return False
+
     candidates: List[Tuple[ast.AST, List[ast.stmt], int, int]] = []
 
     def collect_blocks(node: ast.AST, depth: int) -> None:
         if isinstance(node, block_types):
             body = getattr(node, 'body', None)
             if body and isinstance(body, list):
-                lineno = int(getattr(node, 'lineno', -1) or -1)
-                line_delta = abs(lineno - block_start_line) if lineno > 0 else 10 ** 6
-                candidates.append((node, body, line_delta, depth))
+                if _block_has_extracted_call(node):
+                    pass  # skip: would put call inside helper -> recursion
+                else:
+                    lineno = int(getattr(node, 'lineno', -1) or -1)
+                    line_delta = abs(lineno - block_start_line) if lineno > 0 else 10 ** 6
+                    candidates.append((node, body, line_delta, depth))
         for child in ast.iter_child_nodes(node):
             collect_blocks(child, depth + 1)
     collect_blocks(parent_func, 0)
@@ -458,10 +480,23 @@ def extract_block_to_helper(file_path: Path, parent_function_name: str, block_st
         if name not in extra:
             extra.append(name)
 
+    parent_locals = _parent_locals(parent_func)
+    return_var: Optional[str] = None
+    if body and isinstance(body[-1], ast.Assign):
+        last = body[-1]
+        if len(last.targets) == 1 and isinstance(last.targets[0], ast.Name):
+            out_name = last.targets[0].id
+            if out_name in parent_locals and out_name not in block_bound:
+                return_var = out_name
+
     def replace_body_with_call(node: ast.AST) -> bool:
         if node is block_node:
             call_args: List[ast.expr] = [ast.Name(id=p, ctx=ast.Load()) for p in extra]
-            call = ast.Expr(ast.Call(ast.Name(id=helper_name, ctx=ast.Load()), call_args, []))
+            call_expr = ast.Call(ast.Name(id=helper_name, ctx=ast.Load()), call_args, [])
+            if return_var:
+                call = ast.Assign(targets=[ast.Name(id=return_var, ctx=ast.Store())], value=call_expr)
+            else:
+                call = ast.Expr(call_expr)
             typed_node = node
             if isinstance(typed_node, (ast.If, ast.For, ast.While, ast.Try, ast.With)):
                 typed_node.body = [call]
@@ -474,6 +509,10 @@ def extract_block_to_helper(file_path: Path, parent_function_name: str, block_st
         return False
     if not replace_body_with_call(parent_func):
         return None
+    if return_var:
+        new_body = list(body[:-1])
+        new_body.append(ast.Return(body[-1].value))
+        body = new_body
     args_list = [ast.arg(arg=p) for p in extra]
     extracted = ast.FunctionDef(name=helper_name, args=ast.arguments(posonlyargs=[], args=args_list, vararg=None, kwonlyargs=[], kw_defaults=[], kwarg=None, defaults=[]), body=body, decorator_list=[], returns=None)
     ast.copy_location(extracted, block_node)

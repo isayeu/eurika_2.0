@@ -123,6 +123,34 @@ def load_pending_plan(project_root: Path) -> dict[str, Any] | None:
     return data
 
 
+def reset_approvals_after_rollback(project_root: Path) -> bool:
+    """Clear team_decision=approve in pending_plan after verify fail + rollback.
+    Prevents re-apply of same ops on next --apply-approved without re-review."""
+    path = _pending_path(project_root)
+    if not path.exists():
+        return False
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return False
+        ops = data.get("operations")
+        if not isinstance(ops, list):
+            return False
+        changed = False
+        for op in ops:
+            if isinstance(op, dict) and str(op.get("team_decision", "")).lower() == "approve":
+                op["team_decision"] = "pending"
+                op["approval_state"] = "pending"
+                op["approved_by"] = None
+                changed = True
+        if changed:
+            data["operations"] = ops
+            path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        return changed
+    except Exception:
+        return False
+
+
 def update_team_decisions(
     project_root: Path,
     operations: list[dict[str, Any]],

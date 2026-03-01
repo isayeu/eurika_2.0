@@ -54,6 +54,7 @@ def build_cli_args(
         args.append("--no-code-smells")
     if command in {"fix", "cycle"} and allow_low_risk_campaign:
         args.append("--allow-low-risk-campaign")
+        args.extend(["--runtime-mode", "auto"])  # polygon drills need auto for whitelist bypass
     if command in {"fix", "cycle"} and team_mode:
         args.append("--team-mode")
     return args

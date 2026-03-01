@@ -8,11 +8,12 @@
 
 | smell\|action | rate | Комментарий |
 |---------------|------|-------------|
-| remove_unused_import | ~38% | Лучший; реальный фикс (AST) |
-| deep_nesting\|extract_block_to_helper | ~13% | 2 success, 13 fail |
+| remove_unused_import | ~58% | Polygon imports_ok 100%; общий 18/31 |
+| deep_nesting\|extract_block_to_helper | ~21% | Polygon extractable_block 100% (2/2); общий 3/14 |
 | long_function\|extract_block_to_helper | 0% | 26 fail |
 | long_function\|extract_nested_function | 0% | 4 fail |
 
+**Polygon `eurika/polygon/`:** imports_ok, extractable_block — оба 100%, whitelist candidates.
 **Блокеры:** campaign memory (verify_fail 2+ → skip), WEAK_SMELL_ACTION_PAIRS (auto: deny).
 
 ---
@@ -37,15 +38,15 @@
 ### 4. learning-kpi Next steps
 - Блок рекомендаций: «To improve: eurika fix . --no-code-smells --allow-low-risk-campaign».
 
-### 5. Polygon `eurika/polygon.py`
+### 5. Polygon `eurika/polygon/`
 - Сводный полигон для обучения: DRILL_UNUSED_IMPORTS, DRILL_LONG_FUNCTION, DRILL_DEEP_NESTING.
 - Намеренные ошибки для fix-циклов; после fix — вернуть для следующего прогона.
 - **Verify timeout:** полный pytest может превышать таймаут → verify_fail. Для тренировок: `--verify-cmd "python -m pytest tests/test_clean_imports_cli.py -q"` (обязательно `python -m pytest` — иначе ModuleNotFoundError). См. docs/POLYGON_VERIFY_TIMEOUT.md.
 
 ---
 
-## Критерий 6/10
+## Критерий 6/10 ✅
 
-- verify_success_rate по remove_unused_import ≥ 50%;
-- или 2+ smell|action|target в whitelist с rate ≥ 60%;
-- suggest_policy учитывает no_op_rate.
+- [x] verify_success_rate по remove_unused_import ≥ 50% (58%);
+- [x] 2+ smell|action|target в whitelist с rate ≥ 60% (polygon: imports_ok, extractable_block 100%);
+- [x] suggest_policy учитывает no_op_rate.

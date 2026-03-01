@@ -1,7 +1,65 @@
 # Отчёт цикла Eurika
 
-## Current state (2026-02-28)
+## Current state (2026-03-01)
 
+- **96. Ритуал 2.1 (report-snapshot):** modules=260, risk=46, apply_rate=1.0, rollback_rate=0.0. Learning: remove_unused_import 65%, extract_block_to_helper 40%, extract_nested_function 67%. Whitelist candidates: polygon drills.
+- **95. R3 Quality Gate:** EDGE_CASE_MATRIX — добавлен test_prepare_context_sources_exception_continues. Fix ROOT в edge_cases (patch_plan import). 10 edge-case тестов, test_r3_edge_case_matrix_passes.
+- **94. Subsystem bypass + R2 Fallback:** prepare.py импорт через eurika.agent (is_whitelisted_for_auto). SELF-GUARD: 0 subsystem bypass. docs/R2_FALLBACK_AUDIT.md — каталог fallback-путей. test_prepare_context_sources_exception_continues.
+- **93. Doc + smoke + R1 verification:** UI.md/README/CHANGELOG v3.0.22 — Ollama autostart, --runtime-mode auto для fix/cycle при Allow low-risk campaign. Qt smoke 10 passed; R1 `test_self_check_r1_layer_discipline_on_self` passed; `eurika self-check .` → LAYER DISCIPLINE: OK (0 forbidden, 0 layer violations).
+- **92.1 Post-v3.0.21 ritual:** report-snapshot после прогона. modified=2, verify=True; modules=256, risk=46; apply_rate=1.0, rollback_rate=0. Polygon drills 100%: imports_ok, extractable_block, deep_nesting, long_function.
+- **92. Polygon long_function + deep_nesting extractable:** DRILL_LONG_FUNCTION — extract_nested_function (вложенная _compute_first_half); DRILL_DEEP_NESTING — polygon_deep_nesting_extractable с extractable блоком 5+ строк; whitelist расширен. ops.py: _is_whitelisted_for_kind — bypass learning gate для polygon. long_function padding (>50 lines) для CodeAwareness. test_polygon_long_function_semantics, test_polygon_deep_nesting_extractable_semantics.
+- **91. Polygon catalog + team rollback reset + learning-kpi --polygon:** Polygon — каталог `eurika/polygon/` (imports_ok, extractable_block, long_function, deep_nesting). reset_approvals_after_rollback: сброс team_decision=approve в pending_plan после verify fail + rollback (избегаем re-apply без re-review). learning-kpi `--polygon` — фильтр по eurika/polygon/; секция Polygon drills; Next steps для polygon-targets. KPI_VERIFY_SUCCESS_RATE_PLAN A.2 дополнен.
+- **90. Extract_block return-value fix + polygon verify + recursion guard:** extract_block_to_helper при assign-to-outer — helper возвращает value. _block_contains_extracted_call — skip блоков, вызывающих _extracted_block_*, избегаем рекурсии при повторном fix. test_suggest_extract_block_skips_when_block_calls_extracted_helper. extract_block_to_helper при assign-to-outer (result=d в блоке, result в parent_locals) — helper возвращает value, call site: `result = helper(...)`. test_extract_block_to_helper_returns_value_when_block_assigns_to_outer; polygon_extractable_block в verify_cmd (test_polygon_extractable_block_semantics).
+- **89. Prepend fallback + team-mode patch_plan:** при пустом architect (no suggest_patch_plan) — не early-exit, а prepend clean_imports/code_smells; whitelist `.eurika/operation_whitelist.json` для polygon (remove_unused_import, extract_block_to_helper); team-mode report включает patch_plan в JSON. Polygon в campaign verify_fail_keys → нужен `EURIKA_IGNORE_CAMPAIGN=1` или `--allow-low-risk-campaign` для diff-теста.
+
+---
+
+## 92.1 Snapshot (2026-02-28) — Post-v3.0.21 ritual
+
+### report-snapshot
+- **Fix:** modified=2, skipped=0, verify=True
+- **verify_metrics:** before=46, after=46
+- **telemetry:** apply_rate=1.0, no_op_rate=0.0, rollback_rate=0.0, verify_duration_ms=1844
+- **Doctor:** modules=256, risk=46, apply_rate=0.91 (last 10), rollback_rate=0.3
+
+### Learning (by_action_kind)
+- extract_block_to_helper: 36% (5 success, 9 fail)
+- remove_unused_import: 59% (19 success, 13 fail)
+- extract_nested_function: 50% (1 success, 1 fail)
+
+### learning-kpi --polygon (polygon drills 100%)
+- imports_ok.py | remove_unused_import: 4/4
+- extractable_block.py | extract_block_to_helper: 2/2
+- deep_nesting.py | extract_block_to_helper: 1/1
+- long_function.py | extract_nested_function: 1/1
+
+### whitelist_candidates
+- eurika/polygon/extractable_block.py|extract_block_to_helper
+- eurika/polygon/imports_ok.py|remove_unused_import
+
+---
+
+## 91. Snapshot (2026-02-28) — Polygon catalog + team rollback reset + learning-kpi --polygon
+
+### Scope
+- **Polygon catalog:** `eurika/polygon.py` → `eurika/polygon/` (imports_ok, extractable_block, long_function, deep_nesting). Один файл на drill.
+- **reset_approvals_after_rollback:** при verify fail + rollback в ветке apply_approved — сброс team_decision=approve в pending_plan.json. Избегаем re-apply одних и тех же ops без re-review.
+- **extract_block_to_helper:** _block_has_extracted_call в collect_blocks — skip блоков с вызовом _extracted_block_* (предотвращение рекурсии).
+- **learning-kpi --polygon:** фильтр по eurika/polygon/*; секция Polygon (eurika/polygon/); Next steps для polygon-targets с низким rate.
+
+### Метрики (report-snapshot)
+- modules=256, risk=46, apply_rate=0.91, rollback_rate=0.3
+- remove_unused_import: 54% (15/28), extract_block_to_helper: 21% (3/14)
+
+### Итог
+Polygon готов как каталог drills; team-mode rollback-reset; KPI --polygon для drill-фокуса.
+
+### 91.1 Polygon drill-прогон (2026-02-28)
+
+- **Whitelist** `.eurika/operation_whitelist.json` для polygon (imports_ok, extractable_block).
+- **Fix apply:** remove_unused_import на imports_ok (3× verify_success), extract_block_to_helper на extractable_block (1× verify_success, team-mode approve).
+- **learning-kpi --polygon:** 100% по обоим drills. whitelist-draft: imports_ok в promote candidates.
+- **remove_unused_import:** 58% (18/31) — критерий 6/10 выполнен (≥50%).
 - **88. 3.6.7 Approvals diff view:** API preview_operation, POST /api/operation_preview, Qt diff panel при выборе строки в Approvals. Single-file ops: remove_unused_import, remove_cyclic_import, extract_block_to_helper, extract_nested_function, fix_import. Polygon подготовлен для теста diff.
 - **87. Post-v3.0.18 ritual:** report-snapshot после релиза. modules=255, risk=46, apply_rate=0.93 baseline; 5 skipped (approval_state=pending).
 - **86. KPI 4 — Learning from GitHub для code smells:** DIFF_HINTS для extract_block_to_helper; pattern library long_function/deep_nesting; OSS hints в get_code_smell_operations.

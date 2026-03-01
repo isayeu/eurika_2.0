@@ -251,14 +251,15 @@ eurika report . --json --window 5
 
 ---
 
-### eurika learning-kpi [path] [--json] [--top-n N]
+### eurika learning-kpi [path] [--json] [--top-n N] [--polygon]
 
-KPI verify_success_rate по smell|action|target (ROADMAP KPI focus). Выводит by_smell_action, promote (whitelist candidates), deprioritize (policy deny candidates).
+KPI verify_success_rate по smell|action|target (ROADMAP KPI focus). Выводит by_smell_action, promote (whitelist candidates), deprioritize (policy deny candidates). `--polygon` — фильтр только по eurika/polygon/ (drill view).
 
 ```bash
 eurika learning-kpi .
 eurika learning-kpi . --json
 eurika learning-kpi . --top-n 10
+eurika learning-kpi . --polygon
 ```
 
 ---

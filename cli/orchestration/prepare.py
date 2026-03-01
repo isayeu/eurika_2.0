@@ -168,8 +168,11 @@ def _run_critic_pass(
     operations: list[OperationRecord],
     *,
     runtime_mode: str,
+    project_root: Path | None = None,
 ) -> tuple[list[OperationRecord], list[dict[str, Any]]]:
     """Attach critic verdict to each operation before apply."""
+    from eurika.agent import is_whitelisted_for_auto
+
     updated: list[OperationRecord] = []
     decisions: list[dict[str, Any]] = []
     for idx, op in enumerate(operations, start=1):
@@ -180,6 +183,7 @@ def _run_critic_pass(
         risk = str(expl.get("risk") or op2.get("risk") or "unknown")
         diff = str(op2.get("diff") or "")
         approval_state = str(op2.get("approval_state") or "pending")
+        whitelisted_auto = is_whitelisted_for_auto(op2, project_root)
 
         verdict = "allow"
         reason = "passed critic checks"
@@ -193,15 +197,21 @@ def _run_critic_pass(
             verdict = "deny"
             reason = "blocked todo-only patch candidate"
         elif risk == "high" and runtime_mode in {"hybrid", "auto"}:
-            verdict = "review"
-            reason = "high-risk operation requires explicit review"
+            if whitelisted_auto:
+                pass  # whitelist bypass: keep verdict=allow (polygon drills)
+            else:
+                verdict = "review"
+                reason = "high-risk operation requires explicit review"
         elif (
             kind in {"split_module", "refactor_module", "extract_class"}
             and risk in {"medium", "high"}
             and runtime_mode in {"hybrid", "auto"}
         ):
-            verdict = "review"
-            reason = "structural refactor requires review"
+            if whitelisted_auto:
+                pass
+            else:
+                verdict = "review"
+                reason = "structural refactor requires review"
 
         op2["critic_verdict"] = verdict
         op2["critic_reason"] = reason
@@ -308,6 +318,13 @@ def apply_session_rejections(
 _CAMPAIGN_BYPASS_LOW_RISK_KINDS = frozenset({"remove_unused_import"})
 
 
+def _op_in_polygon_whitelist(op: dict[str, Any], path: Path) -> bool:
+    """True if op matches operation_whitelist with allow_in_auto (e.g. polygon drills)."""
+    from eurika.agent import is_whitelisted_for_auto
+
+    return is_whitelisted_for_auto(op, path)
+
+
 def _allow_low_risk_campaign_bypass() -> bool:
     """When True, low-risk ops (e.g. remove_unused_import) bypass campaign skip."""
     import os
@@ -345,7 +362,10 @@ def apply_campaign_memory(
     skipped: list[OperationRecord] = []
     for op in operations:
         if operation_key(op) in skip_keys:
-            if allow_low_risk and str(op.get("kind") or "") in _CAMPAIGN_BYPASS_LOW_RISK_KINDS:
+            if allow_low_risk and (
+                str(op.get("kind") or "") in _CAMPAIGN_BYPASS_LOW_RISK_KINDS
+                or _op_in_polygon_whitelist(op, path)
+            ):
                 kept.append(op)
             else:
                 skipped.append(op)
@@ -451,15 +471,11 @@ def prepare_fix_cycle_operations(
 
     extracted = extract_patch_plan_from_result(result)
     if extracted == (None, None):
-        return _early_exit(
-            0,
-            {
-                "message": "No suggest_patch_plan proposal. Cycle complete (nothing to apply).",
-                "operations": [], "modified": [], "verify_success": True,
-            },
-            result, None, [],
-        )
-    patch_plan, operations = cast(tuple[PatchPlan, list[OperationRecord]], extracted)
+        root_str = str(path.resolve())
+        patch_plan = {"project_root": root_str, "operations": []}
+        operations = []
+    else:
+        patch_plan, operations = cast(tuple[PatchPlan, list[OperationRecord]], extracted)
     patch_plan, operations = prepend_fix_operations(
         path, patch_plan, operations, no_clean_imports, no_code_smells
     )
@@ -490,7 +506,9 @@ def prepare_fix_cycle_operations(
         operations = _apply_context_priority(operations, context_sources)
     except Exception:
         context_sources = {}
-    operations, critic_decisions = _run_critic_pass(operations, runtime_mode=runtime_mode)
+    operations, critic_decisions = _run_critic_pass(
+        operations, runtime_mode=runtime_mode, project_root=path
+    )
     patch_plan = dict(patch_plan, operations=operations)
     if context_sources:
         patch_plan["context_sources"] = context_sources

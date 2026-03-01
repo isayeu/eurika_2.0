@@ -71,6 +71,28 @@ def _load_smell_action_learning_stats(root: Path) -> Optional[Dict[str, Dict[str
         return None
 
 
+def _is_whitelisted_for_kind(root: Path, rel_path: str, kind: str) -> bool:
+    """True if target_file+kind match an allow_in_auto/allow_in_hybrid entry in operation_whitelist."""
+    wl_path = root / ".eurika" / "operation_whitelist.json"
+    if not wl_path.exists():
+        return False
+    try:
+        import json
+
+        data = json.loads(wl_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    ops = data.get("operations") or []
+    rel = rel_path.replace("\\", "/")
+    for entry in ops:
+        if str(entry.get("kind") or "") != kind:
+            continue
+        target = str(entry.get("target_file") or "").replace("\\", "/")
+        if not target or target == rel:
+            return True
+    return False
+
+
 def _deep_nesting_mode() -> str:
     """heuristic|llm|hybrid|skip. Default: hybrid (heuristic first, fallback to TODO/LLM)."""
     import os
@@ -258,7 +280,8 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
         for smell in analyzer.find_smells(file_path):
             loc_key = (rel, smell.location)
             if smell.kind == "long_function":
-                if allow_extract_nested:
+                allow_nested = allow_extract_nested or _is_whitelisted_for_kind(root, rel, "extract_nested_function")
+                if allow_nested:
                     suggestion = suggest_extract_nested_function(file_path, smell.location)
                     if suggestion:
                         nested_name, line_count, extra_params = (

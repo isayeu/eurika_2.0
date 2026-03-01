@@ -586,7 +586,7 @@ network.on('doubleClick', function(params) {{
         self.chat_timeout_spin.setValue(30)
         controls_layout.addRow('Timeout sec', self.chat_timeout_spin)
         layout.addWidget(controls)
-        self.tabs.addTab(tab, 'Models')
+        self.models_tab_index = self.tabs.addTab(tab, 'Models')
 
     def _build_chat_tab(self) -> None:
         tab = QWidget()
@@ -797,6 +797,17 @@ network.on('doubleClick', function(params) {{
         if self._first_run_prompt_pending:
             self._first_run_prompt_pending = False
             QTimer.singleShot(150, self._prompt_project_root_if_empty)
+        QTimer.singleShot(400, self._check_ollama_on_startup)
+
+    def _check_ollama_on_startup(self) -> None:
+        """If Ollama not running, switch to Models tab and auto-start it for doctor/fix/cycle."""
+        if self._is_closing:
+            return
+        if os.environ.get('QT_QPA_PLATFORM') == 'offscreen':
+            return
+        if not self._api.is_ollama_healthy():
+            self.tabs.setCurrentIndex(self.models_tab_index)
+            self._start_ollama_server()
 
     def _prompt_project_root_if_empty(self) -> None:
         """First-run UX: when project root is empty, prompt user to select folder."""

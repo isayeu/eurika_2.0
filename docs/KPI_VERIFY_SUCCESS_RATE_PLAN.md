@@ -21,9 +21,10 @@
 
 `_success_rate_for_op` использует `success`; merge_learning_stats — `success`/`fail`. Для event_views success = verify_success (кроме TODO-only refactor_code_smell). Логика корректна, изменений не требуется.
 
-### A.2 CLI `eurika learning-kpi [path]`
+### A.2 CLI `eurika learning-kpi [path]` [--polygon]
 
 - Команда выводит KPI блок: by_smell_action с verify_success_rate, top promote/deprioritize.
+- `--polygon` — фильтр только по eurika/polygon/ (drill view), секция Polygon drills.
 - Использует `get_learning_insights`; формат: таблица + рекомендации (whitelist_candidates, policy_deny_candidates).
 
 ### A.3 Policy — dynamic deny из learning

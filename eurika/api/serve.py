@@ -96,7 +96,7 @@ EXEC_ALLOWED_FLAGS: dict[str, dict[str, int]] = {
         "--window": _FLAG_TAKES_VALUE,
     },
     "report-snapshot": {},
-    "learning-kpi": {"--json": _FLAG_IS_BOOL, "--top-n": _FLAG_TAKES_VALUE},
+    "learning-kpi": {"--json": _FLAG_IS_BOOL, "--top-n": _FLAG_TAKES_VALUE, "--polygon": _FLAG_IS_BOOL},
 }
 
 

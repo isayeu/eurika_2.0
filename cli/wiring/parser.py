@@ -143,6 +143,7 @@ def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
     learning_kpi_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
     learning_kpi_parser.add_argument("--json", action="store_true", help="Output JSON (machine-readable)")
     learning_kpi_parser.add_argument("--top-n", type=int, default=5, metavar="N", help="Top N for promote/deprioritize (default: 5)")
+    learning_kpi_parser.add_argument("--polygon", action="store_true", help="Filter to eurika/polygon/ targets only (drill view)")
 
     whitelist_draft_parser = subparsers.add_parser(
         "whitelist-draft",

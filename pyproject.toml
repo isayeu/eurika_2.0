@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eurika"
-version = "3.0.19"
+version = "3.0.21"
 description = "Eurika — Qt-first architecture analysis and refactoring assistant. CLI/API core, desktop UI (eurika-qt): Commands, Dashboard, Approvals, Models (Ollama), Chat with Apply/Reject."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,7 +12,7 @@ requires-python = ">=3.10"
 [tool.eurika]
 verify_timeout = 300
 # Fast verify for polygon/low-risk cycles (full pytest >300s); override via --verify-cmd to run full suite
-verify_cmd = ".venv/bin/python -m pytest tests/test_clean_imports_cli.py tests/test_remove_unused_import.py -q"
+verify_cmd = ".venv/bin/python -m pytest tests/test_clean_imports_cli.py tests/test_remove_unused_import.py tests/test_extract_function.py -q"
 
 [tool.pytest.ini_options]
 markers = [

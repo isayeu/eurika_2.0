@@ -15,6 +15,7 @@
 | Cycle | Пустой проект (no self_map) | `test_cycle_state_empty_project_returns_done_or_error` | state=error, predictable |
 | Огромный вход | 500 модулей в build_summary | `test_build_summary_huge_graph_no_overflow` | completes, modules=500 |
 | Planning | empty summary/smells в build_patch_operations | `test_build_patch_operations_empty_input_returns_list` | [], no crash |
+| R2 Fallback | build_context_sources raises | `test_prepare_context_sources_exception_continues` | context_sources={}, no crash |
 
 ## Запуск
 

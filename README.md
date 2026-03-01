@@ -38,7 +38,7 @@ eurika-qt .
 
 Вкладки Qt-интерфейса:
 
-- **Models** — управление Ollama: Start/Stop, переменные окружения, список моделей, установка
+- **Models** — управление Ollama: Start/Stop, переменные окружения, список моделей, установка; при старте Ollama автоматически запускается, если не был запущен
 - **Chat** — чат с Apply/Reject для подтверждения планов; создание вкладок (в т.ч. Terminal) по intent
 - **Commands** — scan/doctor/fix/cycle/explain/report-snapshot/learning-kpi, live output, stop/cancel
 - **Dashboard** — summary/history, top verify_success, рекомендации по whitelist

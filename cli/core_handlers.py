@@ -250,15 +250,18 @@ def handle_learning_kpi(args: Any) -> int:
     from eurika.api import get_learning_insights
 
     top_n = int(getattr(args, "top_n", 5) or 5)
-    insights = get_learning_insights(path, top_n=top_n)
+    polygon_only = bool(getattr(args, "polygon", False))
+    insights = get_learning_insights(path, top_n=top_n, polygon_only=polygon_only)
     if getattr(args, "json", False):
         print(json.dumps(insights, indent=2, ensure_ascii=False))
         return 0
     by_smell_action = insights.get("by_smell_action") or {}
+    by_target = insights.get("by_target") or []
     recs = insights.get("recommendations") or {}
     whitelist = recs.get("whitelist_candidates") or []
     deny = recs.get("policy_deny_candidates") or []
-    lines = ["## KPI verify_success_rate (ROADMAP)", ""]
+    title = "## KPI verify_success_rate (ROADMAP)" + (" — polygon drills" if polygon_only else "")
+    lines = [title, ""]
     if by_smell_action:
         lines.append("### by_smell_action")
         lines.append("")
@@ -268,6 +271,18 @@ def handle_learning_kpi(args: Any) -> int:
             vf = int(s.get("verify_fail", 0) or 0)
             rate = round(100 * vs / total, 1) if total else 0
             lines.append(f"- **{key}** total={total}, verify_success={vs}, verify_fail={vf}, rate={rate}%")
+        lines.append("")
+    polygon_targets = [t for t in by_target if str(t.get("target_file", "")).startswith("eurika/polygon/")]
+    if by_target and (polygon_only or polygon_targets):
+        lines.append("### Polygon (eurika/polygon/)")
+        lines.append("")
+        for r in polygon_targets[:top_n]:
+            tf = r.get("target_file", "?")
+            pair = f"{r.get('smell_type', '?')}|{r.get('action_kind', '?')}"
+            rate = float(r.get("verify_success_rate", 0) or 0) * 100
+            total = int(r.get("total", 0) or 0)
+            vs = int(r.get("verify_success", 0) or 0)
+            lines.append(f"- {pair} @ {tf} total={total} success={vs} rate={rate:.1f}%")
         lines.append("")
     if whitelist:
         lines.append("### Promote (whitelist candidates)")
@@ -293,6 +308,10 @@ def handle_learning_kpi(args: Any) -> int:
     if rui and int(rui.get("total", 0) or 0) >= 5:
         rate = 100 * int(rui.get("verify_success", 0) or 0) / max(int(rui.get("total", 1) or 1), 1)
         lines.append(f"- remove_unused_import rate={rate:.1f}%: try `eurika fix . --no-code-smells --allow-low-risk-campaign`")
+    if polygon_targets:
+        low = [t for t in polygon_targets if float(t.get("verify_success_rate", 0) or 0) < 0.5 and int(t.get("total", 0) or 0) >= 1]
+        if low:
+            lines.append("- eurika/polygon/: run `eurika fix . --allow-low-risk-campaign` to accumulate verify_success for drills")
     lines.append("- To promote: run fix, accumulate 2+ verify_success per target, then `eurika whitelist-draft .`")
     lines.append("- Use `--apply-suggested-policy` when doctor suggests EURIKA_CAMPAIGN_ALLOW_LOW_RISK")
     lines.append("")

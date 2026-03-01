@@ -167,6 +167,46 @@ def foo(x):
     assert extra == ["x"]
 
 
+def test_suggest_extract_block_skips_when_block_calls_extracted_helper(tmp_path: Path) -> None:
+    """suggest_extract_block returns None when block already calls _extracted_block_* (avoid recursion)."""
+    code = """
+def _extracted_block_39(x):
+    return x + 1
+
+def foo(x):
+    result = 0
+    if x > 0:
+        if x < 10:
+            result = _extracted_block_39(x)
+    return result
+"""
+    (tmp_path / "mod.py").write_text(code)
+    r = suggest_extract_block(tmp_path / "mod.py", "foo", min_lines=3)
+    assert r is None
+
+
+def test_extract_block_to_helper_skips_block_with_extracted_call(tmp_path: Path) -> None:
+    """extract_block_to_helper returns None when target block contains _extracted_block_* (avoid recursion)."""
+    code = """
+def _extracted_block_39(x):
+    return x + 1
+
+def foo(x):
+    result = 0
+    if x > 0:
+        if x < 10:
+            result = _extracted_block_39(x)
+    return result
+"""
+    (tmp_path / "mod.py").write_text(code)
+    # block_start_line=10 would match "if x > 0" whose body contains the call
+    out = extract_block_to_helper(
+        tmp_path / "mod.py", "foo", block_start_line=10,
+        helper_name="_extracted_block_10", extra_params=["x"],
+    )
+    assert out is None
+
+
 def test_suggest_extract_block_skips_when_return_in_block(tmp_path: Path) -> None:
     """suggest_extract_block returns None when block has return/break/continue."""
     code = """
@@ -206,6 +246,36 @@ def foo(x):
     content = (tmp_path / "mod.py").read_text()
     assert f"def {helper_name}" in content
     assert f"{helper_name}(x)" in content or f"{helper_name}( x)" in content
+
+
+def test_extract_block_to_helper_returns_value_when_block_assigns_to_outer(tmp_path: Path) -> None:
+    """extract_block_to_helper adds return+assignment when block assigns to parent local."""
+    code = """
+def foo(x):
+    result = 0
+    if x > 0:
+        if x < 10:
+            a = x + 1
+            b = a * 2
+            c = b + x
+            d = c * 2
+            result = d
+    return result
+"""
+    (tmp_path / "mod.py").write_text(code)
+    r = suggest_extract_block(tmp_path / "mod.py", "foo", min_lines=5)
+    assert r is not None
+    helper_name, block_line, _, extra = r
+    out = extract_block_to_helper(
+        tmp_path / "mod.py", "foo", block_line, helper_name, extra
+    )
+    assert out is not None
+    (tmp_path / "mod.py").write_text(out)
+    ns: dict = {}
+    exec(compile((tmp_path / "mod.py").read_text(), "mod.py", "exec"), ns)
+    assert ns["foo"](5) == 34, "foo(5): a=6,b=12,c=17,d=34 => result=34"
+    assert "result = " in (tmp_path / "mod.py").read_text()
+    assert "return " in (tmp_path / "mod.py").read_text()
 
 
 def test_extract_block_to_helper_supports_nested_parent_function(tmp_path: Path) -> None:

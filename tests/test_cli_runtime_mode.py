@@ -67,7 +67,7 @@ def test_run_cycle_non_assist_adds_runtime_block_to_report() -> None:
         state_history=[AgentRuntimeState.IDLE, AgentRuntimeState.THINKING, AgentRuntimeState.ERROR],
         stage_outputs={"propose": {"status": "error", "message": "no plan", "payload": None}},
     )
-    with patch("eurika.agent.runtime.run_agent_cycle", return_value=fake):
+    with patch("eurika.agent.run_agent_cycle", return_value=fake):
         out = run_cycle(ROOT, mode="fix", runtime_mode="hybrid", quiet=True)
     runtime = (out.get("report") or {}).get("runtime") or {}
     assert runtime.get("degraded_mode") is True

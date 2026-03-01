@@ -7,7 +7,7 @@
 | Пакет | Публичные точки входа | Импорт |
 |-------|------------------------|--------|
 | **eurika.storage** | `ProjectMemory`, `Event`, `EventStore`, `event_engine`, `SessionMemory`, `operation_key`, `aggregate_operational_metrics` | `from eurika.storage import ProjectMemory, event_engine` |
-| **eurika.agent** | `run_agent_cycle`, `DefaultToolContract`, `OrchestratorToolset`, `WEAK_SMELL_ACTION_PAIRS`, `evaluate_operation` | `from eurika.agent import run_agent_cycle, OrchestratorToolset` |
+| **eurika.agent** | `run_agent_cycle`, `DefaultToolContract`, `OrchestratorToolset`, `WEAK_SMELL_ACTION_PAIRS`, `evaluate_operation`, `is_whitelisted_for_auto` | `from eurika.agent import run_agent_cycle, is_whitelisted_for_auto` |
 | **eurika.reasoning** | `advisor`, `architect`, `planner`, `heuristics`, `graph_ops` | `from eurika.reasoning import architect`<br>`from eurika.reasoning.architect import build_context_sources` |
 | **eurika.reasoning.architect** | `build_context_sources`, `call_llm_with_prompt`, `interpret_architecture` | `from eurika.reasoning.architect import build_context_sources` |
 | **eurika.reasoning.planner** | `Action`, `ActionPlan`, `PatchOperation`, `PatchPlan`, `build_plan`, `build_action_plan`, `build_patch_plan` | `from eurika.reasoning.planner import build_patch_plan` |
