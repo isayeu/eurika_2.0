@@ -247,7 +247,7 @@ def run_full_cycle(
         reject_ops=reject_ops,
     )
     out["doctor_report"] = data
-    report = out.get("report")
+    report = out.get("report")  # type: ignore[assignment]
     doctor_runtime = data.get("runtime")
     if isinstance(report, dict) and isinstance(doctor_runtime, dict):
         report.setdefault(

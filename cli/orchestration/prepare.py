@@ -473,7 +473,7 @@ def prepare_fix_cycle_operations(
     if extracted == (None, None):
         root_str = str(path.resolve())
         patch_plan = {"project_root": root_str, "operations": []}
-        operations = []
+        operations: list[OperationRecord] = []
     else:
         patch_plan, operations = cast(tuple[PatchPlan, list[OperationRecord]], extracted)
     patch_plan, operations = prepend_fix_operations(
@@ -481,7 +481,7 @@ def prepare_fix_cycle_operations(
     )
     operations = _drop_noop_append_ops(operations, path)
     operations = _deprioritize_weak_pairs(operations)
-    patch_plan = dict(patch_plan, operations=operations)
+    patch_plan = dict(patch_plan, operations=operations)  # type: ignore[arg-type]
     patch_plan, operations, policy_decisions = apply_runtime_policy(
         patch_plan,
         operations,
@@ -509,9 +509,9 @@ def prepare_fix_cycle_operations(
     operations, critic_decisions = _run_critic_pass(
         operations, runtime_mode=runtime_mode, project_root=path
     )
-    patch_plan = dict(patch_plan, operations=operations)
+    patch_plan = dict(patch_plan, operations=operations)  # type: ignore[arg-type]
     if context_sources:
-        patch_plan["context_sources"] = context_sources
+        patch_plan["context_sources"] = context_sources  # type: ignore[assignment]
     if not operations:
         return {
             "return_code": 0,

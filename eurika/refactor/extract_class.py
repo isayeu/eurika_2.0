@@ -180,8 +180,9 @@ def _build_modified_original(tree: ast.AST, target_cls: ast.ClassDef, to_remove:
         deleg = ast.FunctionDef(name=m.name, args=args, body=[deleg_body], decorator_list=[])
         new_class_body.append(deleg)
     new_cls = ast.ClassDef(name=target_cls.name, bases=target_cls.bases, keywords=target_cls.keywords, body=new_class_body, decorator_list=target_cls.decorator_list)
-    new_body = []
-    for node in tree.body:
+    mod = tree if isinstance(tree, ast.Module) else ast.Module(body=[], type_ignores=[])
+    new_body: list[ast.stmt] = []
+    for node in mod.body:
         if isinstance(node, ast.ClassDef) and node.name == target_cls.name:
             new_body.append(new_cls)
         else:

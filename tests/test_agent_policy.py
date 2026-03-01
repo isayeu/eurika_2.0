@@ -268,6 +268,31 @@ def test_policy_whitelist_allows_auto_for_known_target(tmp_path: Path) -> None:
     assert "whitelisted target" in out.reason
 
 
+def test_policy_whitelist_overrides_weak_pair_in_auto(tmp_path: Path) -> None:
+    """Whitelist relaxes weak_pair deny to allow for polygon drills (ROADMAP whitelist)."""
+    cfg = PolicyConfig(
+        mode="auto", max_ops=100, max_files=100, allow_test_files=False, auto_apply_max_risk="high",
+    )
+    op = {
+        "kind": "extract_block_to_helper",
+        "target_file": "eurika/polygon/extractable_block.py",
+        "smell_type": "deep_nesting",
+        "description": "extract block",
+    }
+    wl_path = tmp_path / ".eurika" / "operation_whitelist.json"
+    wl_path.parent.mkdir(parents=True, exist_ok=True)
+    wl_path.write_text(
+        json.dumps(
+            {"operations": [{"kind": "extract_block_to_helper", "target_file": "eurika/polygon/extractable_block.py", "allow_in_auto": True}]},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    out = evaluate_operation(op, config=cfg, index=1, seen_files=set(), project_root=tmp_path)
+    assert out.decision == "allow", f"whitelist should override weak_pair deny, got {out.decision}: {out.reason}"
+    assert "whitelisted" in out.reason
+
+
 def test_policy_whitelist_kind_only_matches_any_target(tmp_path: Path) -> None:
     """Kind-only whitelist entry should match any target_file for controlled rollout."""
     from eurika.storage import SessionMemory

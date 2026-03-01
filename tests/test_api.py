@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
 from eurika.api import (
     get_chat_dialog_state,
     get_diff,
+    get_explain_data,
     get_history,
     get_learning_insights,
     get_patch_plan,
@@ -23,6 +24,7 @@ from eurika.api import (
     get_code_smell_operations,
     get_clean_imports_operations,
     save_approvals,
+    explain_module,
 )
 
 
@@ -122,6 +124,53 @@ def test_get_diff_returns_json_serializable(tmp_path: Path) -> None:
     assert "maturity" in data
     out = json.dumps(data)
     assert "modules_common" in out or "modules_added" in out
+
+
+def test_get_explain_data_returns_structure(tmp_path: Path) -> None:
+    """R1: get_explain_data returns structured dict (domain), no formatted text."""
+    self_map = tmp_path / "self_map.json"
+    self_map.write_text(
+        '{"modules":[{"path":"a.py","lines":10,"functions":[],"classes":[]}],'
+        '"dependencies":{},"summary":{"files":1,"total_lines":10}}',
+        encoding="utf-8",
+    )
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    data, err = get_explain_data(tmp_path, "a.py", window=3)
+    assert err is None
+    assert isinstance(data, dict)
+    assert data.get("module") == "a.py"
+    assert "fan_in" in data and "fan_out" in data
+    assert "smells" in data and "risks" in data
+    assert "planned_ops" in data and "rationales" in data
+
+
+def test_get_explain_data_missing_module_returns_error(tmp_path: Path) -> None:
+    """get_explain_data with non-existent module returns error."""
+    self_map = tmp_path / "self_map.json"
+    self_map.write_text(
+        '{"modules":[{"path":"a.py","lines":10,"functions":[],"classes":[]}],'
+        '"dependencies":{},"summary":{"files":1,"total_lines":10}}',
+        encoding="utf-8",
+    )
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    data, err = get_explain_data(tmp_path, "nonexistent_xyz.py", window=3)
+    assert data is None
+    assert err is not None
+
+
+def test_explain_module_returns_formatted_text(tmp_path: Path) -> None:
+    """explain_module (presentation) returns formatted text from get_explain_data."""
+    self_map = tmp_path / "self_map.json"
+    self_map.write_text(
+        '{"modules":[{"path":"a.py","lines":10,"functions":[],"classes":[]}],'
+        '"dependencies":{},"summary":{"files":1,"total_lines":10}}',
+        encoding="utf-8",
+    )
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    text, err = explain_module(tmp_path, "a.py", window=3)
+    assert err is None
+    assert "MODULE EXPLANATION" in text
+    assert "fan-in" in text
 
 
 def test_preview_operation_remove_unused_import(tmp_path: Path) -> None:

@@ -32,6 +32,7 @@ def test_build_context_sources_collects_campaign_and_tests(tmp_path: Path) -> No
     )
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "test_a.py").write_text("def test_a(): pass\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("x = 1\n", encoding="utf-8")  # verify_fail target must exist
 
     ops = [{"target_file": "a.py", "kind": "split_module"}, {"target_file": "b.py", "kind": "clean"}]
     ctx = build_context_sources(tmp_path, ops)

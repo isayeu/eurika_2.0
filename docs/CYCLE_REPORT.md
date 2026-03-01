@@ -2,6 +2,10 @@
 
 ## Current state (2026-03-01)
 
+- **97.3 ROADMAP 3–6:** POLYGON_VERIFY_PLAYBOOK.md; KPI в doctor output (learning_kpi); R1 explain: get_explain_data + report/explain_format; тесты get_explain_data/explain_module; R3/R4 edge-case + firewall проходят.
+- **97.2 ROADMAP 1–4:** KPI verify_success_rate в report-snapshot (by_smell_action rate); тест whitelist overrides weak_pair; R1_DOMAIN_PRESENTATION_AUDIT.md; R2 logging note в R2_FALLBACK_AUDIT.
+- **97.1 Ритуал 2.1 (2026-03-01):** scan → doctor --online → report-snapshot → fix. modules=276, risk=46. Fix: imports_ok ✓ (remove_unused_import). deep_nesting, extractable_block, long_function — blocked by policy (historically weak pair). verify success. Polygon восстановлен.
+- **97. Learning from GitHub Phase 2–3:** pattern_library snippet extraction; risk-derived topics first in doctor (OSS patterns in Reference); oss_examples in extract_block/extract_nested ops; preview_operation returns oss_examples; ask_llm_extract_method_hints enriched with OSS snippets (EURIKA_USE_LLM_EXTRACT_HINTS=1).
 - **96. Ритуал 2.1 (report-snapshot):** modules=260, risk=46, apply_rate=1.0, rollback_rate=0.0. Learning: remove_unused_import 65%, extract_block_to_helper 40%, extract_nested_function 67%. Whitelist candidates: polygon drills.
 - **95. R3 Quality Gate:** EDGE_CASE_MATRIX — добавлен test_prepare_context_sources_exception_continues. Fix ROOT в edge_cases (patch_plan import). 10 edge-case тестов, test_r3_edge_case_matrix_passes.
 - **94. Subsystem bypass + R2 Fallback:** prepare.py импорт через eurika.agent (is_whitelisted_for_auto). SELF-GUARD: 0 subsystem bypass. docs/R2_FALLBACK_AUDIT.md — каталог fallback-путей. test_prepare_context_sources_exception_continues.

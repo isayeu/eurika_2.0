@@ -140,8 +140,12 @@ def build_context_sources(project_root: Path, operations: list[dict[str, Any]]) 
     verify_fail_targets: list[str] = []
     for k in fail_keys:
         t = _target_from_operation_key(str(k))
-        if t and t not in verify_fail_targets:
-            verify_fail_targets.append(t)
+        if not t or t in verify_fail_targets:
+            continue
+        # Skip targets for files that no longer exist (e.g. polygon.py → polygon/ migration)
+        if not (root / t.replace("\\", "/")).exists():
+            continue
+        verify_fail_targets.append(t)
 
     target_rates = _target_learning_rates(root, operations)
 

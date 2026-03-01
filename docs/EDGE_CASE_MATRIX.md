@@ -16,6 +16,7 @@
 | Огромный вход | 500 модулей в build_summary | `test_build_summary_huge_graph_no_overflow` | completes, modules=500 |
 | Planning | empty summary/smells в build_patch_operations | `test_build_patch_operations_empty_input_returns_list` | [], no crash |
 | R2 Fallback | build_context_sources raises | `test_prepare_context_sources_exception_continues` | context_sources={}, no crash |
+| R1 Explain | get_explain_data returns structure | `test_get_explain_data_returns_structure` | dict with module, fan_in, smells |
 
 ## Запуск
 

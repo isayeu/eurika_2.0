@@ -98,17 +98,17 @@ def _build_chat_context(root: Path, scope: Optional[Dict[str, Any]] = None) -> s
     try:
         events = get_recent_events(root, limit=3, types=('patch', 'learn'))
         if events:
-            parts: List[str] = []
+            event_parts: List[str] = []
             for e in events[:3]:
                 if e.type == 'patch':
                     out = getattr(e, 'output', None) or {}
                     if isinstance(out, dict):
                         modified = out.get('modified', [])
-                        parts.append(f'patch: {len(modified)} files')
+                        event_parts.append(f'patch: {len(modified)} files')
                 elif e.type == 'learn':
-                    parts.append('learn')
-            if parts:
-                lines.append('Recent: ' + '; '.join(parts))
+                    event_parts.append('learn')
+            if event_parts:
+                lines.append('Recent: ' + '; '.join(event_parts))
     except Exception:
         pass
     return ' '.join(lines) if lines else 'No project context (run eurika scan .)'
@@ -806,7 +806,8 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         target = save_target
     prompt = _build_chat_prompt(msg, context, history, rag_examples=rag_examples, save_target=save_target, knowledge_snippet=knowledge_snippet or None)
     from eurika.reasoning.architect import call_llm_with_prompt
-    text, err = call_llm_with_prompt(prompt, max_tokens=1024)
+    raw_text, err = call_llm_with_prompt(prompt, max_tokens=1024)
+    text = raw_text or ""
     if err:
         _append_chat_history_safe(root, 'user', msg, context)
         _append_chat_history_safe(root, 'assistant', f'[Error] {err}', None)

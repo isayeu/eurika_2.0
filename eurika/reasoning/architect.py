@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from eurika.knowledge import KnowledgeProvider
     from eurika.storage.events import Event
 
-__all__ = ["build_context_sources", "call_llm_with_prompt", "interpret_architecture", "interpret_architecture_with_meta"]
+__all__ = ["build_context_sources", "call_llm_with_prompt", "get_architect_data", "interpret_architecture", "interpret_architecture_with_meta"]
 
 
 def _format_recent_events(events: List['Event'], max_chars: int=500) -> str:
@@ -172,34 +172,37 @@ def _format_reference_block(knowledge_snippet: str, max_chars: int=800) -> str:
         snip = snip[:max_chars] + '...'
     return '\n\nReference (from documentation):\n' + snip
 
-def _template_interpret(summary: Dict[str, Any], history: Dict[str, Any], patch_plan: Optional[Dict[str, Any]]=None, knowledge_snippet: str='', recent_events_snippet: str='') -> str:
-    """Deterministic 2–4 sentence take from summary and history (ROADMAP 2.9.1: + Recommendation + Reference)."""
+def get_architect_data(
+    summary: Dict[str, Any],
+    history: Dict[str, Any],
+    patch_plan: Optional[Dict[str, Any]] = None,
+    knowledge_snippet: str = '',
+    recent_events_snippet: str = '',
+) -> Dict[str, Any]:
+    """R1 Domain: return structured architect data. Presentation in report/architect_format."""
     sys = summary.get('system') or {}
-    modules = sys.get('modules', 0)
-    deps = sys.get('dependencies', 0)
-    cycles = sys.get('cycles', 0)
-    maturity = summary.get('maturity', 'unknown')
-    risks = summary.get('risks') or []
-    central = summary.get('central_modules') or []
-    trend_complexity = (history.get('trends') or {}).get('complexity', 'unknown')
-    trend_smells = (history.get('trends') or {}).get('smells', 'unknown')
-    regressions = history.get('regressions') or []
-    parts: list[str] = []
-    parts.append(_template_structure_sentence(modules, deps, cycles))
-    parts.append(f'Syntactic maturity is {maturity}.')
-    risks_sentence = _template_risks_sentence(risks, central)
-    if risks_sentence:
-        parts.append(risks_sentence)
-    parts.extend(_template_trends_sentences(trend_complexity, trend_smells, regressions))
-    parts.extend(_template_context_sentences(patch_plan, knowledge_snippet, recent_events_snippet))
-    out = ' '.join(parts)
-    rec_block = _build_recommendation_how_block(risks, knowledge_snippet)
-    if rec_block:
-        out += rec_block
-    ref_block = _format_reference_block(knowledge_snippet)
-    if ref_block:
-        out += ref_block
-    return out
+    return {
+        'structure': {
+            'modules': sys.get('modules', 0),
+            'dependencies': sys.get('dependencies', 0),
+            'cycles': sys.get('cycles', 0),
+        },
+        'maturity': summary.get('maturity', 'unknown'),
+        'risks': summary.get('risks') or [],
+        'central_modules': summary.get('central_modules') or [],
+        'trends': history.get('trends') or {},
+        'regressions': history.get('regressions') or [],
+        'patch_plan': patch_plan,
+        'knowledge_snippet': knowledge_snippet,
+        'recent_events_snippet': recent_events_snippet,
+    }
+
+
+def _template_interpret(summary: Dict[str, Any], history: Dict[str, Any], patch_plan: Optional[Dict[str, Any]]=None, knowledge_snippet: str='', recent_events_snippet: str='') -> str:
+    """Delegates to report/architect_format (R1 presentation)."""
+    from report.architect_format import format_architect_template
+    data = get_architect_data(summary, history, patch_plan, knowledge_snippet, recent_events_snippet)
+    return format_architect_template(data)
 
 def _build_openai_client(api_key: str, base_url: str | None) -> tuple[Any | None, str | None]:
     """Build OpenAI client instance. Returns (client, reason)."""

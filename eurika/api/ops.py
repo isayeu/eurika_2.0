@@ -122,7 +122,7 @@ def _build_extract_block_op(
     desc = f"Extract nested block from {rel_path}:{location} (line {block_start_line}, {line_count} lines)"
     if root:
         desc += _load_code_smell_oss_hints(root, smell_type)
-    return {
+    op: Dict[str, Any] = {
         "target_file": rel_path,
         "kind": "extract_block_to_helper",
         "description": desc,
@@ -130,6 +130,11 @@ def _build_extract_block_op(
         "smell_type": smell_type,
         "params": params,
     }
+    if root:
+        oss_ex = _load_oss_snippets_for_smell(root, smell_type, max_count=2)
+        if oss_ex:
+            op["oss_examples"] = oss_ex
+    return op
 
 
 def _build_extract_nested_op(
@@ -148,7 +153,7 @@ def _build_extract_nested_op(
     desc = f"Extract nested function {nested_name} from {rel_path}:{location} ({line_count} lines)"
     if root:
         desc += _load_code_smell_oss_hints(root, "long_function")
-    return {
+    op: Dict[str, Any] = {
         "target_file": rel_path,
         "kind": "extract_nested_function",
         "description": desc,
@@ -156,6 +161,11 @@ def _build_extract_nested_op(
         "smell_type": "long_function",
         "params": params,
     }
+    if root:
+        oss_ex = _load_oss_snippets_for_smell(root, "long_function", max_count=2)
+        if oss_ex:
+            op["oss_examples"] = oss_ex
+    return op
 
 
 def _build_refactor_smell_op(
@@ -175,7 +185,7 @@ def _build_refactor_smell_op(
             from eurika.reasoning.planner_llm import ask_llm_extract_method_hints
 
             file_path = root / rel_path.replace("\\", "/")
-            llm_hints = ask_llm_extract_method_hints(file_path, smell.location)
+            llm_hints = ask_llm_extract_method_hints(file_path, smell.location, project_root=root)
             if llm_hints:
                 diff_lines.append("# LLM suggestions:\n")
                 for h in llm_hints[:3]:
@@ -251,6 +261,29 @@ def _load_code_smell_oss_hints(root: Path, smell_type: str) -> str:
     except Exception:
         pass
     return ""
+
+
+def _load_oss_snippets_for_smell(root: Path, smell_type: str, max_count: int = 2) -> List[str]:
+    """Load OSS code snippets from pattern_library for few-shot context (Learning from GitHub Phase 3)."""
+    lib_path = root / ".eurika" / "pattern_library.json"
+    if not lib_path.exists():
+        return []
+    try:
+        from eurika.learning.pattern_library import load_pattern_library
+
+        lib = load_pattern_library(lib_path)
+        entries = lib.get(smell_type) or []
+        snippets: List[str] = []
+        for e in entries[:max_count]:
+            if isinstance(e, dict) and e.get("snippet"):
+                proj = e.get("project", "?")
+                mod = e.get("module", "?")
+                snip = str(e["snippet"])[:400].rstrip()
+                if snip:
+                    snippets.append(f"[{proj}:{mod}]\n```\n{snip}\n```")
+        return snippets
+    except Exception:
+        return []
 
 
 def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:

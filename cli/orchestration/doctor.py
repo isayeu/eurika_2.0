@@ -22,27 +22,30 @@ def _parse_smell_for_knowledge(risk: str) -> str | None:
 
 
 def knowledge_topics_from_env_or_summary(summary: Any) -> list[str]:
-    """Topics for Knowledge: from EURIKA_KNOWLEDGE_TOPIC or derived from summary (ROADMAP 2.9.3)."""
+    """Topics for Knowledge: from EURIKA_KNOWLEDGE_TOPIC or derived from summary (ROADMAP 2.9.3).
+    Risk-derived topics (architecture_refactor, long_function, etc.) come first so OSS patterns
+    from pattern_library appear in Reference before the 800-char truncation (Learning from GitHub)."""
     env = os.environ.get("EURIKA_KNOWLEDGE_TOPIC", "").strip()
     if env:
         return [t.strip() for t in env.split(",") if t.strip()]
-    topics: list[str] = ["python", "python_3_14"]
+    base_topics: list[str] = ["python", "python_3_14"]
     sys_info = summary.get("system") or {}
     if (sys_info.get("cycles") or 0) > 0:
-        topics.append("cyclic_imports")
+        base_topics.append("cyclic_imports")
+    risk_topics: list[str] = []
     risks = summary.get("risks") or []
-    seen_topics: set[str] = set(topics)
+    seen: set[str] = set(base_topics)
     for r in risks:
         smell = _parse_smell_for_knowledge(str(r))
         if smell and smell in SMELL_TO_KNOWLEDGE_TOPICS:
             for t in SMELL_TO_KNOWLEDGE_TOPICS[smell]:
-                if t not in seen_topics:
-                    seen_topics.add(t)
-                    topics.append(t)
+                if t not in seen:
+                    seen.add(t)
+                    risk_topics.append(t)
     risk_str = " ".join(str(r) for r in risks).lower()
-    if "deprecated" in risk_str and "version_migration" not in seen_topics:
-        topics.append("version_migration")
-    return topics
+    if "deprecated" in risk_str and "version_migration" not in seen:
+        risk_topics.append("version_migration")
+    return risk_topics + base_topics
 
 
 def load_suggested_policy_for_apply(path: Path) -> dict[str, str]:

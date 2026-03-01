@@ -4,7 +4,6 @@
 - polygon_deep_nesting_extractable: внутренний блок 5+ строк без return — extractable.
 """
 
-
 def polygon_deep_nesting(x: int) -> str:
     """Вложенные if с return в каждой ветке."""
     if x > 0:

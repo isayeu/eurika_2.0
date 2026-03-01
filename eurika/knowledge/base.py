@@ -390,10 +390,13 @@ class OSSPatternProvider(KnowledgeProvider):
                 mod = e.get("module", "?")
                 sev = e.get("severity")
                 hint = e.get("hint", "")
+                snippet = e.get("snippet", "")
                 title = f"{proj}: {mod}"
                 content = hint
                 if sev is not None:
                     content = f"Severity {sev}. " + content
+                if snippet:
+                    content = f"{content}\n\nExample:\n```\n{snippet}\n```"
                 fragments.append({"title": title, "content": content})
         return StructuredKnowledge(
             topic=topic,

@@ -17,10 +17,10 @@ if TYPE_CHECKING:
 
 
 try:
-    from architecture_learning import LearningRecord  # type: ignore
+    from architecture_learning import LearningRecord
 except Exception:
     @dataclass
-    class LearningRecord:
+    class LearningRecord:  # type: ignore[no-redef]
         timestamp: float
         project_root: str
         modules: List[str]
@@ -30,10 +30,10 @@ except Exception:
 
 
 try:
-    from architecture_feedback import FeedbackRecord  # type: ignore
+    from architecture_feedback import FeedbackRecord
 except Exception:
     @dataclass
-    class FeedbackRecord:
+    class FeedbackRecord:  # type: ignore[no-redef]
         timestamp: float
         project_root: str
         action: str

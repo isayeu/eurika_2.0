@@ -67,6 +67,18 @@
 
 ---
 
+## 7. Логирование (R2 централизованное)
+
+| Область | Статус |
+|---------|--------|
+| `cli/orchestration/*` | `get_logger()` без print |
+| `eurika/reasoning/*` | Без print в critical path |
+| CLI handlers | print для user output (допустимо) |
+
+Критический цикл (prepare → apply_stage → fix_cycle_impl) не содержит «слепых» print.
+
+---
+
 ## Вывод
 
 Критические пути (doctor, fix, full cycle) имеют детерминированный degraded mode или early exit при сбоях внешних зависимостей. Knowledge resolution failures дают пустой snippet; architect при LLM unavailable возвращает template.

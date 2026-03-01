@@ -14,8 +14,6 @@ import sys
 from pathlib import Path
 from typing import Any
 from cli.orchestrator import _knowledge_topics_from_env_or_summary
-from architecture_pipeline import print_arch_diff, print_arch_history, print_arch_summary
-from runtime_scan import run_scan
 
 
 _WHITELIST_DRAFT_ALLOWED_KINDS = frozenset(
@@ -73,6 +71,8 @@ def _paths_from_args(args: Any) -> list[Path]:
 
 
 def handle_scan(args: Any) -> int:
+    from runtime_scan import run_scan
+
     paths = _paths_from_args(args)
     exit_code = 0
     for i, path in enumerate(paths):
@@ -89,6 +89,8 @@ def handle_scan(args: Any) -> int:
 
 def handle_self_check(args: Any) -> int:
     """Run full scan on the project (self-analysis ritual: Eurika analyzes itself)."""
+    from runtime_scan import run_scan
+
     path = args.path.resolve()
     if _check_path(path) != 0:
         return 1
@@ -136,8 +138,8 @@ def _format_layer_discipline_block(path: Path) -> str:
         lines.append("")
     if layer_viol:
         lines.append("Layer violations (upward):")
-        for v in layer_viol[:10]:
-            lines.append(f"  - {v.path} -> {v.imported_module} (L{v.source_layer}->L{v.target_layer})")
+        for lv in layer_viol[:10]:
+            lines.append(f"  - {lv.path} -> {lv.imported_module} (L{lv.source_layer}->L{lv.target_layer})")
         if len(layer_viol) > 10:
             lines.append(f"  ... +{len(layer_viol) - 10} more")
     return "\n".join(lines)
@@ -185,6 +187,7 @@ def handle_arch_summary(args: Any) -> int:
         data = get_summary(path)
         print(json.dumps(data, indent=2, ensure_ascii=False))
         return 0
+    from architecture_pipeline import print_arch_summary
     return print_arch_summary(path)
 
 def handle_arch_history(args: Any) -> int:
@@ -197,6 +200,7 @@ def handle_arch_history(args: Any) -> int:
         data = get_history(path, window=window)
         print(json.dumps(data, indent=2, ensure_ascii=False))
         return 0
+    from architecture_pipeline import print_arch_history
     return print_arch_history(path, window=window)
 
 def handle_arch_diff(args: Any) -> int:
@@ -213,6 +217,7 @@ def handle_arch_diff(args: Any) -> int:
         data = get_diff(old, new)
         print(json.dumps(data, indent=2, ensure_ascii=False))
         return 0
+    from architecture_pipeline import print_arch_diff
     return print_arch_diff(old, new)
 
 def handle_report(args: Any) -> int:
@@ -226,6 +231,7 @@ def handle_report(args: Any) -> int:
         data = {'summary': get_summary(path), 'history': get_history(path, window=window)}
         print(json.dumps(data, indent=2, ensure_ascii=False))
         return 0
+    from architecture_pipeline import print_arch_summary, print_arch_history
     code1 = print_arch_summary(path)
     code2 = print_arch_history(path, window=window)
     return 0 if code1 == 0 and code2 == 0 else 1
@@ -437,10 +443,25 @@ def handle_explain(args: Any) -> int:
     print(text)
     return 0
 
+def _aggregate_multi_repo_reports(project_reports: list[dict[str, Any]], paths: list[Path]) -> dict[str, Any]:
+    """Build aggregated JSON for multi-repo (ROADMAP 3.0.1)."""
+    total_modules = 0
+    total_risks = 0
+    for r in project_reports:
+        s = (r.get('summary') or {}).get('system') or {}
+        total_modules += int(s.get('modules', 0) or 0)
+        total_risks += len((r.get('summary') or {}).get('risks') or [])
+    return {
+        'projects': [{'path': str(p), 'report': r} for p, r in zip(paths, project_reports)],
+        'aggregate': {'total_projects': len(paths), 'total_modules': total_modules, 'total_risks': total_risks},
+    }
+
+
 def handle_doctor(args: Any) -> int:
     """Diagnostics only: report + architect (no patches). Saves to eurika_doctor_report.json (3.0.1: multi-repo)."""
     paths = _paths_from_args(args)
     exit_code = 0
+    project_reports: list[dict[str, Any]] = []
     from cli.orchestrator import run_cycle
     from eurika.smells.rules import summary_to_text
     for i, path in enumerate(paths):
@@ -518,6 +539,22 @@ def handle_doctor(args: Any) -> int:
             for k, v in sugg.items():
                 print(f'  export {k}={v}')
             print('  # Or run fix/cycle with --apply-suggested-policy')
+        learning_kpi: dict[str, Any] = {}
+        try:
+            from eurika.api import get_learning_insights
+            insights = get_learning_insights(path, top_n=5)
+            by_smell = insights.get('by_smell_action') or {}
+            if by_smell:
+                print()
+                print('KPI verify_success_rate (by smell|action):')
+                for k, s in list(sorted(by_smell.items(), key=lambda x: -float(x[1].get('verify_success', 0) or 0) / max(x[1].get('total', 1) or 1, 1)))[:6]:
+                    total = int(s.get('total') or 0)
+                    vs = int(s.get('verify_success') or 0)
+                    rate = f'{100 * vs / total:.0f}%' if total else 'N/A'
+                    print(f'  {k}: total={total}, verify_success={vs}, rate={rate}')
+                learning_kpi = {'by_smell_action': by_smell}
+        except Exception:
+            pass
         report = {'summary': summary, 'history': history, 'architect': architect_text, 'patch_plan': patch_plan}
         if context_sources:
             report['context_sources'] = context_sources
@@ -527,6 +564,8 @@ def handle_doctor(args: Any) -> int:
             report['operational_metrics'] = data['operational_metrics']
         if campaign_checkpoint:
             report['campaign_checkpoint'] = campaign_checkpoint
+        if learning_kpi:
+            report['learning_kpi'] = learning_kpi
         fix_path = path / 'eurika_fix_report.json'
         if fix_path.exists():
             try:
@@ -539,6 +578,15 @@ def handle_doctor(args: Any) -> int:
             report_path = path / 'eurika_doctor_report.json'
             report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding='utf-8')
             _clog().info(f'eurika: eurika_doctor_report.json written to {report_path}')
+        except Exception:
+            pass
+        project_reports.append(report)
+    if len(paths) > 1 and project_reports:
+        agg = _aggregate_multi_repo_reports(project_reports, paths)
+        out_path = paths[0] / 'eurika_doctor_report_aggregated.json'
+        try:
+            out_path.write_text(json.dumps(agg, indent=2, ensure_ascii=False), encoding='utf-8')
+            _clog().info(f'eurika: eurika_doctor_report_aggregated.json written to {out_path}')
         except Exception:
             pass
     return exit_code

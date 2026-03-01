@@ -493,13 +493,16 @@ def preview_operation(project_root: Path, op: Dict[str, Any]) -> Dict[str, Any]:
         lineterm='',
     ))
     unified_diff = ''.join(unified_lines) if unified_lines else ''
-    return {
+    out: Dict[str, Any] = {
         'target_file': target_file,
         'kind': kind,
         'old_content': old_content,
         'new_content': new_content,
         'unified_diff': unified_diff,
     }
+    if op.get('oss_examples'):
+        out['oss_examples'] = op['oss_examples']
+    return out
 
 def _truncate_on_word_boundary(raw: str, max_len: int=200) -> str:
     """Truncate text by word boundary for readable output."""
@@ -509,11 +512,10 @@ def _truncate_on_word_boundary(raw: str, max_len: int=200) -> str:
     cut = truncated.rfind(' ')
     return (truncated[:cut] if cut >= 0 else truncated) + '...'
 
-def explain_module(project_root: Path, module_arg: str, window: int=5) -> tuple[str | None, str | None]:
+def get_explain_data(project_root: Path, module_arg: str, window: int = 5) -> tuple[Dict[str, Any] | None, str | None]:
     """
-    Explain role and risks of a module (ROADMAP 3.1-arch.5).
-
-    Returns (formatted_text, error_message). If error_message is not None, use it for stderr and return 1.
+    Domain: return structured explain data (R1 Domain vs Presentation).
+    Returns (data_dict, error_message). Caller formats via format_explain_result.
     """
     from eurika.core.pipeline import run_full_analysis
     from eurika.smells.detector import get_remediation_hint, severity_to_level
@@ -537,39 +539,22 @@ def explain_module(project_root: Path, module_arg: str, window: int=5) -> tuple[
     module_smells = [s for s in snapshot.smells if target in s.nodes]
     risks = summary.get('risks') or []
     module_risks = [r for r in risks if target in r]
-    lines: list[str] = []
-    lines.append(f'MODULE EXPLANATION: {target}')
-    lines.append('')
-    lines.append('Role:')
-    lines.append(f'- fan-in : {fi}')
-    lines.append(f'- fan-out: {fo}')
-    lines.append(f"- central: {('yes' if is_central else 'no')}")
-    lines.append('')
-    lines.append('Smells:')
-    if not module_smells:
-        lines.append('- none detected for this module')
-    else:
-        for smell in module_smells:
-            level = severity_to_level(smell.severity)
-            lines.append(f'- [{smell.type}] ({level}) severity={smell.severity:.2f} — {smell.description}')
-            lines.append(f'  → {get_remediation_hint(smell.type)}')
-    lines.append('')
-    lines.append('Risks (from summary):')
-    if not module_risks:
-        lines.append('- none highlighted in summary')
-    else:
-        for risk in module_risks:
-            lines.append(f'- {risk}')
+    smells_data = [
+        {
+            "type": s.type,
+            "level": severity_to_level(s.severity),
+            "severity": s.severity,
+            "description": s.description,
+            "remediation": get_remediation_hint(s.type),
+        }
+        for s in module_smells
+    ]
     patch_plan = get_patch_plan(root, window=window)
+    planned_ops = []
     if patch_plan and patch_plan.get('operations'):
-        module_ops = [o for o in patch_plan['operations'] if o.get('target_file') == target]
-        if module_ops:
-            lines.append('')
-            lines.append('Planned operations (from patch-plan):')
-            for op in module_ops[:5]:
-                kind = op.get('kind', '?')
-                desc = _truncate_on_word_boundary(op.get('description', ''))
-                lines.append(f'- [{kind}] {desc}')
+        for o in [x for x in patch_plan['operations'] if x.get('target_file') == target][:5]:
+            planned_ops.append({"kind": o.get('kind', '?'), "description": o.get('description', '')})
+    rationales: List[Dict[str, Any]] = []
     fix_path = root / 'eurika_fix_report.json'
     if fix_path.exists():
         try:
@@ -586,21 +571,36 @@ def explain_module(project_root: Path, module_arg: str, window: int=5) -> tuple[
                 pairs = list(zip([o.get('target_file') for o in ops], expls))
             else:
                 pairs = []
-            module_rationales = [(tf, expl) for tf, expl in pairs if tf == target]
-            if module_rationales:
-                lines.append('')
-                lines.append('Runtime rationale (from last fix):')
-                for _tf, expl in module_rationales[:5]:
-                    why = expl.get('why', '')
-                    risk = expl.get('risk', '?')
-                    outcome = expl.get('expected_outcome', '')
-                    rollback = expl.get('rollback_plan', '')
-                    verify_out = expl.get('verify_outcome')
-                    verify_str = f'verify={verify_out}' if verify_out is not None else 'verify=not run'
-                    lines.append(f'- why: {_truncate_on_word_boundary(why, 120)}')
-                    lines.append(f'  risk={risk}, expected_outcome={_truncate_on_word_boundary(outcome, 80)}')
-                    lines.append(f'  rollback_plan={_truncate_on_word_boundary(rollback, 80)}, {verify_str}')
-    return ('\n'.join(lines), None)
+            for tf, expl in [(t, e) for t, e in pairs if t == target][:5]:
+                rationales.append({
+                    "why": expl.get('why', ''),
+                    "risk": expl.get('risk', '?'),
+                    "expected_outcome": expl.get('expected_outcome', ''),
+                    "rollback_plan": expl.get('rollback_plan', ''),
+                    "verify_outcome": expl.get('verify_outcome'),
+                })
+    return ({
+        "module": target,
+        "fan_in": fi,
+        "fan_out": fo,
+        "is_central": is_central,
+        "smells": smells_data,
+        "risks": module_risks,
+        "planned_ops": planned_ops,
+        "rationales": rationales,
+    }, None)
+
+
+def explain_module(project_root: Path, module_arg: str, window: int=5) -> tuple[str | None, str | None]:
+    """
+    Explain role and risks of a module (ROADMAP 3.1-arch.5).
+    Returns (formatted_text, error_message). Presentation via format_explain_result (R1).
+    """
+    data, err = get_explain_data(project_root, module_arg, window)
+    if err:
+        return (None, err)
+    from report.explain_format import format_explain_result
+    return (format_explain_result(data), None)
 
 def _resolve_module_arg(module_arg: str, path: Path, nodes: list[str]) -> tuple[str | None, str | None]:
     """Resolve user module argument to a graph node. Returns (target, error)."""

@@ -309,15 +309,15 @@ def interpret_task(message: str, history: Optional[List[Dict[str, str]]] = None)
         )
 
     mentions = parse_mentions(msg_raw)
-    intent, target = detect_intent(msg_raw)
+    intent, target = detect_intent(msg_raw)  # type: ignore[assignment]
     if intent:
         if intent == "refactor" and (not target or target == ".") and mentions.get("modules"):
             target = mentions["modules"][0]
-        entities: Dict[str, str] = {}
+        intent_entities = {}
         if mentions.get("modules"):
-            entities["scope_modules"] = ",".join(mentions["modules"])
+            intent_entities["scope_modules"] = ",".join(mentions["modules"])
         if mentions.get("smells"):
-            entities["scope_smells"] = ",".join(mentions["smells"])
+            intent_entities["scope_smells"] = ",".join(mentions["smells"])
         confidence = 0.9 if target else 0.78
         return TaskInterpretation(
             intent=intent,
@@ -328,7 +328,7 @@ def interpret_task(message: str, history: Optional[List[Dict[str, str]]] = None)
             actions=sectioned.get("actions_lines", []),
             risk_level=_risk_for_intent(intent),
             requires_confirmation=_risk_for_intent(intent) != "low",
-            entities=entities,
+            entities=intent_entities,
             plan_steps=_plan_for_intent(intent, target),
         )
 

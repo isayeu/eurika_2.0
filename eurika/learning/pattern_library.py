@@ -2,16 +2,39 @@
 
 Extracts architecture smells (god_module, hub, bottleneck, cyclic_dependency)
 and code smells (long_function, deep_nesting) from cloned repos.
+Phase 2: code smell entries include snippet (first lines of function) for OSS examples.
 """
 
 from __future__ import annotations
 
+import ast
 import json
 from pathlib import Path
 from typing import Any
 
 from architecture_pipeline import _build_graph_and_summary_from_self_map  # noqa: PLC0415
 from eurika.smells.detector import get_remediation_hint
+
+SNIPPET_MAX_LINES = 12
+
+
+def _get_function_snippet(file_path: Path, func_name: str) -> str:
+    """Extract first SNIPPET_MAX_LINES of function body for OSS example."""
+    try:
+        content = file_path.read_text(encoding="utf-8", errors="replace")
+        tree = ast.parse(content)
+        lines = content.splitlines()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == func_name:
+                start = (node.lineno or 1) - 1
+                end = min(node.end_lineno or start + 1, start + SNIPPET_MAX_LINES)
+                snippet_lines = lines[start:end]
+                if len(snippet_lines) > 1 and snippet_lines[0].strip().startswith("def "):
+                    return "\n".join(snippet_lines)
+                return ""
+    except (SyntaxError, OSError, UnicodeDecodeError):
+        pass
+    return ""
 
 
 def _extract_code_smell_patterns(project_root: Path, project: str) -> dict[str, list[dict[str, Any]]]:
@@ -28,13 +51,17 @@ def _extract_code_smell_patterns(project_root: Path, project: str) -> dict[str, 
                     if smell.kind not in out:
                         continue
                     hint = get_remediation_hint(smell.kind)
+                    loc = getattr(smell, "location", "")
                     entry = {
                         "project": project,
                         "module": rel,
-                        "location": getattr(smell, "location", ""),
+                        "location": loc,
                         "severity": getattr(smell, "metric", 0) or 0,
                         "hint": hint,
                     }
+                    snippet = _get_function_snippet(file_path, loc)
+                    if snippet:
+                        entry["snippet"] = snippet
                     if len(out[smell.kind]) < 15:
                         out[smell.kind].append(entry)
             except Exception:

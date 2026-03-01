@@ -29,12 +29,12 @@ def _load_entry_point(entry_point: str) -> Callable[[Path], List[ArchSmell]] | N
 def _load_toml(text: str) -> dict:
     """Load TOML; use tomllib (3.11+) or tomli if available."""
     try:
-        import tomllib
+        import tomllib  # type: ignore[import-not-found]
         return tomllib.loads(text)
     except ImportError:
         pass
     try:
-        import tomli
+        import tomli  # type: ignore[import-not-found]
         return tomli.loads(text)
     except ImportError:
         pass

@@ -496,7 +496,7 @@ def extract_block_to_helper(file_path: Path, parent_function_name: str, block_st
             if return_var:
                 call = ast.Assign(targets=[ast.Name(id=return_var, ctx=ast.Store())], value=call_expr)
             else:
-                call = ast.Expr(call_expr)
+                    call = ast.Expr(call_expr)  # type: ignore[assignment]
             typed_node = node
             if isinstance(typed_node, (ast.If, ast.For, ast.While, ast.Try, ast.With)):
                 typed_node.body = [call]
@@ -511,7 +511,7 @@ def extract_block_to_helper(file_path: Path, parent_function_name: str, block_st
         return None
     if return_var:
         new_body = list(body[:-1])
-        new_body.append(ast.Return(body[-1].value))
+        new_body.append(ast.Return(body[-1].value))  # type: ignore[attr-defined]
         body = new_body
     args_list = [ast.arg(arg=p) for p in extra]
     extracted = ast.FunctionDef(name=helper_name, args=ast.arguments(posonlyargs=[], args=args_list, vararg=None, kwonlyargs=[], kw_defaults=[], kwarg=None, defaults=[]), body=body, decorator_list=[], returns=None)

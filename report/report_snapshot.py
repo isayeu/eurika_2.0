@@ -189,9 +189,13 @@ def format_report_snapshot(path: Path) -> str:
                 )
             lines.append('')
         if by_smell:
-            lines.append('### by_smell_action')
+            lines.append('### by_smell_action (KPI verify_success_rate)')
             for k, v in list(by_smell.items())[:8]:
-                lines.append(f"- {k}: total={v.get('total')}, success={v.get('success')}, fail={v.get('fail')}")
+                total = int(v.get('total') or 0)
+                vs = int(v.get('verify_success') or 0)
+                vf = int(v.get('verify_fail') or 0)
+                rate = f'{100 * vs / total:.0f}%' if total else 'N/A'
+                lines.append(f"- {k}: total={total}, verify_success={vs}, verify_fail={vf}, rate={rate}")
         if whitelist_candidates:
             lines.append('')
             lines.append('### whitelist_candidates (campaign)')

@@ -305,7 +305,7 @@ def run_fix_cycle_impl(
             rollback_patch=deps["rollback_patch"],
             result=result,
         )
-        if not verify_success and (report.get("rollback") or {}).get("done"):
+        if not verify_success and (report.get("rollback") or {}).get("done"):  # type: ignore[attr-defined]
             reset_approvals_after_rollback(path)
         return build_fix_cycle_result(report, approved, modified, verify_success, result)
 
@@ -496,14 +496,14 @@ def run_fix_cycle_impl(
         out["report"]["critic_decisions"] = result.output.get("critic_decisions", [])
         out["report"]["operation_results"] = list(out["report"].get("operation_results", [])) + gate_skipped + rejected_meta
         if gate_skipped_reasons:
-            out["report"]["skipped_reasons"] = gate_skipped_reasons
-            out["report"]["skipped"] = gate_skipped_files
+            out["report"]["skipped_reasons"] = dict(gate_skipped_reasons)
+            out["report"]["skipped"] = list(gate_skipped_files)
         if rejected_reasons:
             out["report"]["skipped_reasons"] = {
                 **(out["report"].get("skipped_reasons") or {}),
                 **rejected_reasons,
             }
-            out["report"]["skipped"] = list(out["report"].get("skipped", [])) + rejected_files
+            out["report"]["skipped"] = list(out["report"].get("skipped", [])) + list(rejected_files)
         _attach_decision_summary(out["report"])
         attach_fix_telemetry(out["report"], planned_ops)
         return out
@@ -526,19 +526,13 @@ def run_fix_cycle_impl(
         result=result,
     )
     if gate_skipped:
-        report["operation_results"] = list(report.get("operation_results", [])) + gate_skipped
-        report["skipped"] = list(report.get("skipped", [])) + gate_skipped_files
-        report["skipped_reasons"] = {
-            **(report.get("skipped_reasons") or {}),
-            **gate_skipped_reasons,
-        }
+        report["operation_results"] = list(report.get("operation_results", [])) + list(gate_skipped)
+        report["skipped"] = list(report.get("skipped", [])) + list(gate_skipped_files)
+        report["skipped_reasons"] = {**(report.get("skipped_reasons") or {}), **gate_skipped_reasons}  # type: ignore[dict-item]
     if rejected_meta:
-        report["operation_results"] = list(report.get("operation_results", [])) + rejected_meta
-        report["skipped"] = list(report.get("skipped", [])) + rejected_files
-        report["skipped_reasons"] = {
-            **(report.get("skipped_reasons") or {}),
-            **rejected_reasons,
-        }
+        report["operation_results"] = list(report.get("operation_results", [])) + list(rejected_meta)
+        report["skipped"] = list(report.get("skipped", [])) + list(rejected_files)
+        report["skipped_reasons"] = {**(report.get("skipped_reasons") or {}), **rejected_reasons}  # type: ignore[dict-item]
     _attach_decision_summary(report)
     write_fix_report(path, report, quiet)
     return build_fix_cycle_result(report, executable_ops, modified, verify_success, result)

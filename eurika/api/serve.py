@@ -550,36 +550,32 @@ def run_server(
             parsed = urlparse(self.path)
             path = parsed.path.rstrip("/") or "/"
             query = parse_qs(parsed.query)
-            selected_root = root
+            selected_root: Path = root
             if path.startswith("/api"):
-                selected_root, root_err = _resolve_project_root_override(
+                resolved, root_err = _resolve_project_root_override(
                     root,
                     query.get("project_root"),
                 )
-                if root_err:
-                    _json_response(self, {"error": root_err}, status=400)
+                if root_err or resolved is None:
+                    _json_response(self, {"error": root_err or "invalid project_root payload"}, status=400)
                     return
-                if selected_root is None:
-                    _json_response(self, {"error": "invalid project_root payload"}, status=400)
-                    return
+                selected_root = resolved
             _run_handler(self, selected_root, path, query, body=None)
 
         def do_POST(self) -> None:
             parsed = urlparse(self.path)
             path = parsed.path.rstrip("/") or "/"
             body = _read_json_body(self)
-            selected_root = root
+            selected_root: Path = root
             if path.startswith("/api"):
-                selected_root, root_err = _resolve_project_root_override(
+                resolved, root_err = _resolve_project_root_override(
                     root,
                     (body or {}).get("project_root"),
                 )
-                if root_err:
-                    _json_response(self, {"error": root_err}, status=400)
+                if root_err or resolved is None:
+                    _json_response(self, {"error": root_err or "invalid project_root payload"}, status=400)
                     return
-                if selected_root is None:
-                    _json_response(self, {"error": "invalid project_root payload"}, status=400)
-                    return
+                selected_root = resolved
             if _run_post_handler(self, selected_root, path, body):
                 return
             _json_response(

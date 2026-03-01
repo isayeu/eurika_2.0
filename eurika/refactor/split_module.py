@@ -315,7 +315,8 @@ def _build_extracted_module_multi(tree: ast.AST, import_lines: List[str], defs: 
 def _build_modified_original(tree: ast.AST, to_remove: List[ast.FunctionDef | ast.ClassDef], extracted_names: List[str], base_name: str, extracted_stem: str) -> str:
     """Remove extracted defs from original and add import from new module."""
     remove_names = {n.name for n in to_remove}
-    new_body = [n for n in tree.body if not (isinstance(n, (ast.FunctionDef, ast.ClassDef)) and n.name in remove_names)]
+    mod = tree if isinstance(tree, ast.Module) else ast.Module(body=[], type_ignores=[])
+    new_body = [n for n in mod.body if not (isinstance(n, (ast.FunctionDef, ast.ClassDef)) and n.name in remove_names)]
     new_tree = ast.Module(body=new_body, type_ignores=[])
     mod_parts = base_name.replace('\\', '/').split('/')
     new_module_name = '.'.join(mod_parts) + extracted_stem

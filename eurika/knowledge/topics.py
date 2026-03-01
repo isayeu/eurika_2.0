@@ -11,6 +11,7 @@ SMELL_TO_KNOWLEDGE_TOPICS: dict[str, list[str]] = {
     "bottleneck": ["architecture_refactor"],
     "hub": ["architecture_refactor", "module_structure"],
     "cyclic_dependency": ["cyclic_imports"],
-    "long_function": ["pep_8"],
-    "deep_nesting": ["pep_8"],
+    # Learning from GitHub (ROADMAP 3.0.5): OSSPatternProvider serves long_function/deep_nesting from pattern_library
+    "long_function": ["long_function", "pep_8"],
+    "deep_nesting": ["deep_nesting", "pep_8"],
 }

@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional
 
 _HINT_CALLS = 0
 _HINT_BUDGET_START = 0.0
-_HINT_CACHE: Dict[tuple[str, str], List[str]] = {}
+_HINT_CACHE: Dict[tuple[str, ...], List[str]] = {}
 _HINT_CIRCUIT_BROKEN = False
 
 
@@ -160,20 +160,33 @@ def _extract_function_source(content: str, function_name: str) -> str | None:
     return None
 
 
-def _build_extract_method_prompt(function_name: str, function_source: str) -> str:
-    """Prompt for LLM to suggest extract-method steps."""
+def _build_extract_method_prompt(
+    function_name: str,
+    function_source: str,
+    oss_snippets: list[str] | None = None,
+) -> str:
+    """Prompt for LLM to suggest extract-method steps. Learning from GitHub: oss_snippets as few-shot examples."""
     preview = function_source[:1500] + ("..." if len(function_source) > 1500 else "")
-    return (
+    base = (
         f"Python function '{function_name}' is too long. Here is its source:\n\n```python\n{preview}\n```\n\n"
         "In 1-3 short bullet points, suggest how to extract a coherent helper (which block to move, what to name it). "
         "Example: 'Extract the validation block (lines 15-25) to _validate_input(data)'. "
-        "Reply with bullet points only, no preamble."
     )
+    if oss_snippets:
+        ref_block = "\n\nReference (OSS examples):\n" + "\n\n".join(oss_snippets[:2])
+        base += ref_block + "\n\n"
+    base += "Reply with bullet points only, no preamble."
+    return base
 
 
-def ask_llm_extract_method_hints(file_path: "os.PathLike[str] | str", function_name: str) -> List[str]:
+def ask_llm_extract_method_hints(
+    file_path: "os.PathLike[str] | str",
+    function_name: str,
+    project_root: "os.PathLike[str] | str | None" = None,
+) -> List[str]:
     """
     Ask LLM for extract-method hints (ROADMAP operability: internet/LLM).
+    Learning from GitHub Phase 3: when project_root given, prompt enriched with OSS snippets.
 
     Returns list of hint strings; empty when disabled, on failure, or budget exhausted.
     Uses same budget/circuit breaker as ask_ollama_split_hints.
@@ -198,7 +211,16 @@ def ask_llm_extract_method_hints(file_path: "os.PathLike[str] | str", function_n
     if not src or len(src) < 30:
         _HINT_CACHE[cache_key] = []
         return []
-    prompt = _build_extract_method_prompt(function_name, src)
+    oss_snippets: list[str] = []
+    if project_root:
+        try:
+            from eurika.api.ops import _load_oss_snippets_for_smell
+
+            root = Path(project_root).resolve()
+            oss_snippets = _load_oss_snippets_for_smell(root, "long_function", max_count=2)
+        except Exception:
+            pass
+    prompt = _build_extract_method_prompt(function_name, src, oss_snippets=oss_snippets or None)
     _register_llm_hint_call()
     try:
         from eurika.reasoning.architect import _call_ollama_cli

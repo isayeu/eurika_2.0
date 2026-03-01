@@ -44,7 +44,7 @@ eurika = "eurika_cli:main"
 eurika-qt = "qt_app.main:main"
 
 [tool.setuptools]
-py-modules = ["eurika_cli"]
+py-modules = ["eurika_cli", "code_awareness", "runtime_scan", "architecture_pipeline"]
 
 [tool.setuptools.packages.find]
 where = ["."]
