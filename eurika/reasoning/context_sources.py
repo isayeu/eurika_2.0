@@ -165,9 +165,17 @@ def build_context_sources(project_root: Path, operations: list[dict[str, Any]]) 
             entry["verify_success_rate"] = round(rate, 4)
         by_target[target] = entry
 
+    prioritized_smell_actions: list[dict[str, Any]] = []
+    try:
+        from eurika.api import get_learning_insights
+        insights = get_learning_insights(root, top_n=10)
+        prioritized_smell_actions = (insights.get("prioritized_smell_actions") or [])[:6]
+    except Exception:
+        pass
     return {
         "recent_verify_fail_targets": verify_fail_targets[:10],
         "campaign_rejected_targets": rejected_targets[:10],
         "recent_patch_modified": _recent_patch_modified(root, limit=10),
         "by_target": by_target,
+        "prioritized_smell_actions": prioritized_smell_actions,
     }

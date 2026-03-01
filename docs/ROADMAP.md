@@ -240,8 +240,14 @@
 
 **Новый бэклог (следующие шаги):**
 
-- KPI-фокус: `verify_success_rate` по `smell|action|target` (apply_rate вторичен)
+- KPI-фокус: `verify_success_rate` по `smell|action|target` (apply_rate вторичен) — ✅ prioritized_smell_actions в context_sources, Dashboard
 - 3.6.5 @-mentions: ✅ выполнено
+
+**Update (2026-03-01, v3.0.26):**
+
+- 3.0.1 Multi-repo: eurika_fix_report_aggregated.json при fix/cycle [path1 path2 ...]
+- prioritized_smell_actions в get_learning_insights, context_sources, Qt Dashboard (Learning insights)
+- CI: pytest --cov=eurika --cov=cli
 
 **Update (2026-02-27, Qt/chat hardening + doc sync v3.0.12):**
 

@@ -457,6 +457,34 @@ def _aggregate_multi_repo_reports(project_reports: list[dict[str, Any]], paths: 
     }
 
 
+def _aggregate_multi_repo_fix_reports(paths: list[Path]) -> dict[str, Any] | None:
+    """Build aggregated fix JSON for multi-repo (3.0.1). Reads eurika_fix_report.json per path."""
+    pairs: list[tuple[Path, dict[str, Any]]] = []
+    for p in paths:
+        fp = p / 'eurika_fix_report.json'
+        if not fp.exists():
+            continue
+        try:
+            pairs.append((p, json.loads(fp.read_text(encoding='utf-8'))))
+        except Exception:
+            continue
+    if len(pairs) < 2:
+        return None
+    reports = [r for _, r in pairs]
+    total_modified = sum(int(r.get('modified', 0) or 0) for r in reports)
+    total_skipped = sum(int(r.get('skipped', 0) or 0) for r in reports)
+    telemetry_list = [r.get('telemetry') for r in reports if r.get('telemetry')]
+    return {
+        'projects': [{'path': str(p), 'report': r} for p, r in pairs],
+        'aggregate': {
+            'total_projects': len(pairs),
+            'total_modified': total_modified,
+            'total_skipped': total_skipped,
+            'telemetry_list': telemetry_list,
+        },
+    }
+
+
 def handle_doctor(args: Any) -> int:
     """Diagnostics only: report + architect (no patches). Saves to eurika_doctor_report.json (3.0.1: multi-repo)."""
     paths = _paths_from_args(args)
@@ -624,6 +652,15 @@ def handle_fix(args: Any) -> int:
         )
         if handle_agent_cycle(fix_args) != 0:
             exit_code = 1
+    if len(paths) > 1:
+        agg = _aggregate_multi_repo_fix_reports(paths)
+        if agg:
+            out_path = paths[0] / 'eurika_fix_report_aggregated.json'
+            try:
+                out_path.write_text(json.dumps(agg, indent=2, ensure_ascii=False), encoding='utf-8')
+                _clog().info(f'eurika: eurika_fix_report_aggregated.json written to {out_path}')
+            except Exception:
+                pass
     return exit_code
 
 def handle_cycle(args: Any) -> int:
@@ -660,6 +697,15 @@ def handle_cycle(args: Any) -> int:
         )
         if _run_cycle_with_mode(cycle_args, mode='full') != 0:
             exit_code = 1
+    if len(paths) > 1:
+        agg = _aggregate_multi_repo_fix_reports(paths)
+        if agg:
+            out_path = paths[0] / 'eurika_fix_report_aggregated.json'
+            try:
+                out_path.write_text(json.dumps(agg, indent=2, ensure_ascii=False), encoding='utf-8')
+                _clog().info(f'eurika: eurika_fix_report_aggregated.json written to {out_path}')
+            except Exception:
+                pass
     return exit_code
 
 def handle_architect(args: Any) -> int:

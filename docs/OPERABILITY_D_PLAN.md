@@ -50,3 +50,14 @@
 - [x] verify_success_rate по remove_unused_import ≥ 50% (58%);
 - [x] 2+ smell|action|target в whitelist с rate ≥ 60% (polygon: imports_ok, extractable_block 100%);
 - [x] suggest_policy учитывает no_op_rate.
+
+---
+
+## Next: long_function|extract_block (0%)
+
+**Слабая пара:** long_function|extract_block_to_helper — 0% (fallback когда extract_nested не срабатывает).
+
+**Возможные шаги:**
+- `prioritized_smell_actions` в context_sources — данные для приоритизации OSS patterns (high-rate пары первыми).
+- Qt Dashboard: блок «Prioritized smell|action» — видимость пар с высоким rate для обучения.
+- Whitelist для polygon/long_function + extract_block при наличии extractable блока (if/for/while 5+ строк) — эксперимент.

@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## v3.0.26 — Multi-repo aggregation, prioritized_smell_actions, CI coverage (2026-03-01)
+
+### 3.0.1 Multi-repo
+- **eurika_fix_report_aggregated.json** при `eurika fix [path1 path2 ...]` и `eurika cycle [path1 path2 ...]`.
+- `_aggregate_multi_repo_fix_reports()` читает fix reports по путям, пишет агрегат в первый путь.
+
+### Learning from GitHub
+- **prioritized_smell_actions** в `get_learning_insights()` — top-10 smell|action с rate ≥ 30%, для приоритизации OSS patterns.
+- **context_sources.prioritized_smell_actions** — planner/doctor получают данные для упорядочивания Reference.
+
+### CI
+- Покрытие: `pytest --cov=eurika --cov=cli --cov-report=term-missing --cov-fail-under=0` в основном job.
+
+### Docs
+- CYCLE_REPORT: snapshot 97.4 (modules=278, risk=46, learning rates).
+- ROADMAP: 3.0.1 fix/cycle aggregation, prioritized_smell_actions.
+
+---
+
 ## v3.0.25 — Ритуал 2.1, R2 Logging doc, Coverage gate (2026-03-01)
 
 ### Ритуал 2.1

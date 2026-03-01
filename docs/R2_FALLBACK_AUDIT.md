@@ -79,6 +79,18 @@
 
 ---
 
+## 8. State model (R2 явная state-модель)
+
+| Состояние | Когда | state_history |
+|-----------|-------|---------------|
+| `done` | return_code=0, report без error, verify.success=True | [thinking, done] |
+| `error` | return_code≠0, report.error, verify.success=False, stage exception | [thinking, error] |
+
+**Модуль:** `cli/orchestration/cycle_state.py` — `CycleState`, `with_cycle_state()`, `is_valid_state_history()`.
+**Тесты:** `test_doctor_cycle_r2_state_model_on_self`, `test_fix_cycle_result_includes_state_*`, `test_is_error_result_*`.
+
+---
+
 ## Вывод
 
 Критические пути (doctor, fix, full cycle) имеют детерминированный degraded mode или early exit при сбоях внешних зависимостей. Knowledge resolution failures дают пустой snippet; architect при LLM unavailable возвращает template.

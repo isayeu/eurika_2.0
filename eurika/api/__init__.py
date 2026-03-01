@@ -295,7 +295,24 @@ def get_learning_insights(project_root: Path, top_n: int=5, *, polygon_only: boo
             by_smell_action[k]['total'] += int(item.get('total', 0))
             by_smell_action[k]['verify_success'] += int(item.get('verify_success', 0))
             by_smell_action[k]['verify_fail'] += int(item.get('verify_fail', 0))
-    return {'by_action_kind': by_action_kind, 'by_smell_action': by_smell_action, 'by_target': ordered_targets[:max(top_n, 1) * 2], 'what_worked': ordered_targets[:top_n], 'recommendations': {'whitelist_candidates': whitelist_candidates, 'policy_deny_candidates': deny_candidates, 'chat_whitelist_hints': chat_recs.get('chat_whitelist_hints', []), 'chat_policy_review_hints': chat_recs.get('chat_policy_review_hints', [])}}
+    else:
+        by_smell_action = memory.learning.aggregate_by_smell_action()
+    prioritized_smell_actions: list[Dict[str, Any]] = []
+    for k, v in (by_smell_action or {}).items():
+        total = int(v.get('total', 0) or 0)
+        if total < 2:
+            continue
+        rate = float(v.get('verify_success', 0) or 0) / total
+        if rate >= 0.3:
+            parts = k.split('|', 2)
+            prioritized_smell_actions.append({
+                'smell_type': parts[0] if len(parts) > 0 else '?',
+                'action_kind': parts[1] if len(parts) > 1 else '?',
+                'verify_success_rate': round(rate, 4),
+                'total': total,
+            })
+    prioritized_smell_actions.sort(key=lambda x: (float(x.get('verify_success_rate', 0)), int(x.get('total', 0))), reverse=True)
+    return {'by_action_kind': by_action_kind, 'by_smell_action': by_smell_action, 'prioritized_smell_actions': prioritized_smell_actions[:10], 'by_target': ordered_targets[:max(top_n, 1) * 2], 'what_worked': ordered_targets[:top_n], 'recommendations': {'whitelist_candidates': whitelist_candidates, 'policy_deny_candidates': deny_candidates, 'chat_whitelist_hints': chat_recs.get('chat_whitelist_hints', []), 'chat_policy_review_hints': chat_recs.get('chat_policy_review_hints', [])}}
 
 def get_history(project_root: Path, window: int=5) -> Dict[str, Any]:
     """

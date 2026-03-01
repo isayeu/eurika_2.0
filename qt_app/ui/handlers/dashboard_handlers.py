@@ -97,12 +97,20 @@ def refresh_dashboard(main: MainWindow) -> None:
         main.dashboard_median_verify.setText("-")
     learning = main._api.get_learning_insights(top_n=5)
     worked = learning.get("what_worked") or []
+    prioritized = learning.get("prioritized_smell_actions") or []
     recs = learning.get("recommendations") or {}
     white = recs.get("whitelist_candidates") or []
     deny = recs.get("policy_deny_candidates") or []
     chat_white = recs.get("chat_whitelist_hints") or []
     chat_review = recs.get("chat_policy_review_hints") or []
     learning_lines: list[str] = []
+    if prioritized:
+        learning_lines.append("Prioritized smell|action (OSS patterns first):")
+        for item in prioritized[:5]:
+            learning_lines.append(
+                f"- {item.get('smell_type')}|{item.get('action_kind')} "
+                f"rate={item.get('verify_success_rate')} total={item.get('total')}"
+            )
     if worked:
         learning_lines.append("What worked (top targets):")
         for item in worked:

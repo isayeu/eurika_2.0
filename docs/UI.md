@@ -9,7 +9,7 @@
 | **Models** | Управление Ollama: Start/Stop, переменные окружения, список моделей, установка. **При старте:** если Ollama не запущен — автоматически открывается вкладка и запускается `ollama serve` |
 | **Chat** | Чат с Apply/Reject для планов; @-mentions для scope; создание вкладок (в т.ч. Terminal) по intent |
 | **Commands** | scan/doctor/fix/cycle/explain/report-snapshot/learning-kpi, Run/Stop, live output |
-| **Dashboard** | Summary (modules, deps, cycles, risk, maturity, trends), Top risks, Operational metrics, Learning insights; автообновление при смене project root |
+| **Dashboard** | Summary (modules, deps, cycles, risk, maturity, trends), Top risks, Operational metrics, Learning insights (prioritized_smell_actions, whitelist/deny candidates); автообновление при смене project root |
 | **Graph** | Интерактивный граф зависимостей. Требует `eurika scan .` перед использованием. |
 | **Approvals** | Run fix (team-mode), Load plan, approve/reject per row, **diff preview** при выборе строки (ROADMAP 3.6.7), Save, Run apply-approved. Для extract_block/extract_nested — OSS Reference (Learning from GitHub) блок с примерами из pattern_library. |
 | **Terminal** | Output команд (scan, doctor, fix…) + поле ввода для shell (ls, pwd, eurika scan .) |

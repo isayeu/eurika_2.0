@@ -2,6 +2,7 @@
 
 ## Current state (2026-03-01)
 
+- **97.4 Ритуал 2.1 (2026-03-01):** scan → doctor --no-llm → report-snapshot. modules=278, risk=46, apply_rate=1.0, rollback_rate=0.0. Learning: remove_unused_import 68%, extract_block_to_helper 57%, extract_nested_function 75%. by_smell_action: deep_nesting|extract_block 89%, long_function|extract_nested 75%, long_function|extract_block 0%. CI: coverage в pytest step (--cov=eurika --cov=cli).
 - **97.3 ROADMAP 3–6:** POLYGON_VERIFY_PLAYBOOK.md; KPI в doctor output (learning_kpi); R1 explain: get_explain_data + report/explain_format; тесты get_explain_data/explain_module; R3/R4 edge-case + firewall проходят.
 - **97.2 ROADMAP 1–4:** KPI verify_success_rate в report-snapshot (by_smell_action rate); тест whitelist overrides weak_pair; R1_DOMAIN_PRESENTATION_AUDIT.md; R2 logging note в R2_FALLBACK_AUDIT.
 - **97.1 Ритуал 2.1 (2026-03-01):** scan → doctor --online → report-snapshot → fix. modules=276, risk=46. Fix: imports_ok ✓ (remove_unused_import). deep_nesting, extractable_block, long_function — blocked by policy (historically weak pair). verify success. Polygon восстановлен.
