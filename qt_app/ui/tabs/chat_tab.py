@@ -36,6 +36,7 @@ def build_chat_tab(main: MainWindow) -> None:
     history_layout.addWidget(main.chat_goal_view)
     main.chat_transcript = QTextEdit()
     main.chat_transcript.setReadOnly(True)
+    main.chat_transcript.setAcceptRichText(True)
     history_layout.addWidget(main.chat_transcript)
     layout.addWidget(history_box, 1)
     compose_box = QGroupBox("Send message")

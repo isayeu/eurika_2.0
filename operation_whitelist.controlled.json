@@ -1,18 +1,17 @@
 {
   "meta": {
     "version": 1,
-    "purpose": "3.6 KPI controlled whitelist seed"
+    "purpose": "3.6 KPI controlled whitelist seed + polygon long_function|extract_block drill"
   },
   "operations": [
+    {"kind": "remove_unused_import", "allow_in_hybrid": true, "allow_in_auto": true},
+    {"kind": "fix_import", "allow_in_hybrid": true, "allow_in_auto": false},
     {
-      "kind": "remove_unused_import",
+      "kind": "extract_block_to_helper",
+      "target_file": "eurika/polygon/long_function_extractable_block.py",
+      "smell_type": "long_function",
       "allow_in_hybrid": true,
       "allow_in_auto": true
-    },
-    {
-      "kind": "fix_import",
-      "allow_in_hybrid": true,
-      "allow_in_auto": false
     }
   ]
 }

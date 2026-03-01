@@ -2,6 +2,8 @@
 
 ## Current state (2026-03-01)
 
+- **97.6 Ритуал 2.1 (2026-03-01):** scan → doctor --no-llm → report-snapshot → fix --allow-low-risk-campaign. modules=278, risk=46, apply_rate=1.0, rollback_rate=0.0. Fix: ops blocked (policy/critic/human 16); modified=0. Learning: remove_unused_import 68%, extract_block 57%, extract_nested 75%. by_smell_action: deep_nesting|extract_block 89%, long_function|extract_nested 75%, long_function|extract_block 0%. Drill long_function_extractable_block в whitelist (operation_whitelist.controlled.json); для apply нужен hybrid/team-mode approve или merge в .eurika/operation_whitelist.json.
+- **97.5 Пробелы (ROADMAP):** long_function|extract_block — polygon drill long_function_extractable_block.py + whitelist; Domain vs Presentation — get_suggest_plan_data + report/suggest_plan_format; Cross-project memory — уже в planner (get_merged_learning_stats); R5 — docs/R5_PLUGIN_INTERFACE.md.
 - **97.4 Ритуал 2.1 (2026-03-01):** scan → doctor --no-llm → report-snapshot. modules=278, risk=46, apply_rate=1.0, rollback_rate=0.0. Learning: remove_unused_import 68%, extract_block_to_helper 57%, extract_nested_function 75%. by_smell_action: deep_nesting|extract_block 89%, long_function|extract_nested 75%, long_function|extract_block 0%. CI: coverage в pytest step (--cov=eurika --cov=cli).
 - **97.3 ROADMAP 3–6:** POLYGON_VERIFY_PLAYBOOK.md; KPI в doctor output (learning_kpi); R1 explain: get_explain_data + report/explain_format; тесты get_explain_data/explain_module; R3/R4 edge-case + firewall проходят.
 - **97.2 ROADMAP 1–4:** KPI verify_success_rate в report-snapshot (by_smell_action rate); тест whitelist overrides weak_pair; R1_DOMAIN_PRESENTATION_AUDIT.md; R2 logging note в R2_FALLBACK_AUDIT.

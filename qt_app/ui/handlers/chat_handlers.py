@@ -1,6 +1,7 @@
 """Chat preferences, send, apply/reject handlers. ROADMAP 3.1-arch.3."""
 from __future__ import annotations
 
+import html
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -149,6 +150,16 @@ def save_chat_preferences(main: MainWindow) -> None:
     main._settings.save(data)
 
 
+def _format_chat_line(role: str, text: str, *, is_error: bool = False) -> str:
+    """Format chat line with bold colored role label."""
+    escaped = html.escape(text)
+    if role == "user":
+        label = '<b><span style="color:#1e40af">You</span></b>'
+    else:
+        label = '<b><span style="color:#15803d">Eurika</span></b>' if not is_error else '<b><span style="color:#b91c1c">Eurika</span></b>'
+    return f"{label}: {escaped}"
+
+
 def dispatch_chat_message(main: MainWindow, message: str) -> None:
     if not message:
         return
@@ -160,7 +171,7 @@ def dispatch_chat_message(main: MainWindow, message: str) -> None:
     openai_model = main.chat_openai_model.text().strip()
     ollama_model = main.chat_ollama_model.text().strip()
     timeout_sec = main.chat_timeout_spin.value()
-    main.chat_transcript.append(f"You: {message}")
+    main.chat_transcript.append(_format_chat_line("user", message))
     main._chat_history.append({"role": "user", "content": message})
     main.chat_input.clear()
     main.chat_send_btn.setEnabled(False)
@@ -202,13 +213,13 @@ def on_chat_result(main: MainWindow, payload: dict[str, Any]) -> None:
     text = str(payload.get("text", "")).strip()
     err = payload.get("error")
     if err:
-        main.chat_transcript.append(f"Eurika [error]: {err}")
+        main.chat_transcript.append(_format_chat_line("assistant", f"[error]: {err}", is_error=True))
         return
     if not text:
-        main.chat_transcript.append("Eurika: (empty response)")
+        main.chat_transcript.append(_format_chat_line("assistant", "(empty response)"))
         refresh_chat_goal_view(main)
         return
-    main.chat_transcript.append(f"Eurika: {text}")
+    main.chat_transcript.append(_format_chat_line("assistant", text))
     main._chat_history.append({"role": "assistant", "content": text})
     refresh_chat_goal_view(main)
     activate_pending_controls_from_response(main, text)
@@ -216,7 +227,7 @@ def on_chat_result(main: MainWindow, payload: dict[str, Any]) -> None:
 
 
 def on_chat_error(main: MainWindow, error: str) -> None:
-    main.chat_transcript.append(f"Eurika [exception]: {error}")
+    main.chat_transcript.append(_format_chat_line("assistant", f"[exception]: {error}", is_error=True))
     refresh_chat_goal_view(main)
 
 
@@ -235,7 +246,7 @@ def activate_pending_controls_from_response(main: MainWindow, text: str) -> None
     main.chat_reject_btn.setEnabled(True)
     main.chat_pending_label.setText(f"Pending plan: token={token}")
     main.chat_transcript.append(
-        "Eurika: Доступны действия: [Apply] или [Reject] кнопками ниже."
+        _format_chat_line("assistant", "Доступны действия: [Apply] или [Reject] кнопками ниже.")
     )
 
 

@@ -30,6 +30,13 @@ def test_polygon_deep_nesting_extractable_semantics() -> None:
     assert polygon_deep_nesting_extractable(5) == 34
 
 
+def test_polygon_long_function_extractable_block_semantics() -> None:
+    """DRILL_LONG_FUNCTION_EXTRACTABLE — long_function + extract_block_to_helper preserves semantics."""
+    from eurika.polygon import polygon_long_function_extractable_block
+
+    assert polygon_long_function_extractable_block(5) == 45
+
+
 def test_clean_imports_dry_run(tmp_path: Path) -> None:
     """clean-imports (no --apply) reports files that would be modified."""
     (tmp_path / 'a.py').write_text('import unused_mod\nx = 1\n')

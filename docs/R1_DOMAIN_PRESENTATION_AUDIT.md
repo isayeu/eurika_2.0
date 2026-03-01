@@ -11,7 +11,7 @@
 |--------|-----------|--------------|
 | `eurika/reasoning/architect.py` | ~~_template_interpret~~ | ✅ **Сделано:** `get_architect_data()` возвращает структуру; `format_architect_template` в `report/architect_format.py`; `_template_interpret` делегирует presentation |
 | `eurika/api/__init__.py` | ~~explain_module~~ | ✅ **Сделано:** `get_explain_data()` возвращает структуру; `format_explain_result` в `report/explain_format.py`; `explain_module` — thin wrapper |
-| `eurika/api/__init__.py` | `get_suggest_plan_text` — форматированный план | Аналогично: структура → presentation |
+| `eurika/api/__init__.py` | ~~get_suggest_plan_text~~ | ✅ **Сделано:** `get_suggest_plan_data()` возвращает структуру; `format_suggest_plan` в `report/suggest_plan_format.py`; `get_suggest_plan_text` — thin wrapper |
 | `report/ux.py` | Смешение отчётов и markdown | Уже в presentation; проверить, что core не импортирует |
 
 ---

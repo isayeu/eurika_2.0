@@ -11,7 +11,7 @@
 3. **Commands** → Fix, включить `--runtime-mode hybrid`, `--allow-low-risk-campaign`.
 4. Запустить fix.
 5. Во вкладке **Approvals** появятся pending операции (в т.ч. polygon: extractable_block, long_function, deep_nesting).
-6. Одобрить (`Approve`) только polygon ops: `eurika/polygon/extractable_block.py`, `eurika/polygon/long_function.py`, `eurika/polygon/deep_nesting.py`.
+6. Одобрить (`Approve`) только polygon ops: `eurika/polygon/extractable_block.py`, `eurika/polygon/long_function.py`, `eurika/polygon/long_function_extractable_block.py`, `eurika/polygon/deep_nesting.py`.
 7. Нажать **Apply approved**.
 8. После apply → verify → learning записывает `verify_success`/`verify_fail`.
 9. Повторить 2–3 раза для накопления статистики.

@@ -637,30 +637,38 @@ def _resolve_module_arg(module_arg: str, path: Path, nodes: list[str]) -> tuple[
         return (None, f"ambiguous module '{module_arg}'; candidates: {', '.join(candidates)}")
     return (None, f"module '{module_arg}' not in graph (run 'eurika scan .' to refresh self_map.json)")
 
-def get_suggest_plan_text(project_root: Path, window: int=5) -> str:
+def get_suggest_plan_data(project_root: Path, window: int = 5) -> dict[str, Any]:
     """
-    Build suggest-plan text (ROADMAP 3.1-arch.5).
-
-    Encapsulates graph/smells/recommendations building; returns formatted plan string.
+    Build suggest-plan data (summary, recommendations, history). Domain layer (R1).
     """
-    from eurika.analysis.self_map import build_graph_from_self_map
-    from eurika.reasoning.refactor_plan import suggest_refactor_plan
-    from eurika.smells.detector import detect_architecture_smells
-    from eurika.smells.advisor import build_recommendations
     summary = get_summary(project_root)
-    if summary.get('error'):
-        return f"Error: {summary.get('error', 'unknown')}"
+    if summary.get("error"):
+        return {"error": summary.get("error", "unknown")}
     history = get_history(project_root, window=window)
     recommendations = None
-    self_map_path = Path(project_root).resolve() / 'self_map.json'
+    self_map_path = Path(project_root).resolve() / "self_map.json"
     if self_map_path.exists():
         try:
+            from eurika.analysis.self_map import build_graph_from_self_map
+            from eurika.smells.detector import detect_architecture_smells
+            from eurika.smells.advisor import build_recommendations
+
             graph = build_graph_from_self_map(self_map_path)
             smells = detect_architecture_smells(graph)
             recommendations = build_recommendations(graph, smells)
         except Exception:
             pass
-    return suggest_refactor_plan(summary, recommendations=recommendations, history_info=history)
+    return {"summary": summary, "recommendations": recommendations, "history": history}
+
+
+def get_suggest_plan_text(project_root: Path, window: int = 5) -> str:
+    """
+    Build suggest-plan text (ROADMAP 3.1-arch.5). Thin wrapper: data → presentation.
+    """
+    from report.suggest_plan_format import format_suggest_plan
+
+    data = get_suggest_plan_data(project_root, window=window)
+    return format_suggest_plan(data)
 
 def clean_imports_scan_apply(project_root: Path, apply_changes: bool) -> list[str]:
     """
