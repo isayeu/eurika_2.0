@@ -1,14 +1,18 @@
 """
-Domain models for architecture planning (ROADMAP v3.0 Stage 2, §5.5).
+Domain models for architecture planning (ROADMAP v3.0 Stage 2, §5.5, §5.7).
 
-Unified types: ArchitectureModel, RefactorAction, RiskReport, SmellReport.
+Unified types: ArchitectureModel, ArchitectureSnapshot, RefactorAction, RiskReport, SmellReport.
 Replaces fragmented structures across planner/action_plan/patch_plan.
 """
 
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+if TYPE_CHECKING:
+    from eurika.analysis.graph import ProjectGraph
+    from eurika.analysis.metric_vector import MetricVector
 
 
 @dataclass
@@ -108,6 +112,45 @@ class RiskReport:
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
+
+@dataclass
+class ArchitectureSnapshot:
+    """
+    Unified state model: graph + MetricVector + smells (ROADMAP §5.7, review 2026 II).
+
+    Single source of truth for architecture state. Used by ExecutionContext.
+    """
+
+    graph: Any  # ProjectGraph
+    metrics: "MetricVector"
+    smells: List[SmellReport]
+
+    @classmethod
+    def from_graph_and_smells(
+        cls,
+        graph: "ProjectGraph",
+        smells: List[Any],
+    ) -> "ArchitectureSnapshot":
+        """Build from ProjectGraph and ArchSmell list."""
+        from eurika.analysis.metric_vector import compute_metric_vector
+        from eurika.smells.detector import get_remediation_hint
+
+        metrics = compute_metric_vector(graph, smells)
+        smell_reports = [
+            SmellReport.from_arch_smell(s, hint=get_remediation_hint(getattr(s, "type", "")))
+            for s in smells
+        ]
+        return cls(graph=graph, metrics=metrics, smells=smell_reports)
+
+
+@dataclass
+class RefactorCandidate:
+    """Candidate action with estimated ΔEnergy and risk (review 2026 II)."""
+
+    action: RefactorAction
+    estimated_delta: float
+    risk_score: float
 
 
 @dataclass

@@ -86,4 +86,10 @@ def build_patch_plan(
         self_map=self_map,
         oss_patterns=oss_patterns,
     )
+    if graph is not None:
+        from eurika.reasoning.planner.energy_ranking import rank_operations_by_energy
+
+        operations = rank_operations_by_energy(
+            operations, graph, smells, project_root=Path(project_root)
+        )
     return PatchPlan(project_root=project_root, operations=operations)
