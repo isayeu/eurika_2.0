@@ -571,11 +571,11 @@ def test_fix_cycle_all_rejected_includes_telemetry_and_no_verify_gate() -> None:
     early = None
     patch_plan = {"operations": ops}
     with (
-        patch("cli.orchestrator._fix_cycle_deps", return_value={"run_scan": lambda *_args, **_kwargs: True}),
-        patch("cli.orchestrator._prepare_fix_cycle_operations", return_value=(early, fake_result, patch_plan, ops)),
-        patch("cli.orchestrator._select_hybrid_operations", return_value=([], ops)),
+        patch("eurika.orchestration.entry.load_fix_cycle_deps", return_value={"run_scan": lambda *_args, **_kwargs: True}),
+        patch("eurika.orchestration.entry._prepare_fix_cycle_operations", return_value=(early, fake_result, patch_plan, ops)),
+        patch("eurika.orchestration.entry.select_hybrid_operations", return_value=([], ops)),
     ):
-        out = run_cycle(ROOT, mode="fix", runtime_mode="hybrid", quiet=True, non_interactive=False)
+        out = run_cycle(ROOT, mode="fix", runtime_mode="assist", quiet=True, non_interactive=False)
     report = out.get("report", {})
     telemetry = report.get("telemetry", {})
     safety = report.get("safety_gates", {})
@@ -624,11 +624,11 @@ def test_fix_cycle_decision_gate_blocks_critic_denied_op() -> None:
         }
     ]
     with (
-        patch("cli.orchestrator._fix_cycle_deps", return_value={"run_scan": lambda *_args, **_kwargs: True}),
-        patch("cli.orchestrator._prepare_fix_cycle_operations", return_value=(None, fake_result, {"operations": ops}, ops)),
-        patch("cli.orchestrator._select_hybrid_operations", return_value=(ops, [])),
+        patch("eurika.orchestration.entry.load_fix_cycle_deps", return_value={"run_scan": lambda *_args, **_kwargs: True}),
+        patch("eurika.orchestration.entry._prepare_fix_cycle_operations", return_value=(None, fake_result, {"operations": ops}, ops)),
+        patch("eurika.orchestration.entry.select_hybrid_operations", return_value=(ops, [])),
     ):
-        out = run_cycle(ROOT, mode="fix", runtime_mode="hybrid", quiet=True, non_interactive=False)
+        out = run_cycle(ROOT, mode="fix", runtime_mode="assist", quiet=True, non_interactive=False)
     report = out.get("report", {})
     assert report.get("message") == "All operations rejected by user/policy. Cycle complete."
     assert "critic_decisions" in report
@@ -648,8 +648,8 @@ def test_fix_cycle_approve_ops_selects_subset() -> None:
         {"target_file": "b.py", "kind": "remove_unused_import", "approval_state": "approved", "critic_verdict": "allow"},
     ]
     with (
-        patch("cli.orchestrator._fix_cycle_deps", return_value={"run_scan": lambda *_args, **_kwargs: True}),
-        patch("cli.orchestrator._prepare_fix_cycle_operations", return_value=(None, fake_result, {"operations": ops}, ops)),
+        patch("eurika.orchestration.entry.load_fix_cycle_deps", return_value={"run_scan": lambda *_args, **_kwargs: True}),
+        patch("eurika.orchestration.entry._prepare_fix_cycle_operations", return_value=(None, fake_result, {"operations": ops}, ops)),
     ):
         out = run_cycle(ROOT, mode="fix", dry_run=True, quiet=True, approve_ops="1")
     selected = out.get("operations") or []
@@ -669,8 +669,8 @@ def test_fix_cycle_reject_ops_conflict_returns_error() -> None:
         {"target_file": "a.py", "kind": "split_module", "approval_state": "approved", "critic_verdict": "allow"},
     ]
     with (
-        patch("cli.orchestrator._fix_cycle_deps", return_value={"run_scan": lambda *_args, **_kwargs: True}),
-        patch("cli.orchestrator._prepare_fix_cycle_operations", return_value=(None, fake_result, {"operations": ops}, ops)),
+        patch("eurika.orchestration.entry.load_fix_cycle_deps", return_value={"run_scan": lambda *_args, **_kwargs: True}),
+        patch("eurika.orchestration.entry._prepare_fix_cycle_operations", return_value=(None, fake_result, {"operations": ops}, ops)),
     ):
         out = run_cycle(ROOT, mode="fix", dry_run=True, quiet=True, approve_ops="1", reject_ops="1")
     assert out.get("return_code") == 1
@@ -698,8 +698,8 @@ def test_fix_cycle_noop_writes_fresh_fix_report(tmp_path: Path) -> None:
         "agent_result": fake_result,
     }
     with (
-        patch("cli.orchestrator._fix_cycle_deps", return_value={"run_scan": lambda *_args, **_kwargs: True}),
-        patch("cli.orchestrator._prepare_fix_cycle_operations", return_value=(early, fake_result, {"operations": []}, [])),
+        patch("eurika.orchestration.entry.load_fix_cycle_deps", return_value={"run_scan": lambda *_args, **_kwargs: True}),
+        patch("eurika.orchestration.entry._prepare_fix_cycle_operations", return_value=(early, fake_result, {"operations": []}, [])),
     ):
         out = run_cycle(tmp_path, mode="fix", quiet=True)
     assert out.get("report", {}).get("message") == "Patch plan has no operations. Cycle complete."
@@ -713,7 +713,7 @@ def test_run_doctor_cycle_wrapper_delegates_to_orchestration_module() -> None:
     from cli.orchestrator import run_doctor_cycle
 
     expected = {"ok": True}
-    with patch("cli.orchestrator._doctor_run_doctor_cycle", return_value=expected) as mock_doctor:
+    with patch("eurika.orchestration.entry._run_doctor_cycle", return_value=expected) as mock_doctor:
         out = run_doctor_cycle(ROOT, window=7, no_llm=True)
     assert out == expected
     mock_doctor.assert_called_once_with(ROOT, window=7, no_llm=True, online=False, quiet=False)
@@ -724,7 +724,7 @@ def test_run_full_cycle_wrapper_delegates_to_orchestration_module() -> None:
     from cli.orchestrator import run_full_cycle
 
     expected = {"ok": True}
-    with patch("cli.orchestrator._full_run_full_cycle", return_value=expected) as mock_full:
+    with patch("eurika.orchestration.entry._run_full_cycle_impl", return_value=expected) as mock_full:
         out = run_full_cycle(ROOT, quiet=True, no_llm=True)
     assert out == expected
     assert mock_full.call_count == 1
@@ -840,10 +840,10 @@ def test_fix_apply_approved_invalid_pending_plan_schema_returns_error(tmp_path: 
 
 def test_prepare_fix_cycle_operations_wrapper_delegates() -> None:
     """Compatibility wrapper for prepare-stage should delegate unchanged."""
-    from cli.orchestrator import _prepare_fix_cycle_operations
+    from eurika.orchestration.entry import _prepare_fix_cycle_operations
 
     expected = ({"early": True}, None, None, [])
-    with patch("cli.orchestrator._prepare_prepare_fix_cycle_operations", return_value=expected) as mock_prepare:
+    with patch("eurika.orchestration.entry.prepare_fix_cycle_operations", return_value=expected) as mock_prepare:
         out = _prepare_fix_cycle_operations(
             ROOT,
             runtime_mode="assist",
@@ -955,20 +955,20 @@ def test_apply_campaign_memory_allow_low_risk_bypasses_remove_unused_import(tmp_
 def test_prepare_fix_cycle_reports_campaign_skipped_in_noop(tmp_path: Path) -> None:
     """No-op report includes campaign_skipped count when campaign filter removes ops."""
     from types import SimpleNamespace
-    from cli.orchestration.prepare import prepare_fix_cycle_operations
+    from eurika.orchestration.prepare import prepare_fix_cycle_operations
 
     fake_result = SimpleNamespace(success=True, output={})
     ops = [{"target_file": "foo.py", "kind": "split_module"}]
     patch_plan = {"operations": ops}
     with (
-        patch("cli.orchestration.prepare.run_fix_diagnose_stage", return_value=fake_result),
-        patch("cli.orchestration.prepare.extract_patch_plan_from_result", return_value=(patch_plan, ops)),
-        patch("cli.orchestration.prepare.prepend_fix_operations", return_value=(patch_plan, ops)),
-        patch("cli.orchestration.prepare._drop_noop_append_ops", return_value=ops),
-        patch("cli.orchestration.prepare._deprioritize_weak_pairs", return_value=ops),
-        patch("cli.orchestration.prepare.apply_runtime_policy", return_value=(patch_plan, ops, [])),
-        patch("cli.orchestration.prepare.apply_campaign_memory", return_value=(patch_plan, [], ops)),
-        patch("cli.orchestration.prepare.apply_session_rejections", return_value=(patch_plan, [], [])),
+        patch("eurika.orchestration.prepare.run_fix_diagnose_stage", return_value=fake_result),
+        patch("eurika.orchestration.prepare.extract_patch_plan_from_result", return_value=(patch_plan, ops)),
+        patch("eurika.orchestration.prepare.prepend_fix_operations", return_value=(patch_plan, ops)),
+        patch("eurika.orchestration.prepare._drop_noop_append_ops", return_value=ops),
+        patch("eurika.orchestration.prepare._deprioritize_weak_pairs", return_value=ops),
+        patch("eurika.orchestration.prepare.apply_runtime_policy", return_value=(patch_plan, ops, [])),
+        patch("eurika.orchestration.prepare.apply_campaign_memory", return_value=(patch_plan, [], ops)),
+        patch("eurika.orchestration.prepare.apply_session_rejections", return_value=(patch_plan, [], [])),
     ):
         early, _result, _plan, out_ops = prepare_fix_cycle_operations(
             tmp_path,
@@ -1025,11 +1025,11 @@ def test_run_fix_cycle_impl_uses_apply_stage_facade() -> None:
         "rollback_patch": object(),
     }
     with (
-        patch("cli.orchestrator._fix_cycle_deps", return_value=deps),
-        patch("cli.orchestrator._prepare_fix_cycle_operations", return_value=(None, fake_result, patch_plan, ops)),
-        patch("cli.orchestrator._select_hybrid_operations", return_value=(ops, [])),
-        patch("cli.orchestrator._apply_execute_fix_apply_stage", return_value=({"verify": {"success": True}}, ["a.py"], True)) as mock_apply,
-        patch("cli.orchestrator._apply_build_fix_cycle_result", return_value={"ok": True}) as mock_build,
+        patch("eurika.orchestration.entry.load_fix_cycle_deps", return_value=deps),
+        patch("eurika.orchestration.entry._prepare_fix_cycle_operations", return_value=(None, fake_result, patch_plan, ops)),
+        patch("eurika.orchestration.entry.select_hybrid_operations", return_value=(ops, [])),
+        patch("eurika.orchestration.entry.execute_fix_apply_stage", return_value=({"verify": {"success": True}}, ["a.py"], True)) as mock_apply,
+        patch("eurika.orchestration.entry.build_fix_cycle_result", return_value={"ok": True}) as mock_build,
     ):
         out = run_cycle(ROOT, mode="fix", quiet=True)
     assert out == {"ok": True}

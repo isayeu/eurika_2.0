@@ -9,9 +9,9 @@ from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QLineEdit, QMain
 from qt_app.adapters.eurika_api_adapter import EurikaApiAdapter
 from qt_app.services.command_service import CommandService
 from qt_app.services.settings_service import SettingsService
-from .handlers import approve_handlers, chat_handlers, command_handlers, dashboard_handlers, ollama_handlers
+from .handlers import approve_handlers, chat_handlers, command_handlers, dashboard_handlers, notes_handlers, ollama_handlers
 from .main_window_helpers import ChatWorker, default_start_directory
-from .tabs import approve_tab, chat_tab, commands_tab, dashboard_tab, graph_tab, models_tab, terminal_tab
+from .tabs import approve_tab, chat_tab, commands_tab, dashboard_tab, graph_tab, models_tab, notes_tab, terminal_tab
 
 class MainWindow(QMainWindow):
     """Desktop-first shell for running core Eurika workflows."""
@@ -68,6 +68,7 @@ class MainWindow(QMainWindow):
         models_tab.build_models_tab(self)
         chat_tab.build_chat_tab(self)
         terminal_tab.build_terminal_tab(self)
+        notes_tab.build_notes_tab(self)
         self.status_label = QLabel('Idle')
         root_layout.addWidget(self.status_label)
 
@@ -107,6 +108,7 @@ class MainWindow(QMainWindow):
         self.chat_reject_btn.clicked.connect(lambda: chat_handlers.reject_pending_chat_plan(self))
         self.chat_feedback_helpful_btn.clicked.connect(lambda: chat_handlers.submit_chat_feedback(self, helpful=True))
         self.chat_feedback_not_btn.clicked.connect(lambda: chat_handlers.submit_chat_feedback(self, helpful=False))
+        self.notes_save_btn.clicked.connect(lambda: notes_handlers.save_notes(self))
         self.ollama_start_btn.clicked.connect(lambda: ollama_handlers.start_ollama_server(self))
         self.ollama_stop_btn.clicked.connect(lambda: ollama_handlers.stop_ollama_server(self))
         self.ollama_refresh_models_btn.clicked.connect(lambda: ollama_handlers.refresh_ollama_models(self, user_initiated=True))
@@ -156,6 +158,7 @@ class MainWindow(QMainWindow):
         chat_handlers.load_chat_preferences(self)
         chat_handlers.refresh_chat_goal_view(self)
         dashboard_handlers.refresh_dashboard(self)
+        notes_handlers.load_notes(self)
         if self.tabs.currentIndex() == self.graph_tab_index:
             graph_tab.refresh_graph(self)
         self._sync_preview()
