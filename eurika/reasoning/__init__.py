@@ -5,6 +5,7 @@ from importlib import import_module
 __all__ = [
     "advisor",
     "architect",
+    "execution_context",
     "planner",
     "heuristics",
     "refactor_plan",

@@ -19,6 +19,7 @@
 | **refactor** | libcst | Round-trip AST: изменение кода с сохранением комментариев и форматирования. Используется в `remove_unused_import` (остальные рефакторинги — по мере внедрения). |
 | **cli** | rich | Прогресс-бары, таблицы, подсветка, spinner'ы в CLI (doctor heartbeat, scan/doctor/fix). |
 | **extras** | pydantic, watchdog, ruff, structlog, ollama | Валидация данных, file watcher, линт, структурированный лог, Ollama Python-клиент. |
+| **energy** | numpy | EnergyModel (ROADMAP §5.7): Energy = W·MetricVector. Опционально для vectorized вычислений. |
 
 ## Установка
 
@@ -33,6 +34,9 @@ pip install -e ".[test,qt]"
 pip install -e ".[test,qt,refactor,cli,extras]"
 # или
 pip install -e ".[full]"
+
+# С EnergyModel (numpy)
+pip install -e ".[energy]"
 ```
 
 ## Использование в коде
@@ -45,3 +49,4 @@ pip install -e ".[full]"
 - **ruff** — уже вызывается в `_execute_run_lint`; используется для check/fix.
 - **structlog** — опционально для структурированного логирования.
 - **ollama** — опциональный Python-клиент Ollama вместо subprocess.
+- **numpy** — опционально для EnergyModel: dot(weights, metrics). Можно заменить на pure Python для малых векторов.

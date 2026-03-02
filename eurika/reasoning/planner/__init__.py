@@ -6,6 +6,8 @@ __all__ = [
     "ActionPlan",
     "analyze",
     "ArchitectureModel",
+    "ArchitectureSnapshot",
+    "RefactorCandidate",
     "PatchOperation",
     "PatchPlan",
     "RefactorAction",
@@ -35,7 +37,9 @@ def __getattr__(name: str):
             return {"analyze": core.analyze, "detect_smells": core.detect_smells, "propose_actions": core.propose_actions}[name]
         if name in (
             "ArchitectureModel",
+            "ArchitectureSnapshot",
             "RefactorAction",
+            "RefactorCandidate",
             "RiskProfile",
             "RiskReport",
             "SimulationResult",
@@ -44,7 +48,9 @@ def __getattr__(name: str):
         ):
             from eurika.reasoning.planner.models import (  # noqa: F401
                 ArchitectureModel,
+                ArchitectureSnapshot,
                 RefactorAction,
+                RefactorCandidate,
                 RiskProfile,
                 RiskReport,
                 SimulationResult,
@@ -53,7 +59,9 @@ def __getattr__(name: str):
             )
             return {
                 "ArchitectureModel": ArchitectureModel,
+                "ArchitectureSnapshot": ArchitectureSnapshot,
                 "RefactorAction": RefactorAction,
+                "RefactorCandidate": RefactorCandidate,
                 "RiskProfile": RiskProfile,
                 "RiskReport": RiskReport,
                 "SimulationResult": SimulationResult,
