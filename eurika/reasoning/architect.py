@@ -10,7 +10,7 @@ Produces a short "architect's take" on the codebase from summary + history + pat
 - --no-llm: use template only (deterministic, no API key, faster; useful for CI or when LLM unavailable).
 """
 from __future__ import annotations
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 from .context_sources import build_context_sources  # noqa: F401
 
@@ -198,11 +198,30 @@ def get_architect_data(
     }
 
 
-def _template_interpret(summary: Dict[str, Any], history: Dict[str, Any], patch_plan: Optional[Dict[str, Any]]=None, knowledge_snippet: str='', recent_events_snippet: str='') -> str:
-    """Delegates to report/architect_format (R1 presentation)."""
-    from report.architect_format import format_architect_template
+def _minimal_template_format(data: Dict[str, Any]) -> str:
+    """Minimal format when no formatter injected (no L5 dependency)."""
+    s = data.get("structure") or {}
+    m, d, c = s.get("modules", 0), s.get("dependencies", 0), s.get("cycles", 0)
+    mat = data.get("maturity", "unknown")
+    risks = data.get("risks") or []
+    top = "; ".join(str(r) for r in risks[:3]) if risks else "none"
+    return f"The codebase has {m} modules, {d} dependencies and {c} cycles. Maturity: {mat}. Main risks: {top}."
+
+
+def _template_interpret(
+    summary: Dict[str, Any],
+    history: Dict[str, Any],
+    patch_plan: Optional[Dict[str, Any]] = None,
+    knowledge_snippet: str = "",
+    recent_events_snippet: str = "",
+    *,
+    formatter: Optional[Callable[[Dict[str, Any]], str]] = None,
+) -> str:
+    """Format architect data. formatter from report/architect_format (injected by caller)."""
     data = get_architect_data(summary, history, patch_plan, knowledge_snippet, recent_events_snippet)
-    return format_architect_template(data)
+    if formatter:
+        return formatter(data)
+    return _minimal_template_format(data)
 
 def _build_openai_client(api_key: str, base_url: str | None) -> tuple[Any | None, str | None]:
     """Build OpenAI client instance. Returns (client, reason)."""
@@ -490,7 +509,18 @@ def call_llm_with_prompt(prompt: str, max_tokens: int=1024) -> tuple[str | None,
         return (cli_text, None)
     return (None, f"primary failed ({init_reason or 'unknown'}); ollama HTTP failed ({fallback_init_reason or 'unknown'}); ollama CLI failed ({cli_reason or 'unknown'})")
 
-def interpret_architecture(summary: Dict[str, Any], history: Dict[str, Any], use_llm: bool=True, verbose: bool=True, patch_plan: Optional[Dict[str, Any]]=None, knowledge_provider: Optional['KnowledgeProvider']=None, knowledge_topic: Optional[Union[str, List[str]]]=None, recent_events: Optional[List['Event']]=None) -> str:
+def interpret_architecture(
+    summary: Dict[str, Any],
+    history: Dict[str, Any],
+    use_llm: bool = True,
+    verbose: bool = True,
+    patch_plan: Optional[Dict[str, Any]] = None,
+    knowledge_provider: Optional["KnowledgeProvider"] = None,
+    knowledge_topic: Optional[Union[str, List[str]]] = None,
+    recent_events: Optional[List["Event"]] = None,
+    *,
+    template_formatter: Optional[Callable[[Dict[str, Any]], str]] = None,
+) -> str:
     """
     Return a short architect's interpretation (2–4 sentences).
 
@@ -502,11 +532,32 @@ def interpret_architecture(summary: Dict[str, Any], history: Dict[str, Any], use
     a single topic (str) or a list of topics; all fragments are merged and injected.
     recent_events: optional list of Event (patch, learn) for context (ROADMAP 3.2.3).
     """
-    text, meta = interpret_architecture_with_meta(summary=summary, history=history, use_llm=use_llm, verbose=verbose, patch_plan=patch_plan, knowledge_provider=knowledge_provider, knowledge_topic=knowledge_topic, recent_events=recent_events)
+    text, meta = interpret_architecture_with_meta(
+        summary=summary,
+        history=history,
+        use_llm=use_llm,
+        verbose=verbose,
+        patch_plan=patch_plan,
+        knowledge_provider=knowledge_provider,
+        knowledge_topic=knowledge_topic,
+        recent_events=recent_events,
+        template_formatter=template_formatter,
+    )
     _ = meta
     return text
 
-def interpret_architecture_with_meta(summary: Dict[str, Any], history: Dict[str, Any], use_llm: bool=True, verbose: bool=True, patch_plan: Optional[Dict[str, Any]]=None, knowledge_provider: Optional['KnowledgeProvider']=None, knowledge_topic: Optional[Union[str, List[str]]]=None, recent_events: Optional[List['Event']]=None) -> tuple[str, Dict[str, Any]]:
+def interpret_architecture_with_meta(
+    summary: Dict[str, Any],
+    history: Dict[str, Any],
+    use_llm: bool = True,
+    verbose: bool = True,
+    patch_plan: Optional[Dict[str, Any]] = None,
+    knowledge_provider: Optional["KnowledgeProvider"] = None,
+    knowledge_topic: Optional[Union[str, List[str]]] = None,
+    recent_events: Optional[List["Event"]] = None,
+    *,
+    template_formatter: Optional[Callable[[Dict[str, Any]], str]] = None,
+) -> tuple[str, Dict[str, Any]]:
     """Return architect text with runtime metadata about degraded mode/fallbacks.
     R2 Fallback: knowledge resolution failures yield empty snippet; cycle completes deterministically."""
     meta: Dict[str, Any] = {'use_llm': bool(use_llm), 'llm_used': False, 'degraded_mode': False, 'degraded_reasons': []}
@@ -536,4 +587,14 @@ def interpret_architecture_with_meta(summary: Dict[str, Any], history: Dict[str,
         _trace_architect("LLM disabled (--no-llm), using template")
         meta['degraded_mode'] = True
         meta['degraded_reasons'].append('llm_disabled')
-    return (_template_interpret(summary, history, patch_plan, knowledge_snippet, recent_snippet), meta)
+    return (
+        _template_interpret(
+            summary,
+            history,
+            patch_plan,
+            knowledge_snippet,
+            recent_snippet,
+            formatter=template_formatter,
+        ),
+        meta,
+    )

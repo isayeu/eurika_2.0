@@ -2,7 +2,7 @@
 
 Проверки границ архитектурных слоёв и подсистем. CI падает при нарушении правил.
 
-См. также: Architecture.md §0.6 Verification, §0.7 API Boundaries; docs/RELEASE_CHECKLIST.md.
+См. также: Architecture.md §0.6 Verification, §0.7 API Boundaries, §0.9 Execution Model; docs/RELEASE_CHECKLIST.md; docs/review.md (target v3.x).
 
 ## Как запустить
 
@@ -59,7 +59,7 @@ LayerException(
 )
 ```
 
-Добавить в `LAYER_FIREWALL_EXCEPTIONS` в `tests/test_dependency_guard.py` или в `DEFAULT_LAYER_EXCEPTIONS` в `dependency_firewall.py`.
+Добавить в `DEFAULT_LAYER_EXCEPTIONS` в `dependency_firewall.py` (self-check и CI используют их).
 
 ### SubsystemBypassException
 
@@ -80,3 +80,19 @@ SubsystemBypassException(
 | `eurika/checks/dependency_firewall.py` | Правила, исключения, функции сбора нарушений |
 | `tests/test_dependency_guard.py` | Интеграционные тесты: `test_no_forbidden_imports`, `test_layer_firewall_contract_soft_start`, `test_subsystem_imports_via_public_api` |
 | `tests/test_dependency_firewall.py` | Юнит-тесты функций `collect_dependency_violations`, `collect_layer_violations` |
+
+## Target v3.x (review 2026 II)
+
+По docs/review.md, ROADMAP §5.7. Целевая структура слоёв:
+
+```
+core/           models, execution_context
+analysis/       graph, metrics, smells
+planning/       planner_engine, candidate_generator, scoring, risk_model
+simulation/     simulator
+execution/      patch_executor, verifier
+evaluation/     delta_evaluator
+storage/        state_store, event_log, learning_store
+```
+
+Правила: Planner не мутирует, не пишет в storage. Storage — dumb persistence, не вызывает planner/analysis.

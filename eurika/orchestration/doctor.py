@@ -176,10 +176,12 @@ def run_doctor_cycle(
     _log.info("eurika: doctor — resolving knowledge topics...")
     knowledge_topic = knowledge_topics_from_env_or_summary(summary)
     _log.info("eurika: doctor — step 3/4: calling architect (LLM)" if use_llm else "eurika: doctor — step 3/4: calling architect (template)")
+    from report.architect_format import format_architect_template
     architect_text, architect_meta = interpret_architecture_with_meta(
         summary, history, use_llm=use_llm, patch_plan=patch_plan,
         knowledge_provider=knowledge_provider, knowledge_topic=knowledge_topic,
         recent_events=recent_events,
+        template_formatter=format_architect_template,
     )
     out: dict[str, Any] = {
         "summary": summary,

@@ -12,19 +12,12 @@ from pathlib import Path
 import pytest
 
 from eurika.checks.dependency_firewall import (
-    LayerException,
     collect_dependency_violations,
     collect_layer_violations,
     collect_subsystem_bypass_violations,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-
-# Soft-start allowlist for known temporary upward-layer imports.
-# Keep this list explicit and short; remove entries as code is migrated.
-LAYER_FIREWALL_EXCEPTIONS: tuple[LayerException, ...] = (
-    # No active exceptions; keep tuple for explicit future waivers.
-)
 
 
 
@@ -42,7 +35,7 @@ def test_layer_firewall_contract_soft_start() -> None:
 
     Set EURIKA_STRICT_LAYER_FIREWALL=1 to make violations fail CI.
     """
-    violations = collect_layer_violations(ROOT, exceptions=LAYER_FIREWALL_EXCEPTIONS)
+    violations = collect_layer_violations(ROOT)
     strict = os.environ.get("EURIKA_STRICT_LAYER_FIREWALL", "").strip() in {"1", "true", "yes", "on"}
     if not strict and violations:
         pytest.skip(

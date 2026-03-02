@@ -8,6 +8,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from report.architect_format import format_architect_template
+
 from eurika.reasoning.architect import (
     _build_recommendation_how_block,
     _call_ollama_cli,
@@ -57,7 +59,7 @@ def test_template_interpret_minimal():
         "trends": {"complexity": "stable", "smells": "increasing"},
         "regressions": ["Total smells increased: 1 → 2"],
     }
-    text = _template_interpret(summary, history)
+    text = _template_interpret(summary, history, formatter=format_architect_template)
     assert "10 modules" in text
     assert "12 dependencies" in text
     assert "no cycles" in text
@@ -88,7 +90,7 @@ def test_template_interpret_with_patch_plan():
             {"target_file": "b.py", "kind": "extract_class", "description": "Extract b"},
         ],
     }
-    text = _template_interpret(summary, history, patch_plan=patch_plan)
+    text = _template_interpret(summary, history, patch_plan=patch_plan, formatter=format_architect_template)
     assert "Planned refactorings" in text
     assert "2 ops" in text
     assert "a.py" in text or "b.py" in text
@@ -113,6 +115,7 @@ def test_interpret_architecture_with_knowledge(tmp_path):
     text = interpret_architecture(
         summary, history, use_llm=False,
         knowledge_provider=provider, knowledge_topic="python",
+        template_formatter=format_architect_template,
     )
     assert "Reference" in text
     assert "PEP 701" in text or "f-strings" in text
@@ -126,7 +129,10 @@ def test_architect_includes_recent_events():
         Event(type="patch", input={}, output={"modified": ["foo.py"]}, result=True, timestamp=1.0),
         Event(type="learn", input={"modules": ["foo.py"]}, output={}, result=True, timestamp=2.0),
     ]
-    text = interpret_architecture(summary, history, use_llm=False, recent_events=recent)
+    text = interpret_architecture(
+        summary, history, use_llm=False, recent_events=recent,
+        template_formatter=format_architect_template,
+    )
     assert "Recent actions" in text
     assert "patch" in text and "modified" in text
     assert "learn" in text

@@ -65,9 +65,11 @@ def handle_architect(args: Any) -> int:
         ReleaseNotesProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=online, rate_limit_seconds=rate_limit),
     ])
     knowledge_topic = _knowledge_topics_from_env_or_summary(summary)
+    from report.architect_format import format_architect_template
     text = interpret_architecture(
         summary, history, use_llm=use_llm, patch_plan=patch_plan,
-        knowledge_provider=knowledge_provider, knowledge_topic=knowledge_topic, recent_events=recent_events
+        knowledge_provider=knowledge_provider, knowledge_topic=knowledge_topic, recent_events=recent_events,
+        template_formatter=format_architect_template,
     )
     print(text)
     return 0
