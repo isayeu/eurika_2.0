@@ -107,6 +107,7 @@ DEFAULT_LAYER_PATH_RULES: tuple[LayerPathRule, ...] = (
     LayerPathRule(path_pattern="action_plan_", layer=3),
     LayerPathRule(path_pattern="patch_plan.py", layer=3),
     LayerPathRule(path_pattern="eurika/reasoning/planner", layer=3),
+    LayerPathRule(path_pattern="eurika/reasoning/planner/", layer=3),
     LayerPathRule(path_pattern="eurika/analysis/", layer=2),
     LayerPathRule(path_pattern="eurika/smells/", layer=2),
     LayerPathRule(path_pattern="code_awareness", layer=2),

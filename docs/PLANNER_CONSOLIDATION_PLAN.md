@@ -1,6 +1,6 @@
-# Planner consolidation plan (ROADMAP v3.0 Stage 1, §5.6)
+# Planner consolidation (ROADMAP v3.0 Stage 1, §5.6) — ✅ DONE
 
-**Цель:** сократить количество ролей (planner_rules, planner_actions, planner_analysis, planner_patch_ops, planner_llm) до структуры `eurika/reasoning/planner/`.
+**Цель:** сократить количество ролей до структуры `eurika/reasoning/planner/`.
 
 ## Текущие модули (размеры)
 

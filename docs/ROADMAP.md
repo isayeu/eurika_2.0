@@ -157,7 +157,7 @@ UI.md ✓; README ✓; критерии B.7–B.10 выполнены:
 
 ### Этап 1 — Чистка
 - [x] Убрать/изолировать `*_extracted.py` в `eurika/extraction_sandbox/` (action_plan_extracted, agent_core_extracted, code_awareness_extracted, code_awareness_codeawarenessextracted)
-- [ ] Упростить planner до одного ядра (см. §5.6, docs/PLANNER_CONSOLIDATION_PLAN.md)
+- [x] Упростить planner до одного ядра (eurika/reasoning/planner/: types, heuristics, analysis, actions, llm_adapter; shims для совместимости)
 - [x] Исключить runtime-мусор из релиза (MANIFEST.in + .gitignore: `.eurika_backups`, `.coverage`, `.pytest_cache`, `*_report.json`)
 
 ### Этап 2 — Модель

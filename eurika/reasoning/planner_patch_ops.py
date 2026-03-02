@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
-from eurika.reasoning.planner_rules import EXTRACT_CLASS_SKIP_PATTERNS, FACADE_MODULES, SMELL_ACTION_SEP, STEP_KIND_TO_ACTION, diff_hints_for, disabled_smell_actions_from_env, fallback_kind_for_low_success
+from eurika.reasoning.planner.heuristics import EXTRACT_CLASS_SKIP_PATTERNS, FACADE_MODULES, SMELL_ACTION_SEP, STEP_KIND_TO_ACTION, diff_hints_for, disabled_smell_actions_from_env, fallback_kind_for_low_success
 from eurika.smells.detector import ArchSmell
 from patch_plan import PatchOperation
 if TYPE_CHECKING:
@@ -338,7 +338,7 @@ def _build_hints_and_params(project_root: str, smell_type: str, action_kind: str
 def _llm_split_hints(project_root: str, smell_type: str, name: str, graph_context: Dict[str, Any]) -> List[str]:
     """Call Ollama for split hints when smell is god_module/hub/bottleneck (ROADMAP 2.9.2, 3.6.6). Returns [] on failure."""
     try:
-        from eurika.reasoning.planner_llm import ask_ollama_split_hints
+        from eurika.reasoning.planner.llm_adapter import ask_ollama_split_hints
         return ask_ollama_split_hints(smell_type, name, graph_context, project_root=project_root)
     except Exception:
         return []

@@ -1,115 +1,22 @@
-"""Rule constants and helpers for architecture planner."""
+"""Shim: re-export from planner.heuristics (ROADMAP v3.0 Stage 1)."""
+from eurika.reasoning.planner.heuristics import (  # noqa: F401
+    DIFF_HINTS,
+    EXTRACT_CLASS_SKIP_PATTERNS,
+    FACADE_MODULES,
+    SMELL_ACTION_SEP,
+    STEP_KIND_TO_ACTION,
+    diff_hints_for,
+    disabled_smell_actions_from_env,
+    fallback_kind_for_low_success,
+)
 
-from __future__ import annotations
-
-import os
-from typing import Dict, List, Optional
-
-SMELL_ACTION_SEP = "|"
-
-STEP_KIND_TO_ACTION: Dict[str, str] = {
-    "split_module": "split_module",
-    "introduce_facade": "introduce_facade",
-    "split_responsibility": "refactor_module",
-    "break_cycle": "refactor_dependencies",
-    "refactor_module": "refactor_module",
-}
-
-FACADE_MODULES = {"patch_engine.py", "patch_apply.py"}
-
-# Files that break with extract_class (CYCLE_REPORT #34: static methods lose kwargs, _ok/_err)
-EXTRACT_CLASS_SKIP_PATTERNS: tuple[str, ...] = ("*tool_contract*.py",)
-
-DIFF_HINTS: Dict[tuple[str, str], List[str]] = {
-    ("god_module", "split_module"): [
-        "Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).",
-        "Identify distinct concerns and split this module into focused units.",
-        "Reduce total degree (fan-in + fan-out) via extraction.",
-    ],
-    ("god_module", "refactor_module"): [
-        "Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).",
-        "Identify distinct concerns and split this module into focused units.",
-        "Reduce total degree (fan-in + fan-out) via extraction.",
-    ],
-    ("bottleneck", "introduce_facade"): [
-        "Introduce a facade or boundary to reduce direct fan-in.",
-        "Create a stable public API for this module; let internal structure evolve independently.",
-        "Limit the number of modules that import this file directly.",
-    ],
-    ("hub", "refactor_module"): [
-        "Split outgoing dependencies across clearer layers or services.",
-        "Introduce intermediate abstractions to decouple from concrete implementations.",
-        "Align with semantic roles and system topology.",
-    ],
-    ("hub", "split_module"): [
-        "Split outgoing dependencies across clearer layers or services.",
-        "Extract coherent sub-graphs by domain or layer.",
-        "Reduce fan-out via extraction into focused modules.",
-    ],
-    ("cyclic_dependency", "refactor_dependencies"): [
-        "Break import cycles via inversion of dependencies or adapters.",
-        "Extract shared interfaces; depend on abstractions, not implementations.",
-        "Consider introducing a shared-core module used by both sides.",
-    ],
-    ("long_function", "extract_nested_function"): [
-        "Extract nested function to module level; pass parent scope vars as parameters (max 3).",
-        "Prefer largest self-contained nested def; avoid nonlocal/global.",
-    ],
-    ("long_function", "extract_block_to_helper"): [
-        "Extract if/for/while body (5+ lines) to helper; pass used outer vars as parameters (max 3).",
-        "Choose block with fewest external refs; helper name from block purpose (e.g. _format_item).",
-    ],
-    ("long_function", "refactor_code_smell"): [
-        "Extract coherent block (if/for/while body) to helper; or extract nested def to module level.",
-        "Reduce cyclomatic complexity; aim for single responsibility per function.",
-    ],
-    ("deep_nesting", "extract_block_to_helper"): [
-        "Extract innermost if/for/while body to helper; pass closure vars as args.",
-        "Flatten step-by-step; start with smallest extractable block.",
-    ],
-    ("deep_nesting", "refactor_code_smell"): [
-        "Extract nested block (if/for/while body) into helper; pass used outer vars as args.",
-        "Flatten nesting; avoid break/continue/return inside extractable block.",
-    ],
-}
-
-
-def diff_hints_for(smell_type: str, action_kind: str) -> List[str]:
-    """Return tailored diff hints for (smell_type, action_kind)."""
-    key = (smell_type, action_kind)
-    if key in DIFF_HINTS:
-        return DIFF_HINTS[key]
-    if smell_type != "unknown":
-        for (s, _), hints in DIFF_HINTS.items():
-            if s == smell_type:
-                return hints
-    return [
-        "Split responsibilities or introduce a facade where appropriate.",
-        "Reduce excessive fan-in/fan-out.",
-        "Align with semantic roles and system topology.",
-    ]
-
-
-def disabled_smell_actions_from_env() -> set[str]:
-    """
-    Parse disabled smell-action pairs from env.
-
-    Format:
-      EURIKA_DISABLE_SMELL_ACTIONS="hub|split_module,long_function|extract_nested_function"
-    """
-    raw = os.environ.get("EURIKA_DISABLE_SMELL_ACTIONS", "").strip()
-    if not raw:
-        return set()
-    return {
-        item.strip()
-        for item in raw.split(",")
-        if item.strip() and SMELL_ACTION_SEP in item
-    }
-
-
-def fallback_kind_for_low_success(smell_type: str, action_kind: str) -> Optional[str]:
-    """Return safer fallback action for low-success smell/action pairs."""
-    fallbacks = {
-        ("hub", "split_module"): "refactor_module",
-    }
-    return fallbacks.get((smell_type, action_kind))
+__all__ = [
+    "DIFF_HINTS",
+    "EXTRACT_CLASS_SKIP_PATTERNS",
+    "FACADE_MODULES",
+    "SMELL_ACTION_SEP",
+    "STEP_KIND_TO_ACTION",
+    "diff_hints_for",
+    "disabled_smell_actions_from_env",
+    "fallback_kind_for_low_success",
+]
