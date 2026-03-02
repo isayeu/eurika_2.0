@@ -155,7 +155,7 @@ def run_direct_handlers(
             text = f"{summary}\n\n```\n{excerpt}\n```"
         append_safe(root, "user", msg, None)
         append_safe(root, "assistant", text, None)
-        result = {"text": text, "error": None}
+        result: Dict[str, Any] = {"text": text, "error": None}
         if terminal_cmd is not None:
             result["terminal_cmd"] = terminal_cmd
             result["terminal_output"] = output

@@ -36,9 +36,9 @@ def _find_phase_section(content: str, phase: str) -> str | None:
     lines = content.split("\n")
     start = None
     if phase.startswith("CR-"):
-        search_phase = re.match(r"^(CR-[A-Z])\d*$", phase, re.I)
-        search_phase = search_phase.group(1) if search_phase else phase
-        phase_escaped = re.escape(search_phase)
+        m = re.match(r"^(CR-[A-Z])\d*$", phase, re.I)
+        search_key = m.group(1) if m else phase
+        phase_escaped = re.escape(search_key)
         pattern = rf"^####\s+{phase_escaped}\b"
         for i, line in enumerate(lines):
             if re.search(pattern, line, re.I):

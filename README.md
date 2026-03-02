@@ -8,6 +8,8 @@
 
 ## Быстрый старт
 
+**Onboarding ≤ 10 мин:** clone → scan → doctor → fix. См. [docs/ONBOARDING.md](docs/ONBOARDING.md) (B.9).
+
 ### Установка (venv-нейтрально)
 
 ```bash

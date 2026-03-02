@@ -14,6 +14,7 @@ alwaysApply: true
 | **@docs/CLI.md** | CLI команды, рекомендуемый цикл |
 | **@docs/API_BOUNDARIES.md** | Публичные фасады: `from eurika.X import …` |
 | **@docs/ROADMAP.md** | План задач, фазы, критерии готовности |
+| **@docs/ONBOARDING.md** | Onboarding ≤ 10 мин — clone → scan/doctor/fix (B.9) |
 
 Импорты — только через публичный API из API_BOUNDARIES. Нарушения слоёв проверяет dependency firewall.
 

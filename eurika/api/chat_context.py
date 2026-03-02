@@ -71,7 +71,6 @@ def build_chat_context(root: Path, scope: Optional[Dict[str, Any]] = None) -> st
     ROADMAP 3.6.5, R5 2.3: when scope has modules/smells from @-mentions, enrich context
     with scoped module details and filtered risks.
     """
-    import sys
 
     from eurika.api import get_graph, get_recent_events, get_summary
 

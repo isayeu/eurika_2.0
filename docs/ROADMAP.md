@@ -82,16 +82,16 @@ README, UI.md, CLI.md, 5-minute onboarding, тесты зелёные — ✅
 
 Curated repos (Django, FastAPI) → pattern library → повышение verify_success_rate. **Статус:** частично (3.0.5.1–3.0.5.4); долго.
 
-### 4.2 Направление B — Продуктовая готовность 6→7/10
+### 4.2 Направление B — Продуктовая готовность 6→7/10 ✅
 
-UI.md ✓; README ✓; критерии для 7/10:
+UI.md ✓; README ✓; критерии B.7–B.10 выполнены:
 
 | #   | Критерий                         | Описание                                      |
 | --- | -------------------------------- | --------------------------------------------- |
-| B.7 | `release_check.sh` проходит      | ruff, mypy, pytest — без ошибок               |
-| B.8 | Notes tab в GUI                  | Заметки сохраняются в `.eurika/notes.txt`     |
-| B.9 | Onboarding ≤ 10 мин              | Новичок: clone → scan/doctor/fix за 10 мин    |
-| B.10| `.eurika/rules/*` в проекте      | docs.mdc, pre-commit.mdc, test-api.mdc        |
+| B.7 | `release_check.sh` проходит      | ruff, mypy, pytest — без ошибок               | ✅ |
+| B.8 | Notes tab в GUI                  | Заметки сохраняются в `.eurika/notes.txt`     | ✅ |
+| B.9 | Onboarding ≤ 10 мин              | Новичок: clone → scan/doctor/fix за 10 мин     | ✅ docs/ONBOARDING.md |
+| B.10| `.eurika/rules/*` в проекте      | docs.mdc, pre-commit.mdc, test-api.mdc        | ✅ |
 
 **Быстро.**
 
@@ -137,7 +137,7 @@ UI.md ✓; README ✓; критерии для 7/10:
 | CR-E1 | Сценарии для Composer        | split модуля, вынос domain vs presentation      | —      |
 | CR-E2 | Шаблон промпта Composer      | контекст + план 3–7 шагов + критерии            | —      |
 | CR-E3 | Практика: крупный рефакторинг в Composer | один пример в CYCLE_REPORT                | —      |
-| CR-F1 | Команды для агента           | eurika serve, pytest, release_check.sh           | —      |
+| CR-F1 | Команды для агента           | eurika serve, pytest, release_check.sh           | ✅ release_check в GUI (Quality) |
 | CR-F2 | Паттерн «изменение → проверка» | pytest по модулю после правок                 | —      |
 | CR-F3 | Интерпретация ошибок         | Ruff → __all__/импорт; mypy → type hint         | —      |
 
@@ -167,6 +167,7 @@ UI.md ✓; README ✓; критерии для 7/10:
 - Live output + Stop/Cancel ✅
 - Hybrid approvals: Load plan, approve/reject per row, Save, apply-approved ✅ (Save feedback: "X approved, Y rejected")
 - Dashboard: Summary, risks, SELF-GUARD, Ops, History sub-tab, Run scan button ✅
+- Quality: Ruff, Mypy, Release check (CR-F1) ✅
 
 ### 6.3 Операционность
 

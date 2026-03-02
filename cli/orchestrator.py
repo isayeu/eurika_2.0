@@ -23,15 +23,9 @@ __all__ = [
 # Backward-compatible aliases for tests/monkeypatch (import paths).
 from eurika.orchestration.prepare import prepare_fix_cycle_operations as _prepare_prepare_fix_cycle_operations
 from eurika.orchestration.doctor import (
-    knowledge_topics_from_env_or_summary as _knowledge_topics_from_env_or_summary,
-    load_suggested_policy_for_apply,
-)
+    knowledge_topics_from_env_or_summary as _knowledge_topics_from_env_or_summary)
 from eurika.orchestration.apply_stage import (
-    build_fix_dry_run_result as _build_fix_dry_run_result,
-    attach_fix_telemetry as _apply_attach_fix_telemetry,
-    build_fix_cycle_result as _apply_build_fix_cycle_result,
-    append_fix_cycle_memory,
-)
+    build_fix_dry_run_result as _build_fix_dry_run_result)
 from eurika.orchestration.hybrid_approval import select_hybrid_operations as _select_hybrid_operations
 
 _prepare_prepare_fix_cycle_operations = _prepare_prepare_fix_cycle_operations

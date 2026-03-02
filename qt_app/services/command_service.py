@@ -106,6 +106,56 @@ class CommandService(QObject):
         self._process.setWorkingDirectory(root)
         self._process.start(sys.executable, args)
 
+    def run_ruff(self, *, project_root: str) -> None:
+        """Run ruff check eurika cli from project root. Uses .venv if present."""
+        if self._process.state() != QProcess.NotRunning:
+            self.error_line.emit("A command is already running.")
+            return
+        root = Path(project_root or ".").resolve()
+        ruff_exe = root / ".venv" / "bin" / "ruff"
+        cmd = str(ruff_exe) if ruff_exe.is_file() else "ruff"
+        args = ["check", "eurika", "cli"]
+        self._active_command = f"{cmd} {' '.join(args)}"
+        self.command_started.emit(self._active_command)
+        self._set_state(CycleState.THINKING.value)
+        self._process.setWorkingDirectory(str(root))
+        self._process.start(cmd, args)
+
+    def run_mypy(self, *, project_root: str) -> None:
+        """Run mypy eurika cli from project root. Uses .venv if present."""
+        if self._process.state() != QProcess.NotRunning:
+            self.error_line.emit("A command is already running.")
+            return
+        root = Path(project_root or ".").resolve()
+        py_exe = root / ".venv" / "bin" / "python"
+        if py_exe.is_file():
+            exe = str(py_exe)
+            args = ["-m", "mypy", "eurika", "cli"]
+        else:
+            exe = sys.executable
+            args = ["-m", "mypy", "eurika", "cli"]
+        self._active_command = f"{exe} -m mypy eurika cli"
+        self.command_started.emit(self._active_command)
+        self._set_state(CycleState.THINKING.value)
+        self._process.setWorkingDirectory(str(root))
+        self._process.start(exe, args)
+
+    def run_release_check(self, *, project_root: str) -> None:
+        """Run scripts/release_check.sh from project root (CR-F1, CR-B2)."""
+        if self._process.state() != QProcess.NotRunning:
+            self.error_line.emit("A command is already running.")
+            return
+        root = Path(project_root or ".").resolve()
+        script = root / "scripts" / "release_check.sh"
+        if not script.is_file():
+            self.error_line.emit(f"scripts/release_check.sh not found in {root}")
+            return
+        self._active_command = "./scripts/release_check.sh"
+        self.command_started.emit(self._active_command)
+        self._set_state(CycleState.THINKING.value)
+        self._process.setWorkingDirectory(str(root))
+        self._process.start("bash", [str(script)])
+
     def stop(self) -> None:
         if self._process.state() == QProcess.NotRunning:
             return
@@ -132,13 +182,13 @@ class CommandService(QObject):
 
     def _on_stdout(self) -> None:
         data = bytes(self._process.readAllStandardOutput()).decode("utf-8", errors="replace")
-        for line in data.splitlines():
-            self.output_line.emit(line)
+        if data:
+            self.output_line.emit(data)
 
     def _on_stderr(self) -> None:
         data = bytes(self._process.readAllStandardError()).decode("utf-8", errors="replace")
-        for line in data.splitlines():
-            self.error_line.emit(line)
+        if data:
+            self.error_line.emit(data)
 
     def _on_finished(self, exit_code: int, _exit_status: QProcess.ExitStatus) -> None:
         self.command_finished.emit(exit_code)

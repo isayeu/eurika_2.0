@@ -75,6 +75,40 @@ def run_fix_team_mode(main: MainWindow) -> None:
     )
 
 
+def run_ruff(main: MainWindow) -> None:
+    root = main.root_edit.text().strip() or "."
+    ok, msg = validate_project_root(root)
+    if not ok:
+        QMessageBox.warning(main, "Invalid project root", msg)
+        return
+    main._command_service.run_ruff(project_root=root)
+
+
+def run_mypy(main: MainWindow) -> None:
+    root = main.root_edit.text().strip() or "."
+    ok, msg = validate_project_root(root)
+    if not ok:
+        QMessageBox.warning(main, "Invalid project root", msg)
+        return
+    main._command_service.run_mypy(project_root=root)
+
+
+def run_release_check(main: MainWindow) -> None:
+    root = main.root_edit.text().strip() or "."
+    ok, msg = validate_project_root(root)
+    if not ok:
+        QMessageBox.warning(main, "Invalid project root", msg)
+        return
+    script = Path(root).resolve() / "scripts" / "release_check.sh"
+    if not script.is_file():
+        QMessageBox.warning(
+            main, "Release check",
+            f"scripts/release_check.sh not found in {Path(root).resolve()}",
+        )
+        return
+    main._command_service.run_release_check(project_root=root)
+
+
 def run_apply_approved(main: MainWindow) -> None:
     root = main.root_edit.text().strip() or "."
     ok, msg = validate_project_root(root)
@@ -86,16 +120,23 @@ def run_apply_approved(main: MainWindow) -> None:
 
 
 def on_command_started(main: MainWindow, command_line: str) -> None:
-    main.terminal_emulator_output.append(f"$ {command_line}")
+    from ..tabs import terminal_tab
+    terminal_tab._append_stream(main, f"$ {command_line}\n")
     main.tabs.setCurrentWidget(main.terminal_tab)
 
 
-def append_stdout(main: MainWindow, line: str) -> None:
-    main.terminal_emulator_output.append(line)
+def append_stdout(main: MainWindow, chunk: str) -> None:
+    """Append stdout chunk; use stream append to preserve progress dots on one line."""
+    from ..main_window_helpers import strip_ansi
+    from ..tabs import terminal_tab
+    terminal_tab._append_stream(main, strip_ansi(chunk))
 
 
-def append_stderr(main: MainWindow, line: str) -> None:
-    main.terminal_emulator_output.append(f"[stderr] {line}")
+def append_stderr(main: MainWindow, chunk: str) -> None:
+    """Append stderr chunk; use stream append to preserve progress dots on one line."""
+    from ..main_window_helpers import strip_ansi
+    from ..tabs import terminal_tab
+    terminal_tab._append_stream(main, f"[stderr] {strip_ansi(chunk)}")
 
 
 def on_command_finished(main: MainWindow, exit_code: int) -> None:
@@ -156,6 +197,9 @@ def on_state_changed(main: MainWindow, state: str) -> None:
     running = state in {"thinking", "stopping"}
     main.stop_btn.setEnabled(running)
     main.run_btn.setEnabled(not running)
+    main.ruff_btn.setEnabled(not running)
+    main.mypy_btn.setEnabled(not running)
+    main.release_check_btn.setEnabled(not running)
     # Stop on Terminal tab: active when CommandService running, or terminal emulator running
     term_running = (
         getattr(main, "_terminal_process", None) is not None

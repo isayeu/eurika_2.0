@@ -252,7 +252,7 @@ def run_fix_cycle_impl(
         all_skipped = rejected_files + gate_skipped_files
         skipped_reasons = dict(gate_skipped_reasons)
         skipped_reasons.update(rejected_reasons)
-        report = {
+        reject_report: FixReport = {
             "message": "All operations rejected by user/policy. Cycle complete.",
             "policy_decisions": result.output.get("policy_decisions", []),
             "critic_decisions": result.output.get("critic_decisions", []),
@@ -263,17 +263,17 @@ def run_fix_cycle_impl(
             "skipped": all_skipped,
             "skipped_reasons": skipped_reasons,
         }
-        attach_decision_summary(report)
-        attach_fix_telemetry(report, planned_ops)
+        attach_decision_summary(reject_report)
+        attach_fix_telemetry(reject_report, planned_ops)
         attach_pipeline_trace(
-            report,
+            reject_report,
             [PipelineStage.INPUT.value, PipelineStage.PLAN.value, PipelineStage.VALIDATE.value],
         )
-        write_fix_report(path, report, quiet)
+        write_fix_report(path, reject_report, quiet)
         return with_cycle_state(
             {
                 "return_code": 0,
-                "report": report,
+                "report": reject_report,
                 "operations": [],
                 "modified": [],
                 "verify_success": True,
@@ -324,13 +324,13 @@ def run_fix_cycle_impl(
         result=result,
     )
     if gate_skipped:
-        report["operation_results"] = list(report.get("operation_results", [])) + list(gate_skipped)
-        report["skipped"] = list(report.get("skipped", [])) + list(gate_skipped_files)
-        report["skipped_reasons"] = {**(report.get("skipped_reasons") or {}), **gate_skipped_reasons}  # type: ignore[dict-item]
+        report["operation_results"] = list(report.get("operation_results", [])) + list(gate_skipped)  # type: ignore[assignment]
+        report["skipped"] = list(report.get("skipped", [])) + list(gate_skipped_files)  # type: ignore[assignment]
+        report["skipped_reasons"] = {**(report.get("skipped_reasons") or {}), **gate_skipped_reasons}  # type: ignore[assignment,dict-item]
     if rejected_meta:
-        report["operation_results"] = list(report.get("operation_results", [])) + list(rejected_meta)
-        report["skipped"] = list(report.get("skipped", [])) + list(rejected_files)
-        report["skipped_reasons"] = {**(report.get("skipped_reasons") or {}), **rejected_reasons}  # type: ignore[dict-item]
+        report["operation_results"] = list(report.get("operation_results", [])) + list(rejected_meta)  # type: ignore[assignment]
+        report["skipped"] = list(report.get("skipped", [])) + list(rejected_files)  # type: ignore[assignment]
+        report["skipped_reasons"] = {**(report.get("skipped_reasons") or {}), **rejected_reasons}  # type: ignore[assignment,dict-item]
     attach_decision_summary(report)
     attach_pipeline_trace(
         report,

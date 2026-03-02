@@ -23,7 +23,7 @@ def _load_config(root: Path) -> dict[str, Any]:
         return _CACHE
     try:
         try:
-            import yaml
+            import yaml  # type: ignore[import-untyped]
         except ImportError:
             yaml = None
         if yaml:
