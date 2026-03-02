@@ -16,7 +16,7 @@ _EXTRACT_NESTED_INTERNAL_SKIP: dict[str, set[str]] = {
 
 _EXTRACT_BLOCK_SKIP_PATTERNS: frozenset[str] = frozenset({
     "eurika/refactor/", "eurika/reasoning/planner_patch_ops.py",
-    "eurika/reasoning/planner_llm.py", "report/", "cli/orchestration/",
+    "eurika/reasoning/planner/llm_adapter.py", "report/", "cli/orchestration/",
 })
 
 
@@ -182,7 +182,7 @@ def _build_refactor_smell_op(
     diff_lines: List[str] = [f"\n# TODO (eurika): refactor {smell.kind} '{smell.location}' — {hint}\n"]
     if smell.kind == "long_function":
         try:
-            from eurika.reasoning.planner_llm import ask_llm_extract_method_hints
+            from eurika.reasoning.planner.llm_adapter import ask_llm_extract_method_hints
 
             file_path = root / rel_path.replace("\\", "/")
             llm_hints = ask_llm_extract_method_hints(file_path, smell.location, project_root=root)
@@ -337,7 +337,7 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
                 if suggest_extract_block(drill_path, smell.location, min_lines=3):
                     continue
                 try:
-                    from eurika.reasoning.planner_llm import ask_llm_extract_patch
+                    from eurika.reasoning.planner.llm_adapter import ask_llm_extract_patch
                     new_content = ask_llm_extract_patch(drill_path, smell.location, project_root=root)
                     if new_content:
                         ops.append({
@@ -415,7 +415,7 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
                 and _use_llm_extract()
             ):
                 try:
-                    from eurika.reasoning.planner_llm import ask_llm_extract_patch
+                    from eurika.reasoning.planner.llm_adapter import ask_llm_extract_patch
 
                     fp = root / rel
                     new_content = ask_llm_extract_patch(fp, smell.location, project_root=root)

@@ -7,6 +7,55 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 
+def get_pattern_library(
+    project_root: Path,
+    *,
+    with_samples: bool = True,
+    max_samples_per_kind: int = 3,
+) -> Dict[str, Any]:
+    """
+    Load pattern library summary (ROADMAP 3.0.5, 6.5).
+
+    Returns counts per smell type, projects, optional sample entries for OSS examples.
+    Use eurika learn-github --build-patterns to populate .eurika/pattern_library.json.
+    """
+    root = Path(project_root).resolve()
+    lib_path = root / ".eurika" / "pattern_library.json"
+    if not lib_path.exists():
+        return {"exists": False, "hint": "run eurika learn-github . --build-patterns"}
+    try:
+        from eurika.learning.pattern_library import load_pattern_library
+
+        lib = load_pattern_library(lib_path)
+    except Exception:
+        return {"exists": True, "error": "failed to load"}
+    counts: Dict[str, int] = {}
+    projects: List[str] = []
+    samples: Dict[str, List[Dict[str, Any]]] = {}
+    for kind, entries in (lib or {}).items():
+        if not isinstance(entries, list):
+            continue
+        counts[kind] = len(entries)
+        for e in entries[: max_samples_per_kind if with_samples else 0]:
+            if isinstance(e, dict):
+                proj = e.get("project") or ""
+                if proj and proj not in projects:
+                    projects.append(proj)
+                if with_samples:
+                    samples.setdefault(kind, []).append({
+                        "project": proj,
+                        "module": e.get("module"),
+                        "location": e.get("location"),
+                        "hint": (e.get("hint") or "")[:120],
+                    })
+    return {
+        "exists": True,
+        "counts": counts,
+        "projects": sorted(projects)[:10],
+        "samples": samples if with_samples else {},
+    }
+
+
 def get_operational_metrics(project_root: Path, window: int = 10) -> Dict[str, Any]:
     """Aggregate apply-rate, rollback-rate, median verify time from patch events (ROADMAP 2.7.8)."""
     from eurika.storage import aggregate_operational_metrics
@@ -230,6 +279,28 @@ def get_learning_insights(
         key=lambda x: (float(x.get("verify_success_rate", 0)), int(x.get("total", 0))),
         reverse=True,
     )
+
+    # REFACTOR_CODE_SMELL_PLAN Phase 4: hint when WEAK pair reaches rate≥25%, total≥5
+    from eurika.agent.policy import WEAK_SMELL_ACTION_PAIRS
+
+    policy_adjustment_hints: list[Dict[str, Any]] = []
+    for k, v in (by_smell_action or {}).items():
+        parts = k.split("|", 2)
+        smell, action = (parts[0] if len(parts) > 0 else "", parts[1] if len(parts) > 1 else "")
+        if (smell, action) not in WEAK_SMELL_ACTION_PAIRS:
+            continue
+        total = int(v.get("total") or 0)
+        if total < 5:
+            continue
+        rate = float(v.get("verify_success", 0) or 0) / max(total, 1)
+        if rate >= 0.25:
+            policy_adjustment_hints.append({
+                "pair": k,
+                "verify_success_rate": round(rate, 4),
+                "total": total,
+                "hint": "Consider moving deny→review in auto mode (REFACTOR_CODE_SMELL_PLAN Phase 4)",
+            })
+
     return {
         "by_action_kind": by_action_kind,
         "by_smell_action": by_smell_action,
@@ -239,6 +310,7 @@ def get_learning_insights(
         "recommendations": {
             "whitelist_candidates": whitelist_candidates,
             "policy_deny_candidates": deny_candidates,
+            "policy_adjustment_hints": policy_adjustment_hints,
             "chat_whitelist_hints": chat_recs.get("chat_whitelist_hints", []),
             "chat_policy_review_hints": chat_recs.get("chat_policy_review_hints", []),
         },

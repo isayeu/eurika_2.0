@@ -62,7 +62,7 @@ def _extract_code_smell_patterns(project_root: Path, project: str) -> dict[str, 
                     snippet = _get_function_snippet(file_path, loc)
                     if snippet:
                         entry["snippet"] = snippet
-                    if len(out[smell.kind]) < 15:
+                    if len(out[smell.kind]) < 30:
                         out[smell.kind].append(entry)
             except Exception:
                 continue
@@ -113,7 +113,7 @@ def extract_patterns_from_repos(cache_dir: Path) -> dict[str, Any]:
                             patterns[s.type].append(entry)
         code_smells = _extract_code_smell_patterns(subdir, project)
         for kind in ("long_function", "deep_nesting"):
-            for e in code_smells.get(kind, [])[:15]:
+            for e in code_smells.get(kind, [])[:30]:
                 if len(patterns[kind]) < 30:
                     patterns[kind].append(e)
     return patterns

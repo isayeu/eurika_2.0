@@ -34,6 +34,49 @@ def test_dispatch_api_get_summary_returns_dict(tmp_path: Path, monkeypatch) -> N
     assert "path" in data or "system" in data or "error" in data
 
 
+def test_dispatch_api_get_pattern_library_missing(tmp_path: Path, monkeypatch) -> None:
+    """GET /api/pattern_library returns exists=False when no pattern library."""
+    captured: dict[str, object] = {}
+
+    def _fake_json_response(_handler, data: dict, status: int = 200) -> None:
+        captured["status"] = status
+        captured["data"] = data
+
+    monkeypatch.setattr(api_serve, "_json_response", _fake_json_response)
+    handled = api_serve._dispatch_api_get(_DummyHandler(), tmp_path, "/api/pattern_library", {})
+    assert handled is True
+    assert captured.get("status") == 200
+    data = captured.get("data") or {}
+    assert data.get("exists") is False
+    assert "hint" in data
+
+
+def test_dispatch_api_get_pattern_library_with_data(tmp_path: Path, monkeypatch) -> None:
+    """GET /api/pattern_library returns counts when .eurika/pattern_library.json exists."""
+    (tmp_path / ".eurika").mkdir(parents=True, exist_ok=True)
+    lib = {
+        "long_function": [{"project": "starlette", "module": "a.py", "location": "foo", "hint": "Extract"}],
+        "deep_nesting": [],
+    }
+    (tmp_path / ".eurika" / "pattern_library.json").write_text(
+        __import__("json").dumps(lib, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    captured: dict[str, object] = {}
+
+    def _fake_json_response(_handler, data: dict, status: int = 200) -> None:
+        captured["status"] = status
+        captured["data"] = data
+
+    monkeypatch.setattr(api_serve, "_json_response", _fake_json_response)
+    handled = api_serve._dispatch_api_get(_DummyHandler(), tmp_path, "/api/pattern_library", {})
+    assert handled is True
+    data = captured.get("data") or {}
+    assert data.get("exists") is True
+    assert data.get("counts", {}).get("long_function") == 1
+    assert "starlette" in (data.get("projects") or [])
+
+
 def test_dispatch_api_get_self_guard_returns_dict(tmp_path: Path, monkeypatch) -> None:
     """GET /api/self_guard should return dict with forbidden_count, layer_viol_count, pass (CR-B1)."""
     captured: dict[str, object] = {}

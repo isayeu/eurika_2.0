@@ -101,6 +101,16 @@ def handle_learning_kpi(args: Any) -> int:
             rate = float(r.get("verify_success_rate", 0) or 0) * 100
             lines.append(f"- {pair} @ {tf} (rate={rate:.1f}%)")
         lines.append("")
+    adj_hints = recs.get("policy_adjustment_hints") or []
+    if adj_hints:
+        lines.append("### Policy adjustment hints (Phase 4)")
+        lines.append("")
+        for h in adj_hints:
+            pair = h.get("pair", "?")
+            rate = float(h.get("verify_success_rate", 0) or 0) * 100
+            total = int(h.get("total", 0) or 0)
+            lines.append(f"- {pair}: rate={rate:.1f}%, total={total} — {h.get('hint', '')}")
+        lines.append("")
     lines.append("### Next steps (D)")
     lines.append("")
     rui = next((s for k, s in by_smell_action.items() if "remove_unused_import" in k), None)

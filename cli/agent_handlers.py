@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from action_plan import ActionPlan
+from eurika.reasoning.action_plan import ActionPlan
 from agent_core import InputEvent
 from agent_core_arch_review import ArchReviewAgentCore
 from eurika.orchestration.logging import get_logger

@@ -12,6 +12,7 @@ from eurika.api import (
     get_history,
     get_operational_metrics,
     get_patch_plan,
+    get_pattern_library,
     get_pending_plan,
     get_risk_prediction,
     get_self_guard,
@@ -63,6 +64,7 @@ def dispatch_api_get(
                 "GET /api/explain?module=...&window=5 — module role and risks",
                 "GET /api/graph — dependency graph (nodes=modules, edges=imports)",
                 "GET /api/operational_metrics?window=10 — apply-rate, rollback-rate, median verify time",
+                "GET /api/pattern_library?with_samples=1 — OSS pattern library (Learning from GitHub 3.0.5)",
                 "GET /api/pending_plan — team-mode plan for approve UI (ROADMAP 3.5.6)",
                 "GET /api/file?path=... — read file content (for diff preview)",
                 "POST /api/operation_preview — preview single-file op diff (ROADMAP 3.6.7)",
@@ -99,6 +101,10 @@ def dispatch_api_get(
     if path == "/api/operational_metrics":
         window = int(query.get("window", [10])[0])
         _serve._json_response(handler, get_operational_metrics(project_root, window=window))
+        return True
+    if path == "/api/pattern_library":
+        samples = query.get("with_samples", ["1"])[0].lower() not in ("0", "false", "no")
+        _serve._json_response(handler, get_pattern_library(project_root, with_samples=samples))
         return True
     if path == "/api/pending_plan":
         _serve._json_response(handler, get_pending_plan(project_root))

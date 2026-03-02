@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from action_plan import Action, ActionPlan
+from eurika.reasoning.action_plan import Action, ActionPlan
 
 from eurika.reasoning.planner.heuristics import SMELL_ACTION_SEP
 from eurika.reasoning.planner.types import ArchitecturePlan, PlanStep

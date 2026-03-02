@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional, Sequence
 from .architecture import get_firewall_violations_detail, get_graph, get_risk_prediction, get_self_guard, get_smells_with_plugins, get_summary
 from .diff_api import get_diff, preview_operation
 from .explain_api import get_explain_data
-from .learning_api import get_chat_dialog_state, get_learning_insights, get_operational_metrics
+from .learning_api import get_chat_dialog_state, get_learning_insights, get_operational_metrics, get_pattern_library
 from .ops import get_clean_imports_operations, get_code_smell_operations  # noqa: F401
 from .team_api import get_pending_plan, save_approvals
 
@@ -32,6 +32,7 @@ __all__ = [
     "get_chat_dialog_state",
     "get_learning_insights",
     "get_operational_metrics",
+    "get_pattern_library",
     "get_pending_plan",
     "save_approvals",
 ]

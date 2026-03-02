@@ -1,11 +1,11 @@
-"""Tests for planner_llm (ROADMAP 2.9.2)."""
+"""Tests for eurika.reasoning.planner.llm_adapter (ROADMAP 2.9.2)."""
 
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from eurika.reasoning.planner_llm import (
+from eurika.reasoning.planner.llm_adapter import (
     _build_planner_prompt,
     _parse_llm_hints,
     ask_llm_extract_method_hints,
@@ -18,11 +18,11 @@ from eurika.reasoning.planner_llm import (
 @pytest.fixture(autouse=True)
 def _reset_llm_hint_runtime_state() -> None:
     """Isolate module-level LLM hint state between tests."""
-    from eurika.reasoning import planner_llm
+    from eurika.reasoning.planner.llm_adapter import _reset_hint_runtime_state
 
-    planner_llm._reset_hint_runtime_state()
+    _reset_hint_runtime_state()
     yield
-    planner_llm._reset_hint_runtime_state()
+    _reset_hint_runtime_state()
 
 
 def test_parse_llm_hints_extracts_bullets() -> None:
@@ -164,7 +164,7 @@ def test_ask_ollama_timeout_triggers_circuit_breaker() -> None:
 
 def test_ask_llm_extract_method_hints_disabled_by_default() -> None:
     """When EURIKA_USE_LLM_EXTRACT_HINTS=0 (default), returns [] without calling."""
-    from eurika.reasoning.planner_llm import ask_llm_extract_method_hints
+    from eurika.reasoning.planner.llm_adapter import ask_llm_extract_method_hints
 
     result = ask_llm_extract_method_hints(__file__, "test_ask_llm_extract_method_hints_disabled")
     assert result == []

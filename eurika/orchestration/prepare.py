@@ -412,7 +412,7 @@ def _attach_llm_hint_runtime(result: Any) -> None:
     if not isinstance(out, dict):
         return
     try:
-        from eurika.reasoning.planner_llm import llm_hint_runtime_stats
+        from eurika.reasoning.planner.llm_adapter import llm_hint_runtime_stats
 
         out["llm_hint_runtime"] = llm_hint_runtime_stats()
     except Exception:

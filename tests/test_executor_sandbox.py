@@ -4,7 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from action_plan import Action, ActionPlan
+from eurika.reasoning.action_plan import Action, ActionPlan
 from executor_sandbox import ExecutorSandbox
 
 def test_executor_sandbox_dry_run(tmp_path: Path) -> None:

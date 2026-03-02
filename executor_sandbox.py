@@ -16,7 +16,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-from action_plan import Action, ActionPlan
+from eurika.reasoning.action_plan import Action, ActionPlan
 from patch_apply import apply_patch_plan
 
 

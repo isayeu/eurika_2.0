@@ -565,6 +565,29 @@ def test_get_learning_insights_returns_target_stats_and_recommendations(tmp_path
     assert isinstance(recs.get("whitelist_candidates"), list)
 
 
+def test_get_learning_insights_policy_adjustment_hints_for_weak_pairs(tmp_path: Path) -> None:
+    """When WEAK pair (e.g. long_function|refactor_code_smell) has rate>=25% and total>=5, include policy_adjustment_hints."""
+    from eurika.storage import ProjectMemory
+
+    memory = ProjectMemory(tmp_path)
+    op = {"kind": "refactor_code_smell", "smell_type": "long_function", "target_file": "a.py"}
+    for i in range(5):
+        memory.learning.append(
+            project_root=tmp_path,
+            modules=["a.py"],
+            operations=[op],
+            risks=[],
+            verify_success=(i < 2),
+        )
+    out = get_learning_insights(tmp_path, top_n=5)
+    recs = out.get("recommendations") or {}
+    hints = recs.get("policy_adjustment_hints") or []
+    weak_hint = next((h for h in hints if "long_function" in str(h.get("pair", ""))), None)
+    assert weak_hint is not None, "policy_adjustment_hints should include long_function|refactor_code_smell when rate>=25%, total>=5"
+    assert weak_hint.get("total") >= 5
+    assert float(weak_hint.get("verify_success_rate", 0)) >= 0.25
+
+
 def test_get_learning_insights_includes_chat_learning_hints(tmp_path: Path) -> None:
     """Chat history should contribute review-only hints for policy/whitelist."""
     chat_dir = tmp_path / ".eurika" / "chat_history"

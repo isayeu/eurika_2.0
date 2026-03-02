@@ -4,7 +4,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from agent_core import DecisionProposal, InputEvent, Result
-from action_plan import ActionPlan
+from eurika.reasoning.action_plan import ActionPlan
 from executor_sandbox import ExecutorSandbox
 from eurika.smells.detector import ArchSmell, detect_architecture_smells
 from eurika.smells.summary import build_summary

@@ -24,6 +24,7 @@ __all__ = [
     "rollback",
     "list_backups",
     "apply_patch_dry_run",
+    "simulate_patch",
     "BACKUP_DIR",
 ]
 
@@ -52,3 +53,24 @@ def apply_patch_dry_run(project_root: Path, plan: Dict[str, Any], *, backup: boo
     """Dry-run patch apply via patch_engine facade (compat wrapper)."""
     root = Path(project_root).resolve()
     return _apply_patch_plan(root, plan, dry_run=True, backup=backup)
+
+
+def simulate_patch(project_root: Path, plan: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Simulate patch application without modifying disk (ROADMAP v3.0 Stage 2).
+
+    Pre-apply simulation for simulation-first workflow. No files are written.
+    Returns structured report: would_modify, would_skip, skipped_reasons, errors, etc.
+    """
+    root = Path(project_root).resolve()
+    report = _apply_patch_plan(root, plan, dry_run=True, backup=False)
+    ops = plan.get("operations") or []
+    return {
+        "dry_run": True,
+        "would_modify": report.get("modified", []),
+        "would_skip": report.get("skipped", []),
+        "skipped_reasons": report.get("skipped_reasons") or {},
+        "errors": report.get("errors", []),
+        "operations_count": len(ops),
+        "simulation_only": True,
+    }

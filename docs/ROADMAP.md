@@ -80,7 +80,7 @@ README, UI.md, CLI.md, 5-minute onboarding, тесты зелёные — ✅
 
 ### 4.1 Направление A — Learning from GitHub
 
-Curated repos (Django, FastAPI) → pattern library → повышение verify_success_rate. **Статус:** частично (3.0.5.1–3.0.5.4). **4.1:** `--light` (starlette, httpx), `--limit-repos`, увеличены лимиты extraction (100 files, 30 entries).
+Curated repos (Django, FastAPI) → pattern library → повышение verify_success_rate. **Статус:** 4.1 ✅ — `--light`, `--limit-repos`, лимиты extraction (100 files, 30 entries).
 
 ### 4.2 Направление B — Продуктовая готовность 6→7/10 ✅
 
@@ -161,29 +161,31 @@ UI.md ✓; README ✓; критерии B.7–B.10 выполнены:
 - [x] Исключить runtime-мусор из релиза (MANIFEST.in + .gitignore: `.eurika_backups`, `.coverage`, `.pytest_cache`, `*_report.json`)
 
 ### Этап 2 — Модель
-- [ ] Доменные модели: `ArchitectureModel`, `RefactorAction`, `RiskReport`, `SmellReport`
-- [ ] Architecture Scoring Model (cohesion, coupling, complexity, modularity)
-- [ ] Refactor Simulation Engine (`simulate_patch` перед apply)
+- [x] Доменные модели: `ArchitectureModel`, `RefactorAction`, `RiskReport`, `SmellReport`
+- [x] Architecture Scoring Model (cohesion, coupling, complexity, modularity)
+- [x] Refactor Simulation Engine (`simulate_patch` перед apply)
 
 ### Этап 3 — Безопасность
-- [ ] risk-based patching
-- [ ] simulation-first apply
-- [ ] regression detection (semantic, performance)
+- [x] risk-based patching (`risk_report_from_plan`, RiskReport в report)
+- [x] simulation-first apply (`simulate_patch` перед `apply_and_verify`; abort при errors)
+- [x] regression detection: semantic — `enrich_report_with_rescan` (before/after score, rollback при metrics_worsened); performance — placeholder
 
-### 5.6 Консолидация planner (по ревью)
+### 5.6 Консолидация planner (по ревью) ✅
 
-**Было:** planner_rules, planner_actions, planner_analysis, planner_patch_ops, planner_llm.
+**Было:** planner_rules, planner_actions, planner_analysis, planner_patch_ops, planner_llm; architecture_planner_build_action_plan, architecture_planner_build_patch_plan.
 
-**Цель — структура:**
+**Структура:**
 ```
 eurika/reasoning/planner/
-    core.py          # analyze, detect_smells, propose_actions
-    heuristics.py   # правила, scoring
-    actions.py      # patch ops
-    llm_adapter.py  # Ollama/LiteLLM
+    core.py          # analyze, detect_smells, propose_actions (фасад)
+    heuristics.py    # правила, scoring
+    actions.py       # patch ops
+    llm_adapter.py   # Ollama/LiteLLM
+    types.py, analysis.py, models.py
 ```
 
-Количество ролей сокращается; файлы по 300–500 строк; лимит 600 — не проблема. Разделять по ответственности, не по строкам.
+Shim-файлы удалены — импорты из eurika.reasoning.planner.*. architecture_planner: один build-модуль (build_plan, build_action_plan, build_patch_plan).
+- [x] action_plan.py → eurika/reasoning/action_plan.py (L3); action_plan_api удалён.
 
 ---
 
@@ -210,7 +212,7 @@ eurika/reasoning/planner/
 ### 6.3 Операционность
 
 - KPI: `verify_success_rate` по smell|action|target (prioritized_smell_actions ✅)
-- refactor_code_smell — 0% success в WEAK_SMELL_ACTION_PAIRS; план: docs/REFACTOR_CODE_SMELL_PLAN.md
+- refactor_code_smell — план: docs/REFACTOR_CODE_SMELL_PLAN.md (Phase 1–4 ✅; Phase E: policy adjust при rate≥25% — hints в learning-kpi)
 
 ### 6.4 Cursor Rules (незакрытые)
 
@@ -221,7 +223,7 @@ eurika/reasoning/planner/
 ### 6.5 Multi-repo и Learning
 
 - ~~3.0.1: eurika_fix_report_aggregated.json при fix/cycle [path1 path2 ...]~~ ✅ test_multi_repo_fix_aggregated_report
-- 3.0.5: расширение Learning from GitHub (pattern library, OSS examples)
+- 3.0.5: расширение Learning from GitHub (pattern library, OSS examples) — GET /api/pattern_library ✅
 
 ---
 

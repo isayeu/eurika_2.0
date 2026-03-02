@@ -186,6 +186,14 @@ def refresh_dashboard(main: MainWindow) -> None:
                 f"- {item.get('target_file')} | {item.get('action_kind')} "
                 f"(rate={item.get('verify_success_rate')}, total={item.get('total')})"
             )
+    adj = recs.get("policy_adjustment_hints") or []
+    if adj:
+        learning_lines.append("")
+        learning_lines.append("Policy adjustment hints (Phase 4):")
+        for item in adj:
+            learning_lines.append(
+                f"- {item.get('pair')} rate={item.get('verify_success_rate')} total={item.get('total')} — {item.get('hint', '')}"
+            )
     if chat_white:
         learning_lines.append("")
         learning_lines.append("Chat-driven whitelist hints (review only):")

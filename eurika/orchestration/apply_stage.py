@@ -317,12 +317,56 @@ def execute_fix_apply_stage(
 ) -> tuple[FixReport, list[str], Any]:
     """Apply patch plan, enrich with rescan metrics, append memory, and persist report.
 
-    Safety (ROADMAP 2.7.7): mandatory verify-gate, auto_rollback on verify fail,
-    backup=True so no partially-applied invalid sessions.
+    Safety (ROADMAP 2.7.7, v3.0 Stage 3): simulation-first apply, mandatory verify-gate,
+    auto_rollback on verify fail, backup=True so no partially-applied invalid sessions.
     """
     if not quiet:
         _LOG.info("--- Step 3/4: patch & verify ---")
     rescan_before = prepare_rescan_before(path, backup_dir)
+
+    # ROADMAP v3.0 Stage 3: simulation-first apply — simulate before disk writes
+    from patch_engine import simulate_patch
+
+    from eurika.reasoning.planner.models import risk_report_from_plan
+
+    simulation = simulate_patch(path, patch_plan)
+    risk_report = risk_report_from_plan(patch_plan)
+    if simulation.get("errors"):
+        _LOG.warning("Simulation found errors, aborting apply: %s", simulation["errors"])
+        report: FixReport = {
+            "dry_run": False,
+            "modified": [],
+            "skipped": simulation.get("would_skip", []),
+            "skipped_reasons": simulation.get("skipped_reasons") or {},
+            "errors": simulation["errors"],
+            "verify": {"success": False},
+            "simulation": simulation,
+            "risk_report": risk_report.to_dict(),
+            "aborted_reason": "simulation_errors",
+        }
+        report["operation_explanations"] = [
+            dict(op.get("explainability") or {}, verify_outcome=False)
+            for op in operations
+        ]
+        report["operation_results"] = [
+            {
+                "target_file": str(op.get("target_file") or ""),
+                "kind": op.get("kind"),
+                "approval_state": op.get("approval_state", "approved"),
+                "critic_verdict": op.get("critic_verdict", "allow"),
+                "applied": False,
+                "execution_outcome": "not_applied",
+                "skipped_reason": "simulation_errors",
+            }
+            for op in operations
+        ]
+        report["policy_decisions"] = result.output.get("policy_decisions", [])
+        report["critic_decisions"] = result.output.get("critic_decisions", [])
+        report["context_sources"] = result.output.get("context_sources")
+        report["llm_hint_runtime"] = result.output.get("llm_hint_runtime")
+        attach_fix_telemetry(report, operations, path)
+        write_fix_report(path, report, quiet)
+        return report, [], False
     checkpoint = None
     checkpoint_id = None
     try:
@@ -339,6 +383,8 @@ def execute_fix_apply_stage(
 
     resolved_timeout = get_verify_timeout(path, override=verify_timeout)
     report = apply_and_verify(path, patch_plan, backup=True, verify=True, verify_timeout=resolved_timeout, verify_cmd=verify_cmd, auto_rollback=True)
+    report["simulation"] = simulation
+    report["risk_report"] = risk_report.to_dict()
     verify_outcome = report["verify"].get("success")
     expls = []
     op_results = []
