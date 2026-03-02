@@ -104,18 +104,18 @@ UI.md ✓; README ✓; дальнейшие критерии. **Быстро.**
 | CR-A2 | venv и команды в GUI              | .venv, scan/doctor/fix в Commands tab (QProcess); venv.mdc с Commands tab | ✅     |
 | CR-A3 | Dependency firewall               | L0–L6; EURIKA_STRICT_LAYER_FIREWALL=1            | ✅     |
 | CR-A4 | Qt-контекст (qt_app.mdc)          | PySide6, adapters/ui/services, вкладки, правила для агента | ✅     |
-| CR-C1 | Ссылки на документы в промпте    | Architecture, DEPENDENCY_FIREWALL, CLI, API_BOUNDARIES | —  |
-| CR-C2 | Типовые команды проверки          | scan, doctor, fix --dry-run, pytest               | —      |
-| CR-C3 | Чек-лист перед коммитом           | тесты, ruff, mypy, release_check                  | —      |
-| CR-D1 | Рекомендованные @-ссылки          | @ROADMAP.md, @Architecture.md, @eurika/agent/    | —      |
-| CR-D2 | Паттерны по типам задач           | рефакторинг → @eurika/agent/; API → @eurika/api/  | —      |
-| CR-D3 | .cursorignore для артефактов      | build, __pycache__                                | —      |
+| CR-C1 | Ссылки на документы в промпте    | Architecture, DEPENDENCY_FIREWALL, CLI, API_BOUNDARIES | ✅ .eurika/rules/docs.mdc |
+| CR-C2 | Типовые команды проверки          | scan, doctor, fix --dry-run, pytest               | ✅ venv.mdc |
+| CR-C3 | Чек-лист перед коммитом           | тесты, ruff, mypy, release_check                  | ✅ .eurika/rules/pre-commit.mdc |
+| CR-D1 | Рекомендованные @-ссылки          | @ROADMAP.md, @Architecture.md, @eurika/agent/    | ✅ docs.mdc |
+| CR-D2 | Паттерны по типам задач           | рефакторинг → @eurika/agent/; API → @eurika/api/  | ✅ docs.mdc |
+| CR-D3 | .cursorignore для артефактов      | build, __pycache__                                | ✅ .cursorignore |
 
 ### 5.2 Agent Skills (CR-B)
 
 | #     | Шаг                    | Описание                                    | Статус |
 | ----- | ---------------------- | ------------------------------------------- | ------ |
-| CR-B1 | Skill «Тест для API»   | GET/POST → test в tests/test_api.py         | —      |
+| CR-B1 | Skill «Тест для API»   | GET/POST → test в tests/test_api_serve.py  | ✅ .eurika/rules/test-api.mdc |
 | CR-B2 | Skill «Release check»  | Запуск release_check.sh; «прогони release check» | ✅ (chat) |
 | CR-B3 | Skill «Сверка ROADMAP» | «проверь фазу X.Y» → roadmap_verify         | ✅     |
 
@@ -146,7 +146,8 @@ UI.md ✓; README ✓; дальнейшие критерии. **Быстро.**
 
 - ~~Разбить `eurika/api/task_executor.py` (767 LOC), `eurika/api/serve.py` (598)~~ ✅ P0.4: task_executor → helpers, types, executors, patch; serve → utils, exec, routes_get, routes_post
 - ~~Разбить `eurika/orchestration/fix_cycle_impl.py` (586)~~ ✅ fix_cycle_helpers, fix_cycle_apply_approved
-- Разбить крупные тесты: `test_cycle.py`, `test_chat_api.py`, `test_api_serve.py` при необходимости
+- ~~test_cycle.py~~ → test_cycle_report.py (report-snapshot, telemetry, whitelist-draft) ✅
+- Разбить при необходимости: `test_cycle.py`, `test_chat_api.py`, `test_api_serve.py`
 
 ### 6.2 Qt и UI
 
@@ -163,9 +164,8 @@ UI.md ✓; README ✓; дальнейшие критерии. **Быстро.**
 
 ### 6.4 Cursor Rules (незакрытые)
 
-- CR-B1: Skill «Тест для API endpoint»
-- CR-C1–CR-C3: доработка стартового промпта
-- CR-D1–CR-D3: @-ссылки и .cursorignore
+- ~~CR-B1, CR-C1, CR-C2, CR-C3, CR-D3~~ ✅
+- CR-D1–CR-D2: @-ссылки, паттерны по типам задач
 - CR-E, CR-F: Composer и Terminal
 
 ### 6.5 Multi-repo и Learning

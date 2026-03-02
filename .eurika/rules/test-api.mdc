@@ -1,0 +1,45 @@
+---
+description: Тест для API endpoint — GET/POST в tests/test_api_serve.py (CR-B1)
+alwaysApply: false
+globs: ["tests/test_api_serve.py", "eurika/api/serve*.py", "eurika/api/serve_routes*.py"]
+---
+
+# Тест для API Endpoint (CR-B1)
+
+При запросе «добавь тест для /api/...» или при работе с serve API — добавить тест в `tests/test_api_serve.py`.
+
+## GET
+
+```python
+def test_dispatch_api_get_<name>_returns_dict(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    def _fake_json_response(_handler, data: dict, status: int = 200) -> None:
+        captured["status"], captured["data"] = status, data
+    monkeypatch.setattr(api_serve, "_json_response", _fake_json_response)
+    handled = api_serve._dispatch_api_get(_DummyHandler(), tmp_path, "/api/<path>", {})
+    assert handled is True
+    assert captured.get("status") == 200
+    assert isinstance(captured.get("data") or {}, dict)
+```
+
+Query params: `{"param": ["value"]}` (parse_qs).
+
+## POST
+
+| Endpoint | Body |
+| -------- | ----- |
+| /api/approve | `{"operations": []}` |
+| /api/exec | `{"command": "eurika scan ."}` |
+| /api/chat | `{"message": "hi"}` |
+| /api/ask_architect | `{}` |
+| /api/operation_preview | `{"operation": {"target_file": "a.py", "kind": "remove_unused_import", "params": {}}}` |
+
+```python
+handled = api_serve._run_post_handler(_DummyHandler(), tmp_path, "/api/<path>", body)
+```
+
+## 400-тесты
+
+`assert captured.get("status") == 400` и `"error" in (captured.get("data") or {})`.
+
+Импорты: `from eurika.api import serve as api_serve`; `_DummyHandler` — в файле.

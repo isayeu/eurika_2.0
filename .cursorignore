@@ -1,0 +1,9 @@
+# CR-D3: артефакты — не индексировать для AI
+__pycache__/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.venv/
+.coverage
+htmlcov/

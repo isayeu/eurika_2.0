@@ -1,0 +1,46 @@
+---
+description: Venv для запусков и тестов — путь .venv, команды eurika, pytest; Commands tab в Qt
+alwaysApply: true
+globs: ["**/*.py", "**/cli/**", "**/tests/**", "scripts/*", "pyproject.toml", "qt_app/**"]
+---
+
+# Venv для запусков и тестов
+
+Для команд `eurika`, `pytest` и `release_check` использовать venv **`.venv`** (symlink в корне проекта).
+
+## Путь к venv
+
+- **От корня проекта:** `.venv` (symlink, например: `ln -sf ../eurika_2.0/.venv .venv`)
+
+## Типовые команды (CLI / agent) — CR-C2
+
+```bash
+# Проверка (scan, doctor, dry-run)
+eurika scan .
+eurika doctor .
+eurika fix . --dry-run
+
+# Тесты
+pytest tests/ -q
+pytest tests/test_api_serve.py -q -k "test_name"
+
+# Release check (CI)
+./scripts/release_check.sh
+
+# Dependency firewall
+EURIKA_STRICT_LAYER_FIREWALL=1 pytest tests/test_dependency_guard.py -q
+```
+
+С активацией: `source .venv/bin/activate`. Без: `.venv/bin/python -m eurika_cli serve .`, `.venv/bin/pytest tests/ -q`.
+
+## Commands tab в Qt GUI
+
+Вкладка **Commands** в Qt-приложении (`eurika-qt`) запускает core-команды через **QProcess** с интерпретатором из `.venv`:
+
+- **scan** — `eurika scan .`
+- **doctor** — `eurika doctor .`
+- **fix** — `eurika fix .` (опции: --dry-run, --team-mode)
+- **cycle** — `eurika cycle .`
+- **explain** — `eurika explain <module>`
+
+Вывод идёт во вкладку **Terminal**. Кнопки Run / Stop управляют процессом. При добавлении новых команд в Commands tab — использовать `.venv/bin/python -m eurika_cli` или `.venv/bin/pytest` в `CommandService`.

@@ -1,0 +1,23 @@
+---
+description: Чек-лист перед коммитом — тесты, ruff, mypy, release_check (CR-C3)
+alwaysApply: false
+globs: ["**/*.py"]
+---
+
+# Чек-лист перед коммитом (CR-C3)
+
+Перед коммитом выполнить:
+
+```bash
+pytest tests/ -q
+ruff check .
+mypy eurika cli report patch_engine
+./scripts/release_check.sh
+```
+
+| Шаг | Команда |
+| ----- | ----- |
+| Тесты | `pytest tests/ -q` |
+| Ruff | `ruff check .` |
+| Mypy | `mypy eurika cli report patch_engine` |
+| Release check | `./scripts/release_check.sh` |

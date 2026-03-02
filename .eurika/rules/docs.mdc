@@ -1,0 +1,32 @@
+---
+description: Ссылки на ключевые документы — Architecture, DEPENDENCY_FIREWALL, CLI, API_BOUNDARIES (CR-C1, CR-D1, CR-D2)
+alwaysApply: true
+---
+
+# Документация проекта
+
+При работе с архитектурой, слоями, API или CLI — ориентироваться на:
+
+| Документ | Содержание |
+| -------- | ---------- |
+| **@docs/Architecture.md** | L0–L6 слои, fix-cycle pipeline, dependency direction |
+| **@docs/DEPENDENCY_FIREWALL.md** | Layer rules, ImportRule, SubsystemBypassRule, EURIKA_STRICT_LAYER_FIREWALL |
+| **@docs/CLI.md** | CLI команды, рекомендуемый цикл |
+| **@docs/API_BOUNDARIES.md** | Публичные фасады: `from eurika.X import …` |
+| **@docs/ROADMAP.md** | План задач, фазы, критерии готовности |
+
+Импорты — только через публичный API из API_BOUNDARIES. Нарушения слоёв проверяет dependency firewall.
+
+## Рекомендованные @-ссылки (CR-D1)
+
+- Общий план: @docs/ROADMAP.md, @docs/Architecture.md
+- Агент, рефакторинг: @eurika/agent/
+- API, serve: @eurika/api/
+
+## Паттерны по типам задач (CR-D2)
+
+| Тип задачи | Ссылаться |
+| ---------- | --------- |
+| Рефакторинг, planner, patch | @eurika/agent/, @eurika/orchestration/ |
+| API, serve, Chat | @eurika/api/ |
+| CLI, команды | @cli/, @docs/CLI.md |
