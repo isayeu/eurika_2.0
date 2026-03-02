@@ -10,7 +10,7 @@ from cli import handlers
 
 def dispatch_command(parser: argparse.ArgumentParser, args: Any) -> int:
     """Dispatch parsed CLI args to the matching command handler."""
-    from cli.orchestration.logging import configure_cli_logging
+    from eurika.orchestration.logging import configure_cli_logging
 
     quiet = getattr(args, "quiet", False)
     verbose = getattr(args, "verbose", False)

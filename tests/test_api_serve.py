@@ -519,6 +519,40 @@ def test_run_post_handler_ask_architect_passes_no_llm_value(tmp_path: Path, monk
     assert (captured.get("data") or {}).get("text") == "ok"
 
 
+def test_dispatch_api_get_summary_returns_dict(tmp_path: Path, monkeypatch) -> None:
+    """GET /api/summary should return dict with system or error (CR-B1 Skill example)."""
+    captured: dict[str, object] = {}
+
+    def _fake_json_response(_handler, data: dict, status: int = 200) -> None:
+        captured["status"] = status
+        captured["data"] = data
+
+    monkeypatch.setattr(api_serve, "_json_response", _fake_json_response)
+    handled = api_serve._dispatch_api_get(_DummyHandler(), tmp_path, "/api/summary", {})
+    assert handled is True
+    assert captured.get("status") == 200
+    data = captured.get("data") or {}
+    assert "path" in data or "system" in data or "error" in data
+
+
+def test_dispatch_api_get_self_guard_returns_dict(tmp_path: Path, monkeypatch) -> None:
+    """GET /api/self_guard should return dict with forbidden_count, layer_viol_count, pass (CR-B1)."""
+    captured: dict[str, object] = {}
+
+    def _fake_json_response(_handler, data: dict, status: int = 200) -> None:
+        captured["status"] = status
+        captured["data"] = data
+
+    monkeypatch.setattr(api_serve, "_json_response", _fake_json_response)
+    handled = api_serve._dispatch_api_get(_DummyHandler(), tmp_path, "/api/self_guard", {})
+    assert handled is True
+    assert captured.get("status") == 200
+    data = captured.get("data") or {}
+    assert "forbidden_count" in data
+    assert "layer_viol_count" in data
+    assert "pass" in data
+
+
 def test_dispatch_api_get_file_rejects_empty_path(tmp_path: Path, monkeypatch) -> None:
     """GET /api/file should return 400 when path query value is empty."""
     captured: dict[str, object] = {}
@@ -651,6 +685,21 @@ def test_resolve_project_root_override_rejects_non_string_payload(tmp_path: Path
     assert out is None
     assert err is not None
     assert "expected string" in err
+
+def test_dispatch_api_get_history_returns_dict(tmp_path: Path, monkeypatch) -> None:
+    """GET /api/history should return dict (CR-B1)."""
+    captured: dict[str, object] = {}
+
+    def _fake_json_response(_handler, data: dict, status: int = 200) -> None:
+        captured["status"] = status
+        captured["data"] = data
+
+    monkeypatch.setattr(api_serve, "_json_response", _fake_json_response)
+    handled = api_serve._dispatch_api_get(_DummyHandler(), tmp_path, "/api/history", {})
+    assert handled is True
+    assert captured.get("status") == 200
+    data = captured.get("data") or {}
+    assert isinstance(data, dict)
 
 
 def test_resolve_project_root_override_rejects_missing_directory(tmp_path: Path) -> None:

@@ -117,10 +117,10 @@ def detect_intent(message: str) -> Tuple[Optional[str], Optional[str]]:
         m = re.search(r'([a-zA-Z0-9_/.\\-]+\.[a-zA-Z0-9]+)\s*$', msg)
         if m:
             return ('create', m.group(1).strip())
-    # delete: "удали X", "delete X", "remove X"
+    # delete: "удали X", "удали файл X", "delete X", "remove X"
     delete_patterns = [
-        r'(?:удали|удалить|delete|remove)\s+([a-zA-Z0-9_/.\\-]+\.[a-zA-Z0-9]+)',
-        r'(?:удали|удалить|delete|remove)\s+([a-zA-Z0-9_/.\\-]+)',
+        r'(?:удали|удалить|delete|remove)\s+(?:файл\s+)?([a-zA-Z0-9_/.\\-]+\.[a-zA-Z0-9]+)',
+        r'(?:удали|удалить|delete|remove)\s+(?:файл\s+)?([a-zA-Z0-9_/.\\-]+)',
     ]
     for pat in delete_patterns:
         m = re.search(pat, msg, re.IGNORECASE)
@@ -129,7 +129,7 @@ def detect_intent(message: str) -> Tuple[Optional[str], Optional[str]]:
             if re.match(r'^[a-zA-Z0-9_./\-]+$', target):
                 return ('delete', target)
     if any((w in msg for w in ('удали', 'удалить', 'delete', 'remove'))):
-        m = re.search(r'(?:удали|удалить|delete|remove)\s+([a-zA-Z0-9_/.\\-]+(?:\.\w+)?)\s*$', msg, re.IGNORECASE)
+        m = re.search(r'(?:удали|удалить|delete|remove)\s+(?:файл\s+)?([a-zA-Z0-9_/.\\-]+(?:\.\w+)?)\s*$', msg, re.IGNORECASE)
         if m:
             return ('delete', m.group(1).strip())
     # save with directory: "сохрани в tests/ foo.py", "save to tests/ bar.py", "сохрани в tests/ файл test_utils.py"

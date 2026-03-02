@@ -91,6 +91,30 @@ def git_diff(project_root: Path, staged: bool = False) -> Tuple[bool, str]:
         return (False, f"git diff: {e}")
 
 
+def run_release_check(project_root: Path, timeout: int | None = None) -> Tuple[bool, str]:
+    """Run scripts/release_check.sh (CR-B2). Returns (ok, output)."""
+    root = Path(project_root).resolve()
+    script = root / "scripts" / "release_check.sh"
+    if not script.exists():
+        return (False, f"Скрипт не найден: {script}")
+    try:
+        r = subprocess.run(
+            ["bash", str(script)],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        out = ((r.stdout or "") + "\n" + (r.stderr or "")).strip()
+        if r.returncode != 0 and not out:
+            out = f"release_check failed (exit {r.returncode})"
+        return (r.returncode == 0, out)
+    except subprocess.TimeoutExpired:
+        return (False, "release_check: timeout")
+    except Exception as e:
+        return (False, f"release_check: {e}")
+
+
 def git_commit(project_root: Path, message: str) -> Tuple[bool, str]:
     """Run git add -A and git commit -m in project root. Returns (ok, output)."""
     if not message or not message.strip():

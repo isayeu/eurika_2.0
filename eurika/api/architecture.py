@@ -123,3 +123,25 @@ def get_self_guard(project_root: Path) -> Dict[str, Any]:
             and result.must_split_count == 0
         ),
     }
+
+
+def get_firewall_violations_detail(project_root: Path) -> Dict[str, Any]:
+    """CR-A3: Dependency firewall violations for GUI (forbidden, layer, subsystem bypass)."""
+    from eurika.checks.dependency_firewall import (
+        collect_dependency_violations,
+        collect_layer_violations,
+        collect_subsystem_bypass_violations,
+    )
+
+    root = Path(project_root).resolve()
+    forbidden = collect_dependency_violations(root)
+    layer = collect_layer_violations(root)
+    bypass = collect_subsystem_bypass_violations(root)
+    return {
+        "forbidden": [{"path": v.path, "forbidden_module": v.forbidden_module} for v in forbidden],
+        "layer_violations": [
+            {"path": v.path, "imported_module": v.imported_module, "source_layer": v.source_layer, "target_layer": v.target_layer}
+            for v in layer
+        ],
+        "subsystem_bypass": [{"path": v.path, "imported_module": v.imported_module} for v in bypass],
+    }

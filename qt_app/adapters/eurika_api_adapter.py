@@ -6,13 +6,14 @@ import os
 from contextlib import contextmanager
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from report.explain_format import explain_module
 from eurika.api import (
     get_chat_dialog_state,
+    get_firewall_violations_detail,
     get_graph,
     get_history,
     get_learning_insights,
@@ -50,6 +51,10 @@ class EurikaApiAdapter:
     def get_self_guard(self) -> dict[str, Any]:
         """R5: SELF-GUARD health gate (violations, trend alarms, complexity budget)."""
         return get_self_guard(self._root())
+
+    def get_firewall_violations_detail(self) -> dict[str, Any]:
+        """CR-A3: Dependency firewall violations for GUI (forbidden, layer, subsystem bypass)."""
+        return get_firewall_violations_detail(self._root())
 
     def get_risk_prediction(self, top_n: int = 10) -> dict[str, Any]:
         """R5: Top modules by regression risk."""
@@ -136,6 +141,8 @@ class EurikaApiAdapter:
         openai_model: str = "",
         ollama_model: str = "",
         timeout_sec: int = 20,
+        on_system_action: Callable[[str], None] | None = None,
+        run_command_with_result: Callable[[str], tuple[str, int]] | None = None,
     ) -> dict[str, Any]:
         with self._temporary_llm_env(
             provider=provider,
@@ -143,7 +150,13 @@ class EurikaApiAdapter:
             ollama_model=ollama_model,
             timeout_sec=timeout_sec,
         ):
-            return _chat_send(self._root(), message, history)
+            return _chat_send(
+                self._root(),
+                message,
+                history,
+                on_system_action=on_system_action,
+                run_command_with_result=run_command_with_result,
+            )
 
     def save_chat_feedback(
         self,

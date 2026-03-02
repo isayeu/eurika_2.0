@@ -39,7 +39,7 @@ def _err(msg: str) -> None:
 
 
 def _clog():
-    from cli.orchestration.logging import get_logger
+    from eurika.orchestration.logging import get_logger
     return get_logger("core_handlers")
 
 def handle_help(parser: Any) -> int:
@@ -623,7 +623,7 @@ def handle_fix(args: Any) -> int:
     """Full cycle: scan → plan → patch-apply --apply --verify (3.0.1: multi-repo)."""
     from types import SimpleNamespace
     from cli.agent_handlers import handle_agent_cycle
-    from cli.orchestration.doctor import load_suggested_policy_for_apply
+    from eurika.orchestration.doctor import load_suggested_policy_for_apply
     paths = _paths_from_args(args)
     exit_code = 0
     for i, path in enumerate(paths):
@@ -667,7 +667,7 @@ def handle_cycle(args: Any) -> int:
     """Full ritual: scan → doctor → fix (3.0.1: multi-repo)."""
     from types import SimpleNamespace
     from cli.agent_handlers import _run_cycle_with_mode
-    from cli.orchestration.doctor import load_suggested_policy_for_apply
+    from eurika.orchestration.doctor import load_suggested_policy_for_apply
     paths = _paths_from_args(args)
     exit_code = 0
     for i, path in enumerate(paths):

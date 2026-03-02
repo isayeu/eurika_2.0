@@ -42,6 +42,14 @@ def test_detect_intent_delete_english() -> None:
     assert intent == 'delete'
     assert 'bar' in (target or '')
 
+
+def test_detect_intent_delete_with_file_word() -> None:
+    """'удали файл X' parses correctly (файл is optional)."""
+    from eurika.api.chat_intent import detect_intent
+    intent, target = detect_intent('удали файл tests/test_eurika_polygon_long_function.py')
+    assert intent == 'delete'
+    assert target == 'tests/test_eurika_polygon_long_function.py'
+
 def test_detect_intent_create() -> None:
     from eurika.api.chat_intent import detect_intent
     intent, target = detect_intent('создай пустой файл 111.txt')

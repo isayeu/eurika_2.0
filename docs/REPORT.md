@@ -53,16 +53,16 @@ _Обновлено: актуально для ветки v3.0.x (runtime policy
 
 ```bash
 # из корня проекта
-../.venv/bin/python -m eurika_cli scan .
-../.venv/bin/python -m eurika_cli doctor .
-../.venv/bin/python -m eurika_cli fix . --dry-run
-../.venv/bin/python -m eurika_cli report-snapshot .
+.venv/bin/python -m eurika_cli scan .
+.venv/bin/python -m eurika_cli doctor .
+.venv/bin/python -m eurika_cli fix . --dry-run
+.venv/bin/python -m eurika_cli report-snapshot .
 ```
 
 Для controlled apply:
 
 ```bash
-../.venv/bin/python -m eurika_cli fix . --runtime-mode hybrid --non-interactive --approve-ops 1
+.venv/bin/python -m eurika_cli fix . --runtime-mode hybrid --non-interactive --approve-ops 1
 ```
 
 ---

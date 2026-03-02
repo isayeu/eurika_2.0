@@ -6,7 +6,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from eurika.api.task_executor import build_task_spec, execute_spec, has_capability, is_pending_plan_valid, make_pending_plan
 
 DEFAULT_SAVE_TARGET = "app.py"
@@ -93,6 +93,14 @@ def _build_chat_context(root: Path, scope: Optional[Dict[str, Any]] = None) -> s
                 risks_to_show = filtered[:5] if filtered else (risks[:3] if not (scope_modules or scope_smells) else filtered[:5])
                 if risks_to_show:
                     lines.append(f"Risks: {'; '.join((str(r) for r in risks_to_show))}.")
+    except Exception:
+        pass
+    try:
+        state = _load_dialog_state(root)
+        if isinstance(state, dict) and not state.get('last_release_check_ok') and state.get('last_release_check_output'):
+            rc_out = str(state.get('last_release_check_output', ''))[:2000]
+            if rc_out:
+                lines.append(f"[Last release check FAILED — исправь эти ошибки]: {rc_out}...")
     except Exception:
         pass
     try:
@@ -278,24 +286,83 @@ def _load_chat_feedback_for_prompt(root: Path, max_chars: int = 1200) -> str:
         return ''
 
 
-INTENT_INTERPRETATION_RULES = """[Intent interpretation (ROADMAP 3.6.8 Phase 2)]
-- Commit / коммит / save to git / закоммитить → User should say «собери коммит»: shows git status+diff, then «применяй» to commit.
-- Ritual / ритуал / полный цикл / scan doctor fix → eurika scan . → eurika doctor . → eurika report-snapshot . → eurika fix .
-- Report / отчёт / doctor report → «покажи отчёт» shows eurika doctor report.
-- Refactor / рефакторинг → «рефактори» + path, or eurika fix .
-- List files / структура → «выполни ls» or «покажи структуру проекта».
-- When user intent matches above, direct them to the exact phrase or explain the command chain."""
+def _load_eurika_rules_for_chat(root: Path) -> str:
+    """Load .eurika/rules/*.mdc into chat context (CR-A: rules in Eurika, not Cursor)."""
+    rules_dir = root / ".eurika" / "rules"
+    if not rules_dir.is_dir():
+        return ""
+    lines: List[str] = []
+    for p in sorted(rules_dir.glob("*.mdc")):
+        try:
+            raw = p.read_text(encoding="utf-8")
+            if "---" in raw:
+                parts = raw.split("---", 2)
+                body = parts[2].strip() if len(parts) >= 3 else raw
+            else:
+                body = raw
+            lines.append(f"\n[Rule: {p.name}]\n{body}")
+            if sum(len(s) for s in lines) > 6000:
+                break
+        except Exception:
+            pass
+    return "\n".join(lines) if lines else ""
 
 
-def _build_chat_prompt(message: str, context: str, history: Optional[List[Dict[str, str]]]=None, rag_examples: Optional[str]=None, save_target: Optional[str]=None, knowledge_snippet: Optional[str]=None, feedback_snippet: Optional[str]=None) -> str:
+def _intent_hints_for_prompt(root: Path) -> str:
+    """Intent hints from .eurika/config/chat_intents.yaml or default (ROADMAP)."""
+    from eurika.api.chat_intents_config import get_intent_hints
+    return get_intent_hints(root)
+
+
+def _resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optional[str]]:
+    """Resolve direct handler from config or legacy _is_*. Returns (handler_id, emit_cmd)."""
+    from eurika.api.chat_intents_config import match_direct_intent
+    matched = match_direct_intent(root, msg)
+    if matched:
+        return matched
+    # Fallback to legacy
+    if _is_identity_question(msg):
+        return ("identity", None)
+    if _is_ls_request(msg):
+        return ("project_ls", "$ ls -la")
+    if _is_tree_request(msg):
+        return ("project_tree", "$ eurika project-tree .")
+    if _is_saved_file_path_request(msg):
+        return ("saved_file_path", None)
+    if _is_show_report_request(msg):
+        return ("show_report", None)
+    if _is_add_api_test_request(msg):
+        return ("add_api_test", None)
+    if _is_add_module_test_request(msg):
+        return ("add_module_test", None)
+    if _is_show_file_request(msg):
+        return ("show_file", None)
+    if _is_ritual_request(msg):
+        return ("ritual", "$ eurika scan . && eurika doctor . && eurika report-snapshot .")
+    if _is_release_check_request(msg):
+        return ("release_check", "$ ./scripts/release_check.sh")
+    if _is_git_commit_request(msg):
+        return ("git_commit", None)
+    return (None, None)
+
+
+def _build_chat_prompt(message: str, context: str, history: Optional[List[Dict[str, str]]]=None, rag_examples: Optional[str]=None, save_target: Optional[str]=None, knowledge_snippet: Optional[str]=None, feedback_snippet: Optional[str]=None, rules_snippet: Optional[str]=None, intent_hints: Optional[str]=None) -> str:
     """Build system + user prompt for chat. history: list of {role, content} from session.
-    ROADMAP 3.5.11.B: rag_examples. ROADMAP 3.6.6: knowledge_snippet. ROADMAP 3.6.8 Phase 2: intent rules. Phase 4: feedback_snippet few-shot."""
+    ROADMAP 3.5.11.B: rag_examples. ROADMAP 3.6.6: knowledge_snippet. CR-A: rules_snippet from .eurika/rules."""
     if save_target:
         system = 'You are Eurika. Never identify yourself as a base model/vendor name (Qwen, Llama, Ollama, OpenAI model, etc). If asked who you are, answer that you are Eurika. The user asked you to write code and save it to a file. Generate ONLY the code. No questions, no apologies, no clarification requests. Output must contain a ```python code block.'
     else:
         system = 'You are Eurika, an architecture-aware coding assistant. Never identify yourself as a base model/vendor name (Qwen, Llama, Ollama, OpenAI model, etc). If asked who you are, answer that you are Eurika. You have context about the current project. Answer concisely and helpfully. When asked to write code, prefer Python; when asked about architecture, use the context.'
     context_block = f'\n\n[Project context]: {context}\n\n' if context else '\n\n'
-    context_block += f'\n{INTENT_INTERPRETATION_RULES}\n\n'
+    if rules_snippet:
+        context_block += f'\n[Eurika Rules — следуй этим правилам]\n{rules_snippet}\n\n'
+    default_hints = """- Commit / коммит → «собери коммит»: git status+diff, затем «применяй».
+- Ritual → eurika scan . → eurika doctor . → eurika report-snapshot . → eurika fix .
+- Report → «покажи отчёт» shows eurika doctor report.
+- Refactor → «рефактори» + path, or eurika fix .
+- List files → «выполни ls» or «покажи структуру проекта»."""
+    hints = intent_hints if intent_hints is not None else default_hints
+    context_block += f'\n[Intent interpretation (ROADMAP 3.6.8 Phase 2)]\n{hints}\n\n- When user intent matches above, direct them to the exact phrase or explain the command chain.\n\n'
     if feedback_snippet:
         context_block += feedback_snippet
     if rag_examples:
@@ -444,6 +511,73 @@ def _is_show_report_request(message: str) -> bool:
     return any(k in msg for k in keywords)
 
 
+def _is_show_file_request(message: str) -> bool:
+    """Detect request to show/read file contents (CR-A1: chat reads files without LLM)."""
+    msg = (message or "").strip()
+    if not msg:
+        return False
+    lower = msg.lower()
+    triggers = (
+        "покажи файл", "покажи содержимое", "открой файл", "прочитай файл",
+        "show file", "read file", "open file", "покажи ", "открой ",
+    )
+    if not any(t in lower for t in triggers):
+        return False
+    # Must contain something that looks like a path (. or /)
+    return "." in msg or "/" in msg
+
+
+def _extract_file_path_from_show_request(message: str) -> str | None:
+    """Extract relative file path from show-file request. Returns None if not found."""
+    msg = (message or "").strip()
+    # Match path: .something/... or path/with/slash.ext
+    m = re.search(r'(?:^|\s)([./\w][\w./\-]*(?:\.\w+)?)\s*$', msg)
+    if m:
+        cand = m.group(1).strip()
+        if cand and ("/" in cand or cand.startswith(".") or ".py" in cand or ".md" in cand):
+            return cand
+    # Fallback: after "файл" or "file"
+    for prefix in ("покажи файл ", "show file ", "read file ", "открой файл ", "покажи ", "открой "):
+        if prefix in msg.lower():
+            rest = msg[msg.lower().find(prefix) + len(prefix):].strip()
+            if rest and ("/" in rest or "." in rest):
+                # Take first word-like path
+                first = rest.split()[0] if rest.split() else rest
+                if first and ("/" in first or first.startswith(".")):
+                    return first
+    return None
+
+
+def _syntax_lang_for_path(rel_path: str) -> str:
+    """Return language hint for code block based on file extension."""
+    ext = (rel_path.split(".")[-1] or "").lower()
+    return {
+        "py": "python", "md": "markdown", "mdc": "markdown",
+        "yaml": "yaml", "yml": "yaml", "json": "json",
+        "toml": "toml", "ini": "ini", "cfg": "ini",
+        "sh": "bash", "bash": "bash",
+    }.get(ext, "text")
+
+
+def _read_file_for_chat(root: Path, rel_path: str) -> tuple[bool, str]:
+    """Read file under project root. Returns (ok, content_or_error). No path traversal."""
+    try:
+        root_res = root.resolve()
+        path = (root / rel_path).resolve()
+        try:
+            path.relative_to(root_res)
+        except ValueError:
+            return (False, "Путь выходит за пределы проекта.")
+        if not path.is_file():
+            return (False, f"Файл не найден: {rel_path}")
+        content = path.read_text(encoding="utf-8", errors="replace")
+        if len(content) > 30000:
+            content = content[:30000] + "\n\n... (обрезано, файл >30k символов)"
+        return (True, content)
+    except Exception as e:
+        return (False, f"Не удалось прочитать: {e}")
+
+
 def _format_doctor_report_for_chat(root: Path) -> str:
     """Format eurika_doctor_report.json for chat display. No LLM, instant response."""
     doctor_path = root / "eurika_doctor_report.json"
@@ -492,6 +626,200 @@ def _format_doctor_report_for_chat(root: Path) -> str:
         except Exception:
             return "Не удалось прочитать eurika_fix_report.json."
     return "Отчёт не найден."
+
+
+def _is_add_api_test_request(message: str) -> bool:
+    """Detect request to add test for API endpoint (CR-B1: Skill in Eurika)."""
+    msg = (message or "").strip().lower()
+    if not msg:
+        return False
+    keywords = (
+        "добавь тест", "добавить тест", "тест для", "тест для endpoint",
+        "add test", "test for", "покрой тестами endpoint", "покрой тестами /api",
+        "тест для /api", "test for /api",
+    )
+    return any(k in msg for k in keywords) and "/api" in msg
+
+
+def _is_add_module_test_request(message: str) -> bool:
+    """Detect request to add test for Python module (добавь тест для path/to/module.py)."""
+    msg = (message or "").strip()
+    if not msg:
+        return False
+    msg_lower = msg.lower()
+    keywords = (
+        "добавь тест", "добавить тест", "тест для", "add test", "test for",
+        "покрой тестами",
+    )
+    if not any(k in msg_lower for k in keywords):
+        return False
+    if "/api" in msg_lower:  # API endpoints → handled by _is_add_api_test_request
+        return False
+    # Module path: .py file or dotted import (eurika.polygon.long_function)
+    return bool(re.search(r'[\w/]+\.py|[\w.]+\.[\w.]+', msg))
+
+
+def _extract_module_path_from_request(message: str) -> Optional[str]:
+    """Extract module path from add-test request, e.g. eurika/polygon/long_function.py."""
+    msg = str(message or "").strip()
+    # Prefer path with .py
+    m = re.search(r'([\w/]+\.py)', msg)
+    if m:
+        return m.group(1).replace("\\", "/")
+    # Dotted: eurika.polygon.long_function
+    m = re.search(r'(\b[\w]+(?:\.[\w]+)+)\b', msg)
+    if m:
+        return m.group(1).replace(".", "/") + ".py"
+    return None
+
+
+def _extract_api_endpoint_from_request(message: str) -> Optional[str]:
+    """Extract /api/... path from add-test request."""
+    msg = str(message or "")
+    m = re.search(r'/api/[a-zA-Z0-9_]+', msg)
+    return m.group(0) if m else None
+
+
+_SCAFFOLD_TEST_API_SERVE = '''"""Tests for eurika.api.serve API endpoints."""
+
+from pathlib import Path
+
+import pytest
+
+from eurika.api import serve as api_serve
+
+
+class _DummyHandler:
+    """Minimal handler stub for tests."""
+
+'''
+
+
+def _generate_and_append_api_test(root: Path, endpoint: str) -> tuple[bool, str]:
+    """Generate test for endpoint and append to tests/test_api_serve.py. CR-B1.
+    Creates tests/test_api_serve.py if missing — доступ везде где есть доступ пользователя."""
+    POST_BODIES: Dict[str, str] = {
+        "/api/approve": '{"operations": []}',
+        "/api/exec": '{"command": "eurika scan ."}',
+        "/api/chat": '{"message": "hi"}',
+        "/api/ask_architect": '{}',
+        "/api/operation_preview": '{"operation": {"target_file": "a.py", "kind": "remove_unused_import", "params": {}}}',
+    }
+    is_post = endpoint in POST_BODIES
+    name_part = endpoint.replace("/api/", "").replace("/", "_")
+    test_file = root / "tests" / "test_api_serve.py"
+    if not test_file.exists():
+        try:
+            test_file.parent.mkdir(parents=True, exist_ok=True)
+            test_file.write_text(_SCAFFOLD_TEST_API_SERVE, encoding="utf-8")
+        except Exception as e:
+            return (False, f"Не удалось создать {test_file}: {e}")
+    body_str = POST_BODIES.get(endpoint, "{}")
+    func = "_run_post_handler" if is_post else "_dispatch_api_get"
+    if is_post:
+        args = f'_DummyHandler(), tmp_path, "{endpoint}", {body_str}'
+    else:
+        args = f'_DummyHandler(), tmp_path, "{endpoint}", {{}}'
+    test_code = f'''
+def test_{"run_post_handler" if is_post else "dispatch_api_get"}_{name_part}_returns_dict(tmp_path: Path, monkeypatch) -> None:
+    """{"POST" if is_post else "GET"} {endpoint} should return dict (CR-B1)."""
+    captured: dict[str, object] = {{}}
+
+    def _fake_json_response(_handler, data: dict, status: int = 200) -> None:
+        captured["status"] = status
+        captured["data"] = data
+
+    monkeypatch.setattr(api_serve, "_json_response", _fake_json_response)
+    handled = api_serve.{func}({args})
+    assert handled is True
+    assert captured.get("status") == 200
+    data = captured.get("data") or {{}}
+    assert isinstance(data, dict)
+'''
+    try:
+        content = test_file.read_text(encoding="utf-8")
+        if f'"{endpoint}"' in content and "tmp_path" in content:
+            return (True, f"Тест для {endpoint} уже есть в {test_file.name}.")
+        new_content = content.rstrip() + test_code
+        test_file.write_text(new_content, encoding="utf-8")
+        return (True, f"Добавлен тест для {endpoint} в {test_file.name}.")
+    except Exception as e:
+        return (False, str(e))
+
+
+def _generate_module_test(root: Path, module_path: str) -> tuple[bool, str]:
+    """Create tests/test_<module>.py for given module path (e.g. eurika/polygon/long_function.py)."""
+    path_normalized = module_path.replace("\\", "/").strip()
+    parts = path_normalized.rstrip("/").split("/")
+    if not parts:
+        return (False, f"Неверный путь к модулю: {module_path}")
+    if parts[-1].endswith(".py"):
+        parts[-1] = parts[-1][:-3]
+    if not parts[-1].replace("_", "").replace("-", "").isalnum():
+        return (False, f"Имя модуля некорректно: {module_path}")
+    module_dot = ".".join(parts)
+    test_name = "_".join(parts)
+    test_file = root / "tests" / f"test_{test_name}.py"
+    src_file = root / path_normalized if path_normalized.endswith(".py") else root / f"{path_normalized}.py"
+    if not src_file.exists():
+        return (False, f"Модуль не найден: {src_file.relative_to(root)}")
+    scaffold = f'''"""Tests for {module_dot}."""
+
+import pytest
+
+
+def test_module_imports():
+    """Module should be importable."""
+    import {module_dot} as mod
+    assert mod is not None
+'''
+    try:
+        if test_file.exists():
+            return (True, f"Файл {test_file.name} уже существует.")
+        test_file.parent.mkdir(parents=True, exist_ok=True)
+        test_file.write_text(scaffold, encoding="utf-8")
+        rel = test_file.relative_to(root)
+        return (True, f"Добавлен тест для {module_path} в {rel}. Запуск: `pytest {rel} -v`")
+    except Exception as e:
+        return (False, str(e))
+
+
+def _brief_release_check_analysis(output: str, ok: bool) -> str:
+    """Extract brief analysis from release check output for chat."""
+    if ok:
+        return "**Release check пройден.** Всё работает."
+    parts: list[str] = []
+    # Pytest failures: FAILED tests/xxx.py::test_name
+    failed = re.findall(r"FAILED\s+(tests/[^\s]+)", output)
+    if failed:
+        unique = list(dict.fromkeys(failed))[:5]
+        parts.append(f"тесты: {', '.join(unique)}")
+    if "ruff" in output.lower() and ("error" in output.lower() or "failed" in output.lower()):
+        parts.append("ruff: ошибки стиля/импортов")
+    if "mypy" in output.lower() and ("error" in output.lower() or "fail" in output.lower()):
+        parts.append("mypy: нужны аннотации типов")
+    if not parts:
+        if output.strip():
+            parts.append("См. вывод ниже.")
+        else:
+            parts.append("Вывод пуст.")
+    return f"**Release check не прошёл.**\n\nОшибки: {'; '.join(parts)}\n\nСкажи «исправь» или «пофикси» для правок."
+
+
+def _is_release_check_request(message: str) -> bool:
+    """Detect request to run release check (CR-B2)."""
+    msg = (message or "").strip().lower()
+    if not msg:
+        return False
+    # Question-like — не запуск
+    if re.search(r'^(что|как|зачем|why|what|how)\s', msg):
+        return False
+    keywords = (
+        "прогони release check", "прогони release_check", "прогони release-check",
+        "run release check", "запусти release check", "выполни release check",
+        "release check", "release_check", "прогони releasecheck",
+    )
+    return any(k in msg for k in keywords)
 
 
 def _is_ritual_request(message: str) -> bool:
@@ -726,25 +1054,43 @@ def save_chat_feedback(
         pass
 
 
-def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str, str]]]=None) -> Dict[str, Any]:
+def chat_send(
+    project_root: Path,
+    message: str,
+    history: Optional[List[Dict[str, str]]] = None,
+    on_system_action: Optional[Callable[[str], None]] = None,
+    run_command_with_result: Optional[Callable[[str], tuple[str, int]]] = None,
+) -> Dict[str, Any]:
     """
     Send user message through Eurika layer to LLM; return response.
 
     ROADMAP 3.5.11.A: enriches prompt with project context.
     ROADMAP 3.5.11.B: RAG from past exchanges.
     ROADMAP 3.5.11.C: intent refactor -> run eurika fix; intent save -> extract code, write file.
+    on_system_action: optional callback for actions (e.g. for Terminal tab: rm, touch, eurika fix).
     """
     root = Path(project_root).resolve()
+
+    def _emit(cmd: str) -> None:
+        if on_system_action:
+            try:
+                on_system_action(cmd)
+            except Exception:
+                pass
     msg = (message or '').strip()
     if not msg:
         return {'text': '', 'error': 'message is empty'}
     state = _load_dialog_state(root)
-    if _is_identity_question(msg):
+    handler_id, emit_cmd = _resolve_direct_handler(root, msg)
+    skip_emit = handler_id == "release_check" and run_command_with_result is not None
+    if emit_cmd and "{" not in str(emit_cmd) and not skip_emit:
+        _emit(emit_cmd)
+    if handler_id == 'identity':
         text = 'Я Eurika — архитектурный coding-ассистент этого проекта. Могу помочь с анализом, рефакторингом и изменениями кода.'
         _append_chat_history_safe(root, 'user', msg, None)
         _append_chat_history_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
-    if _is_ls_request(msg):
+    if handler_id == 'project_ls':
         report_obj = execute_spec(root, build_task_spec(intent='project_ls', message=msg))
         report = {'ok': report_obj.ok, 'summary': report_obj.summary, 'applied_steps': report_obj.applied_steps, 'skipped_steps': report_obj.skipped_steps, 'verification': report_obj.verification, 'artifacts_changed': report_obj.artifacts_changed, 'error': report_obj.error}
         _store_last_execution(state, report)
@@ -754,7 +1100,7 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         _append_chat_history_safe(root, 'user', msg, None)
         _append_chat_history_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
-    if _is_tree_request(msg):
+    if handler_id == 'project_tree':
         report_obj = execute_spec(root, build_task_spec(intent='project_tree', message=msg))
         report = {'ok': report_obj.ok, 'summary': report_obj.summary, 'applied_steps': report_obj.applied_steps, 'skipped_steps': report_obj.skipped_steps, 'verification': report_obj.verification, 'artifacts_changed': report_obj.artifacts_changed, 'error': report_obj.error}
         _store_last_execution(state, report)
@@ -764,7 +1110,7 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         _append_chat_history_safe(root, 'user', msg, None)
         _append_chat_history_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
-    if _is_saved_file_path_request(msg):
+    if handler_id == 'saved_file_path':
         last_saved_abs = str(state.get('last_saved_file_abs') or '').strip()
         if last_saved_abs:
             text = f'Полный путь к последнему сохранённому файлу:\n{last_saved_abs}'
@@ -773,12 +1119,54 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         _append_chat_history_safe(root, 'user', msg, None)
         _append_chat_history_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
-    if _is_show_report_request(msg):
+    if handler_id == 'show_report':
         text = _format_doctor_report_for_chat(root)
         _append_chat_history_safe(root, 'user', msg, None)
         _append_chat_history_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
-    if _is_ritual_request(msg):
+    if handler_id == 'add_api_test':
+        endpoint = _extract_api_endpoint_from_request(msg)
+        if endpoint:
+            _emit(f"# + test for {endpoint} in tests/test_api_serve.py")
+            ok, res = _generate_and_append_api_test(root, endpoint)
+            text = res
+        else:
+            text = "Укажи endpoint, например: добавь тест для /api/summary или добавь тест для /api/chat"
+        _append_chat_history_safe(root, 'user', msg, None)
+        _append_chat_history_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'add_module_test':
+        module_path = _extract_module_path_from_request(msg)
+        if module_path:
+            _emit(f"# + test for {module_path}")
+            ok, res = _generate_module_test(root, module_path)
+            text = res
+        else:
+            text = "Укажи путь к модулю, например: добавь тест для eurika/polygon/long_function.py"
+        _append_chat_history_safe(root, 'user', msg, None)
+        _append_chat_history_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'show_file':
+        rel_path = _extract_file_path_from_show_request(msg)
+        if rel_path:
+            ok, content = _read_file_for_chat(root, rel_path)
+            if ok:
+                lang = _syntax_lang_for_path(rel_path)
+                text = f"**Файл:** `{rel_path}`\n\n```{lang}\n{content}\n```"
+            else:
+                text = content
+        else:
+            text = "Укажи путь к файлу, например: покажи файл .eurika/rules/eurika.mdc"
+        _append_chat_history_safe(root, 'user', msg, None)
+        _append_chat_history_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'roadmap_verify':
+        from eurika.api.roadmap_verify import run_roadmap_verify
+        text, _ = run_roadmap_verify(root, msg)
+        _append_chat_history_safe(root, 'user', msg, None)
+        _append_chat_history_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'ritual':
         from eurika.api.chat_tools import run_eurika_ritual
         ok, output = run_eurika_ritual(root)
         text = f"Выполнил ритуал (scan → doctor → report-snapshot):\n\n```\n{output}\n```"
@@ -787,7 +1175,38 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         _append_chat_history_safe(root, 'user', msg, None)
         _append_chat_history_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None if ok else output}
-    if _is_git_commit_request(msg):
+    if handler_id == 'release_check':
+        exit_code = -1
+        if run_command_with_result is not None:
+            shell_cmd = (emit_cmd or "").strip().lstrip("$ ").strip()
+            if shell_cmd:
+                output, exit_code = run_command_with_result(shell_cmd)
+                ok = exit_code == 0
+            else:
+                ok, output = False, "no command"
+            terminal_cmd = f"$ {shell_cmd}" if shell_cmd else None
+        else:
+            from eurika.api.chat_tools import run_release_check
+            ok, output = run_release_check(root)
+            terminal_cmd = None
+        state['last_release_check_output'] = output
+        state['last_release_check_ok'] = ok
+        _save_dialog_state(root, state)
+        if ok:
+            text = f"{_brief_release_check_analysis(output, True)}\n\n```\n{output[-8000:]}\n```"
+        else:
+            summary = _brief_release_check_analysis(output, False)
+            excerpt = output[-6000:].strip() if output.strip() else "(вывод пуст)"
+            text = f"{summary}\n\n```\n{excerpt}\n```"
+        _append_chat_history_safe(root, 'user', msg, None)
+        _append_chat_history_safe(root, 'assistant', text, None)
+        result = {'text': text, 'error': None}  # text already has analysis and recommendations
+        if terminal_cmd is not None:
+            result['terminal_cmd'] = terminal_cmd
+            result['terminal_output'] = output
+            result['terminal_exit_code'] = exit_code
+        return result
+    if handler_id == 'git_commit':
         from eurika.api.chat_tools import git_status, git_diff, git_commit as _git_commit_tool
         ok_status, status_out = git_status(root)
         ok_diff, diff_out = git_diff(root)
@@ -877,6 +1296,11 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
             _append_chat_history_safe(root, 'assistant', text, None)
             return {'text': text, 'error': None}
         if spec is not None:
+            si, st = str(spec.intent or ''), str(spec.target or '')
+            if si == 'delete' and st:
+                _emit(f"$ rm {st}")
+            elif si == 'create' and st:
+                _emit(f"$ touch {st}")
             report_obj = execute_spec(root, spec)
             report = {'ok': report_obj.ok, 'summary': report_obj.summary, 'applied_steps': report_obj.applied_steps, 'skipped_steps': report_obj.skipped_steps, 'verification': report_obj.verification, 'artifacts_changed': report_obj.artifacts_changed, 'error': report_obj.error}
             state['pending_plan'] = {}
@@ -935,12 +1359,14 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         return {'text': text, 'error': None}
     if intent == 'refactor':
         dry = 'dry-run' in msg.lower() or 'dry run' in msg.lower() or 'без применения' in msg.lower()
+        _emit(f"$ eurika fix . {'--dry-run' if dry else ''}".strip())
         output = _run_eurika_fix(root, dry_run=dry)
         text = 'Запустил `eurika fix .`' + (' (dry-run)' if dry else '') + f':\n\n{output}'
         _append_chat_history_safe(root, 'user', msg, None)
         _append_chat_history_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
     if intent == 'delete' and target:
+        _emit(f"$ rm {target}")
         ok, res = _safe_delete_file(root, target)
         if ok:
             full = (root / res).resolve()
@@ -951,6 +1377,7 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         _append_chat_history_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
     if intent == 'create' and target:
+        _emit(f"$ touch {target}")
         ok, res = _safe_create_empty_file(root, target)
         if ok:
             full = (root / res).resolve()
@@ -1024,7 +1451,9 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         save_target = _infer_default_save_target(msg)
         target = save_target
     feedback_snippet = _load_chat_feedback_for_prompt(root)
-    prompt = _build_chat_prompt(msg, context, history, rag_examples=rag_examples, save_target=save_target, knowledge_snippet=knowledge_snippet or None, feedback_snippet=feedback_snippet or None)
+    rules_snippet = _load_eurika_rules_for_chat(root)
+    intent_hints = _intent_hints_for_prompt(root)
+    prompt = _build_chat_prompt(msg, context, history, rag_examples=rag_examples, save_target=save_target, knowledge_snippet=knowledge_snippet or None, feedback_snippet=feedback_snippet or None, rules_snippet=rules_snippet or None, intent_hints=intent_hints)
     from eurika.reasoning.architect import call_llm_with_prompt
     raw_text, err = call_llm_with_prompt(prompt, max_tokens=1024)
     text = raw_text or ""
@@ -1037,6 +1466,7 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
             from eurika.api.chat_intent import extract_code_block
             code = extract_code_block(text)
             if code:
+                _emit(f"# write -> {save_target}")
                 ok, res = _safe_write_file(root, save_target, code)
                 if ok:
                     full = (root / res).resolve()

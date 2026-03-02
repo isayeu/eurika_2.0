@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Optional
 
-from cli.orchestration.logging import get_logger
+from eurika.orchestration.logging import get_logger
 from code_awareness import CodeAwareness
 from eurika.core.pipeline import run_full_analysis
 from eurika.storage import ProjectMemory

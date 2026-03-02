@@ -12,6 +12,7 @@ from eurika.api import (
     get_chat_dialog_state,
     get_diff,
     get_explain_data,
+    get_firewall_violations_detail,
     get_history,
     get_learning_insights,
     get_patch_plan,
@@ -78,6 +79,18 @@ def test_get_self_guard_returns_dict(tmp_path: Path) -> None:
     assert "pass" in data
     assert "trend_alarms" in data
     assert "complexity_budget_alarms" in data
+    json.dumps(data)
+
+
+def test_get_firewall_violations_detail_returns_dict(tmp_path: Path) -> None:
+    """get_firewall_violations_detail returns dict with forbidden, layer_violations, subsystem_bypass (CR-A3)."""
+    data = get_firewall_violations_detail(tmp_path)
+    assert "forbidden" in data
+    assert "layer_violations" in data
+    assert "subsystem_bypass" in data
+    assert isinstance(data["forbidden"], list)
+    assert isinstance(data["layer_violations"], list)
+    assert isinstance(data["subsystem_bypass"], list)
     json.dumps(data)
 
 

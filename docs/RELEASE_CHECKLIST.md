@@ -28,10 +28,10 @@
 
 ## Venv
 
-Скрипт ожидает venv `../.venv` (относительно корня проекта, см. `.cursor/rules/venv.mdc`).
+Скрипт ожидает venv `.venv` (symlink в корне проекта, см. `.eurika/rules/venv.mdc`).
 
 ```bash
-source ../.venv/bin/activate
+source .venv/bin/activate
 ./scripts/release_check.sh
 ```
 
@@ -43,6 +43,6 @@ GitHub Actions (`.github/workflows/ci.yml`):
 - **test** — pytest, dependency firewall (strict), edge-case tests
 - **release-hygiene** — полный прогон `./scripts/release_check.sh` (после test)
 
-Скрипт работает и локально (venv `../.venv`), и в CI (python/pip из PATH). В CI ruff/mypy при ошибках только предупреждают; локально — блокируют.
+Скрипт работает и локально (venv `.venv`), и в CI (python/pip из PATH). В CI ruff/mypy при ошибках только предупреждают; локально — блокируют.
 
 См. `docs/DEPENDENCY_FIREWALL.md` для деталей по правилам и исключениям.

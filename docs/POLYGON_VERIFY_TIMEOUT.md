@@ -28,7 +28,7 @@ verify_timeout = 300
 verify_cmd = ".venv/bin/python -m pytest tests/test_clean_imports_cli.py tests/test_remove_unused_import.py -q"
 ```
 
-Для полного прогона — переопределить: `--verify-cmd "../.venv/bin/pytest tests/ -q"` или временно закомментировать `verify_cmd` в pyproject.
+Для полного прогона — переопределить: `--verify-cmd ".venv/bin/pytest tests/ -q"` или временно закомментировать `verify_cmd` в pyproject.
 
 Либо env для разовой сессии:
 

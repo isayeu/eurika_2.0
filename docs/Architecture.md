@@ -44,7 +44,8 @@ L6: CLI             ← command parsing, dispatch, orchestration wiring
 | L3 Planning | `architecture_planner*`, `eurika/reasoning/planner*`, `action_plan*`, `patch_plan` |
 | L4 Execution | `patch_apply`, `patch_engine*`, `patch_apply_handlers`, `eurika/refactor/*`, `executor_sandbox` |
 | L5 Reporting | `report/ux`, `eurika/reporting/*`, `architecture_*` (summary, history, diff, feedback, advisor) |
-| L6 CLI | `eurika_cli`, `cli/` (wiring, handlers, orchestration) |
+| L5.5 Application | `eurika/orchestration/` (doctor, fix, full_cycle, prepare, apply_stage — P0.2) |
+| L6 CLI | `eurika_cli`, `cli/` (wiring, handlers; thin re-export from eurika.orchestration) |
 
 ### 0.4 Anti-patterns (запрещённые зависимости)
 
@@ -94,7 +95,7 @@ L6: CLI             ← command parsing, dispatch, orchestration wiring
 | **Planning** | `build_patch_plan`, `build_plan`, `build_action_plan` (architecture_planner) |
 | **Knowledge** | `SMELL_TO_KNOWLEDGE_TOPICS`, providers |
 | **Reasoning** | `advisor`, `architect` (вкл. `build_context_sources`), `planner` |
-| **CLI orchestration** | `run_doctor_cycle`, `run_full_cycle`, `prepare_fix_cycle_operations`, `execute_fix_apply_stage` |
+| **eurika.orchestration** (P0.2) | `run_cycle`, `run_doctor_cycle`, `run_fix_cycle`, `run_full_cycle`, `prepare_fix_cycle_operations`, `execute_fix_apply_stage` |
 | **CLI wiring** | `build_parser`, `dispatch_command` |
 
 Ключевые пакеты с `__all__`: `eurika.storage`, `eurika.agent`, `eurika.reasoning`, `eurika.refactor`, `eurika.knowledge`, `eurika.analysis`, `eurika.smells`, `eurika.evolution`, `eurika.reporting`, `eurika.core`, `patch_engine`, `cli.orchestration`, `cli.wiring`.

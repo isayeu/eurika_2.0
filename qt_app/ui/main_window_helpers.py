@@ -141,6 +141,7 @@ class ChatWorker(QThread):
 
     finished_payload = Signal(dict)
     failed = Signal(str)
+    system_action_occurred = Signal(str)
 
     def __init__(
         self,
@@ -152,6 +153,7 @@ class ChatWorker(QThread):
         openai_model: str,
         ollama_model: str,
         timeout_sec: int,
+        run_command_with_result: Any = None,
     ) -> None:
         super().__init__()
         self._api = api
@@ -161,8 +163,12 @@ class ChatWorker(QThread):
         self._openai_model = openai_model
         self._ollama_model = ollama_model
         self._timeout_sec = timeout_sec
+        self._run_command_with_result = run_command_with_result
 
     def run(self) -> None:
+        def _on_action(cmd: str) -> None:
+            self.system_action_occurred.emit(cmd)
+
         try:
             result = self._api.chat_send(
                 message=self._message,
@@ -171,6 +177,8 @@ class ChatWorker(QThread):
                 openai_model=self._openai_model,
                 ollama_model=self._ollama_model,
                 timeout_sec=self._timeout_sec,
+                on_system_action=_on_action,
+                run_command_with_result=self._run_command_with_result,
             )
             self.finished_payload.emit(result)
         except Exception as exc:

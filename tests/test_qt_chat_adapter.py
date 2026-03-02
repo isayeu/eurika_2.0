@@ -12,7 +12,7 @@ from qt_app.adapters.eurika_api_adapter import EurikaApiAdapter
 def test_chat_send_uses_ollama_provider(monkeypatch) -> None:
     captured = {}
 
-    def _fake_chat_send(_root, _message, _history):
+    def _fake_chat_send(_root, _message, _history, **kwargs):
         import os
 
         captured["openai_api_key"] = os.environ.get("OPENAI_API_KEY")

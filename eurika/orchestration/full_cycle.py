@@ -1,0 +1,266 @@
+"""Full-cycle wiring helper for orchestration layer."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Callable, Literal, cast
+
+from .cycle_state import with_cycle_state
+from .logging import get_logger
+
+_LOG = get_logger("orchestration.full_cycle")
+
+
+def _build_agent_runtime_payload(mode: str, cycle: Any) -> dict[str, Any]:
+    """Normalize agent runtime metadata for API/report surfaces."""
+    stage_outputs = (
+        cycle.stage_outputs
+        if isinstance(getattr(cycle, "stage_outputs", None), dict)
+        else {}
+    )
+    degraded_reasons = [
+        str(v.get("message") or f"{k}:error")
+        for k, v in stage_outputs.items()
+        if isinstance(v, dict) and v.get("status") == "error"
+    ]
+    state = getattr(cycle, "state", None)
+    state_history = getattr(cycle, "state_history", None)
+    state_value = str(getattr(state, "value", state)) if state is not None else None
+    history_values = []
+    if isinstance(state_history, list):
+        history_values = [str(getattr(s, "value", s)) for s in state_history]
+    return {
+        "mode": mode,
+        "stages": list(getattr(cycle, "stages", []) or []),
+        "state": state_value,
+        "state_history": history_values,
+        "degraded_mode": bool(state_value == "error"),
+        "degraded_reasons": degraded_reasons,
+    }
+
+
+def run_cycle_entry(
+    path: Path,
+    *,
+    mode: str = "fix",
+    runtime_mode: str = "assist",
+    non_interactive: bool = False,
+    session_id: str | None = None,
+    window: int = 5,
+    dry_run: bool = False,
+    quiet: bool = False,
+    no_llm: bool = False,
+    no_clean_imports: bool = False,
+    no_code_smells: bool = False,
+    verify_cmd: str | None = None,
+    verify_timeout: int | None = None,
+    allow_campaign_retry: bool = False,
+    allow_low_risk_campaign: bool = False,
+    online: bool = False,
+    team_mode: bool = False,
+    apply_approved: bool = False,
+    approve_ops: str | None = None,
+    reject_ops: str | None = None,
+    run_doctor_cycle_fn: Callable[..., dict[str, Any]],
+    run_fix_cycle_fn: Callable[..., dict[str, Any]],
+    run_full_cycle_fn: Callable[..., dict[str, Any]],
+) -> dict[str, Any]:
+    """Run doctor/fix/full mode with optional agent runtime wrapper."""
+    path = Path(path).resolve()
+    if runtime_mode not in {"assist", "hybrid", "auto"}:
+        return {"error": f"Unknown runtime_mode: {runtime_mode}. Use 'assist', 'hybrid', or 'auto'."}
+
+    def _run_cycle_impl() -> dict[str, Any]:
+        if mode == "doctor":
+            return run_doctor_cycle_fn(path, window=window, no_llm=no_llm, online=online, quiet=quiet)
+        if mode == "fix":
+            return run_fix_cycle_fn(
+                path,
+                runtime_mode=runtime_mode,
+                non_interactive=non_interactive,
+                session_id=session_id,
+                window=window,
+                dry_run=dry_run,
+                quiet=quiet,
+                no_clean_imports=no_clean_imports,
+                no_code_smells=no_code_smells,
+                verify_cmd=verify_cmd,
+                verify_timeout=verify_timeout,
+                allow_campaign_retry=allow_campaign_retry,
+                allow_low_risk_campaign=allow_low_risk_campaign,
+                team_mode=team_mode,
+                apply_approved=apply_approved,
+                approve_ops=approve_ops,
+                reject_ops=reject_ops,
+            )
+        if mode == "full":
+            return run_full_cycle_fn(
+                path,
+                runtime_mode=runtime_mode,
+                non_interactive=non_interactive,
+                session_id=session_id,
+                window=window,
+                dry_run=dry_run,
+                quiet=quiet,
+                no_llm=no_llm,
+                no_clean_imports=no_clean_imports,
+                no_code_smells=no_code_smells,
+                verify_cmd=verify_cmd,
+                verify_timeout=verify_timeout,
+                allow_campaign_retry=allow_campaign_retry,
+                allow_low_risk_campaign=allow_low_risk_campaign,
+                online=online,
+                team_mode=team_mode,
+                apply_approved=apply_approved,
+                approve_ops=approve_ops,
+                reject_ops=reject_ops,
+            )
+        return {"error": f"Unknown mode: {mode}. Use 'doctor', 'fix', or 'full'."}
+
+    if runtime_mode == "assist":
+        return _run_cycle_impl()
+
+    from eurika.agent import DefaultToolContract, OrchestratorToolset, run_agent_cycle
+
+    runtime_mode_lit = cast(Literal["assist", "hybrid", "auto"], runtime_mode)
+    contract = DefaultToolContract()
+    cycle = run_agent_cycle(
+        mode=runtime_mode_lit,
+        tools=OrchestratorToolset(
+            path=path,
+            mode=mode,
+            cycle_runner=_run_cycle_impl,
+            contract=contract,
+        ),
+    )
+    out = (
+        cycle.payload
+        if isinstance(cycle.payload, dict)
+        else {"error": "agent runtime returned invalid payload"}
+    )
+    out.setdefault("agent_runtime", _build_agent_runtime_payload(runtime_mode, cycle))
+    report = out.get("report")
+    if isinstance(report, dict):
+        report.setdefault(
+            "runtime",
+            {
+                "degraded_mode": bool(out["agent_runtime"].get("degraded_mode")),
+                "degraded_reasons": list(out["agent_runtime"].get("degraded_reasons", [])),
+                "state": out["agent_runtime"].get("state"),
+                "mode": runtime_mode,
+            },
+        )
+    return out
+
+
+def run_full_cycle(
+    path: Path,
+    *,
+    runtime_mode: str = "assist",
+    non_interactive: bool = False,
+    session_id: str | None = None,
+    window: int = 5,
+    dry_run: bool = False,
+    quiet: bool = False,
+    no_llm: bool = False,
+    no_clean_imports: bool = False,
+    no_code_smells: bool = False,
+    verify_cmd: str | None = None,
+    verify_timeout: int | None = None,
+    allow_campaign_retry: bool = False,
+    allow_low_risk_campaign: bool = False,
+    online: bool = False,
+    team_mode: bool = False,
+    apply_approved: bool = False,
+    approve_ops: str | None = None,
+    reject_ops: str | None = None,
+    run_doctor_cycle_fn: Callable[..., dict[str, Any]],
+    run_fix_cycle_fn: Callable[..., dict[str, Any]],
+) -> dict[str, Any]:
+    """Run scan → doctor (full report) → fix. Single command for the full ritual (ROADMAP 3.0.3: --online)."""
+    from eurika.smells.rules import summary_to_text
+    from runtime_scan import run_scan
+
+    if not quiet:
+        _LOG.info("eurika cycle: scan -> doctor -> fix")
+    if run_scan(path) != 0:
+        return with_cycle_state(
+            {
+                "return_code": 1,
+                "report": {
+                    "runtime": {
+                        "degraded_mode": True,
+                        "degraded_reasons": ["scan_failed"],
+                    },
+                },
+                "operations": [],
+                "modified": [],
+                "verify_success": False,
+                "agent_result": None,
+            },
+            is_error=True,
+        )
+    data = run_doctor_cycle_fn(path, window=window, no_llm=no_llm, online=online)
+    if data.get("error"):
+        report = dict(data)
+        if not report.get("runtime"):
+            report["runtime"] = {
+                "degraded_mode": True,
+                "degraded_reasons": ["doctor_error"],
+            }
+        return with_cycle_state(
+            {
+                "return_code": 1,
+                "report": report,
+                "operations": [],
+                "modified": [],
+                "verify_success": False,
+                "agent_result": None,
+            },
+            is_error=True,
+        )
+    if not quiet:
+        _LOG.info(summary_to_text(data["summary"]))
+        _LOG.info("")
+        _LOG.info(data["history"].get("evolution_report", ""))
+        _LOG.info("")
+        _LOG.info(data["architect_text"])
+        _LOG.info("")
+    out = run_fix_cycle_fn(
+        path,
+        runtime_mode=runtime_mode,
+        non_interactive=non_interactive,
+        session_id=session_id,
+        window=window,
+        dry_run=dry_run,
+        quiet=quiet,
+        skip_scan=True,
+        no_clean_imports=no_clean_imports,
+        no_code_smells=no_code_smells,
+        verify_cmd=verify_cmd,
+        verify_timeout=verify_timeout,
+        allow_campaign_retry=allow_campaign_retry,
+        allow_low_risk_campaign=allow_low_risk_campaign,
+        team_mode=team_mode,
+        apply_approved=apply_approved,
+        approve_ops=approve_ops,
+        reject_ops=reject_ops,
+    )
+    out["doctor_report"] = data
+    report = out.get("report")  # type: ignore[assignment]
+    doctor_runtime = data.get("runtime")
+    if isinstance(report, dict) and isinstance(doctor_runtime, dict):
+        report.setdefault(
+            "runtime",
+            {
+                "degraded_mode": bool(doctor_runtime.get("degraded_mode")),
+                "degraded_reasons": list(doctor_runtime.get("degraded_reasons", [])),
+                "llm_used": doctor_runtime.get("llm_used"),
+                "use_llm": doctor_runtime.get("use_llm"),
+                "source": "doctor",
+            },
+        )
+    return out
+
+
+# TODO (eurika): refactor long_function 'run_full_cycle' — consider extracting helper

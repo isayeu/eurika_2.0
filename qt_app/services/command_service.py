@@ -7,7 +7,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, Signal
 
-from cli.orchestration.cycle_state import CycleState
+from eurika.orchestration.cycle_state import CycleState
 from qt_app.services.command_builder import build_cli_args
 
 

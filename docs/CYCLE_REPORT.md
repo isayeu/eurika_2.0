@@ -1098,9 +1098,9 @@ Dependency guard стабильно ловит нарушения; EURIKA_STRICT
 
 ### Сценарий A (apply-safe e2e, mini-project)
 - подготовлен временный проект `.tmp_qg4_apply` (`a.py` + `tests/test_a.py`).
-- `../.venv/bin/python -m eurika_cli scan .tmp_qg4_apply`
-- `../.venv/bin/python -m eurika_cli fix .tmp_qg4_apply --quiet`
-- `../.venv/bin/python -m eurika_cli campaign-undo .tmp_qg4_apply --checkpoint-id 20260223_113847_517`
+- `.venv/bin/python -m eurika_cli scan .tmp_qg4_apply`
+- `.venv/bin/python -m eurika_cli fix .tmp_qg4_apply --quiet`
+- `.venv/bin/python -m eurika_cli campaign-undo .tmp_qg4_apply --checkpoint-id 20260223_113847_517`
 
 ### Результат A
 - `fix`: `modified_count=1`, `apply_rate=1.0`, `no_op_rate=0.0`, `rollback_rate=0.0`.
@@ -1109,9 +1109,9 @@ Dependency guard стабильно ловит нарушения; EURIKA_STRICT
 - `campaign-undo`: `status=undone`, `restored=["a.py"]`, `errors=[]`.
 
 ### Сценарий B (no-op e2e, основной проект)
-- `../.venv/bin/python -m eurika_cli scan .`
-- `../.venv/bin/python -m eurika_cli doctor . --no-llm`
-- `../.venv/bin/python -m eurika_cli fix . --dry-run --quiet`
+- `.venv/bin/python -m eurika_cli scan .`
+- `.venv/bin/python -m eurika_cli doctor . --no-llm`
+- `.venv/bin/python -m eurika_cli fix . --dry-run --quiet`
 
 ### Результат B
 - `eurika_fix_report`: `message="Patch plan has no operations. Cycle complete."`
@@ -1220,7 +1220,7 @@ Dependency guard стабильно ловит нарушения; EURIKA_STRICT
 - `tests/test_cycle.py::test_report_snapshot_telemetry_block`
 
 ### Проверка
-- `../.venv/bin/python -m pytest -q tests/test_cycle.py -k "report_snapshot_telemetry_block or report_snapshot_context_effect_block"` → `2 passed`
+- `.venv/bin/python -m pytest -q tests/test_cycle.py -k "report_snapshot_telemetry_block or report_snapshot_context_effect_block"` → `2 passed`
 
 ---
 

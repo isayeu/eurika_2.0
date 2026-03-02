@@ -28,6 +28,9 @@ htmlcov/
 
 # Eurika runtime artifacts
 .eurika/
+!.eurika/rules/
+!.eurika/skills/
+!.eurika/config/
 .eurika_backups/
 self_map.json
 self_map_new.json

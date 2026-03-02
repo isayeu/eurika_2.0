@@ -31,7 +31,7 @@ refactor = ["libcst>=1.0"]
 # CLI: rich для прогресс-баров, таблиц, подсветки вывода
 cli = ["rich>=13.0"]
 # Дополнительные утилиты (watchdog, ruff, structlog, ollama, pydantic)
-extras = ["pydantic>=2.0", "watchdog>=4.0", "ruff>=0.8", "structlog>=24.0", "ollama>=0.3"]
+extras = ["pydantic>=2.0", "watchdog>=4.0", "ruff>=0.8", "structlog>=24.0", "ollama>=0.3", "pyyaml>=6.0"]
 # Всё вместе (для установки: pip install -e ".[test,qt,refactor,cli,extras]")
 full = [
     "openai>=1.0", "litellm>=1.0", "python-dotenv>=1.0", "pytest>=7.0",

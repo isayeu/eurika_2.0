@@ -9,6 +9,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QInputDialog, QMessageBox
 
 from ..main_window_helpers import ChatWorker
+from ..tabs import terminal_tab
 
 if TYPE_CHECKING:
     from ..main_window import MainWindow
@@ -151,8 +152,8 @@ def save_chat_preferences(main: MainWindow) -> None:
 
 
 def _format_chat_line(role: str, text: str, *, is_error: bool = False) -> str:
-    """Format chat line with bold colored role label."""
-    escaped = html.escape(text)
+    """Format chat line with bold colored role label. Preserve newlines for QTextEdit Rich Text."""
+    escaped = html.escape(text).replace("\n", "<br>")
     if role == "user":
         label = '<b><span style="color:#1e40af">You</span></b>'
     else:
@@ -184,11 +185,13 @@ def dispatch_chat_message(main: MainWindow, message: str) -> None:
         openai_model=openai_model,
         ollama_model=ollama_model,
         timeout_sec=timeout_sec,
+        run_command_with_result=lambda cmd: _run_command_subprocess(cmd, str(main._api._root())),
     )
     main._chat_worker = worker
     worker.finished_payload.connect(lambda p: on_chat_result(main, p))
     worker.failed.connect(lambda e: on_chat_error(main, e))
     worker.finished.connect(lambda: on_chat_finished(main))
+    worker.system_action_occurred.connect(lambda cmd: on_system_action(main, cmd))
     worker.start()
 
 
@@ -209,7 +212,52 @@ def reject_pending_chat_plan(main: MainWindow) -> None:
     dispatch_chat_message(main, "отклонить")
 
 
+def _run_command_subprocess(cmd: str, project_root: str) -> tuple[str, int]:
+    """Run command in worker thread (avoids blocking GUI). Returns (output, exit_code)."""
+    import subprocess
+
+    from ..main_window_helpers import strip_ansi
+
+    try:
+        r = subprocess.run(
+            ["bash", "-c", cmd],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=None,
+        )
+        out = ((r.stdout or "") + "\n" + (r.stderr or "")).strip()
+        return (strip_ansi(out), r.returncode)
+    except subprocess.TimeoutExpired:
+        return ("timeout", -1)
+    except Exception as e:
+        return (str(e), -1)
+
+
+def on_system_action(main: MainWindow, cmd: str) -> None:
+    """Emit Chat action to Terminal tab; if cmd starts with '$ ', also execute it."""
+    if hasattr(main, "terminal_emulator_output") and main.terminal_emulator_output:
+        main.terminal_emulator_output.append(f"[Chat] {cmd}")
+    run_cmd = (cmd or "").strip()
+    if run_cmd.startswith("$ "):
+        shell_cmd = run_cmd[2:].strip()
+        if shell_cmd and hasattr(main, "terminal_emulator_input"):
+            if not terminal_tab.execute_command_from_chat(main, shell_cmd):
+                main.terminal_emulator_output.append(
+                    "[Chat] (terminal busy — run manually in input below)"
+                )
+
+
 def on_chat_result(main: MainWindow, payload: dict[str, Any]) -> None:
+    if "terminal_output" in payload and hasattr(main, "terminal_emulator_output"):
+        cmd = payload.get("terminal_cmd", "")
+        out = payload.get("terminal_output", "")
+        code = payload.get("terminal_exit_code", -1)
+        if cmd:
+            main.terminal_emulator_output.append(f"[Chat] {cmd}")
+        if out:
+            terminal_tab._append_stream(main, out)
+        main.terminal_emulator_output.append(f"[done] exit_code={code}")
     text = str(payload.get("text", "")).strip()
     err = payload.get("error")
     if err:

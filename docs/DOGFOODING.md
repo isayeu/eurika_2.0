@@ -4,19 +4,19 @@
 
 ## Где venv
 
-**Рекомендуемый venv для этого репозитория:** `../.venv` (относительно корня `eurika_2.0`).
+**Рекомендуемый venv для этого репозитория:** `.venv` (symlink в корне проекта).
 
 Пример:
 
 ```bash
-source ../.venv/bin/activate
+source .venv/bin/activate
 ```
 
 или без активации:
 
 ```bash
-../.venv/bin/python -m eurika_cli scan .
-../.venv/bin/pytest tests/ -q
+.venv/bin/python -m eurika_cli scan .
+.venv/bin/pytest tests/ -q
 ```
 
 Скан исключает каталоги `venv`, `.venv`, `node_modules` из анализа.
@@ -28,8 +28,8 @@ source ../.venv/bin/activate
 Из **корня репозитория** `eurika_2.0` (где лежит `eurika_cli.py`, `eurika/`, `cli/`):
 
 ```bash
-# Использовать venv из родительского каталога
-PY=../.venv/bin/python
+# Использовать venv из корня проекта
+PY=.venv/bin/python
 
 # 1. Скан и обновление артефактов
 $PY -m eurika_cli scan .
@@ -51,7 +51,7 @@ $PY -m eurika_cli cycle .
 Либо активировать venv и вызывать `eurika` как обычно:
 
 ```bash
-source ../.venv/bin/activate
+source .venv/bin/activate
 eurika scan .
 eurika doctor .
 eurika fix . --dry-run
@@ -81,7 +81,7 @@ eurika fix . --dry-run
 **Каталог `binance/`** — набор разных проектов и их версий (bbot, binance-trade-bot, binance_watchdog_bot, freqtrade, NostalgiaForInfinity и т.д.). Путь указывать на подпроект, а не на корень binance:
 
 ```bash
-source ../.venv/bin/activate
+source .venv/bin/activate
 eurika scan /mnt/storage/project/binance/bbot
 eurika doctor /mnt/storage/project/binance/bbot
 eurika fix /mnt/storage/project/binance/bbot --dry-run

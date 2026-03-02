@@ -8,7 +8,7 @@ from typing import Any, Dict, List
 
 def get_pending_plan(project_root: Path) -> Dict[str, Any]:
     """Load pending plan from .eurika/pending_plan.json for approve UI (ROADMAP 3.5.6)."""
-    from cli.orchestration.team_mode import has_pending_plan, load_pending_plan
+    from eurika.orchestration.team_mode import has_pending_plan, load_pending_plan
 
     root = Path(project_root).resolve()
     if not has_pending_plan(root):
@@ -21,7 +21,7 @@ def get_pending_plan(project_root: Path) -> Dict[str, Any]:
 
 def save_approvals(project_root: Path, operations: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Update team_decision and approved_by in pending_plan.json (ROADMAP 3.5.6)."""
-    from cli.orchestration.team_mode import update_team_decisions
+    from eurika.orchestration.team_mode import update_team_decisions
 
     root = Path(project_root).resolve()
     if not isinstance(operations, list) or any((not isinstance(o, dict) for o in operations)):

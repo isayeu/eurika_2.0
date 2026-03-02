@@ -92,6 +92,7 @@ class MainWindow(QMainWindow):
         self.run_btn.clicked.connect(lambda: command_handlers.run_command(self))
         self.stop_btn.clicked.connect(self._command_service.stop)
         self.refresh_dashboard_btn.clicked.connect(lambda: dashboard_handlers.refresh_dashboard(self))
+        self.dashboard_firewall_detail_btn.clicked.connect(lambda: dashboard_handlers.show_firewall_violations_detail(self))
         self.refresh_graph_btn.clicked.connect(lambda: graph_tab.refresh_graph(self))
         self.tabs.currentChanged.connect(self._on_tab_changed)
         self.run_team_mode_btn.clicked.connect(lambda: command_handlers.run_fix_team_mode(self))
@@ -116,7 +117,6 @@ class MainWindow(QMainWindow):
         self._command_service.error_line.connect(lambda l: command_handlers.append_stderr(self, l))
         self._command_service.command_finished.connect(lambda c: command_handlers.on_command_finished(self, c))
         self._command_service.state_changed.connect(lambda s: command_handlers.on_state_changed(self, s))
-
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
         if self._first_run_prompt_pending:

@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from cli.orchestration.logging import get_logger
+from eurika.orchestration.logging import get_logger
 
 _ALOG = get_logger("agent_handlers")
 from action_plan import ActionPlan

@@ -198,6 +198,211 @@ def test_chat_send_show_report_no_file_returns_hint(tmp_path: Path, monkeypatch)
     assert "scan" in (out.get("text") or "").lower() or "doctor" in (out.get("text") or "").lower()
 
 
+def test_chat_send_show_file_returns_contents_without_llm(tmp_path: Path, monkeypatch) -> None:
+    """When user asks to show file and path exists, return file contents without LLM (CR-A1)."""
+    import eurika.api.chat as chat_mod
+
+    (tmp_path / ".eurika" / "rules").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".eurika" / "rules" / "eurika.mdc").write_text(
+        "---\ndescription: test\n---\n# Eurika rules", encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "покажи файл .eurika/rules/eurika.mdc")
+    assert out.get("error") is None
+    text = out.get("text") or ""
+    assert "Eurika rules" in text
+    assert ".eurika/rules/eurika.mdc" in text
+
+
+def test_chat_send_add_api_test_creates_test(tmp_path: Path, monkeypatch) -> None:
+    """CR-B1: 'добавь тест для /api/foo' in Eurika chat adds test to test_api_serve.py."""
+    import eurika.api.chat as chat_mod
+
+    (tmp_path / "tests").mkdir(exist_ok=True)
+    (tmp_path / "tests" / "test_api_serve.py").write_text(
+        '"""Tests."""\nfrom eurika.api import serve as api_serve\n\nclass _DummyHandler:\n    pass\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "добавь тест для /api/summary")
+    assert out.get("error") is None
+    text = out.get("text") or ""
+    assert "Добавлен" in text or "тест" in text.lower()
+    content = (tmp_path / "tests" / "test_api_serve.py").read_text(encoding="utf-8")
+    assert '"/api/summary"' in content
+    assert "test_dispatch_api_get_summary" in content
+
+
+def test_chat_send_add_module_test_creates_test_file(tmp_path: Path, monkeypatch) -> None:
+    """'добавь тест для eurika/polygon/long_function.py' creates tests/test_eurika_polygon_long_function.py."""
+    import eurika.api.chat as chat_mod
+
+    (tmp_path / "eurika" / "polygon").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "eurika" / "polygon" / "long_function.py").write_text(
+        '"""Dummy module."""\ndef foo(): return 42\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "добавь тест для eurika/polygon/long_function.py")
+    assert out.get("error") is None
+    text = out.get("text") or ""
+    assert "Добавлен" in text
+    test_file = tmp_path / "tests" / "test_eurika_polygon_long_function.py"
+    assert test_file.exists()
+    content = test_file.read_text(encoding="utf-8")
+    assert "eurika.polygon.long_function" in content
+    assert "test_module_imports" in content
+
+
+def test_chat_send_add_api_test_creates_file_if_missing(tmp_path: Path, monkeypatch) -> None:
+    """CR-B1: when tests/test_api_serve.py missing, create it and add test — доступ везде."""
+    import eurika.api.chat as chat_mod
+
+    # No tests/ dir, no test_api_serve.py
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "добавь тест для /api/summary")
+    assert out.get("error") is None
+    text = out.get("text") or ""
+    assert "Добавлен" in text or "тест" in text.lower()
+    test_file = tmp_path / "tests" / "test_api_serve.py"
+    assert test_file.exists()
+    content = test_file.read_text(encoding="utf-8")
+    assert '"/api/summary"' in content
+    assert "test_dispatch_api_get_summary" in content
+    assert "from eurika.api import serve" in content
+    assert "class _DummyHandler" in content
+
+
+def test_chat_send_release_check_runs_script(tmp_path: Path, monkeypatch) -> None:
+    """CR-B2: 'прогони release check' runs release_check.sh and returns output."""
+    import eurika.api.chat as chat_mod
+    import eurika.api.chat_tools as tools_mod
+
+    def _fake_ok(_root, timeout=300):
+        return (True, "==> Release check PASSED")
+
+    monkeypatch.setattr(tools_mod, "run_release_check", _fake_ok)
+    (tmp_path / "scripts").mkdir(exist_ok=True)
+    (tmp_path / "scripts" / "release_check.sh").write_text("#!/bin/bash\nexit 0", encoding="utf-8")
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "прогони release check")
+    assert out.get("error") is None
+    text = out.get("text") or ""
+    assert "Release check" in text or "PASSED" in text
+
+
+def test_chat_send_release_check_failure_stores_output(tmp_path: Path, monkeypatch) -> None:
+    """CR-B2: when release check fails, output is stored for follow-up fix."""
+    import eurika.api.chat as chat_mod
+    import eurika.api.chat_tools as tools_mod
+
+    def _fake_fail(_root, timeout=300):
+        return (False, "FAIL: pytest tests/")
+
+    monkeypatch.setattr(tools_mod, "run_release_check", _fake_fail)
+    (tmp_path / "scripts").mkdir(exist_ok=True)
+    (tmp_path / "scripts" / "release_check.sh").write_text("#!/bin/bash\nexit 1", encoding="utf-8")
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "прогони release check")
+    text = out.get("text") or ""
+    assert "не прошёл" in text or "FAIL" in text or "исправь" in text.lower()
+    assert "FAIL: pytest tests/" in text
+    from eurika.api.chat import _load_dialog_state
+    st = _load_dialog_state(tmp_path)
+    assert st.get("last_release_check_output") == "FAIL: pytest tests/"
+    assert st.get("last_release_check_ok") is False
+
+
+def test_chat_send_roadmap_verify_phase(tmp_path: Path, monkeypatch) -> None:
+    """CR-B3: 'проверь фазу X.Y' runs roadmap verification and returns step report."""
+    import eurika.api.chat as chat_mod
+
+    (tmp_path / ".eurika" / "config").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".eurika" / "config" / "chat_intents.yaml").write_text("""
+version: 1
+intents:
+  roadmap_verify:
+    patterns: ["проверь фазу", "сверь roadmap", "verify phase"]
+    emit: null
+""", encoding="utf-8")
+    (tmp_path / "docs").mkdir(parents=True, exist_ok=True)
+    roadmap = tmp_path / "docs" / "ROADMAP.md"
+    roadmap.write_text("""
+### Фаза 2.7 — Test Phase
+
+| #      | Шаг    | Задача | Критерий готовности |
+| ------ | ------ | ------ | ------------------- |
+| 2.7.1  | Step A | ...    | ✅ foo_func; tests/test_foo.py |
+| 2.7.2  | Step B | ...    | ✅ bar_module |
+""", encoding="utf-8")
+    (tmp_path / "eurika").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "eurika" / "foo.py").write_text("def foo_func(): pass\n", encoding="utf-8")
+    (tmp_path / "tests").mkdir(exist_ok=True)
+    (tmp_path / "tests" / "test_foo.py").write_text("# test\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "проверь фазу 2.7")
+    assert out.get("error") is None
+    text = out.get("text") or ""
+    assert "2.7" in text
+    assert "2.7.1" in text or "Step A" in text
+
+
+def test_chat_send_roadmap_verify_no_phase_hint(tmp_path: Path, monkeypatch) -> None:
+    """CR-B3: 'сверь roadmap' without phase number returns hint."""
+    import eurika.api.chat as chat_mod
+
+    (tmp_path / ".eurika" / "config").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".eurika" / "config" / "chat_intents.yaml").write_text("""
+version: 1
+intents:
+  roadmap_verify:
+    patterns: ["проверь фазу", "сверь roadmap", "verify phase"]
+    emit: null
+""", encoding="utf-8")
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "сверь roadmap")
+    assert out.get("error") is None
+    text = out.get("text") or ""
+    assert "фазу" in text or "phase" in text.lower()
+
+
+def test_chat_send_show_file_not_found_returns_hint(tmp_path: Path, monkeypatch) -> None:
+    """When file does not exist, return error hint without LLM."""
+    import eurika.api.chat as chat_mod
+
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "покажи файл .eurika/rules/nonexistent.mdc")
+    assert out.get("error") is None
+    assert "не найден" in (out.get("text") or "").lower() or "not found" in (out.get("text") or "").lower()
+
+
 def test_chat_send_full_path_query_returns_saved_file_abs_path(tmp_path: Path, monkeypatch) -> None:
     """After save, full-path query should return deterministic absolute path."""
     import eurika.api.chat as chat_mod

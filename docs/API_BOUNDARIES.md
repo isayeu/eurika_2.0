@@ -20,7 +20,7 @@
 | **eurika.core** | `pipeline`, `snapshot` | `from eurika.core import pipeline` |
 | **eurika.checks** | `check_file_size_limits`, `collect_dependency_violations` | `from eurika.checks import check_file_size_limits` |
 | **patch_engine** | `apply_and_verify`, `apply_patch`, `verify_patch`, `rollback_patch` | `from patch_engine import apply_and_verify` |
-| **cli.orchestration** | doctor, fix, full_cycle, prepare, apply_stage (фасады) | через `cli.orchestrator` / handlers |
+| **eurika.orchestration** | run_cycle, run_doctor_cycle, run_fix_cycle, run_full_cycle, prepare, apply_stage (P0.2) | `from eurika.orchestration import run_cycle` или `from cli.orchestrator` |
 
 ## Запрещённые импорты (SubsystemBypassRule)
 

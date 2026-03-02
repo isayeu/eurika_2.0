@@ -3,8 +3,45 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from PySide6.QtWidgets import QMessageBox
+
 if TYPE_CHECKING:
     from ..main_window import MainWindow
+
+
+def show_firewall_violations_detail(main: "MainWindow") -> None:
+    """CR-A3: Show dependency firewall violations in dialog (forbidden, layer, subsystem bypass)."""
+    detail = main._api.get_firewall_violations_detail()
+    forbidden = detail.get("forbidden") or []
+    layer = detail.get("layer_violations") or []
+    bypass = detail.get("subsystem_bypass") or []
+    lines: list[str] = []
+    if forbidden:
+        lines.append("Forbidden imports:")
+        for v in forbidden[:20]:
+            lines.append(f"  {v.get('path', '?')} → {v.get('forbidden_module', '?')}")
+        if len(forbidden) > 20:
+            lines.append(f"  ... и ещё {len(forbidden) - 20}")
+    if layer:
+        lines.append("")
+        lines.append("Layer violations (Lx → Ly, x < y):")
+        for v in layer[:20]:
+            lines.append(f"  {v.get('path', '?')} → {v.get('imported_module', '?')} (L{v.get('source_layer')}→L{v.get('target_layer')})")
+        if len(layer) > 20:
+            lines.append(f"  ... и ещё {len(layer) - 20}")
+    if bypass:
+        lines.append("")
+        lines.append("Subsystem bypass:")
+        for v in bypass[:20]:
+            lines.append(f"  {v.get('path', '?')} → {v.get('imported_module', '?')}")
+        if len(bypass) > 20:
+            lines.append(f"  ... и ещё {len(bypass) - 20}")
+    text = "\n".join(lines) if lines else "0 violations (PASS)"
+    msg = QMessageBox(main)
+    msg.setWindowTitle("Dependency firewall (L0–L6)")
+    msg.setText(text)
+    msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+    msg.exec()
 
 
 def refresh_dashboard(main: MainWindow) -> None:

@@ -1,10 +1,10 @@
 #!/bin/bash
 # R4 Release Hygiene — pre-release gate (docs/RELEASE_CHECKLIST.md)
-# Run from project root; uses ../.venv per .cursor/rules/venv.mdc
+# Run from project root; uses .venv per .eurika/rules/venv.mdc
 
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-VENV="${ROOT}/../.venv"
+VENV="${ROOT}/.venv"
 
 # Use venv if exists (local dev); else use PATH (CI)
 if [[ -x "${VENV}/bin/python" ]]; then
@@ -24,6 +24,15 @@ echo "==> Release check (root=$ROOT)"
 
 _step() { echo ""; echo "==> $1"; }
 _fail() { echo "FAIL: $1" >&2; exit 1; }
+
+_step "0. No .eurika_backups in tree (P0.1)"
+if [[ -d "${ROOT}/.eurika_backups" ]] && [[ -n "$(ls -A "${ROOT}/.eurika_backups" 2>/dev/null)" ]]; then
+  echo "  WARN: .eurika_backups has content — remove before release (review.md P0.1)"
+  echo "        rm -rf .eurika_backups"
+  if [[ -z "${GITHUB_ACTIONS:-}" ]]; then
+    echo "  Continuing..."
+  fi
+fi
 
 _step "1. Tests"
 $PYTEST tests/ -q --tb=short || _fail "pytest tests/"

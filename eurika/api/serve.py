@@ -319,7 +319,7 @@ def _dispatch_api_get(
     if path == "/api/doctor":
         window = int(query.get("window", [5])[0])
         no_llm = query.get("no_llm", ["0"])[0].lower() in ("1", "true", "yes")
-        from cli.orchestration.doctor import run_doctor_cycle
+        from eurika.orchestration.doctor import run_doctor_cycle
         _json_response(handler, run_doctor_cycle(project_root, window=window, no_llm=no_llm))
         return True
     if path == "/api/patch_plan":
@@ -469,7 +469,7 @@ def _run_post_handler(
         _json_response(handler, data)
         return True
     if path == "/api/ask_architect":
-        from cli.orchestration.doctor import run_doctor_cycle
+        from eurika.orchestration.doctor import run_doctor_cycle
         no_llm_raw = (body or {}).get("no_llm", False)
         no_llm = _parse_bool_flag(no_llm_raw)
         if no_llm is None:
