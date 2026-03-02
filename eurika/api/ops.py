@@ -372,6 +372,7 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
 
 _REMOVE_UNUSED_IMPORT_SKIP: frozenset[str] = frozenset({
     "eurika/agent/tool_contract.py",  # re-export layer; detector misses re-exports
+    "cli/core_handlers.py",  # re-export facade; handle_clean_imports etc. for tests/dispatch
 })
 
 

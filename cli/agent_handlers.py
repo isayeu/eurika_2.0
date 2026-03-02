@@ -9,15 +9,15 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from eurika.orchestration.logging import get_logger
-
-_ALOG = get_logger("agent_handlers")
 from action_plan import ActionPlan
 from agent_core import InputEvent
 from agent_core_arch_review import ArchReviewAgentCore
+from eurika.orchestration.logging import get_logger
 from eurika.storage import ProjectMemory
 from executor_sandbox import ExecutorSandbox
 from patch_engine import apply_and_verify, apply_patch, apply_patch_dry_run, list_backups, rollback
+
+_ALOG = get_logger("agent_handlers")
 
 def handle_agent_arch_review(args: Any) -> int:
     path = args.path.resolve()

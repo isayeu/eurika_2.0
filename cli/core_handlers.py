@@ -19,6 +19,30 @@ from .core_handlers_serve import handle_serve
 from .core_handlers_whitelist import handle_campaign_undo, handle_whitelist_draft
 from .core_handlers_watch import handle_watch
 
+__all__ = [
+    "handle_arch_diff",
+    "handle_arch_history",
+    "handle_arch_summary",
+    "handle_architect",
+    "handle_campaign_undo",
+    "handle_clean_imports",
+    "handle_cycle",
+    "handle_doctor",
+    "handle_explain",
+    "handle_fix",
+    "handle_help",
+    "handle_learn_github",
+    "handle_learning_kpi",
+    "handle_report",
+    "handle_report_snapshot",
+    "handle_scan",
+    "handle_self_check",
+    "handle_serve",
+    "handle_suggest_plan",
+    "handle_watch",
+    "handle_whitelist_draft",
+]
+
 # Backward compat: tests import _knowledge_topics_from_env_or_summary from core_handlers
 from cli.orchestrator import _knowledge_topics_from_env_or_summary  # noqa: F401
 

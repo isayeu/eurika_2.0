@@ -8,7 +8,6 @@ diff_api, explain_api) to meet file size budget (<600 LOC).
 """
 from __future__ import annotations
 
-import json
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
@@ -19,6 +18,23 @@ from .explain_api import get_explain_data
 from .learning_api import get_chat_dialog_state, get_learning_insights, get_operational_metrics
 from .ops import get_clean_imports_operations, get_code_smell_operations  # noqa: F401
 from .team_api import get_pending_plan, save_approvals
+
+__all__ = [
+    "get_firewall_violations_detail",
+    "get_graph",
+    "get_risk_prediction",
+    "get_self_guard",
+    "get_smells_with_plugins",
+    "get_summary",
+    "get_diff",
+    "preview_operation",
+    "get_explain_data",
+    "get_chat_dialog_state",
+    "get_learning_insights",
+    "get_operational_metrics",
+    "get_pending_plan",
+    "save_approvals",
+]
 
 
 def get_history(project_root: Path, window: int = 5) -> Dict[str, Any]:

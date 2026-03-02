@@ -502,6 +502,22 @@ def test_get_clean_imports_operations_skips_reexport_modules(tmp_path: Path) -> 
     )
 
 
+def test_get_clean_imports_operations_skips_core_handlers(tmp_path: Path) -> None:
+    """REMOVE_UNUSED_IMPORT_SKIP: cli/core_handlers.py (re-export facade) not proposed."""
+    cli_dir = tmp_path / "cli"
+    cli_dir.mkdir()
+    (cli_dir / "core_handlers.py").write_text(
+        "from .other import handle_clean_imports\n",
+        encoding="utf-8",
+    )
+    (cli_dir / "other.py").write_text("def handle_clean_imports(): pass\n", encoding="utf-8")
+    ops = get_clean_imports_operations(tmp_path)
+    assert not any(
+        o.get("kind") == "remove_unused_import" and "core_handlers" in str(o.get("target_file", ""))
+        for o in ops
+    )
+
+
 def test_get_clean_imports_operations_skips_test_files(tmp_path: Path) -> None:
     """Do not propose remove_unused_import for tests/ (policy denies; apply-rate)."""
     (tmp_path / "src.py").write_text("import os\nimport sys\nx = os.path\n", encoding="utf-8")

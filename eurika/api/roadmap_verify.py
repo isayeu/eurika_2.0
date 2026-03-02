@@ -168,7 +168,6 @@ def _add_snippet_from_path(root: Path, path: Path, snippets: list[str], seen: se
 def _gather_code_snippets(root: Path, row: dict[str, Any], phase: str = "", max_chars: int = 6000) -> str:
     """Gather relevant code from paths in criteria for LLM verification. Fallback to project areas if empty."""
     criteria = row.get("criteria", "")
-    step_name = (row.get("step_name") or "").lower()
     indicators = _extract_indicators(criteria)
     snippets: list[str] = []
     seen: set[str] = set()

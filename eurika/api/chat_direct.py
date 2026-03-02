@@ -478,7 +478,7 @@ Reply with ONLY the commit message (1-2 lines), no quotes, no explanation. Conve
 
 def propose_commit_message_from_status(status_out: str) -> str:
     """Derive a simple commit message from git status output."""
-    lines = [l.strip() for l in (status_out or "").splitlines() if l.strip()]
+    lines = [line.strip() for line in (status_out or "").splitlines() if line.strip()]
     if not lines:
         return "Update project"
     files = []
