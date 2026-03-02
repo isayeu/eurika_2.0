@@ -4,7 +4,6 @@ import sys
 from typing import Any
 from agent_core import InputEvent
 from agent_core_arch_review import ArchReviewAgentCore
-from eurika.storage import ProjectMemory
 from patch_engine import apply_and_verify, apply_patch, apply_patch_dry_run
 
 def handle_agent_patch_apply(args: Any) -> int:
@@ -34,14 +33,15 @@ def handle_agent_patch_apply(args: Any) -> int:
     elif getattr(args, 'verify', False):
         report = apply_and_verify(path, patch_plan, backup=backup, verify=True)
         try:
+            from eurika.storage import ProjectMemory, record_outcome
             memory = ProjectMemory(path)
             summary = result.output.get('summary', {}) if result.success else {}
             risks = list(summary.get('risks', []))
             modules = list(report.get('modified', []))
             operations = list(patch_plan.get('operations', []))
             verify_success = report['verify']['success']
-            if modules:
-                memory.learning.append(project_root=path, modules=modules, operations=operations, risks=risks, verify_success=verify_success)
+            if operations:
+                record_outcome(path, modules, operations, risks, verify_success)
             memory.events.append_event(type='patch', input={'operations_count': len(operations)}, output={'modified': report.get('modified', []), 'run_id': report.get('run_id'), 'verify_success': verify_success}, result=verify_success)
         except Exception:
             pass

@@ -18,6 +18,7 @@ FILES = {
     "feedback": "feedback.json",
     "observations": "observations.json",
     "history": "history.json",
+    "weights": "weights.json",
 }
 
 # Legacy filenames in project root (for migration)
@@ -27,6 +28,7 @@ LEGACY_FILES = {
     "feedback": "architecture_feedback.json",
     "observations": "eurika_observations.json",
     "history": "architecture_history.json",
+    "weights": "weights.json",
 }
 
 

@@ -1,0 +1,131 @@
+"""
+WeightStore — persistence for heuristic estimated_delta (ROADMAP §5.7 этап 7).
+
+Медленно (learning_rate=0.02), bounded [MIN_DELTA, MAX_DELTA], с откатом:
+ручной сброс — удалить .eurika/weights.json для возврата к дефолтам.
+Веса per (smell_type, action_kind).
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Dict, Optional
+
+# Defaults from energy_ranking (canonical source)
+_DEFAULT_DELTAS: Dict[tuple[str, str], float] = {
+    ("god_module", "split_module"): 0.15,
+    ("god_module", "refactor_module"): 0.10,
+    ("bottleneck", "introduce_facade"): 0.12,
+    ("hub", "split_module"): 0.14,
+    ("hub", "refactor_module"): 0.10,
+    ("cyclic_dependency", "refactor_dependencies"): 0.18,
+    ("cyclic_dependency", "remove_cyclic_import"): 0.20,
+    ("long_function", "extract_nested_function"): 0.08,
+    ("long_function", "extract_block_to_helper"): 0.07,
+    ("long_function", "refactor_code_smell"): 0.05,
+    ("deep_nesting", "extract_block_to_helper"): 0.09,
+    ("deep_nesting", "refactor_code_smell"): 0.05,
+}
+
+DEFAULT_DELTA = 0.05  # fallback for unknown (smell, kind)
+MIN_DELTA = 0.02
+MAX_DELTA = 0.25
+
+
+def _weights_path(project_root: Path) -> Path:
+    from eurika.storage.paths import ensure_storage_dir, storage_path
+
+    root = Path(project_root).resolve()
+    ensure_storage_dir(root)
+    return storage_path(root, "weights")
+
+
+def load_weights(project_root: Path) -> Dict[tuple[str, str], float]:
+    """Load persisted weights; merge with defaults. Missing keys use default."""
+    path = _weights_path(project_root)
+    if not path.exists():
+        return dict(_DEFAULT_DELTAS)
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        out = dict(_DEFAULT_DELTAS)
+        for k, v in (raw or {}).items():
+            if "|" in k and isinstance(v, (int, float)):
+                parts = k.split("|", 1)
+                if len(parts) == 2:
+                    out[(parts[0], parts[1])] = float(v)
+        return out
+    except Exception:
+        return dict(_DEFAULT_DELTAS)
+
+
+def save_weights(project_root: Path, weights: Dict[tuple[str, str], float]) -> None:
+    """Persist weights. Keys as 'smell|kind'."""
+    path = _weights_path(project_root)
+    serializable: Dict[str, float] = {f"{s}|{k}": v for (s, k), v in weights.items()}
+    path.write_text(json.dumps(serializable, indent=2), encoding="utf-8")
+
+
+def get_estimated_delta(
+    project_root: Optional[Path],
+    smell_type: str,
+    action_kind: str,
+) -> float:
+    """Return estimated delta for (smell, kind). Uses stored or default."""
+    if project_root is None:
+        return _DEFAULT_DELTAS.get((smell_type or "", action_kind or ""), DEFAULT_DELTA)
+    weights = load_weights(Path(project_root))
+    return weights.get((smell_type or "", action_kind or ""), DEFAULT_DELTA)
+
+
+def adapt_weights_from_experience(
+    project_root: Path,
+    *,
+    learning_rate: float = 0.02,
+    min_delta: float = MIN_DELTA,
+    max_delta: float = MAX_DELTA,
+) -> bool:
+    """
+    Медленно обновить веса на основе success/fail статистики (ROADMAP §5.7 этап 7).
+
+    Success rate > 0.5 → небольшое повышение estimated_delta.
+    Success rate < 0.5 → небольшое понижение.
+    Bounded by [min_delta, max_delta]. Возвращает True если были изменения.
+    """
+    from eurika.storage import get_statistics
+
+    stats = get_statistics(project_root)
+    if not stats:
+        return False
+
+    weights = load_weights(project_root)
+    changed = False
+    for key_str, rec in stats.items():
+        if "|" not in key_str:
+            continue
+        parts = key_str.split("|", 1)
+        if len(parts) != 2:
+            continue
+        smell, kind = parts[0], parts[1]
+        total = int(rec.get("total", 0) or 0)
+        success = int(rec.get("success", 0) or 0)
+        if total < 2:
+            continue
+        rate = success / total
+        tup = (smell, kind)
+        current = weights.get(tup, _DEFAULT_DELTAS.get(tup, DEFAULT_DELTA))
+        if rate > 0.55:
+            delta_adj = learning_rate * (rate - 0.5)
+            new_val = min(max_delta, current + delta_adj)
+        elif rate < 0.45:
+            delta_adj = learning_rate * (0.5 - rate)
+            new_val = max(min_delta, current - delta_adj)
+        else:
+            continue
+        if abs(new_val - current) > 0.001:
+            weights[tup] = round(new_val, 4)
+            changed = True
+
+    if changed:
+        save_weights(project_root, weights)
+    return changed

@@ -181,21 +181,21 @@ def append_fix_cycle_memory(
         if verify_success is True and operations:
             SessionMemory(path).record_verify_success(operations)
         if operations:
-            memory.learning.append(
-                project_root=path,
-                modules=modules_for_learning,
-                operations=learning_operations,
-                risks=risks,
-                verify_success=verify_success,
-            )
-            from eurika.storage.global_memory import append_learn_to_global
-            append_learn_to_global(
+            from eurika.storage import record_outcome
+            record_outcome(
                 path,
                 modules_for_learning,
                 learning_operations,
                 risks,
                 verify_success,
             )
+            import os
+            if path and os.environ.get("EURIKA_WEIGHT_ADAPTATION", "").strip().lower() in ("1", "true", "yes"):
+                try:
+                    from eurika.analysis.weight_store import adapt_weights_from_experience
+                    adapt_weights_from_experience(path)
+                except Exception:
+                    pass
         memory.events.append_event(
             type="patch",
             input={"operations_count": len(operations)},
