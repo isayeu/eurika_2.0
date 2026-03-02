@@ -9,11 +9,12 @@ alwaysApply: true
 
 | Документ | Содержание |
 | -------- | ---------- |
-| **@docs/Architecture.md** | L0–L6 слои, fix-cycle pipeline, dependency direction |
+| **@docs/Architecture.md** | L0–L6 слои, fix-cycle pipeline, dependency direction, §0.9 Execution Model |
 | **@docs/DEPENDENCY_FIREWALL.md** | Layer rules, ImportRule, SubsystemBypassRule, EURIKA_STRICT_LAYER_FIREWALL |
 | **@docs/CLI.md** | CLI команды, рекомендуемый цикл |
 | **@docs/API_BOUNDARIES.md** | Публичные фасады: `from eurika.X import …` |
-| **@docs/ROADMAP.md** | План задач, фазы, критерии готовности |
+| **@docs/ROADMAP.md** | План задач, фазы, §5.7 Execution Model (MetricVector, EnergyModel) |
+| **@docs/review.md** | Архитектурное ревью 2026 II: Execution Model, Planner/Storage хирургия, Energy-based AI |
 | **@docs/ONBOARDING.md** | Onboarding ≤ 10 мин — clone → scan/doctor/fix (B.9) |
 
 Импорты — только через публичный API из API_BOUNDARIES. Нарушения слоёв проверяет dependency firewall.
@@ -22,7 +23,7 @@ alwaysApply: true
 
 ## Рекомендованные @-ссылки (CR-D1)
 
-- Общий план: @docs/ROADMAP.md, @docs/Architecture.md
+- Общий план: @docs/ROADMAP.md, @docs/Architecture.md, @docs/review.md (target v3.x)
 - Агент, рефакторинг: @eurika/agent/
 - API, serve: @eurika/api/
 
@@ -33,3 +34,4 @@ alwaysApply: true
 | Рефакторинг, planner, patch | @eurika/agent/, @eurika/orchestration/ |
 | API, serve, Chat | @eurika/api/ |
 | CLI, команды | @cli/, @docs/CLI.md |
+| Execution Model, MetricVector, EnergyModel | @docs/review.md, @docs/ROADMAP.md §5.7 |
