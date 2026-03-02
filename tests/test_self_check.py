@@ -117,6 +117,23 @@ def test_self_guard_pass_fails_on_must_split():
     assert self_guard_pass(result) is False
 
 
+def test_self_guard_pass_fails_on_candidates_p04():
+    """P0.4: self_guard_pass is False when candidates (>400 LOC) exist."""
+    result = SelfGuardResult(
+        forbidden_count=0,
+        layer_viol_count=0,
+        subsystem_bypass_count=0,
+        must_split_count=0,
+        candidates_count=1,
+        trend_alarms=[],
+        complexity_budget_alarms=[],
+    )
+    assert self_guard_pass(result) is False
+    block = format_self_guard_block(result)
+    assert "file-size" in block or ">400" in block
+    assert "1 " in block
+
+
 def test_collect_self_guard_empty_project(tmp_path: Path):
     """collect_self_guard on empty project returns valid result."""
     result = collect_self_guard(tmp_path)

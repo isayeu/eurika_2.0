@@ -113,11 +113,13 @@ def collect_self_guard(root: Path) -> SelfGuardResult:
 
 def format_self_guard_block(result: SelfGuardResult) -> str:
     """Format SELF-GUARD summary block for self-check output."""
+    file_size_violations = result.candidates_count + result.must_split_count  # P0.4: >400 hard
     total = (
         result.forbidden_count
         + result.layer_viol_count
         + result.subsystem_bypass_count
         + result.must_split_count
+        + result.candidates_count
     )
     has_alarms = result.trend_alarms or result.complexity_budget_alarms
     if total == 0 and not has_alarms:
@@ -132,8 +134,8 @@ def format_self_guard_block(result: SelfGuardResult) -> str:
             parts.append(f"{result.layer_viol_count} layer")
         if result.subsystem_bypass_count:
             parts.append(f"{result.subsystem_bypass_count} subsystem bypass")
-        if result.must_split_count:
-            parts.append(f"{result.must_split_count} must-split")
+        if file_size_violations:
+            parts.append(f"{file_size_violations} file-size (>400 LOC)")
         lines.append(f"  Violations: {', '.join(parts)}")
     if result.trend_alarms:
         lines.append(f"  Trend alarms: {'; '.join(result.trend_alarms)}")
@@ -144,10 +146,12 @@ def format_self_guard_block(result: SelfGuardResult) -> str:
 
 
 def self_guard_pass(result: SelfGuardResult) -> bool:
-    """True if no blocking violations (trend alarms are informational)."""
+    """True if no blocking violations (trend alarms are informational).
+    P0.4: >400 LOC = hard budget; candidates and must_split both fail --strict."""
     return (
         result.forbidden_count == 0
         and result.layer_viol_count == 0
         and result.subsystem_bypass_count == 0
         and result.must_split_count == 0
+        and result.candidates_count == 0  # P0.4: >400 LOC hard limit
     )

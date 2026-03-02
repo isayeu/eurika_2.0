@@ -159,7 +159,7 @@ def test_prepare_context_sources_exception_continues(tmp_path: Path) -> None:
         ],
     }
 
-    with patch("cli.orchestration.prepare.run_fix_diagnose_stage", return_value=fake_result):
+    with patch("eurika.orchestration.prepare.run_fix_diagnose_stage", return_value=fake_result):
         with patch("eurika.reasoning.architect.build_context_sources", side_effect=RuntimeError("knowledge unavailable")):
             early, result, plan, ops = prepare_fix_cycle_operations(
                 tmp_path,

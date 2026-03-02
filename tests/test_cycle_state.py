@@ -97,6 +97,57 @@ def test_cycle_state_enum_values() -> None:
     assert CycleState.DONE.value == "done"
 
 
+def test_pipeline_model_stages_and_validation() -> None:
+    """P0.3: PipelineStage enum and is_valid_stage_sequence."""
+    from eurika.orchestration.pipeline_model import (
+        PipelineStage,
+        is_valid_stage_sequence,
+        next_stage,
+        build_pipeline_trace,
+    )
+
+    assert PipelineStage.INPUT.value == "input"
+    assert PipelineStage.PLAN.value == "plan"
+    assert PipelineStage.VALIDATE.value == "validate"
+    assert PipelineStage.APPLY.value == "apply"
+    assert PipelineStage.VERIFY.value == "verify"
+
+    assert is_valid_stage_sequence(["input"]) is True
+    assert is_valid_stage_sequence(["input", "plan", "validate"]) is True
+    assert is_valid_stage_sequence(["input", "plan", "validate", "apply", "verify"]) is True
+    assert is_valid_stage_sequence(["plan", "validate"]) is True  # prefix
+    assert is_valid_stage_sequence(["validate", "input"]) is False  # wrong order
+    assert is_valid_stage_sequence(["input", "input"]) is False  # non-strict
+
+    assert next_stage(PipelineStage.INPUT) == PipelineStage.PLAN
+    assert next_stage(PipelineStage.VERIFY) is None
+
+    trace = build_pipeline_trace(["input", "plan"])
+    assert trace["pipeline_stages"] == ["input", "plan"]
+    assert "Input → Plan → Validate → Apply → Verify" in trace["pipeline_model"]
+
+
+def test_fix_cycle_report_includes_pipeline_stages(tmp_path: Path) -> None:
+    """P0.3: Fix cycle report includes pipeline_stages and pipeline_model."""
+    from cli.orchestrator import run_fix_cycle
+
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "x"\n')
+    (tmp_path / "self_map.json").write_text('{"modules":[],"dependencies":{}}')
+    out = run_fix_cycle(
+        tmp_path,
+        runtime_mode="assist",
+        non_interactive=True,
+        dry_run=True,
+        quiet=True,
+        skip_scan=True,
+    )
+    report = out.get("report") or {}
+    assert "pipeline_stages" in report
+    assert "pipeline_model" in report
+    assert isinstance(report["pipeline_stages"], list)
+    assert report["pipeline_model"] == "Input → Plan → Validate → Apply → Verify"
+
+
 def test_fix_cycle_result_includes_state_on_success(tmp_path: Path) -> None:
     """Fix cycle success returns state=done and valid state_history."""
     from cli.orchestrator import run_fix_cycle

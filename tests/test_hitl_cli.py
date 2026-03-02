@@ -52,9 +52,9 @@ def test_fix_hybrid_non_interactive_ci_no_hang(tmp_path: Path) -> None:
     """eurika fix with hybrid + non-interactive runs without stdin (CI scenario)."""
     (tmp_path / 'foo.py').write_text('x = 1\n')
     from unittest.mock import MagicMock
-    with patch('cli.orchestrator._fix_cycle_deps') as mock_deps:
+    with patch('eurika.orchestration.entry.load_fix_cycle_deps') as mock_deps:
         mock_deps.return_value = {'run_scan': lambda *a: 0}
-        with patch('cli.orchestrator._prepare_fix_cycle_operations') as mock_prep:
+        with patch('eurika.orchestration.entry._prepare_fix_cycle_operations') as mock_prep:
             result = MagicMock()
             result.output = {'policy_decisions': []}
             ops = [{'target_file': 'foo.py', 'kind': 'remove_unused_import', 'explainability': {'risk': 'low'}}]

@@ -2,6 +2,7 @@
 
 from .deps import FixCycleDeps, load_fix_cycle_deps
 from .models import FixCycleContext
+from .pipeline_model import PipelineStage, build_pipeline_trace, is_valid_stage_sequence
 from .apply_stage import execute_fix_apply_stage, build_fix_cycle_result
 from .doctor import run_doctor_cycle
 from .full_cycle import run_full_cycle
@@ -11,6 +12,9 @@ __all__ = [
     "FixCycleContext",
     "FixCycleDeps",
     "load_fix_cycle_deps",
+    "PipelineStage",
+    "build_pipeline_trace",
+    "is_valid_stage_sequence",
     "prepare_fix_cycle_operations",
     "execute_fix_apply_stage",
     "build_fix_cycle_result",

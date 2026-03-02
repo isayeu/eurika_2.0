@@ -47,9 +47,9 @@ def test_dry_run_report_includes_operation_explanations_with_verify_outcome_none
 
     from cli.orchestrator import run_cycle
 
-    with patch("cli.orchestrator._fix_cycle_deps") as mock_deps:
+    with patch("eurika.orchestration.entry.load_fix_cycle_deps") as mock_deps:
         mock_deps.return_value = {"run_scan": lambda *a: 0}
-        with patch("cli.orchestrator._prepare_fix_cycle_operations") as mock_prep:
+        with patch("eurika.orchestration.entry._prepare_fix_cycle_operations") as mock_prep:
             result = MagicMock()
             result.output = {"policy_decisions": [{"target_file": "x.py", "decision": "allow"}]}
             ops = [{"target_file": "x.py", "kind": "split_module", "explainability": {"why": "split", "risk": "high"}}]
