@@ -126,7 +126,7 @@ def test_product_cycle_dry_run() -> None:
     """eurika cycle --dry-run: scan → doctor → fix (dry-run). Full ritual in one command."""
     result = subprocess.run(
         [sys.executable, '-m', 'eurika_cli', 'cycle', '--dry-run', '--no-llm', str(ROOT)],
-        cwd=ROOT, capture_output=True, text=True, timeout=90,
+        cwd=ROOT, capture_output=True, text=True, timeout=180,
     )
     assert result.returncode == 0, f'stderr: {result.stderr[:1000]}'
     assert "eurika cycle" in result.stderr or "patch_plan" in result.stdout

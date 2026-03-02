@@ -25,6 +25,8 @@
 
 **Вывод ревью (2026):** «Функционально мощный, архитектурно нестабильный, структурно перегруженный.» Риски: God CLI, backups в дереве, orchestration без формальной модели. **Стратегия:** усиливать execution — критично; усиливать LLM — преждевременно.
 
+**Review II (2026):** «Стало лучше структурно» — 8.5/10 амбиция, 7/10 архитектура. Ключевая проблема: отсутствие единого Execution Model; комбинаторный рост логики. Рекомендация: **freeze фичей**, ввести MetricVector + EnergyModel, затем ΔEnergy, ExperienceStore, адаптация весов. Подробно: **docs/review.md**.
+
 **Обновление (февраль 2026):** Split тяжёлых модулей (task_executor, serve, fix_cycle_impl, core_handlers, chat) — P0.4 выполнен; pipeline_model; test_cycle → test_cycle_report; CR rules (docs, pre-commit, test-api) в .eurika/rules; Qt MVP: hybrid approvals, dashboard, Stop. **Рост:** чистота структуры 4→5.5, контроль сложности 5→6, тестируемость ?→6, продуктовая 6→6.5. **Остаётся:** refactor_code_smell 0%, test_graph_ops/test_api крупные при необходимости, продакшн 4/10.
 
 ---
@@ -187,6 +189,38 @@ eurika/reasoning/planner/
 Shim-файлы удалены — импорты из eurika.reasoning.planner.*. architecture_planner: один build-модуль (build_plan, build_action_plan, build_patch_plan).
 - [x] action_plan.py → eurika/reasoning/action_plan.py (L3); action_plan_api удалён.
 
+### 5.7 Execution Model (review 2026 II)
+
+**Источник:** docs/review.md. Цель: формальная execution-модель вместо хаотичного роста.
+
+**Порядок (жёсткий):** нельзя начинать с learning или глубокого рефакторинга planner — сначала MetricVector + EnergyModel.
+
+| #   | Этап                    | Действие | Статус |
+| --- | ----------------------- | -------- | ------ |
+| 0   | Freeze фичей            | 1–2 итерации без новых возможностей, AI, risk-расширений | —     |
+| 1   | MetricVector             | Фиксированная размерность (complexity, coupling, cohesion, instability, layering_violations, entropy). Не dict. | ✅ eurika/analysis/metric_vector.py |
+| 2   | EnergyModel              | Energy = W · MetricVector. Линейная формула, веса пока фиксированы | ✅ eurika/analysis/energy_model.py |
+| 3   | Planner на ΔEnergy       | Ранжировать candidates по delta = E_before - E_after; Score = Delta - Risk | ✅ energy_ranking.rank_operations_by_energy (heuristic) |
+| 4   | ExecutionContext         | snapshot_before, candidates, selected, simulated_snapshot, snapshot_after, delta_score | ✅ eurika/reasoning/execution_context.py |
+| 5   | ArchitectureSnapshot     | graph + metrics + smells — единая модель состояния | ✅ planner.models.ArchitectureSnapshot |
+| 6   | ExperienceStore          | Запись outcome без изменения весов | ✅ eurika/storage/experience_store.py |
+| 7   | Weight adaptation        | Медленно, bounded, с откатом | ✅ weight_store, EURIKA_WEIGHT_ADAPTATION=1 |
+
+**Принцип:** AI = оптимизация в пространстве состояний. Без строгого MetricVector — сложный инструмент, не AI.
+
+**Эволюция (по review):** v2.x rule-based → v3.0 energy-based → v3.5 adaptive weights → v4.0 meta-strategy.
+
+**Целевая структура (v3.x):**
+```
+core/           models, execution_context
+analysis/       graph, metrics, smells
+planning/       planner_engine, candidate_generator, scoring, risk_model
+simulation/     simulator
+execution/      patch_executor, verifier
+evaluation/     delta_evaluator
+storage/        state_store, event_log, learning_store (dumb persistence)
+```
+
 ---
 
 ## 6. Открытый бэклог (следующие шаги)
@@ -214,16 +248,25 @@ Shim-файлы удалены — импорты из eurika.reasoning.planner.
 - KPI: `verify_success_rate` по smell|action|target (prioritized_smell_actions ✅)
 - refactor_code_smell — план: docs/REFACTOR_CODE_SMELL_PLAN.md (Phase 1–4 ✅; Phase E: policy adjust при rate≥25% — hints в learning-kpi)
 
-### 6.4 Cursor Rules (незакрытые)
+### 6.4 Архитектура (L3↛L5)
+
+- architect → report: DI (template_formatter), LayerException удалён ✅
+
+### 6.5 Cursor Rules (незакрытые)
 
 - ~~CR-B1, CR-C1, CR-C2, CR-C3, CR-D3~~ ✅
 - CR-D1–CR-D2: @-ссылки, паттерны по типам задач ✅
 - ~~CR-E, CR-F: Composer и Terminal~~ ✅ composer-scenarios, change-verify-pattern, CR-E3 polygon split_demo
 
-### 6.5 Multi-repo и Learning
+### 6.6 Multi-repo и Learning
 
 - ~~3.0.1: eurika_fix_report_aggregated.json при fix/cycle [path1 path2 ...]~~ ✅ test_multi_repo_fix_aggregated_report
 - 3.0.5: расширение Learning from GitHub (pattern library, OSS examples) — GET /api/pattern_library ✅
+
+### 6.7 Execution Model (по review 2026 II)
+
+- §5.7 этапы 1–7: MetricVector, EnergyModel, ΔEnergy, ExecutionContext, ArchitectureSnapshot, ExperienceStore, Weight adaptation — ✅
+- **Следующая фаза (v4.0):** meta-controller — переключение стратегий при деградации; только после стабилизации v3.5.
 
 ---
 

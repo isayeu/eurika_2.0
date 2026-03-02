@@ -4,7 +4,7 @@
 
 ## 0. Layer Map (ROADMAP 2.8.1, 3.1-arch.1)
 
-Формальная карта слоёв и правил зависимостей. Ссылки: **ROADMAP.md** § Фаза 2.8, § Фаза 3.1-arch, **CLI.md** § Рекомендуемый цикл, **review.md** §6.
+Формальная карта слоёв и правил зависимостей. Ссылки: **ROADMAP.md** § Фаза 2.8, § Фаза 3.1-arch, §5.7 Execution Model, **CLI.md** § Рекомендуемый цикл, **review.md** §6.
 
 Нотация L0–L6 соответствует рекомендациям review v3.0.1.
 
@@ -107,7 +107,7 @@ L6: CLI             ← command parsing, dispatch, orchestration wiring
 | L0 Infrastructure | `eurika/utils/fs`, `patch_apply_backup`, `eurika/storage/paths` |
 | L1 Core | `core/pipeline`, `core/snapshot`, `project_graph`, `project_graph_api`, `self_map_io` |
 | L2 Analysis | `code_awareness*`, `eurika/analysis/*`, `eurika/smells/*`, `graph_analysis`, `semantic_architecture`, `system_topology` |
-| L3 Planning | `architecture_planner*`, `eurika/reasoning/planner*`, `action_plan*`, `patch_plan` |
+| L3 Planning | `architecture_planner*`, `eurika/reasoning/*` (planner, action_plan), `patch_plan` |
 | L4 Execution | `patch_apply`, `patch_engine*`, `patch_apply_handlers`, `eurika/refactor/*`, `executor_sandbox` |
 | L5 Reporting | `report/ux`, `eurika/reporting/*`, `architecture_*` (summary, history, diff, feedback, advisor) |
 | L5.5 Application | `eurika/orchestration/` (doctor, fix, full_cycle, prepare, apply_stage — P0.2) |
@@ -195,6 +195,48 @@ Input → Plan → Validate → Apply → Verify
 
 Проверка: `eurika self-check .` выводит блоки LAYER DISCIPLINE (R1) и FILE SIZE LIMITS; отдельно: `python -m eurika.checks.file_size [path]`.
 
+### 0.9 Execution Model (review 2026 II, target v3.x)
+
+**Источник:** docs/review.md. Цель — формальная execution-модель вместо комбинаторного роста логики.
+
+**ExecutionContext** — единый контекст прохода:
+```
+snapshot_before, candidates, selected_action, simulated_snapshot, snapshot_after, delta_score, risk_report
+```
+Только Orchestrator мутирует context. Все сервисы — чистые.
+
+**Разделение ответственности:**
+| Слой | Ответственность |
+|------|-----------------|
+| analysis | только анализ; weight_store (адаптивные estimated_delta) |
+| planning | только выбор действий |
+| simulation | только dry-run |
+| execution | только применение |
+| evaluation | только сравнение before/after |
+| storage | dumb persistence (ExperienceStore, record_outcome, get_statistics) |
+
+**MetricVector + EnergyModel (порядок по ROADMAP §5.7):**
+1. MetricVector — фиксированная размерность (complexity, coupling, cohesion, instability, layering_violations, entropy)
+2. EnergyModel: Energy = W · MetricVector
+3. Planner ранжирует по ΔEnergy = E_before - E_after; Score = Delta - Risk
+4. ExperienceStore — record_outcome без изменения весов
+5. Weight adaptation — медленно, bounded [0.02..0.25], EURIKA_WEIGHT_ADAPTATION=1; откат: удалить .eurika/weights.json
+
+**Target pipeline (v3.x):**
+```
+User/CLI → ExecutionOrchestrator
+    → Analyzer (snapshot_before)
+    → PlannerEngine (candidates)
+    → SelectBest
+    → SimulationEngine (simulated_snapshot)
+    → PatchExecutor (apply)
+    → Analyzer (re-run) (snapshot_after)
+    → DeltaEvaluator
+    → Storage (write only)
+```
+
+Детали: **ROADMAP.md** §5.7, **docs/review.md**.
+
 ---
 
 ## 1. Target Project Structure (v1.0)
@@ -255,7 +297,7 @@ eurika/
 | analysis/ | code_awareness.py, project_graph*.py, self_map_io.py, semantic_architecture.py, system_topology.py; **реализация в пакете:** eurika.analysis.metrics (из graph_analysis); фасады graph, scanner, self_map, topology, cycles |
 | smells/ | **реализация в пакете:** eurika.smells.detector, models, health, advisor, summary (из architecture_diagnostics, architecture_smells, architecture_health, architecture_advisor, architecture_summary); плоские файлы — реэкспорты |
 | evolution/ | **реализация в пакете:** eurika.evolution.history, diff (из architecture_history, architecture_diff); плоские файлы — реэкспорты |
-| reasoning/ | agent_core*.py, architecture_planner.py, action_plan.py, patch_plan.py, patch_apply.py, executor_sandbox.py, memory, reasoner_dummy, selector; **eurika.reasoning.architect** (интерпретация в стиле архитектора; опционально LLM: OpenAI или OpenRouter через OPENAI_BASE_URL, OPENAI_MODEL) |
+| reasoning/ | agent_core*.py, architecture_planner.py, eurika.reasoning.action_plan, patch_plan.py, patch_apply.py, executor_sandbox.py, memory, reasoner_dummy, selector; **eurika.reasoning.architect** (интерпретация в стиле архитектора; опционально LLM: OpenAI или OpenRouter через OPENAI_BASE_URL, OPENAI_MODEL) |
 | reporting/ | report/ux.py, report/architecture_report.py |
 | api/ | eurika.api (get_summary, get_history, get_diff); eurika serve — HTTP JSON API для UI (ROADMAP §2.3) |
 | storage/ | **ProjectMemory** (eurika.storage) — единая точка входа: .feedback, .learning, .observations, .history; реализации: observation_memory.py, architecture_feedback.py, architecture_learning.py, eurika.evolution.history |
@@ -297,7 +339,8 @@ scan → diagnose → plan → patch → verify → learn
 
 ### Оценка по review.md и направление 2.1
 
-- **Актуальный review (review.md):** диагноз — «архитектурный аналитик с амбициями автономного агента»; таблица оценок (архитектура 8.5, код 8, концепция 9, операционность 5, продукт 5, потенциал 9.5); вывод — усиливать execution критично, LLM преждевременно; долгосрочная цель — полноценный AI-агент с самоусовершенствованием.
+- **Review II (2026):** 8.5/10 амбиция, 7/10 архитектура. Ключевая проблема — отсутствие Execution Model. Рекомендация: freeze фичей, MetricVector + EnergyModel, ΔEnergy, ExperienceStore. Подробно: **docs/review.md**.
+- **Исходный review:** диагноз — «архитектурный аналитик с амбициями автономного агента»; вывод — усиливать execution критично, LLM преждевременно.
 - **2.1 (план прорыва) выполнен:** Patch Engine (apply_patch, verify_patch, rollback_patch), Verify stage, Event Engine, три автофикса, CLI 4 режима — реализованы. Дальше — Knowledge Layer, стабилизация, использование.
 
 ### Knowledge Layer / онлайн-слой (после 1.0, по review.md)
@@ -348,6 +391,8 @@ class ArchitectureSnapshot:
 ```
 
 Все модули (scan, arch-summary, arch-diff) работают через snapshot.
+
+**Target v3.x (review 2026 II):** жёсткая модель — `graph: DependencyGraph`, `metrics: MetricVector`, `smells: SmellReport`. MetricVector — фиксированная размерность; не dict. См. §0.9.
 
 ### 3.3 Ключевые принципы
 
