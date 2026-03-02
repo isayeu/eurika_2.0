@@ -120,8 +120,8 @@ class MainWindow(QMainWindow):
         self.ollama_installed_combo.currentTextChanged.connect(lambda v: ollama_handlers.sync_chat_model_from_installed(self, v))
         self.ollama_search_refresh_btn.clicked.connect(lambda: ollama_handlers.refresh_ollama_catalog(self))
         self._command_service.command_started.connect(lambda c: command_handlers.on_command_started(self, c))
-        self._command_service.output_line.connect(lambda l: command_handlers.append_stdout(self, l))
-        self._command_service.error_line.connect(lambda l: command_handlers.append_stderr(self, l))
+        self._command_service.output_line.connect(lambda line: command_handlers.append_stdout(self, line))
+        self._command_service.error_line.connect(lambda line: command_handlers.append_stderr(self, line))
         self._command_service.command_finished.connect(lambda c: command_handlers.on_command_finished(self, c))
         self._command_service.state_changed.connect(lambda s: command_handlers.on_state_changed(self, s))
     def showEvent(self, event: QShowEvent) -> None:
