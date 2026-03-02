@@ -197,7 +197,7 @@ Shim-файлы удалены — импорты из eurika.reasoning.planner.
 
 | #   | Этап                    | Действие | Статус |
 | --- | ----------------------- | -------- | ------ |
-| 0   | Freeze фичей            | 1–2 итерации без новых возможностей, AI, risk-расширений | 🔄 активен |
+| 0   | Freeze фичей            | 1–2 итерации без новых возможностей, AI, risk-расширений | ✅ завершён |
 | 1   | MetricVector             | Фиксированная размерность (complexity, coupling, cohesion, instability, layering_violations, entropy). Не dict. | ✅ eurika/analysis/metric_vector.py |
 | 2   | EnergyModel              | Energy = W · MetricVector. Линейная формула, веса пока фиксированы | ✅ eurika/analysis/energy_model.py |
 | 3   | Planner на ΔEnergy       | Ранжировать candidates по delta = E_before - E_after; Score = Delta - Risk | ✅ energy_ranking.rank_operations_by_energy (heuristic) |
@@ -210,7 +210,7 @@ Shim-файлы удалены — импорты из eurika.reasoning.planner.
 
 **Эволюция (по review):** v2.x rule-based → v3.0 energy-based → v3.5 adaptive weights → v4.0 meta-strategy.
 
-**Freeze (этап 0, активен):** только багфиксы и стабилизация. Никаких новых фич, AI-расширений, risk-расширений до завершения 1–2 итераций.
+**Freeze (этап 0, завершён):** стабилизация пройдена. Разморозка — можно приступать к следующей фазе.
 
 **Целевая структура (v3.x):**
 ```
