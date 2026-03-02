@@ -8,6 +8,72 @@
 
 Нотация L0–L6 соответствует рекомендациям review v3.0.1.
 
+### 0.0 Архитектурная диаграмма (P0.5)
+
+Визуализация слоёв и потоков данных/управления.
+
+**Слои и направление зависимостей (↓ = зависимость вниз):**
+
+```mermaid
+flowchart TB
+    subgraph L6["L6 CLI"]
+        CLI[eurika_cli, cli/*]
+    end
+    subgraph L55["L5.5 Application"]
+        Orch[eurika/orchestration]
+    end
+    subgraph L5["L5 Reporting"]
+        Report[report/*, architecture_*]
+    end
+    subgraph L4["L4 Execution"]
+        Exec[patch_engine, patch_apply, refactor/*]
+    end
+    subgraph L3["L3 Planning"]
+        Plan[reasoning/planner*, architecture_planner]
+    end
+    subgraph L2["L2 Analysis"]
+        Anal[analysis/*, smells/*, graph]
+    end
+    subgraph L1["L1 Core"]
+        Core[pipeline, snapshot, project_graph]
+    end
+    subgraph L0["L0 Infrastructure"]
+        Infra[fs, storage, paths]
+    end
+    CLI --> Orch
+    CLI --> Report
+    Orch --> Report
+    Orch --> Exec
+    Orch --> Plan
+    Report --> Exec
+    Report --> Plan
+    Exec --> Plan
+    Plan --> Anal
+    Anal --> Core
+    Core --> Infra
+```
+
+**Fix-cycle pipeline (P0.3):**
+
+```mermaid
+flowchart LR
+    I[Input] --> P[Plan]
+    P --> V[Validate]
+    V --> A[Apply]
+    A --> Ver[Verify]
+```
+
+Детали этапов — см. §0.5.1.
+
+**Команды и поток orchestration:**
+
+```
+eurika scan     → runtime_scan → self_map.json
+eurika doctor   → orchestration → diagnose → summary/smells
+eurika fix      → orchestration → prepare → apply_stage → verify
+eurika self-check → scan + LAYER DISCIPLINE + FILE SIZE + SELF-GUARD
+```
+
 ### 0.1 Слои (снизу вверх, L0 → L6)
 
 ```
@@ -66,6 +132,24 @@ L6: CLI             ← command parsing, dispatch, orchestration wiring
 
 Планирование и исполнение не знают деталей друг друга: Planner выдаёт структурированный dict; Executor принимает его и выполняет.
 
+### 0.5.1 Fix-Cycle Pipeline (P0.3, R2)
+
+Формальная модель pipeline для reasoning fix-цикла — убирает эффект «магического чёрного ящика»:
+
+```
+Input → Plan → Validate → Apply → Verify
+```
+
+| Этап | Содержимое | Модули |
+|------|------------|--------|
+| **Input** | Scan + diagnose: наблюдения, summary, smells | prepare.run_fix_scan_stage, run_fix_diagnose_stage |
+| **Plan** | Patch plan, policy, memory, critic | prepare.extract_patch_plan, apply_runtime_policy, apply_campaign_memory, _run_critic_pass |
+| **Validate** | Decision gate: approval + critic verdict | fix_cycle_helpers.filter_executable_operations, select_hybrid_operations |
+| **Apply** | Запись патчей на диск | apply_stage.execute_fix_apply_stage |
+| **Verify** | pytest / verification | apply_stage (apply_and_verify) |
+
+Состояния: `eurika.orchestration.pipeline_model.PipelineStage`. Отчёт fix-цикла содержит `pipeline_stages` и `pipeline_model` для наблюдаемости. См. `eurika/orchestration/pipeline_model.py`.
+
 ### 0.6 Verification
 
 Автоматическая проверка: `tests/test_dependency_guard.py`, `tests/test_dependency_firewall.py` (ROADMAP 2.8.2, R4).
@@ -100,12 +184,14 @@ L6: CLI             ← command parsing, dispatch, orchestration wiring
 
 Ключевые пакеты с `__all__`: `eurika.storage`, `eurika.agent`, `eurika.reasoning`, `eurika.refactor`, `eurika.knowledge`, `eurika.analysis`, `eurika.smells`, `eurika.evolution`, `eurika.reporting`, `eurika.core`, `patch_engine`, `cli.orchestration`, `cli.wiring`.
 
-### 0.8 File Size Limits (ROADMAP 3.1-arch.3)
+### 0.8 File Size Limits (ROADMAP 3.1-arch.3, P0.4)
 
 | Лимит | Правило |
 |-------|---------|
-| >400 LOC | Кандидат на разбиение |
-| >600 LOC | Обязательно делить |
+| >400 LOC | Кандидат на разбиение; в режиме --strict — нарушение (exit 1) |
+| >600 LOC | Обязательно делить; в режиме --strict — нарушение (exit 1) |
+
+Жёсткий бюджет (P0.4): `eurika self-check . --strict` завершится с exit 1 при любом файле >400 LOC.
 
 Проверка: `eurika self-check .` выводит блоки LAYER DISCIPLINE (R1) и FILE SIZE LIMITS; отдельно: `python -m eurika.checks.file_size [path]`.
 

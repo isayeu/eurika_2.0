@@ -48,7 +48,7 @@ def build_terminal_tab(main: MainWindow) -> None:
     input_row.addWidget(main.terminal_emulator_btn)
     main.terminal_emulator_stop_btn = QPushButton("Stop")
     main.terminal_emulator_stop_btn.setEnabled(False)
-    main.terminal_emulator_stop_btn.clicked.connect(lambda: stop_terminal_emulator(main))
+    main.terminal_emulator_stop_btn.clicked.connect(lambda: stop_terminal_or_command(main))
     input_row.addWidget(main.terminal_emulator_stop_btn)
     main.terminal_emulator_clear_btn = QPushButton("Clear")
     main.terminal_emulator_clear_btn.clicked.connect(lambda: clear_terminal_emulator(main))
@@ -112,7 +112,9 @@ def _on_terminal_finished(main: MainWindow, exit_code: int, exit_status: QProces
     main.terminal_emulator_output.append(f"[done] exit_code={exit_code}")
     main.terminal_emulator_input.setEnabled(True)
     main.terminal_emulator_btn.setEnabled(True)
-    main.terminal_emulator_stop_btn.setEnabled(False)
+    # Keep Stop enabled if CommandService (scan/doctor/fix) is still running
+    cmd_running = main._command_service.state in ("thinking", "stopping")
+    main.terminal_emulator_stop_btn.setEnabled(cmd_running)
 
 
 def run_terminal_emulator_command(main: MainWindow) -> None:
@@ -151,6 +153,14 @@ def run_terminal_emulator_command(main: MainWindow) -> None:
         lambda code, status: _on_terminal_finished(main, code, status)
     )
     main._terminal_process.start("bash", ["-c", cmd])
+
+
+def stop_terminal_or_command(main: MainWindow) -> None:
+    """Stop CommandService command (scan/doctor/fix) or terminal emulator — whichever is running."""
+    if main._command_service.state in ("thinking", "stopping"):
+        main._command_service.stop()
+        return
+    stop_terminal_emulator(main)
 
 
 def stop_terminal_emulator(main: MainWindow) -> None:
@@ -265,7 +275,8 @@ def _run_command_in_terminal(
         main.terminal_emulator_output.append(f"[done] exit_code={code}")
         main.terminal_emulator_input.setEnabled(True)
         main.terminal_emulator_btn.setEnabled(True)
-        main.terminal_emulator_stop_btn.setEnabled(False)
+        cmd_running = main._command_service.state in ("thinking", "stopping")
+        main.terminal_emulator_stop_btn.setEnabled(cmd_running)
         if result_holder is not None:
             result_holder[:] = [("".join(output_buffer), code)]
 

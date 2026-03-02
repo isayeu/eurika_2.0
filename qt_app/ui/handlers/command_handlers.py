@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from PySide6.QtCore import QProcess
 from PySide6.QtWidgets import QMessageBox
 
 if TYPE_CHECKING:
@@ -155,3 +156,9 @@ def on_state_changed(main: MainWindow, state: str) -> None:
     running = state in {"thinking", "stopping"}
     main.stop_btn.setEnabled(running)
     main.run_btn.setEnabled(not running)
+    # Stop on Terminal tab: active when CommandService running, or terminal emulator running
+    term_running = (
+        getattr(main, "_terminal_process", None) is not None
+        and main._terminal_process.state() != QProcess.NotRunning
+    )
+    main.terminal_emulator_stop_btn.setEnabled(running or term_running)

@@ -9,6 +9,14 @@ if TYPE_CHECKING:
     from ..main_window import MainWindow
 
 
+def run_scan_from_dashboard(main: MainWindow) -> None:
+    """Switch to Commands tab and select scan (user can click Run)."""
+    idx = main.command_combo.findText("scan")
+    if idx >= 0:
+        main.command_combo.setCurrentIndex(idx)
+    main.tabs.setCurrentWidget(main.commands_tab)
+
+
 def show_firewall_violations_detail(main: "MainWindow") -> None:
     """CR-A3: Show dependency firewall violations in dialog (forbidden, layer, subsystem bypass)."""
     detail = main._api.get_firewall_violations_detail()
@@ -74,6 +82,8 @@ def refresh_dashboard(main: MainWindow) -> None:
         main.learning_widget_text.setPlainText(
             "Run eurika scan . first, then fix/cycle for learning data."
         )
+        if hasattr(main, "dashboard_history_text"):
+            main.dashboard_history_text.setPlainText("")
         return
     system = summary.get("system", {})
     main.dashboard_modules.setText(str(system.get("modules", "-")))
@@ -88,6 +98,11 @@ def refresh_dashboard(main: MainWindow) -> None:
         f"centralization={trends.get('centralization', '-')}",
     ]
     main.dashboard_trends.setText(", ".join(trend_parts))
+    if hasattr(main, "dashboard_history_text"):
+        evo = history.get("evolution_report", "")
+        main.dashboard_history_text.setPlainText(
+            str(evo) if evo else "(No evolution data. Run scan periodically.)"
+        )
     risks = summary.get("risks") or []
     if isinstance(risks, list) and risks:
         risk_lines = [str(r)[:120] for r in risks[:8]]

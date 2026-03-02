@@ -98,6 +98,20 @@ def _build_risks_panel(main: MainWindow) -> QWidget:
     return w
 
 
+def _build_history_panel(main: MainWindow) -> QWidget:
+    """Evolution history: trends, evolution_report."""
+    w = QWidget()
+    layout = QVBoxLayout(w)
+    history_group = QGroupBox("Evolution")
+    history_layout = QVBoxLayout(history_group)
+    main.dashboard_history_text = QTextEdit()
+    main.dashboard_history_text.setReadOnly(True)
+    main.dashboard_history_text.setPlaceholderText("Run scan to see evolution report")
+    history_layout.addWidget(main.dashboard_history_text)
+    layout.addWidget(history_group)
+    return w
+
+
 def _build_learning_panel(main: MainWindow) -> QWidget:
     """Learning insights."""
     w = QWidget()
@@ -121,13 +135,17 @@ def build_dashboard_tab(main: MainWindow) -> None:
     layout.setSpacing(8)
     refresh_row = QHBoxLayout()
     main.refresh_dashboard_btn = QPushButton("Обновить")
+    main.run_scan_dashboard_btn = QPushButton("Run scan")
+    main.run_scan_dashboard_btn.setToolTip("Switch to Commands and run eurika scan")
     refresh_row.addWidget(main.refresh_dashboard_btn)
+    refresh_row.addWidget(main.run_scan_dashboard_btn)
     refresh_row.addStretch(1)
     layout.addLayout(refresh_row)
     overview = _build_overview_panel(main)
     layout.addWidget(overview)
     sub_tabs = QTabWidget()
     sub_tabs.addTab(_build_risks_panel(main), "Риски")
+    sub_tabs.addTab(_build_history_panel(main), "History")
     sub_tabs.addTab(_build_learning_panel(main), "Обучение")
     layout.addWidget(sub_tabs, 1)
     main.tabs.addTab(tab, "Dashboard")

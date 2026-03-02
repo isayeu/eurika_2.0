@@ -1,7 +1,6 @@
 """Pending plan load, approvals table, save handlers. ROADMAP 3.1-arch.3."""
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING, Any
 
 from PySide6.QtWidgets import QComboBox, QMessageBox, QTableWidgetItem
@@ -107,6 +106,8 @@ def save_approvals(main: MainWindow) -> None:
             main, "Approvals", result.get("error", "Failed to save approvals")
         )
         return
-    QMessageBox.information(
-        main, "Approvals", json.dumps(result, ensure_ascii=True, indent=2)
-    )
+    approved = result.get("approved", 0)
+    saved = result.get("saved", len(payload_ops))
+    rejected = saved - approved
+    msg = f"Saved. {approved} approved, {rejected} rejected. Run apply-approved when ready."
+    QMessageBox.information(main, "Approvals", msg)

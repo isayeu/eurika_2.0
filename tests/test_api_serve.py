@@ -277,7 +277,7 @@ def test_run_post_handler_chat_passes_normalized_payload_to_chat_send(tmp_path: 
         return {"text": "ok", "error": None}
 
     monkeypatch.setattr(api_serve, "_json_response", _fake_json_response)
-    monkeypatch.setattr(api_serve, "chat_send", _fake_chat_send)
+    monkeypatch.setattr("eurika.api.chat.chat_send", _fake_chat_send)
 
     handled = api_serve._run_post_handler(
         _DummyHandler(),
@@ -415,7 +415,7 @@ def test_run_post_handler_chat_allows_empty_message_passthrough(tmp_path: Path, 
         return {"text": "", "error": "message is empty"}
 
     monkeypatch.setattr(api_serve, "_json_response", _fake_json_response)
-    monkeypatch.setattr(api_serve, "chat_send", _fake_chat_send)
+    monkeypatch.setattr("eurika.api.chat.chat_send", _fake_chat_send)
     handled = api_serve._run_post_handler(
         _DummyHandler(),
         tmp_path,
@@ -503,7 +503,7 @@ def test_run_post_handler_ask_architect_passes_no_llm_value(tmp_path: Path, monk
         called["no_llm"] = no_llm
         return {"architect_text": "ok"}
 
-    import cli.orchestration.doctor as doctor_mod
+    import eurika.orchestration.doctor as doctor_mod
 
     monkeypatch.setattr(api_serve, "_json_response", _fake_json_response)
     monkeypatch.setattr(doctor_mod, "run_doctor_cycle", _fake_run_doctor_cycle)

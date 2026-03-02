@@ -92,6 +92,7 @@ class MainWindow(QMainWindow):
         self.run_btn.clicked.connect(lambda: command_handlers.run_command(self))
         self.stop_btn.clicked.connect(self._command_service.stop)
         self.refresh_dashboard_btn.clicked.connect(lambda: dashboard_handlers.refresh_dashboard(self))
+        self.run_scan_dashboard_btn.clicked.connect(lambda: dashboard_handlers.run_scan_from_dashboard(self))
         self.dashboard_firewall_detail_btn.clicked.connect(lambda: dashboard_handlers.show_firewall_violations_detail(self))
         self.refresh_graph_btn.clicked.connect(lambda: graph_tab.refresh_graph(self))
         self.tabs.currentChanged.connect(self._on_tab_changed)
