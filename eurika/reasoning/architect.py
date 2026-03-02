@@ -307,17 +307,21 @@ def _call_llm_architect(client: Any, model: str, prompt: str, max_tokens: int=35
     except Exception as e:
         return (None, str(e))
 
-def _call_ollama_cli(model: str, prompt: str) -> tuple[str | None, str | None]:
+def _call_ollama_cli(model: str, prompt: str, timeout_override: int | None = None) -> tuple[str | None, str | None]:
     """Fallback path via local `ollama run` CLI when HTTP endpoints are unavailable.
-    EURIKA_OLLAMA_CLI_TIMEOUT_SEC: 0=unlimited, else seconds (default 120)."""
+    EURIKA_OLLAMA_CLI_TIMEOUT_SEC: 0=unlimited, else seconds (default 120).
+    timeout_override: use instead of env (e.g. EURIKA_LLM_EXTRACT_TIMEOUT_SEC for extract)."""
     import os
     import subprocess
-    raw = os.environ.get('EURIKA_OLLAMA_CLI_TIMEOUT_SEC', '120')
-    try:
-        val = int(raw) if raw else 120
-        cli_timeout_sec = None if val <= 0 else val
-    except (ValueError, TypeError):
-        cli_timeout_sec = 120
+    if timeout_override is not None:
+        cli_timeout_sec = timeout_override if timeout_override > 0 else None
+    else:
+        raw = os.environ.get('EURIKA_OLLAMA_CLI_TIMEOUT_SEC', '120')
+        try:
+            val = int(raw) if raw else 120
+            cli_timeout_sec = None if val <= 0 else val
+        except (ValueError, TypeError):
+            cli_timeout_sec = 120
     if cli_timeout_sec:
         _trace_architect(f"ollama CLI: waiting up to {cli_timeout_sec}s...")
 

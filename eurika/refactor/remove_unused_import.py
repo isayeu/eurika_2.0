@@ -53,9 +53,12 @@ def remove_unused_imports(file_path: Path) -> Optional[str]:
     except OSError:
         return None
 
-    libcst_result = _remove_unused_imports_libcst(content, str(file_path))
-    if libcst_result is not None:
-        return libcst_result
+    if "# noqa" in content and "F401" in content:
+        pass
+    else:
+        libcst_result = _remove_unused_imports_libcst(content, str(file_path))
+        if libcst_result is not None:
+            return libcst_result
 
     try:
         tree = ast.parse(content)
@@ -63,6 +66,7 @@ def remove_unused_imports(file_path: Path) -> Optional[str]:
         return None
 
     used = _collect_used_names(tree)
+    used.update(_names_from_noqa_f401_re_exports(content, tree))
     remover = _UnusedImportRemover(used)
     remover.visit(tree)
     if not remover.removed:
@@ -86,6 +90,31 @@ def _collect_used_names(tree: ast.AST) -> Set[str]:
     # Names in __all__ are re-exports; treat them as used.
     used.update(_names_in_all(tree))
     return used
+
+
+def _names_from_noqa_f401_re_exports(content: str, tree: ast.AST) -> Set[str]:
+    """Return names from imports marked with # noqa: F401 (re-exports for public API)."""
+    names: Set[str] = set()
+    lines = content.splitlines()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            start = node.lineno - 1
+            end = getattr(node, "end_lineno", node.lineno) - 1
+            for i in range(start, min(end + 1, len(lines))):
+                if "# noqa" in lines[i] and "F401" in lines[i]:
+                    for a in node.names:
+                        names.add(a.asname or a.name.split(".")[0])
+                    break
+        elif isinstance(node, ast.ImportFrom) and node.module != "__future__":
+            start = node.lineno - 1
+            end = getattr(node, "end_lineno", node.lineno) - 1
+            for i in range(start, min(end + 1, len(lines))):
+                if "# noqa" in lines[i] and "F401" in lines[i]:
+                    for a in node.names:
+                        if a.name != "*":
+                            names.add(a.asname or a.name)
+                    break
+    return names
 
 
 def _names_in_all(tree: ast.AST) -> Set[str]:

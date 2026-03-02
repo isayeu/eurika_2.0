@@ -47,7 +47,6 @@ eurika-qt = "qt_app.main:main"
 py-modules = [
     "eurika_cli", "code_awareness", "runtime_scan", "architecture_pipeline",
     "system_topology", "project_graph", "project_graph_api",
-    "code_awareness_extracted", "code_awareness_codeawarenessextracted",
     "semantic_architecture",
 ]
 

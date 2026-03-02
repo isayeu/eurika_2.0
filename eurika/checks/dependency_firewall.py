@@ -120,6 +120,7 @@ DEFAULT_LAYER_PATH_RULES: tuple[LayerPathRule, ...] = (
     LayerPathRule(path_pattern="patch_apply_backup.py", layer=0),
     LayerPathRule(path_pattern="eurika/storage/paths.py", layer=0),
     LayerPathRule(path_pattern="eurika/utils/fs", layer=0),
+    LayerPathRule(path_pattern="eurika/extraction_sandbox/", layer=0),
 )
 
 
@@ -153,6 +154,7 @@ DEFAULT_LAYER_IMPORT_RULES: tuple[LayerImportRule, ...] = (
     LayerImportRule(import_prefix="patch_apply_backup", layer=0),
     LayerImportRule(import_prefix="eurika.storage.paths", layer=0),
     LayerImportRule(import_prefix="eurika.utils.fs", layer=0),
+    LayerImportRule(import_prefix="eurika.extraction_sandbox", layer=0),
 )
 
 

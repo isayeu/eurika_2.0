@@ -39,21 +39,24 @@ def _max_hint_calls() -> int:
 
 
 def _hints_budget_sec() -> float:
-    """Per-run wall-clock budget for planner LLM calls (seconds)."""
-    raw = os.environ.get("EURIKA_LLM_HINTS_BUDGET_SEC", "20")
+    """Per-run wall-clock budget for planner LLM calls (seconds).
+    Includes architect hints and ask_llm_extract_patch; Ollama can take 30–40s.
+    """
+    raw = os.environ.get("EURIKA_LLM_HINTS_BUDGET_SEC", "60")
     try:
         return max(0.0, float(raw))
     except ValueError:
-        return 20.0
+        return 60.0
 
 
 def _reset_hint_runtime_state() -> None:
     """Reset in-process counters/cache (used by tests)."""
-    global _HINT_CALLS, _HINT_BUDGET_START, _HINT_CACHE, _HINT_CIRCUIT_BROKEN
+    global _HINT_CALLS, _HINT_BUDGET_START, _HINT_CACHE, _HINT_CIRCUIT_BROKEN, _EXTRACT_PATCH_CALLS
     _HINT_CALLS = 0
     _HINT_BUDGET_START = 0.0
     _HINT_CACHE = {}
     _HINT_CIRCUIT_BROKEN = False
+    _EXTRACT_PATCH_CALLS = 0
 
 
 def _llm_hint_allowed() -> bool:
@@ -238,6 +241,136 @@ def ask_llm_extract_method_hints(
         pass
     _HINT_CACHE[cache_key] = []
     return []
+
+
+def _use_llm_extract() -> bool:
+    """Check EURIKA_USE_LLM_EXTRACT (REFACTOR_CODE_SMELL_PLAN Phase 3). Default: off."""
+    return os.environ.get("EURIKA_USE_LLM_EXTRACT", "0").strip().lower() in ("1", "true", "yes")
+
+
+_EXTRACT_PATCH_CALLS = 0
+
+
+def _max_extract_patch_calls() -> int:
+    """Separate budget for ask_llm_extract_patch (not shared with architect hints)."""
+    raw = os.environ.get("EURIKA_LLM_EXTRACT_MAX_CALLS", "3")
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 3
+
+
+def _llm_extract_allowed() -> bool:
+    """Budget check for LLM extract — independent of architect _HINT_CALLS."""
+    return _EXTRACT_PATCH_CALLS < _max_extract_patch_calls()
+
+
+def _build_extract_patch_prompt(function_name: str, full_source: str, oss_snippets: list[str] | None) -> str:
+    """Prompt for LLM to generate refactored file (extract helper from long function)."""
+    preview = full_source[:2500] + ("..." if len(full_source) > 2500 else "")
+    base = (
+        f"Refactor the Python file below. Function '{function_name}' is too long. "
+        "Extract a coherent block of logic into a helper function (e.g. _compute_xyz). "
+        "Output ONLY the complete refactored file content, no explanation. "
+        "Preserve ALL functions and classes in the file; do not remove any. Preserve semantics and imports.\n\n"
+        f"```python\n{preview}\n```\n\n"
+    )
+    if oss_snippets:
+        base += "\nReference:\n" + "\n".join(oss_snippets[:1]) + "\n\n"
+    base += "Reply with the full refactored Python code only (inside ```python ... ``` or raw)."
+    return base
+
+
+def _top_level_names(source: str) -> set[str]:
+    """Extract top-level def/class names (excluding private _names) from Python source."""
+    try:
+        import ast
+        tree = ast.parse(source)
+        names: set[str] = set()
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                if not node.name.startswith("_"):
+                    names.add(node.name)
+        return names
+    except SyntaxError:
+        return set()
+
+
+def _validate_llm_extract_preserves_names(original: str, refactored: str) -> bool:
+    """Reject LLM output that drops top-level public names from the original file."""
+    orig_names = _top_level_names(original)
+    if not orig_names:
+        return True
+    new_names = _top_level_names(refactored)
+    missing = orig_names - new_names
+    return len(missing) == 0
+
+
+def ask_llm_extract_patch(
+    file_path: "os.PathLike[str] | str",
+    function_name: str,
+    project_root: "os.PathLike[str] | str | None" = None,
+) -> Optional[str]:
+    """
+    Ask LLM to generate refactored file content (extract helper from long function).
+    REFACTOR_CODE_SMELL_PLAN Phase 3. Returns new file content or None.
+
+    Uses separate budget (EURIKA_LLM_EXTRACT_MAX_CALLS, default 3) so architect
+    hints during diagnose do not exhaust it.
+    """
+    global _EXTRACT_PATCH_CALLS
+    if not _use_llm_extract():
+        return None
+
+    if not function_name or not str(function_name).strip():
+        return None
+    cache_key = ("llm_extract_patch", f"{file_path}:{function_name}")
+    cached = _HINT_CACHE.get(cache_key)
+    if cached is not None:
+        return cached[0] if isinstance(cached, (list, tuple)) and cached else None
+    if not _llm_extract_allowed():
+        return None
+    try:
+        content = Path(file_path).read_text(encoding="utf-8")
+    except OSError:
+        return None
+    if len(content) < 50:
+        _HINT_CACHE[cache_key] = []
+        return None
+    oss: list[str] = []
+    if project_root:
+        try:
+            from eurika.api.ops import _load_oss_snippets_for_smell
+            root = Path(project_root).resolve()
+            oss = _load_oss_snippets_for_smell(root, "long_function", max_count=2)
+        except Exception:
+            pass
+    prompt = _build_extract_patch_prompt(function_name, content, oss or None)
+    _EXTRACT_PATCH_CALLS += 1
+    try:
+        from eurika.reasoning.architect import _call_ollama_cli
+        text, _reason = _call_ollama_cli(_ollama_model(), prompt, timeout_override=0)
+        if not text or not text.strip():
+            _HINT_CACHE[cache_key] = []
+            return None
+        # Extract code block or use raw
+        code_match = re.search(r"```(?:python)?\s*\n?(.*?)```", text, re.DOTALL | re.IGNORECASE)
+        raw = (code_match.group(1).strip() if code_match else text.strip())
+        try:
+            import ast
+            ast.parse(raw)
+        except SyntaxError:
+            _HINT_CACHE[cache_key] = []
+            return None
+        if not _validate_llm_extract_preserves_names(content, raw):
+            _HINT_CACHE[cache_key] = []
+            return None
+        _HINT_CACHE[cache_key] = [raw]
+        return raw
+    except Exception:
+        pass
+    _HINT_CACHE[cache_key] = []
+    return None
 
 
 def _parse_llm_hints(text: str) -> List[str]:

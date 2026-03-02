@@ -18,6 +18,8 @@ alwaysApply: true
 
 Импорты — только через публичный API из API_BOUNDARIES. Нарушения слоёв проверяет dependency firewall.
 
+**Конфиг проекта:** правила, skills, конфиг — только в `.eurika/`. `.cursor/` — каталог IDE, не использовать для файлов проекта.
+
 ## Рекомендованные @-ссылки (CR-D1)
 
 - Общий план: @docs/ROADMAP.md, @docs/Architecture.md

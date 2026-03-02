@@ -18,6 +18,9 @@ def handle_learn_github(args: Any) -> int:
 
     search_query = getattr(args, "search", None)
     search_limit = getattr(args, "search_limit", 5)
+    limit_repos = getattr(args, "limit_repos", None)
+    use_light = getattr(args, "light", False)
+
     if search_query:
         try:
             token = os.environ.get("GITHUB_TOKEN", "")
@@ -33,9 +36,16 @@ def handle_learn_github(args: Any) -> int:
     else:
         config_path = getattr(args, "config", None)
         if config_path is None:
-            cfg = path / "docs" / "curated_repos.example.json"
+            cfg = path / "docs" / (
+                "curated_repos.light.json" if use_light else "curated_repos.example.json"
+            )
             config_path = cfg if cfg.exists() else None
         repos = load_curated_repos(config_path)
+        if use_light and config_path and "light" in str(config_path):
+            print("eurika learn-github: using light list", file=sys.stderr)
+    if limit_repos is not None and limit_repos > 0:
+        repos = repos[:limit_repos]
+        print(f"eurika learn-github: limit-repos={limit_repos}", file=sys.stderr)
     cache_dir = path.resolve().parent / "curated_repos"
     do_scan = getattr(args, "scan", False)
     do_patterns = getattr(args, "build_patterns", False)

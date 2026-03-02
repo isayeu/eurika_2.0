@@ -37,6 +37,23 @@ def test_polygon_long_function_extractable_block_semantics() -> None:
     assert polygon_long_function_extractable_block(5) == 45
 
 
+def test_polygon_refactor_code_smell_drill_semantics() -> None:
+    """DRILL_REFACTOR_CODE_SMELL — long_function без extractable; целевой для LLM-powered extract."""
+    from eurika.polygon import polygon_refactor_code_smell_drill
+
+    # seed=1: a=2,b=4,c=5,d=10,e=12,f=24,g=28,h=56,i=61,j=122,_1=1
+    assert polygon_refactor_code_smell_drill(1) == 2 + 4 + 5 + 10 + 12 + 24 + 28 + 56 + 61 + 122 + 1
+
+
+def test_polygon_split_demo_semantics() -> None:
+    """DRILL_SPLIT (CR-E3) — split_demo validators + formatters preserve semantics."""
+    from eurika.polygon import polygon_split_demo
+
+    assert polygon_split_demo("hi", 50, 12) == "[HI:0012]"
+    assert polygon_split_demo("", 0, 1) == ""
+    assert polygon_split_demo("x", -1, 5) == ""
+
+
 def test_clean_imports_dry_run(tmp_path: Path) -> None:
     """clean-imports (no --apply) reports files that would be modified."""
     (tmp_path / 'a.py').write_text('import unused_mod\nx = 1\n')

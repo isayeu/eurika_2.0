@@ -88,6 +88,7 @@ class MainWindow(QMainWindow):
         self.no_llm_check.toggled.connect(self._sync_preview)
         self.no_clean_imports_check.toggled.connect(self._sync_preview)
         self.no_code_smells_check.toggled.connect(self._sync_preview)
+        self.use_llm_extract_check.toggled.connect(self._sync_preview)
         self.allow_low_risk_campaign_check.toggled.connect(self._sync_preview)
         self.team_mode_check.toggled.connect(self._sync_preview)
         self.run_btn.clicked.connect(lambda: command_handlers.run_command(self))
@@ -205,6 +206,8 @@ class MainWindow(QMainWindow):
             parts.append('--allow-low-risk-campaign')
         if self.team_mode_check.isChecked() and cmd in {'fix', 'cycle'}:
             parts.append('--team-mode')
+        if getattr(self, 'use_llm_extract_check', None) and self.use_llm_extract_check.isChecked() and cmd in {'fix', 'cycle'}:
+            parts.append('[LLM extract]')
         self.preview_label.setText(' '.join(parts))
         self.module_edit.setEnabled(cmd == 'explain')
 

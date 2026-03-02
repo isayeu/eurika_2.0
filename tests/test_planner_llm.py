@@ -9,6 +9,7 @@ from eurika.reasoning.planner_llm import (
     _build_planner_prompt,
     _parse_llm_hints,
     ask_llm_extract_method_hints,
+    ask_llm_extract_patch,
     ask_ollama_split_hints,
     llm_hint_runtime_stats,
 )
@@ -185,6 +186,49 @@ def test_ask_llm_extract_method_hints_success(tmp_path: Path) -> None:
             result = ask_llm_extract_method_hints(py_file, "long_function")
     assert len(result) >= 1
     assert "loop" in result[0].lower() or "validation" in result[0].lower() or "chunk" in result[0].lower()
+
+
+def test_ask_llm_extract_patch_disabled_by_default() -> None:
+    """When EURIKA_USE_LLM_EXTRACT=0 (default), returns None without calling Ollama."""
+    result = ask_llm_extract_patch(__file__, "test_ask_llm_extract_patch_disabled")
+    assert result is None
+
+
+def test_ask_llm_extract_patch_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """When EURIKA_USE_LLM_EXTRACT=1 and Ollama returns valid Python, returns content."""
+    monkeypatch.setenv("EURIKA_USE_LLM_EXTRACT", "1")
+    monkeypatch.setenv("EURIKA_LLM_HINTS_MAX_CALLS", "5")
+    monkeypatch.setenv("EURIKA_LLM_HINTS_BUDGET_SEC", "999")
+    py_file = tmp_path / "code.py"
+    py_file.write_text(
+        '"""Module."""\ndef long_func(x):\n    a = 1\n    for i in range(10):\n        yield i + a\n',
+        encoding="utf-8",
+    )
+    refactored = '"""Module."""\ndef _helper(n):\n    return sum(range(n))\ndef long_func(x):\n    return _helper(10) + x\n'
+    with patch("eurika.reasoning.planner_llm._use_llm_extract", return_value=True):
+        with patch("eurika.reasoning.architect._call_ollama_cli") as mock_cli:
+            mock_cli.return_value = (f"```python\n{refactored}\n```", None)
+            result = ask_llm_extract_patch(py_file, "long_func")
+    assert result is not None
+    assert "_helper" in result
+    assert "long_func" in result
+
+
+def test_ask_llm_extract_patch_rejects_when_llm_drops_function(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """When LLM output drops a top-level public function, returns None (validation)."""
+    monkeypatch.setenv("EURIKA_USE_LLM_EXTRACT", "1")
+    py_file = tmp_path / "multi.py"
+    py_file.write_text(
+        '"""Multi."""\ndef handle_whitelist_draft(args):\n    return 0\ndef handle_campaign_undo(args):\n    return 0\n',
+        encoding="utf-8",
+    )
+    # LLM returns only handle_whitelist_draft, drops handle_campaign_undo
+    refactored = '"""Multi."""\ndef handle_whitelist_draft(args):\n    return 0\n'
+    with patch("eurika.reasoning.planner_llm._use_llm_extract", return_value=True):
+        with patch("eurika.reasoning.architect._call_ollama_cli") as mock_cli:
+            mock_cli.return_value = (f"```python\n{refactored}\n```", None)
+            result = ask_llm_extract_patch(py_file, "handle_whitelist_draft")
+    assert result is None
 
 
 def test_llm_hint_runtime_stats_exposes_budget_state(monkeypatch: pytest.MonkeyPatch) -> None:

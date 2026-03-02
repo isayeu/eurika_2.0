@@ -57,6 +57,7 @@ class CommandService(QObject):
         no_llm: bool = False,
         no_clean_imports: bool = False,
         no_code_smells: bool = False,
+        use_llm_extract: bool = False,
         allow_low_risk_campaign: bool = False,
         team_mode: bool = False,
         ollama_model: str = "",
@@ -88,9 +89,12 @@ class CommandService(QObject):
         self.command_started.emit(self._active_command)
         self._set_state(CycleState.THINKING.value)
         self._process.setWorkingDirectory(root)
-        if ollama_model.strip():
+        if ollama_model.strip() or use_llm_extract:
             env = QProcessEnvironment.systemEnvironment()
-            env.insert("OLLAMA_OPENAI_MODEL", ollama_model.strip())
+            if ollama_model.strip():
+                env.insert("OLLAMA_OPENAI_MODEL", ollama_model.strip())
+            if use_llm_extract:
+                env.insert("EURIKA_USE_LLM_EXTRACT", "1")
             self._process.setProcessEnvironment(env)
         self._process.start(sys.executable, full_args)
 

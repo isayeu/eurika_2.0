@@ -104,8 +104,8 @@ def _extract_indicators(criteria: str) -> list[str]:
     """Extract code indicators from criteria: func names, paths like tests/test_x.py."""
     indicators: list[str] = []
     criteria = re.sub(r"^✅\s*", "", criteria)
-    # Paths: .eurika/skills/release-check/, .cursor/skills/api-endpoint-test/
-    for m in re.finditer(r"\.(?:eurika|cursor)/[\w/-]+", criteria):
+    # Paths: .eurika/skills/release-check/ (no .cursor — must not be in project)
+    for m in re.finditer(r"\.eurika/[\w/-]+", criteria):
         s = m.group(0).rstrip("/")
         if s not in indicators:
             indicators.append(s)
@@ -174,7 +174,8 @@ def _gather_code_snippets(root: Path, row: dict[str, Any], phase: str = "", max_
 
     def add_from_indicator(ind: str) -> None:
         path = root / ind.lstrip("/")
-        if not path.exists() and ind.startswith(".cursor/skills/"):
+        # .cursor/ not in project; .cursor/skills/X -> .eurika/skills/X
+        if ind.startswith(".cursor/skills/"):
             suffix = ind.split("skills/", 1)[-1].rstrip("/")
             if suffix:
                 path = root / ".eurika" / "skills" / suffix
@@ -254,14 +255,15 @@ def _check_indicator(root: Path, indicator: str) -> bool:
         path = root / indicator.lstrip("/")
         if path.exists():
             return True
-        if indicator.startswith(".eurika/") or indicator.startswith(".cursor/"):
+        # .cursor/ not in project; .cursor/skills/X -> .eurika/skills/X
+        if indicator.startswith(".eurika/"):
             path = root / indicator
             if path.exists():
                 return True
-            if indicator.startswith(".cursor/skills/"):
-                suffix = indicator.split("skills/", 1)[-1].rstrip("/")
-                if suffix and (root / ".eurika" / "skills" / suffix).exists():
-                    return True
+        elif indicator.startswith(".cursor/skills/"):
+            suffix = indicator.split("skills/", 1)[-1].rstrip("/")
+            if suffix and (root / ".eurika" / "skills" / suffix).exists():
+                return True
     if indicator.endswith(".py"):
         path = root / indicator
         if path.exists():

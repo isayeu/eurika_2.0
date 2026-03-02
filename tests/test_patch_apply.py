@@ -162,6 +162,22 @@ def test_apply_extract_nested_function(tmp_path: Path) -> None:
     assert "return inner()" in content
 
 
+def test_apply_llm_extract_block_replaces_file(tmp_path: Path) -> None:
+    """llm_extract_block: replace file with params.new_content (REFACTOR_CODE_SMELL_PLAN Phase 3)."""
+    (tmp_path / "m.py").write_text("def long_foo():\n    a = 1\n    b = 2\n    return a + b\n")
+    new_content = 'def _helper(a, b):\n    return a + b\n\ndef long_foo():\n    return _helper(1, 2)\n'
+    plan = {"operations": [{
+        "target_file": "m.py",
+        "kind": "llm_extract_block",
+        "params": {"new_content": new_content, "location": "long_foo"},
+    }]}
+    report = apply_patch_plan(tmp_path, plan, dry_run=False, backup=False)
+    assert report["modified"] == ["m.py"]
+    content = (tmp_path / "m.py").read_text()
+    assert "_helper" in content
+    assert "return _helper(1, 2)" in content
+
+
 def test_apply_extract_nested_function_reports_diagnostic_skip_reason(tmp_path: Path) -> None:
     """When extraction fails, skipped_reasons should contain a concrete diagnostic reason."""
     (tmp_path / "m.py").write_text("def long_foo():\n    return 1\n")

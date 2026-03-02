@@ -232,6 +232,17 @@ def _should_emit_refactor_smell_op(
     return True
 
 
+def _use_llm_extract() -> bool:
+    """When True, try LLM-powered extract for long_function (REFACTOR_CODE_SMELL_PLAN Phase 3)."""
+    import os
+
+    return os.environ.get("EURIKA_USE_LLM_EXTRACT", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
 def _emit_code_smell_todo() -> bool:
     """When True, emit refactor_code_smell (TODO) when no real fix."""
     import os
@@ -308,6 +319,41 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
     ops: List[Dict[str, Any]] = []
     deep_mode = _deep_nesting_mode()
     fixed_locations: set[tuple[str, str]] = set()
+
+    # Phase 3: prioritize polygon drill when LLM extract enabled (budget limited to 3 calls)
+    _LLM_EXTRACT_DRILL = "eurika/polygon/refactor_code_smell_drill.py"
+    if _use_llm_extract():
+        drill_path = root / _LLM_EXTRACT_DRILL
+        if drill_path.exists() and drill_path.is_file():
+            for smell in analyzer.find_smells(drill_path):
+                if smell.kind != "long_function":
+                    continue
+                loc_key = (_LLM_EXTRACT_DRILL, smell.location)
+                if loc_key in fixed_locations:
+                    continue
+                nested_ok = allow_extract_nested or _is_whitelisted_for_kind(root, _LLM_EXTRACT_DRILL, "extract_nested_function")
+                if nested_ok and suggest_extract_nested_function(drill_path, smell.location):
+                    continue
+                if suggest_extract_block(drill_path, smell.location, min_lines=3):
+                    continue
+                try:
+                    from eurika.reasoning.planner_llm import ask_llm_extract_patch
+                    new_content = ask_llm_extract_patch(drill_path, smell.location, project_root=root)
+                    if new_content:
+                        ops.append({
+                            "target_file": _LLM_EXTRACT_DRILL,
+                            "kind": "llm_extract_block",
+                            "description": f"LLM-extract helper from {_LLM_EXTRACT_DRILL}:{smell.location}",
+                            "diff": "",
+                            "smell_type": "long_function",
+                            "params": {"new_content": new_content, "location": smell.location},
+                        })
+                        fixed_locations.add(loc_key)
+                        break
+                except Exception:
+                    pass
+                break
+
     for file_path in analyzer.scan_python_files():
         rel = str(file_path.relative_to(root)).replace("\\", "/")
         for smell in analyzer.find_smells(file_path):
@@ -331,7 +377,7 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
                         )
                         fixed_locations.add(loc_key)
                         continue
-                block_suggestion = suggest_extract_block(file_path, smell.location, min_lines=5)
+                block_suggestion = suggest_extract_block(file_path, smell.location, min_lines=3)
                 if block_suggestion and not _should_skip_extract_block_target(rel):
                     helper_name, block_line, line_count, extra = block_suggestion
                     ops.append(
@@ -362,6 +408,30 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
                         )
                         fixed_locations.add(loc_key)
                         continue
+            # Phase 3: LLM-powered extract when AST-based methods failed (REFACTOR_CODE_SMELL_PLAN)
+            if (
+                smell.kind == "long_function"
+                and loc_key not in fixed_locations
+                and _use_llm_extract()
+            ):
+                try:
+                    from eurika.reasoning.planner_llm import ask_llm_extract_patch
+
+                    fp = root / rel
+                    new_content = ask_llm_extract_patch(fp, smell.location, project_root=root)
+                    if new_content:
+                        ops.append({
+                            "target_file": rel,
+                            "kind": "llm_extract_block",
+                            "description": f"LLM-extract helper from {rel}:{smell.location}",
+                            "diff": "",
+                            "smell_type": "long_function",
+                            "params": {"new_content": new_content, "location": smell.location},
+                        })
+                        fixed_locations.add(loc_key)
+                        continue
+                except Exception:
+                    pass
             if not emit_todo:
                 continue
             op = _build_refactor_smell_op(rel, smell, root)
@@ -373,6 +443,7 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
 _REMOVE_UNUSED_IMPORT_SKIP: frozenset[str] = frozenset({
     "eurika/agent/tool_contract.py",  # re-export layer; detector misses re-exports
     "cli/core_handlers.py",  # re-export facade; handle_clean_imports etc. for tests/dispatch
+    "eurika/api/serve.py",  # re-exports EXEC_TIMEOUT_*, _normalize_exec_args for tests
 })
 
 

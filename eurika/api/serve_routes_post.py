@@ -3,7 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from eurika.api import preview_operation, save_approvals
 from . import serve as _serve
-from .serve_exec import EXEC_TIMEOUT_MAX, EXEC_TIMEOUT_MIN
+from .serve_exec import EXEC_TIMEOUT_MAX, EXEC_TIMEOUT_MIN, exec_eurika_command
+from .serve_utils import parse_bool_flag
 
 def dispatch_api_post(handler, project_root: Path, path: str, body: dict | None) -> bool:
     """Handle POST requests. Returns True if handled."""
@@ -48,13 +49,13 @@ def dispatch_api_post(handler, project_root: Path, path: str, body: dict | None)
             if timeout < EXEC_TIMEOUT_MIN or timeout > EXEC_TIMEOUT_MAX:
                 _serve._json_response(handler, {'error': 'invalid timeout range', 'hint': f'Expected timeout: {EXEC_TIMEOUT_MIN}..{EXEC_TIMEOUT_MAX} seconds (or null for unlimited)'}, status=400)
                 return True
-        data = _serve._exec_eurika_command(project_root, command, timeout=timeout)
+        data = exec_eurika_command(project_root, command, timeout=timeout)
         _serve._json_response(handler, data)
         return True
     if path == '/api/ask_architect':
         from eurika.orchestration.doctor import run_doctor_cycle
         no_llm_raw = (body or {}).get('no_llm', False)
-        no_llm = _serve.serve_utils.parse_bool_flag(no_llm_raw)
+        no_llm = parse_bool_flag(no_llm_raw)
         if no_llm is None:
             _serve._json_response(handler, {'error': 'invalid no_llm payload', 'hint': 'Expected no_llm: boolean'}, status=400)
             return True

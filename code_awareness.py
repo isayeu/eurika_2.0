@@ -7,8 +7,8 @@ SPEC: scan project, AST analysis, find smells, self_map.json.
 import ast
 import json
 from pathlib import Path
-from code_awareness_extracted import FileInfo, Smell
-from code_awareness_codeawarenessextracted import CodeAwarenessExtracted
+from eurika.extraction_sandbox.code_awareness_extracted import FileInfo, Smell
+from eurika.extraction_sandbox.code_awareness_codeawarenessextracted import CodeAwarenessExtracted
 from typing import Any, Dict, List, Optional
 MAX_FUNCTION_LINES = 50
 MAX_NESTING_DEPTH = 4
@@ -272,7 +272,7 @@ class CodeAwareness:
 # - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
 # - Identify distinct concerns and split this module into focused units.
 # - Reduce total degree (fan-in + fan-out) via extraction.
-# - Extract from imports: code_awareness_extracted.py, code_awareness_codeawarenessextracted.py.
+# - Extract from imports: eurika.extraction_sandbox.code_awareness_extracted, eurika.extraction_sandbox.code_awareness_codeawarenessextracted.
 # - Consider grouping callers: cli/core_handlers.py, runtime_scan_run_scan.py, runtime_scan.py.
 # - Extract file parsing logic into a new module named `file_parser.py`.
 # - Isolate scanning algorithms into a new module called `scanner_algorithms.py`.

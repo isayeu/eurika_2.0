@@ -25,12 +25,15 @@ echo "==> Release check (root=$ROOT)"
 _step() { echo ""; echo "==> $1"; }
 _fail() { echo "FAIL: $1" >&2; exit 1; }
 
-_step "0. No .eurika_backups in tree (P0.1)"
+_step "0. .eurika_backups in tree (P0.1 — warning only)"
 if [[ -d "${ROOT}/.eurika_backups" ]] && [[ -n "$(ls -A "${ROOT}/.eurika_backups" 2>/dev/null)" ]]; then
-  echo "  WARN: .eurika_backups has content — remove before release (review.md P0.1)"
-  echo "        rm -rf .eurika_backups"
-  if [[ -z "${GITHUB_ACTIONS:-}" ]]; then
-    echo "  Continuing..."
+  N_RUNS=$(find "${ROOT}/.eurika_backups" -maxdepth 1 -type d ! -path "${ROOT}/.eurika_backups" 2>/dev/null | wc -l)
+  N_FILES=$(find "${ROOT}/.eurika_backups" -maxdepth 1 -type f 2>/dev/null | wc -l)
+  TOTAL=$((N_RUNS + N_FILES))
+  echo "  WARN: .eurika_backups has content ($N_RUNS backup runs, $N_FILES files)"
+  echo "        Consider cleaning before release: rm -rf .eurika_backups"
+  if [[ "$TOTAL" -ge 5 ]]; then
+    echo "        (quite a lot — worth cleaning)"
   fi
 fi
 

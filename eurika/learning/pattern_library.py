@@ -44,7 +44,7 @@ def _extract_code_smell_patterns(project_root: Path, project: str) -> dict[str, 
         from code_awareness import CodeAwareness
 
         analyzer = CodeAwareness(project_root)
-        for file_path in list(analyzer.scan_python_files())[:50]:  # limit for performance
+        for file_path in list(analyzer.scan_python_files())[:100]:  # limit for performance (ROADMAP 4.1)
             try:
                 rel = str(file_path.relative_to(project_root)).replace("\\", "/")
                 for smell in analyzer.find_smells(file_path):
@@ -109,12 +109,12 @@ def extract_patterns_from_repos(cache_dir: Path) -> dict[str, Any]:
                             "severity": round(s.severity, 2),
                             "hint": hint,
                         }
-                        if s.type in patterns and len(patterns[s.type]) < 20:
+                        if s.type in patterns and len(patterns[s.type]) < 30:
                             patterns[s.type].append(entry)
         code_smells = _extract_code_smell_patterns(subdir, project)
         for kind in ("long_function", "deep_nesting"):
-            for e in code_smells.get(kind, [])[:10]:
-                if len(patterns[kind]) < 20:
+            for e in code_smells.get(kind, [])[:15]:
+                if len(patterns[kind]) < 30:
                     patterns[kind].append(e)
     return patterns
 

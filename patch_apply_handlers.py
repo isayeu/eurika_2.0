@@ -317,6 +317,21 @@ def handle_non_default_kind(
             errors.append(f"{target_file}: {exc}")
         return True, backup_dir
 
+    if kind == "llm_extract_block" and params.get("new_content"):
+        return _apply_content_replacement(
+            root=root,
+            path=path,
+            target_file=target_file,
+            new_content=params["new_content"],
+            run_id=run_id,
+            backup_dir=backup_dir,
+            do_backup=do_backup,
+            modified=modified,
+            skip_cb=skip_cb,
+            errors=errors,
+            skip_reason="llm_extract_block: no new_content",
+        )
+
     if kind == "extract_class" and params.get("target_class") and params.get("methods_to_extract"):
         try:
             result = extract_class(

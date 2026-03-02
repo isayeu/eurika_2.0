@@ -212,6 +212,8 @@ def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
     learn_github_parser.add_argument("--build-patterns", action="store_true", help="Build pattern library from repos with self_map.json, save to .eurika/pattern_library.json")
     learn_github_parser.add_argument("--search", type=str, default=None, metavar="QUERY", help="GitHub search query (e.g. 'language:python stars:>1000'). Replaces curated list (ROADMAP 3.0.5.2)")
     learn_github_parser.add_argument("--search-limit", type=int, default=5, help="Max repos from --search (default: 5)")
+    learn_github_parser.add_argument("--limit-repos", type=int, default=None, metavar="N", help="Use only first N repos (for faster pattern build). Default: all.")
+    learn_github_parser.add_argument("--light", action="store_true", help="Use lightweight curated list (starlette, httpx) — faster clone/scan")
 
 
 def _add_agent_commands(subparsers: argparse._SubParsersAction) -> None:

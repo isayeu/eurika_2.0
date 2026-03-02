@@ -1,0 +1,7 @@
+# Exclude runtime artifacts from sdist (ROADMAP v3.0 Stage 1)
+global-exclude .eurika_backups
+global-exclude .coverage
+global-exclude .pytest_cache
+global-exclude htmlcov
+global-exclude *.egg-info
+global-exclude __pycache__

@@ -25,7 +25,7 @@
 
 **Вывод ревью (2026):** «Функционально мощный, архитектурно нестабильный, структурно перегруженный.» Риски: God CLI, backups в дереве, orchestration без формальной модели. **Стратегия:** усиливать execution — критично; усиливать LLM — преждевременно.
 
-**Обновление (февраль 2026):** Split тяжёлых модулей (task_executor, serve, fix_cycle_impl, core_handlers, chat) — P0.4 выполнен; pipeline_model; test_cycle → test_cycle_report; CR rules (docs, pre-commit, test-api) в .eurika/rules; Qt MVP: hybrid approvals, dashboard, Stop. **Рост:** чистота структуры 4→5.5, контроль сложности 5→6, тестируемость ?→6, продуктовая 6→6.5. **Остаётся:** refactor_code_smell 0%, test_chat_api/test_api_serve крупные, продакшн 4/10.
+**Обновление (февраль 2026):** Split тяжёлых модулей (task_executor, serve, fix_cycle_impl, core_handlers, chat) — P0.4 выполнен; pipeline_model; test_cycle → test_cycle_report; CR rules (docs, pre-commit, test-api) в .eurika/rules; Qt MVP: hybrid approvals, dashboard, Stop. **Рост:** чистота структуры 4→5.5, контроль сложности 5→6, тестируемость ?→6, продуктовая 6→6.5. **Остаётся:** refactor_code_smell 0%, test_graph_ops/test_api крупные при необходимости, продакшн 4/10.
 
 ---
 
@@ -80,7 +80,7 @@ README, UI.md, CLI.md, 5-minute onboarding, тесты зелёные — ✅
 
 ### 4.1 Направление A — Learning from GitHub
 
-Curated repos (Django, FastAPI) → pattern library → повышение verify_success_rate. **Статус:** частично (3.0.5.1–3.0.5.4); долго.
+Curated repos (Django, FastAPI) → pattern library → повышение verify_success_rate. **Статус:** частично (3.0.5.1–3.0.5.4). **4.1:** `--light` (starlette, httpx), `--limit-repos`, увеличены лимиты extraction (100 files, 30 entries).
 
 ### 4.2 Направление B — Продуктовая готовность 6→7/10 ✅
 
@@ -134,12 +134,12 @@ UI.md ✓; README ✓; критерии B.7–B.10 выполнены:
 
 | #     | Шаг                         | Описание                                        | Статус |
 | ----- | ---------------------------- | ----------------------------------------------- | ------ |
-| CR-E1 | Сценарии для Composer        | split модуля, вынос domain vs presentation      | —      |
-| CR-E2 | Шаблон промпта Composer      | контекст + план 3–7 шагов + критерии            | —      |
-| CR-E3 | Практика: крупный рефакторинг в Composer | один пример в CYCLE_REPORT                | —      |
+| CR-E1 | Сценарии для Composer        | split модуля, вынос domain vs presentation      | ✅ composer-scenarios.mdc |
+| CR-E2 | Шаблон промпта Composer      | контекст + план 3–7 шагов + критерии            | ✅ composer-scenarios.mdc |
+| CR-E3 | Практика: крупный рефакторинг в Composer | один пример в CYCLE_REPORT                | ✅ polygon split_demo §98 |
 | CR-F1 | Команды для агента           | eurika serve, pytest, release_check.sh           | ✅ release_check в GUI (Quality) |
-| CR-F2 | Паттерн «изменение → проверка» | pytest по модулю после правок                 | —      |
-| CR-F3 | Интерпретация ошибок         | Ruff → __all__/импорт; mypy → type hint         | —      |
+| CR-F2 | Паттерн «изменение → проверка» | pytest по модулю после правок                 | ✅ change-verify-pattern.mdc |
+| CR-F3 | Интерпретация ошибок         | Ruff → __all__/импорт; mypy → type hint         | ✅ change-verify-pattern.mdc |
 
 ### 5.4 Chat intents config (CR-G)
 
@@ -151,6 +151,42 @@ UI.md ✓; README ✓; критерии B.7–B.10 выполнены:
 
 ---
 
+## 5.5 v3.0 Architecture (review 2026)
+
+**Проблема:** «8/10 по амбиции, 6/10 по архитектурной чистоте». Рост без упрощения.
+
+### Этап 1 — Чистка
+- [x] Убрать/изолировать `*_extracted.py` в `eurika/extraction_sandbox/` (action_plan_extracted, agent_core_extracted, code_awareness_extracted, code_awareness_codeawarenessextracted)
+- [ ] Упростить planner до одного ядра (см. §5.6, docs/PLANNER_CONSOLIDATION_PLAN.md)
+- [x] Исключить runtime-мусор из релиза (MANIFEST.in + .gitignore: `.eurika_backups`, `.coverage`, `.pytest_cache`, `*_report.json`)
+
+### Этап 2 — Модель
+- [ ] Доменные модели: `ArchitectureModel`, `RefactorAction`, `RiskReport`, `SmellReport`
+- [ ] Architecture Scoring Model (cohesion, coupling, complexity, modularity)
+- [ ] Refactor Simulation Engine (`simulate_patch` перед apply)
+
+### Этап 3 — Безопасность
+- [ ] risk-based patching
+- [ ] simulation-first apply
+- [ ] regression detection (semantic, performance)
+
+### 5.6 Консолидация planner (по ревью)
+
+**Было:** planner_rules, planner_actions, planner_analysis, planner_patch_ops, planner_llm.
+
+**Цель — структура:**
+```
+eurika/reasoning/planner/
+    core.py          # analyze, detect_smells, propose_actions
+    heuristics.py   # правила, scoring
+    actions.py      # patch ops
+    llm_adapter.py  # Ollama/LiteLLM
+```
+
+Количество ролей сокращается; файлы по 300–500 строк; лимит 600 — не проблема. Разделять по ответственности, не по строкам.
+
+---
+
 ## 6. Открытый бэклог (следующие шаги)
 
 ### 6.1 Структура и размер файлов
@@ -158,7 +194,9 @@ UI.md ✓; README ✓; критерии B.7–B.10 выполнены:
 - ~~Разбить `eurika/api/task_executor.py` (767 LOC), `eurika/api/serve.py` (598)~~ ✅ P0.4: task_executor → helpers, types, executors, patch; serve → utils, exec, routes_get, routes_post
 - ~~Разбить `eurika/orchestration/fix_cycle_impl.py` (586)~~ ✅ fix_cycle_helpers, fix_cycle_apply_approved
 - ~~test_cycle.py~~ → test_cycle_report.py (report-snapshot, telemetry, whitelist-draft) ✅
-- Разбить при необходимости: `test_cycle.py`, `test_chat_api.py`, `test_api_serve.py`
+- ~~test_cycle.py~~ → test_cycle.py, test_cycle_doctor.py, test_cycle_fix_apply.py ✅
+- ~~test_chat_api.py~~ → test_chat_api.py, test_chat_api_handlers.py ✅
+- ~~test_api_serve.py~~ → test_api_serve.py, test_api_serve_post.py ✅
 
 ### 6.2 Qt и UI
 
@@ -172,17 +210,17 @@ UI.md ✓; README ✓; критерии B.7–B.10 выполнены:
 ### 6.3 Операционность
 
 - KPI: `verify_success_rate` по smell|action|target (prioritized_smell_actions ✅)
-- refactor_code_smell — 0% success в WEAK_SMELL_ACTION_PAIRS; для повышения — pattern library, curated repos, LLM
+- refactor_code_smell — 0% success в WEAK_SMELL_ACTION_PAIRS; план: docs/REFACTOR_CODE_SMELL_PLAN.md
 
 ### 6.4 Cursor Rules (незакрытые)
 
 - ~~CR-B1, CR-C1, CR-C2, CR-C3, CR-D3~~ ✅
-- CR-D1–CR-D2: @-ссылки, паттерны по типам задач
-- CR-E, CR-F: Composer и Terminal
+- CR-D1–CR-D2: @-ссылки, паттерны по типам задач ✅
+- ~~CR-E, CR-F: Composer и Terminal~~ ✅ composer-scenarios, change-verify-pattern, CR-E3 polygon split_demo
 
 ### 6.5 Multi-repo и Learning
 
-- 3.0.1: eurika_fix_report_aggregated.json при fix/cycle [path1 path2 ...]
+- ~~3.0.1: eurika_fix_report_aggregated.json при fix/cycle [path1 path2 ...]~~ ✅ test_multi_repo_fix_aggregated_report
 - 3.0.5: расширение Learning from GitHub (pattern library, OSS examples)
 
 ---

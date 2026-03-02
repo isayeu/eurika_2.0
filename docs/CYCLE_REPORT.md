@@ -1,7 +1,11 @@
 # Отчёт цикла Eurika
 
-## Current state (2026-03-01)
+## Current state (2026-03-02)
 
+- **101. REFACTOR_CODE_SMELL_PLAN Phase 2:** polygon refactor_code_smell_drill — long_function без extractable block/nested; тест test_polygon_refactor_code_smell_drill_semantics.
+- **100. 6.3 refactor_code_smell план:** docs/REFACTOR_CODE_SMELL_PLAN.md — анализ 0%, варианты A–E, фазы 1–5.
+- **99. 3.0.1 Multi-repo fix/cycle:** test_multi_repo_fix_aggregated_report — eurika fix [path1 path2] пишет eurika_fix_report_aggregated.json в paths[0].
+- **98. CR-E3 Практика: крупный рефакторинг в Composer:** polygon split_demo — пример split модуля по composer-scenarios.mdc. До: один файл validators+formatters ~80 LOC. После: split_demo_validators.py, split_demo_formatters.py, split_demo.py (фасад). test_polygon_split_demo_semantics.
 - **97.6 Ритуал 2.1 (2026-03-01):** scan → doctor --no-llm → report-snapshot → fix --allow-low-risk-campaign. modules=278, risk=46, apply_rate=1.0, rollback_rate=0.0. Fix: ops blocked (policy/critic/human 16); modified=0. Learning: remove_unused_import 68%, extract_block 57%, extract_nested 75%. by_smell_action: deep_nesting|extract_block 89%, long_function|extract_nested 75%, long_function|extract_block 0%. Drill long_function_extractable_block в whitelist (operation_whitelist.controlled.json); для apply нужен hybrid/team-mode approve или merge в .eurika/operation_whitelist.json.
 - **97.5 Пробелы (ROADMAP):** long_function|extract_block — polygon drill long_function_extractable_block.py + whitelist; Domain vs Presentation — get_suggest_plan_data + report/suggest_plan_format; Cross-project memory — уже в planner (get_merged_learning_stats); R5 — docs/R5_PLUGIN_INTERFACE.md.
 - **97.4 Ритуал 2.1 (2026-03-01):** scan → doctor --no-llm → report-snapshot. modules=278, risk=46, apply_rate=1.0, rollback_rate=0.0. Learning: remove_unused_import 68%, extract_block_to_helper 57%, extract_nested_function 75%. by_smell_action: deep_nesting|extract_block 89%, long_function|extract_nested 75%, long_function|extract_block 0%. CI: coverage в pytest step (--cov=eurika --cov=cli).
@@ -18,6 +22,38 @@
 - **91. Polygon catalog + team rollback reset + learning-kpi --polygon:** Polygon — каталог `eurika/polygon/` (imports_ok, extractable_block, long_function, deep_nesting). reset_approvals_after_rollback: сброс team_decision=approve в pending_plan после verify fail + rollback (избегаем re-apply без re-review). learning-kpi `--polygon` — фильтр по eurika/polygon/; секция Polygon drills; Next steps для polygon-targets. KPI_VERIFY_SUCCESS_RATE_PLAN A.2 дополнен.
 - **90. Extract_block return-value fix + polygon verify + recursion guard:** extract_block_to_helper при assign-to-outer — helper возвращает value. _block_contains_extracted_call — skip блоков, вызывающих _extracted_block_*, избегаем рекурсии при повторном fix. test_suggest_extract_block_skips_when_block_calls_extracted_helper. extract_block_to_helper при assign-to-outer (result=d в блоке, result в parent_locals) — helper возвращает value, call site: `result = helper(...)`. test_extract_block_to_helper_returns_value_when_block_assigns_to_outer; polygon_extractable_block в verify_cmd (test_polygon_extractable_block_semantics).
 - **89. Prepend fallback + team-mode patch_plan:** при пустом architect (no suggest_patch_plan) — не early-exit, а prepend clean_imports/code_smells; whitelist `.eurika/operation_whitelist.json` для polygon (remove_unused_import, extract_block_to_helper); team-mode report включает patch_plan в JSON. Polygon в campaign verify_fail_keys → нужен `EURIKA_IGNORE_CAMPAIGN=1` или `--allow-low-risk-campaign` для diff-теста.
+
+---
+
+## 98. CR-E3 Практика: крупный рефакторинг в Composer (2026-03-02)
+
+### Scope
+
+Добавлен пример split модуля в polygon по сценарию из `.eurika/rules/composer-scenarios.mdc`.
+
+### До / После
+
+| До | После |
+|----|-------|
+| `split_demo.py` — один файл validators + formatters ~80 LOC | `split_demo_validators.py` + `split_demo_formatters.py` + `split_demo.py` (фасад) |
+
+### Шаги (composer-scenarios Сценарий 1: Split модуля)
+
+1. Выделить логические блоки — validators (validate_*), formatters (format_*).
+2. Создать split_demo_validators.py, split_demo_formatters.py.
+3. Перенести функции с обновлением импортов.
+4. Обновить split_demo.py — импорт из новых модулей, polygon_split_demo остаётся точкой входа.
+5. Обновить __init__.py, добавить test_polygon_split_demo_semantics.
+
+### Verify
+
+```bash
+pytest tests/test_clean_imports_cli.py -k polygon -v
+```
+
+### Итог
+
+CR-E3 выполнен: один пример крупного рефакторинга (split) в CYCLE_REPORT, drill в polygon.
 
 ---
 

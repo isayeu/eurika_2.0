@@ -1,0 +1,6 @@
+{
+  "repos": [
+    {"url": "https://github.com/encode/starlette.git", "name": "starlette", "branch": "main"},
+    {"url": "https://github.com/encode/httpx.git", "name": "httpx", "branch": "master"}
+  ]
+}

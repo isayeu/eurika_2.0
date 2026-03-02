@@ -5,24 +5,15 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Optional
 from urllib.parse import parse_qs, urlparse
-
-from .serve_exec import (  # noqa: F401 — re-exports for serve_routes_post and tests
+from .serve_exec import (  # noqa: F401 — re-exports for tests and serve_routes_post
     EXEC_TIMEOUT_MAX,
     EXEC_TIMEOUT_MIN,
-    exec_eurika_command as _exec_eurika_command,
     _normalize_exec_args_for_subcommand,
 )
 from .serve_routes_get import dispatch_api_get as _dispatch_api_get
 from .serve_routes_post import dispatch_api_post
-from .serve_utils import (
-    json_response as _json_response,
-    read_json_body as _read_json_body,
-    resolve_project_root_override as _resolve_project_root_override,
-)
-from . import serve_utils  # noqa: F401 — re-export for _serve.serve_utils in serve_routes_post
-
+from .serve_utils import json_response as _json_response, read_json_body as _read_json_body, resolve_project_root_override as _resolve_project_root_override
 _run_post_handler = dispatch_api_post
-
 
 def _run_handler(handler: BaseHTTPRequestHandler, project_root: Path, path: str, query: dict, body: dict | None=None) -> None:
     if _dispatch_api_get(handler, project_root, path, query):

@@ -78,3 +78,18 @@ def f() -> Bar:
     f.write_text(code)
     result = remove_unused_imports(f)
     assert result is None  # Bar import must be kept
+
+
+def test_keep_noqa_f401_re_exports(tmp_path: Path) -> None:
+    """Preserve imports marked # noqa: F401 (re-exports for public API)."""
+    code = '''from .serve_exec import (  # noqa: F401 — re-exports for tests
+    EXEC_TIMEOUT_MAX,
+    EXEC_TIMEOUT_MIN,
+    _normalize_exec_args_for_subcommand,
+)
+x = 1
+'''
+    f = tmp_path / "test.py"
+    f.write_text(code)
+    result = remove_unused_imports(f)
+    assert result is None  # re-exports must be kept

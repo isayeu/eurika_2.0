@@ -45,12 +45,15 @@ def build_commands_tab(main: MainWindow) -> None:
     main.no_llm_check = QCheckBox("--no-llm")
     main.no_clean_imports_check = QCheckBox("--no-clean-imports")
     main.no_code_smells_check = QCheckBox("--no-code-smells")
-    main.no_code_smells_check.setChecked(True)
     main.no_code_smells_check.setToolTip(
         "Exclude refactor_code_smell (long_function, deep_nesting) from plan"
     )
+    main.use_llm_extract_check = QCheckBox("Use LLM extract")
+    main.use_llm_extract_check.setChecked(False)
+    main.use_llm_extract_check.setToolTip(
+        "EURIKA_USE_LLM_EXTRACT=1: when long_function has no extract block, ask Ollama for refactored code (Phase 3)"
+    )
     main.allow_low_risk_campaign_check = QCheckBox("--allow-low-risk-campaign")
-    main.allow_low_risk_campaign_check.setChecked(True)
     main.allow_low_risk_campaign_check.setToolTip(
         "Allow low-risk ops (e.g. remove_unused_import) through campaign skip (OPERABILITY D)"
     )
@@ -62,6 +65,7 @@ def build_commands_tab(main: MainWindow) -> None:
     options_row.addWidget(main.no_llm_check)
     options_row.addWidget(main.no_clean_imports_check)
     options_row.addWidget(main.no_code_smells_check)
+    options_row.addWidget(main.use_llm_extract_check)
     options_row.addWidget(main.allow_low_risk_campaign_check)
     options_row.addWidget(main.team_mode_check)
     options_row.addStretch(1)

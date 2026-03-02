@@ -207,11 +207,14 @@ eurika arch-diff self_map_old.json self_map_new.json
 - `--build-patterns` — построить pattern library из репо с `self_map.json`, сохранить в `.eurika/pattern_library.json` (ROADMAP 3.0.5.3, KPI 4). Architect использует OSS-примеры. Code smells (long_function, deep_nesting) извлекаются через CodeAwareness и обогащают get_code_smell_operations.
 - `--search QUERY` — поиск репо через GitHub API (вместо curated list). Пример: `language:python stars:>1000`. Для большего rate limit задайте `GITHUB_TOKEN`.
 - `--search-limit N` — макс. число репо из --search (по умолчанию 5)
+- `--limit-repos N` — использовать только первые N репо (для быстрого билда pattern library)
+- `--light` — лёгкий список: starlette, httpx (~1–2 мин вместо Django/FastAPI ~15+ мин)
 
 ```bash
 eurika learn-github .
 eurika learn-github . --scan
 eurika learn-github . --build-patterns   # после --scan: OSS-паттерны в architect
+eurika learn-github . --light --limit-repos 2 --scan --build-patterns   # быстрый билд (ROADMAP 4.1)
 eurika learn-github . --search "language:python stars:>5000" --scan --build-patterns   # топ Python-проекты
 ```
 
