@@ -84,7 +84,16 @@ Curated repos (Django, FastAPI) → pattern library → повышение verif
 
 ### 4.2 Направление B — Продуктовая готовность 6→7/10
 
-UI.md ✓; README ✓; дальнейшие критерии. **Быстро.**
+UI.md ✓; README ✓; критерии для 7/10:
+
+| #   | Критерий                         | Описание                                      |
+| --- | -------------------------------- | --------------------------------------------- |
+| B.7 | `release_check.sh` проходит      | ruff, mypy, pytest — без ошибок               |
+| B.8 | Notes tab в GUI                  | Заметки сохраняются в `.eurika/notes.txt`     |
+| B.9 | Onboarding ≤ 10 мин              | Новичок: clone → scan/doctor/fix за 10 мин    |
+| B.10| `.eurika/rules/*` в проекте      | docs.mdc, pre-commit.mdc, test-api.mdc        |
+
+**Быстро.**
 
 ### 4.3 Направление C — Ритуал 2.1
 
