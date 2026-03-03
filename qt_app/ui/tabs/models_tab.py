@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFormLayout,
     QGroupBox,
@@ -30,9 +31,15 @@ def build_models_tab(main: MainWindow) -> None:
     layout.setSpacing(6)
     ollama_box = QGroupBox("Ollama server")
     ollama_layout = QFormLayout(ollama_box)
+    main.ollama_vulkan_check = QCheckBox("Use Vulkan (AMD GPU)")
+    main.ollama_vulkan_check.setChecked(True)
+    main.ollama_vulkan_check.setToolTip("OLLAMA_VULKAN=1 — Vulkan/RADV backend для AMD RX 6xxx/7xxx")
+    ollama_layout.addRow("OLLAMA_VULKAN", main.ollama_vulkan_check)
     main.ollama_hsa_edit = QLineEdit("10.3.0")
-    main.ollama_rocr_edit = QLineEdit("0")
-    main.ollama_hip_edit = QLineEdit("0")
+    main.ollama_rocr_edit = QLineEdit("")
+    main.ollama_rocr_edit.setPlaceholderText("0 или пусто")
+    main.ollama_hip_edit = QLineEdit("")
+    main.ollama_hip_edit.setPlaceholderText("0 или пусто")
     ollama_layout.addRow("HSA_OVERRIDE_GFX_VERSION", main.ollama_hsa_edit)
     ollama_layout.addRow("ROCR_VISIBLE_DEVICES", main.ollama_rocr_edit)
     ollama_layout.addRow("HIP_VISIBLE_DEVICES", main.ollama_hip_edit)

@@ -67,15 +67,18 @@ def start_ollama_server(main: MainWindow) -> None:
     from PySide6.QtCore import QProcessEnvironment
 
     env = QProcessEnvironment.systemEnvironment()
+    vulkan_val = "1" if main.ollama_vulkan_check.isChecked() else "0"
+    env.insert("OLLAMA_VULKAN", vulkan_val)
     env.insert("HSA_OVERRIDE_GFX_VERSION", main.ollama_hsa_edit.text().strip() or "10.3.0")
-    env.insert("ROCR_VISIBLE_DEVICES", main.ollama_rocr_edit.text().strip() or "0")
-    env.insert("HIP_VISIBLE_DEVICES", main.ollama_hip_edit.text().strip() or "0")
+    rocr = main.ollama_rocr_edit.text().strip() or "0"
+    hip = main.ollama_hip_edit.text().strip() or "0"
+    env.insert("ROCR_VISIBLE_DEVICES", rocr)
+    env.insert("HIP_VISIBLE_DEVICES", hip)
     main._ollama_process.setProcessEnvironment(env)
     main._ollama_process.setWorkingDirectory(main.root_edit.text().strip() or ".")
     main.ollama_output.append(
-        f"$ HSA_OVERRIDE_GFX_VERSION={env.value('HSA_OVERRIDE_GFX_VERSION')} "
-        f"ROCR_VISIBLE_DEVICES={env.value('ROCR_VISIBLE_DEVICES')} "
-        f"HIP_VISIBLE_DEVICES={env.value('HIP_VISIBLE_DEVICES')} ollama serve"
+        f"$ OLLAMA_VULKAN={vulkan_val} HSA_OVERRIDE_GFX_VERSION={env.value('HSA_OVERRIDE_GFX_VERSION')} "
+        f"ROCR_VISIBLE_DEVICES={rocr} HIP_VISIBLE_DEVICES={hip} ollama serve"
     )
     main.ollama_status.setText("Ollama: starting...")
     sync_ollama_buttons(main)
