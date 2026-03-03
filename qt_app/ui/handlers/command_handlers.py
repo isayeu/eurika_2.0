@@ -151,7 +151,7 @@ def append_stderr(main: MainWindow, chunk: str) -> None:
 
 
 def on_command_finished(main: MainWindow, exit_code: int) -> None:
-    main.terminal_emulator_output.append(f"[done] exit_code={exit_code}")
+    main.terminal_emulator_output.append(f"[done] exit_code={exit_code}\n")
     cmd = getattr(main._command_service, "active_command", "") or ""
     if "fix" in cmd or "cycle" in cmd:
         summary = format_fix_report_summary(main)

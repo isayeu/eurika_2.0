@@ -270,7 +270,7 @@ def on_chat_result(main: MainWindow, payload: dict[str, Any]) -> None:
             main.terminal_emulator_output.append(f"[Chat] {cmd}")
         if out:
             terminal_tab._append_stream(main, out)
-        main.terminal_emulator_output.append(f"[done] exit_code={code}")
+        main.terminal_emulator_output.append(f"[done] exit_code={code}\n")
     text = str(payload.get("text", "")).strip()
     err = payload.get("error")
     if err:

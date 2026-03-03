@@ -109,7 +109,7 @@ def _on_terminal_stderr(main: MainWindow) -> None:
 
 def _on_terminal_finished(main: MainWindow, exit_code: int, exit_status: QProcess.ExitStatus) -> None:
     main._terminal_process = None
-    main.terminal_emulator_output.append(f"[done] exit_code={exit_code}")
+    main.terminal_emulator_output.append(f"[done] exit_code={exit_code}\n")
     main.terminal_emulator_input.setEnabled(True)
     main.terminal_emulator_btn.setEnabled(True)
     # Keep Stop enabled if CommandService (scan/doctor/fix) is still running
@@ -209,7 +209,7 @@ def run_command_with_result(main: MainWindow, cmd: str, result_holder: list) -> 
         out = ((r.stdout or "") + "\n" + (r.stderr or "")).strip()
         out_clean = strip_ansi(out)
         _append_stream(main, out_clean)
-        main.terminal_emulator_output.append(f"[done] exit_code={r.returncode}")
+        main.terminal_emulator_output.append(f"[done] exit_code={r.returncode}\n")
         result_holder[:] = [(out_clean, r.returncode)]
     except subprocess.TimeoutExpired:
         result_holder[:] = [("timeout", -1)]
@@ -272,7 +272,7 @@ def _run_command_in_terminal(
                 output_buffer.append(txt)
                 _append_stream(main, txt)
         main._terminal_process = None
-        main.terminal_emulator_output.append(f"[done] exit_code={code}")
+        main.terminal_emulator_output.append(f"[done] exit_code={code}\n")
         main.terminal_emulator_input.setEnabled(True)
         main.terminal_emulator_btn.setEnabled(True)
         cmd_running = main._command_service.state in ("thinking", "stopping")
