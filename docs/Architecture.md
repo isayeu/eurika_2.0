@@ -401,6 +401,25 @@ class ArchitectureSnapshot:
 * отчёт воспроизводим по self_map + исходникам;
 * patch-apply (v0.4+): бэкапы в `.eurika_backups/`, verify (pytest), rollback.
 
+### 3.4 Planner decomposition (review §2–3)
+
+**Проблема (review §2):** Planner смешивал анализ, LLM, risk, mutation — «God Engine».
+
+**Текущее состояние:** PlannerEngine в `eurika/reasoning/planner/engine.py` — 4 шага: `collect_facts` → `generate_candidates` → `rank_candidates` → `output_plan`. `generate_candidates` делегирует в `planner_patch_ops.build_patch_operations` (461 LOC), где смешаны: target selection, hints (graph + OSS + **LLM**), filtering, sorting.
+
+**Целевая структура (дальнейшая декомпозиция):**
+
+| Модуль | Ответственность | Выход | Статус |
+|--------|-----------------|-------|--------|
+| **engine** | collect_facts → generate → rank → output | PatchPlan | ✅ |
+| **hints_provider** | graph hints, OSS hints; LLM — опционально (injectable) | hints, params | ✅ |
+| **filter_policy** | learning_stats, env disabled, low-success fallback | List[PatchOperation] | ✅ |
+| **planner_patch_ops** | orchestrator: targets → ops (hints_provider) → filter_policy | List[PatchOperation] | ✅ |
+
+**Разделение (review §2):** LLM — отдельный сервис, вызываемый только из hints_provider при необходимости. Risk — в rank_candidates (energy_ranking) и filter_policy. Mutation — только в patch_engine (L4).
+
+**ArchitectureSnapshot (§3):** `planner.models.ArchitectureSnapshot` — graph + metrics + smells + root/summary/history/diff. `collect_facts` возвращает dict; при миграции — PlanningFacts dataclass или ArchitectureSnapshot.
+
 ---
 
 ## 4. Legacy Agent Core Design (зарезервировано для v0.2+)

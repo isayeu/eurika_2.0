@@ -84,18 +84,22 @@ README, UI.md, CLI.md, 5-minute onboarding, тесты зелёные — ✅
 
 Curated repos (Django, FastAPI) → pattern library → повышение verify_success_rate. **Статус:** 4.1 ✅ — `--light`, `--limit-repos`, лимиты extraction (100 files, 30 entries).
 
-### 4.2 Направление B — Продуктовая готовность 6→7/10 ✅
+### 4.2 Направление B — Продуктовая готовность 6→7/10
 
-UI.md ✓; README ✓; критерии B.7–B.10 выполнены:
+UI.md ✓; README ✓; критерии **B.7–B.10** выполнены (текущая оценка 6.5/10). Критерии для 7/10 — **B.11–B.14**:
 
-| #   | Критерий                         | Описание                                      |
-| --- | -------------------------------- | --------------------------------------------- |
+| #   | Критерий                         | Описание                                      | Статус |
+| --- | -------------------------------- | --------------------------------------------- | ------ |
 | B.7 | `release_check.sh` проходит      | ruff, mypy, pytest — без ошибок               | ✅ |
 | B.8 | Notes tab в GUI                  | Заметки сохраняются в `.eurika/notes.txt`     | ✅ |
 | B.9 | Onboarding ≤ 10 мин              | Новичок: clone → scan/doctor/fix за 10 мин     | ✅ docs/ONBOARDING.md |
 | B.10| `.eurika/rules/*` в проекте      | docs.mdc, pre-commit.mdc, test-api.mdc        | ✅ |
+| **B.11** | Troubleshooting                 | `docs/TROUBLESHOOTING.md`: типовые ошибки (verify timeout, ModuleNotFoundError, LLM fallback, self_map missing) и решения; ссылка из README/ONBOARDING | — |
+| **B.12** | Qt first-run UX                 | При `eurika-qt` без project root — folder picker + подсказка «Выберите проект»; нет пустого экрана | — |
+| **B.13** | Dogfooding в ритуале            | DOGFOODING.md + release_check step 9 (smoke); после значимых изменений — прогон `fix --dry-run` и обновление CYCLE_REPORT по необходимости | — |
+| **B.14** | Dependency firewall в CI        | EURIKA_STRICT_LAYER_FIREWALL=1 в release_check (шаг 3) — уже включён; явная проверка при PR/merge | ✅ |
 
-**Быстро.**
+**План:** B.11 (TROUBLESHOOTING.md), B.12 (Qt first-run), B.13 (dogfooding ритуал). B.14 выполнен.
 
 ### 4.3 Направление C — Ритуал 2.1
 
@@ -226,6 +230,12 @@ storage/        state_store, event_log, learning_store (dumb persistence)
 ---
 
 ## 6. Открытый бэклог (следующие шаги)
+
+### 6.0 Продуктовая готовность 6.5→7/10 (B.11–B.13)
+
+- [ ] **B.11** Создать `docs/TROUBLESHOOTING.md`: verify timeout, ModuleNotFoundError, LLM fallback, self_map missing; ссылка из README/ONBOARDING
+- [ ] **B.12** Qt first-run: при запуске без project root — folder picker + подсказка; нет пустого экрана
+- [ ] **B.13** Dogfooding ритуал: зафиксировать в ROADMAP/DOGFOODING; после значимых изменений — fix --dry-run, при необходимости обновить CYCLE_REPORT
 
 ### 6.1 Структура и размер файлов
 
