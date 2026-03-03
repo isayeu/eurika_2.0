@@ -341,7 +341,7 @@ while True:
 
    **Следующие шаги (приоритизировано):**
    1. Приоритет целей — ✅ Architecture.md §3.4 (targets_from_graph, priority_from_graph, prioritized_smell_actions).
-   2. Забывание — ✅ bounded retention + decay: priority_decay.apply_decay в priority_from_graph; effective_priority = base × (1 − failure_penalty) × freshness_bonus; archive после 5 провалов.
+   2. Забывание — ✅ bounded retention + decay v1.2: priority_decay (failure_penalty, freshness_bonus, archive); Step 3 recovery (success cancels failure); Step 4 forgetting (time-weighted). Полигон: eurika/polygon/decay_polygon.py, tests/test_decay_dynamics.py.
    3. Конфликт целей / изменение стратегии — ✅ meta_controller при деградации (skip_adaptation, learning_rate_scale); явные named стратегии — позже.
 
 3. **Самокоррекция** — анализ *решений* (почему план провалился, какая гипотеза не сработала), не только кода. failure_reason в patch/learn events; architect получает failure в recent_events; planner deprioritize: get_recent_failures → sort_and_reindex_by_learning(recent_failures=...) — ops с metrics_worsened/simulation_errors/verify_failed идут последними.

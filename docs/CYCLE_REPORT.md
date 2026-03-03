@@ -2,6 +2,7 @@
 
 ## Current state (2026-03-03)
 
+- **115. Fix apply (2026-03):** fix . --allow-low-risk-campaign. modified=2 (patch_plan.py, patch_plan_extracted.py), 1 split_module, verify=✓. apply_rate=2.0, rollback_rate=0.0.
 - **114. Dogfooding после decay v1.1 (2026-03):** fix . --dry-run. Would apply: 1 split_module (patch_plan.py). Decision summary: blocked by policy=35, critic=35, human=35. Files=379, Smells=118. Цикл scan→diagnose→plan прошёл, decay учтён в приоритизации.
 - **113. Decay v1.1 интеграция (2026-03):** priority_decay.apply_decay в priority_from_graph; project_root передаётся из api/__init__._build_patch_plan_inputs и planner/core.analyze; effective_priority = base × (1 − failure_penalty) × freshness_bonus; archive после 5 провалов.
 - **112. Review III сессия (2026-03):** StateStore (save/load_checkpoint, .eurika/state/); failure_reason в architect recent_events и planner deprioritize (get_recent_failures → sort_and_reindex); bounded evolution (EURIKA_MAX_OPS_PER_CYCLE=12); failure log (.eurika/failures.json, 100 entries); Terminal newline после [done] exit_code; STM/LTM формализация в ROADMAP §5.9, §6.0.1.
@@ -20,6 +21,19 @@
 - **99. 3.0.1 Multi-repo fix/cycle:** test_multi_repo_fix_aggregated_report — eurika fix [path1 path2] пишет eurika_fix_report_aggregated.json в paths[0].
 - **98. CR-E3 Практика: крупный рефакторинг в Composer:** polygon split_demo — split_demo_validators, split_demo_formatters, split_demo (фасад).
 - **97.6–89:** ритуалы, Learning from GitHub, polygon, whitelist, R1–R5.
+
+---
+
+## 115. Snapshot (2026-03-03) — Fix apply
+
+### report-snapshot
+
+| Блок | Значение |
+|------|----------|
+| **Fix** | modified=2 (patch_plan split), verify=✓ |
+| **telemetry** | apply_rate=2.0, rollback_rate=0.0 |
+| **Doctor** | modules=379, deps=109, risk=46 |
+| **Learning** | split_module: 2 success, 0 fail (100%) |
 
 ---
 
