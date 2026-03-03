@@ -1,13 +1,29 @@
-"""Patch-operation building helpers for architecture planner."""
+"""Patch-operation building helpers for architecture planner (review §2: hints via hints_provider)."""
 from __future__ import annotations
+
 import ast
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
-from eurika.reasoning.planner.heuristics import EXTRACT_CLASS_SKIP_PATTERNS, FACADE_MODULES, SMELL_ACTION_SEP, STEP_KIND_TO_ACTION, diff_hints_for, disabled_smell_actions_from_env, fallback_kind_for_low_success
+
+from eurika.reasoning.planner.filter_policy import (
+    apply_smell_action_filters,
+    sort_and_reindex_by_learning,
+)
+from eurika.reasoning.planner.heuristics import (
+    EXTRACT_CLASS_SKIP_PATTERNS,
+    FACADE_MODULES,
+    STEP_KIND_TO_ACTION,
+)
+from eurika.reasoning.planner.hints_provider import (
+    build_hints_and_params,
+    default_llm_hints_fn,
+)
 from eurika.smells.detector import ArchSmell
 from patch_plan import PatchOperation
+
 if TYPE_CHECKING:
     from eurika.analysis.graph import ProjectGraph
+
 
 def _uses_self_attributes(node: ast.FunctionDef) -> bool:
     """True when method body reads self.attr (conservative extract-class gate)."""
@@ -40,109 +56,6 @@ def _suggest_extract_class(file_path: Path, min_methods: int=6) -> Optional[tupl
         if best is None or len(extractable) > len(best[1]):
             best = (node.name, extractable)
     return best
-
-def _import_stems_in_file(file_path: Path) -> set[str]:
-    """Collect import stems present in a file."""
-    try:
-        content = file_path.read_text(encoding='utf-8')
-    except OSError:
-        return set()
-    try:
-        tree = ast.parse(content)
-    except SyntaxError:
-        return set()
-    stems: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                stems.add(alias.name.split('.')[0])
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            stems.add(node.module.split('.')[-1])
-    return stems
-
-def _extracted_block_87(node, out):
-    if isinstance(node, ast.Import):
-        for alias in node.names:
-            name = alias.asname or alias.name.split('.')[0]
-            out[name] = alias.name.split('.')[0]
-    elif isinstance(node, ast.ImportFrom) and node.module:
-        stem = node.module.split('.')[-1]
-        for alias in node.names:
-            if alias.name != '*':
-                out[alias.asname or alias.name] = stem
-
-def _collect_import_bindings(tree: ast.AST) -> Dict[str, str]:
-    """Map bound symbol -> import stem for import usage analysis."""
-    out: Dict[str, str] = {}
-    for node in ast.walk(tree):
-        _extracted_block_87(node, out)
-    return out
-
-def _root_name(node: ast.AST) -> Optional[str]:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return _root_name(node.value)
-    return None
-
-def _used_import_stems_in_def(node: ast.AST, bindings: Dict[str, str]) -> set[str]:
-    used: set[str] = set()
-    for child in ast.walk(node):
-        if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load):
-            stem = bindings.get(child.id)
-            if stem:
-                used.add(stem)
-        elif isinstance(child, ast.Attribute) and isinstance(child.ctx, ast.Load):
-            root = _root_name(child.value)
-            if root and root in bindings:
-                used.add(bindings[root])
-    return used
-
-def _has_split_candidates_for_hinted_stems(file_path: Path, hinted_stems: set[str]) -> bool:
-    """Planner-side preflight: does hinted import set produce any clean split candidate?"""
-    try:
-        content = file_path.read_text(encoding='utf-8')
-    except OSError:
-        return False
-    try:
-        tree = ast.parse(content)
-    except SyntaxError:
-        return False
-    bindings = _collect_import_bindings(tree)
-    builtins_ = {'True', 'False', 'None', 'bool', 'int', 'str', 'list', 'dict', 'set', 'self'}
-    for node in ast.iter_child_nodes(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.ClassDef)):
-            continue
-        used = _used_import_stems_in_def(node, bindings)
-        relevant = used & hinted_stems
-        others = used - hinted_stems - builtins_
-        if relevant and (not others):
-            return True
-    return False
-
-def _sanitize_split_params(project_root: str, target_file: str, split_params: Dict[str, Any]) -> Dict[str, Any]:
-    """Drop stale graph-driven imports_from when they don't map to file imports.
-
-    This keeps split_module actionable: when graph hints are outdated, apply side
-    can infer import stems directly from file content.
-    """
-    imports_from = split_params.get('imports_from') or []
-    if not imports_from:
-        return split_params
-    stems_in_file = _import_stems_in_file(Path(project_root) / target_file)
-    if not stems_in_file:
-        return split_params
-    hinted_stems = {Path(str(p)).stem for p in imports_from if str(p).strip()}
-    file_path = Path(project_root) / target_file
-    if hinted_stems and hinted_stems.isdisjoint(stems_in_file):
-        adjusted = dict(split_params)
-        adjusted['imports_from'] = []
-        return adjusted
-    if hinted_stems and (not _has_split_candidates_for_hinted_stems(file_path, hinted_stems)):
-        adjusted = dict(split_params)
-        adjusted['imports_from'] = []
-        return adjusted
-    return split_params
 
 def _is_thin_reexport_module(file_path: Path) -> bool:
     """Heuristic: facade-like re-export module should not get split_module TODO."""
@@ -185,20 +98,9 @@ def build_patch_operations(project_root: str, summary: Dict[str, Any], smells: L
     oss = oss_patterns or {}
     for idx, target in enumerate(plan_targets, start=1):
         operations.extend(_operations_for_target(project_root, idx, target, smells_by_node, cycles_handled, graph=graph, self_map=self_map, oss_patterns=oss))
-    operations = _apply_smell_action_filters(project_root, operations, learning_stats)
-    operations = _sort_and_reindex_by_learning(operations, learning_stats)
+    operations = apply_smell_action_filters(project_root, operations, learning_stats)
+    operations = sort_and_reindex_by_learning(operations, learning_stats)
     return operations
-
-def _success_rate_for_op(op: PatchOperation, learning_stats: Optional[Dict[str, Dict[str, Any]]]) -> float:
-    """Return success rate for (smell_type, action_kind); 0.0 if no stats."""
-    if not learning_stats:
-        return 0.0
-    key = f"{op.smell_type or 'unknown'}{SMELL_ACTION_SEP}{op.kind}"
-    d = learning_stats.get(key, {})
-    total = d.get('total', 0)
-    if total < 1:
-        return 0.0
-    return (d.get('success', 0) or 0) / total
 
 def _build_plan_targets(priorities: List[Dict[str, Any]], smells: List[ArchSmell], smells_by_node: Dict[str, List[ArchSmell]], summary: Dict[str, Any], *, graph: Optional['ProjectGraph'], learning_stats: Optional[Dict[str, Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
     """Build plan targets either from graph or priorities fallback (R5 2.2: learning_stats)."""
@@ -294,58 +196,13 @@ def _existing_extracted_class_is_synced(project_root: str, target_file: str, tar
             return required_methods.issubset(existing_methods)
     return False
 
-def _build_hints_and_params(project_root: str, smell_type: str, action_kind: str, node_smells: List[ArchSmell], name: str, *, graph: Optional['ProjectGraph'], oss_patterns: Optional[Dict[str, Any]]=None) -> tuple[List[str], Optional[Dict[str, Any]]]:
-    """Build diff hints and optional params. ROADMAP 2.9.2: LLM hints. ROADMAP 3.0.5.4: OSS examples."""
-    hints = list(diff_hints_for(smell_type, action_kind))
-    oss = oss_patterns or {}
-    entries = oss.get(smell_type, [])
-    if isinstance(entries, list):
-        for e in entries[:3]:
-            if isinstance(e, dict):
-                proj = e.get('project', '?')
-                mod = e.get('module', '?')
-                hint = e.get('hint', '')
-                if hint:
-                    h = f'OSS ({proj}): {mod} — {hint}'
-                    if h not in hints:
-                        hints.append(h)
-    split_params: Optional[Dict[str, Any]] = None
-    if not graph:
-        return (hints, split_params)
-    from eurika.reasoning.graph_ops import graph_hints_for_smell, suggest_facade_candidates, suggest_god_module_split_hint
-    for smell in node_smells:
-        graph_hints = graph_hints_for_smell(graph, smell.type, smell.nodes)
-        for graph_hint in graph_hints:
-            if graph_hint and graph_hint not in hints:
-                hints.append(graph_hint)
-    if action_kind == 'split_module':
-        info = suggest_god_module_split_hint(graph, name, top_n=5)
-        split_params = {'imports_from': info.get('imports_from', []), 'imported_by': info.get('imported_by', [])}
-        split_params = _sanitize_split_params(project_root, name, split_params)
-        llm_hints = _llm_split_hints(project_root, smell_type, name, info)
-        for h in llm_hints:
-            if h and h not in hints:
-                hints.append(h)
-    elif action_kind == 'introduce_facade':
-        callers = suggest_facade_candidates(graph, name, top_n=5)
-        split_params = {'callers': callers} if callers else None
-        llm_hints = _llm_split_hints(project_root, smell_type, name, {'callers': callers or []})
-        for h in llm_hints:
-            if h and h not in hints:
-                hints.append(h)
-    return (hints, split_params)
-
-def _llm_split_hints(project_root: str, smell_type: str, name: str, graph_context: Dict[str, Any]) -> List[str]:
-    """Call Ollama for split hints when smell is god_module/hub/bottleneck (ROADMAP 2.9.2, 3.6.6). Returns [] on failure."""
-    try:
-        from eurika.reasoning.planner.llm_adapter import ask_ollama_split_hints
-        return ask_ollama_split_hints(smell_type, name, graph_context, project_root=project_root)
-    except Exception:
-        return []
-
 def _append_default_refactor_operation(operations: List[PatchOperation], project_root: str, name: str, idx: int, desc_lines: List[str], smell_type: str, action_kind: str, node_smells: List[ArchSmell], *, graph: Optional['ProjectGraph'], oss_patterns: Optional[Dict[str, Any]]=None) -> None:
-    """Build and append the default TODO refactor operation for a target."""
-    hints, split_params = _build_hints_and_params(project_root, smell_type, action_kind, node_smells, name, graph=graph, oss_patterns=oss_patterns or {})
+    """Build and append the default TODO refactor operation for a target (review §2: hints via hints_provider)."""
+    hints, split_params = build_hints_and_params(
+        project_root, smell_type, action_kind, node_smells, name,
+        graph=graph, oss_patterns=oss_patterns or {},
+        llm_hints_fn=default_llm_hints_fn,
+    )
     hint_lines = '\n'.join((f'# - {hint}' for hint in hints))
     diff_hint = f'# TODO: Refactor {name} ({smell_type} -> {action_kind})\n# Suggested steps:\n{hint_lines}\n'
     operations.append(PatchOperation(target_file=name, kind=action_kind, description=' '.join(desc_lines), diff=diff_hint, smell_type=smell_type, params=split_params))
@@ -381,81 +238,3 @@ def _operations_for_target(project_root: str, idx: int, target: Dict[str, Any], 
     _maybe_add_extract_class_operation(operations, project_root, name, idx, smell_type, action_kind)
     _append_default_refactor_operation(operations, project_root, name, idx, desc_lines, smell_type, action_kind, node_smells, graph=graph, oss_patterns=oss_patterns or {})
     return operations
-
-def _should_emit_default_todo_op(project_root: str, target_file: str, kind: str, diff: str) -> bool:
-    """
-    Return False when default append-style TODO is already present in target file.
-
-    This reduces noisy skipped operations like:
-    - "diff already in content"
-    - "architectural TODO already present"
-    """
-    if kind not in ('refactor_module', 'split_module', 'refactor_code_smell'):
-        return True
-    path = Path(project_root) / target_file
-    if not (path.exists() and path.is_file()):
-        return True
-    try:
-        content = path.read_text(encoding='utf-8')
-    except OSError:
-        return True
-    if diff.strip() and diff.strip() in content:
-        return False
-    if kind in ('refactor_module', 'split_module'):
-        marker = f'# TODO: Refactor {target_file}'
-        if marker in content:
-            return False
-    return True
-
-def _rebuild_operation_with_kind(op: PatchOperation, new_kind: str) -> PatchOperation:
-    """Rebuild operation with a different kind and matching diff hints."""
-    smell_type = op.smell_type or 'unknown'
-    hints = diff_hints_for(smell_type, new_kind)
-    hint_lines = '\n'.join((f'# - {hint}' for hint in hints))
-    diff_hint = f'# TODO: Refactor {op.target_file} ({smell_type} -> {new_kind})\n# Suggested steps:\n{hint_lines}\n'
-    params = op.params if new_kind not in ('refactor_module', 'refactor_code_smell') else None
-    return PatchOperation(target_file=op.target_file, kind=new_kind, description=op.description, diff=diff_hint, smell_type=op.smell_type, params=params)
-
-def _apply_smell_action_filters(project_root: str, operations: List[PatchOperation], learning_stats: Optional[Dict[str, Dict[str, Any]]]) -> List[PatchOperation]:
-    """Apply env-based disabling and low-success filtering."""
-    min_total_for_filter = 3
-    min_success_rate = 0.25
-    operations = [op for op in operations if _should_emit_default_todo_op(project_root, op.target_file, op.kind, op.diff)]
-    if not learning_stats:
-        disabled_smell_actions = disabled_smell_actions_from_env()
-        if disabled_smell_actions:
-            operations = [op for op in operations if f"{op.smell_type or 'unknown'}{SMELL_ACTION_SEP}{op.kind}" not in disabled_smell_actions]
-        return operations
-    filtered: List[PatchOperation] = []
-    for op in operations:
-        key = f"{op.smell_type or 'unknown'}{SMELL_ACTION_SEP}{op.kind}"
-        stats = learning_stats.get(key, {})
-        total = stats.get('total', 0)
-        if total >= min_total_for_filter:
-            rate = (stats.get('success', 0) or 0) / total
-            if rate < min_success_rate:
-                fallback = fallback_kind_for_low_success(op.smell_type or 'unknown', op.kind)
-                if fallback:
-                    op = _rebuild_operation_with_kind(op, fallback)
-                else:
-                    continue
-        filtered.append(op)
-    disabled_smell_actions = disabled_smell_actions_from_env()
-    if disabled_smell_actions:
-        filtered = [op for op in filtered if f"{op.smell_type or 'unknown'}{SMELL_ACTION_SEP}{op.kind}" not in disabled_smell_actions]
-    return filtered
-
-def _sort_and_reindex_by_learning(operations: List[PatchOperation], learning_stats: Optional[Dict[str, Dict[str, Any]]]) -> List[PatchOperation]:
-    """Sort operations by historical success rate and normalize index prefix."""
-    if not learning_stats:
-        return operations
-    ordered = sorted(operations, key=lambda op: _success_rate_for_op(op, learning_stats), reverse=True)
-    reindexed: List[PatchOperation] = []
-    for idx, op in enumerate(ordered, start=1):
-        desc = op.description
-        if desc.startswith('['):
-            rest = desc.split(']', 1)[-1].lstrip()
-            reindexed.append(PatchOperation(target_file=op.target_file, kind=op.kind, description=f'[{idx}] {rest}', diff=op.diff, smell_type=op.smell_type, params=op.params))
-        else:
-            reindexed.append(op)
-    return reindexed
