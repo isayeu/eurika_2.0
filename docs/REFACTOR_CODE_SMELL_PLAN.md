@@ -72,7 +72,7 @@
 | 1 | B: min_lines=3 для long_function (✅ сделано) | — |
 | 2 | D: polygon drill refactor_code_smell (без extract) | ✅ refactor_code_smell_drill.py |
 | 3 | A: EURIKA_USE_LLM_EXTRACT + ask_llm_extract_patch (✅ реализовано) | — |
-| 4 | E: мониторинг learning-kpi, policy adjust при rate ≥ 25% | ✅ policy_adjustment_hints в get_learning_insights + learning-kpi |
+| 4 | E: мониторинг learning-kpi, policy adjust при rate ≥ 25% | ✅ policy_adjustment_hints + **policy применяет**: deny→review в auto при rate≥25%, total≥5 |
 | 5 | C: OSS before/after (при наличии ресурсов) | 2+ недели |
 
 ---

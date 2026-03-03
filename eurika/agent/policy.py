@@ -76,14 +76,22 @@ def _weak_pair_policy(
     op: dict[str, Any],
     *,
     mode: str,
+    project_root: Path | None = None,
 ) -> tuple[PolicyDecision | None, str | None]:
-    """Return policy override for historically weak smell|action pairs."""
+    """Return policy override for historically weak smell|action pairs.
+
+    Phase E (REFACTOR_CODE_SMELL_PLAN): when rate≥25%, total≥5 → auto: review instead of deny.
+    """
     kind = (op.get("kind") or "").strip()
     smell = (op.get("smell_type") or "").strip()
     if (smell, kind) not in WEAK_SMELL_ACTION_PAIRS:
         return None, None
     if mode == "hybrid":
         return "review", f"historically weak pair requires manual approval: {smell}|{kind}"
+    # Phase E: if pair reached rate≥25%, total≥5 → allow review in auto (deny→review)
+    adjustment_pairs = _load_policy_adjustment_pairs(project_root)
+    if (smell, kind) in adjustment_pairs:
+        return "review", f"weak pair promoted to review (rate≥25%, total≥5): {smell}|{kind}"
     return "deny", f"historically weak pair blocked in auto mode: {smell}|{kind}"
 
 
@@ -105,6 +113,32 @@ def _target_verify_fail_count(project_root: Path | None, op: dict[str, Any]) -> 
 
 
 _deny_candidates_cache: dict[str, list[dict[str, Any]]] = {}
+_policy_adjustment_pairs_cache: dict[str, frozenset[tuple[str, str]]] = {}
+
+
+def _load_policy_adjustment_pairs(project_root: Path | None) -> frozenset[tuple[str, str]]:
+    """Load WEAK pairs that reached rate≥25%, total≥5 (REFACTOR_CODE_SMELL_PLAN Phase E)."""
+    if project_root is None:
+        return frozenset()
+    key = str(project_root.resolve())
+    if key in _policy_adjustment_pairs_cache:
+        return _policy_adjustment_pairs_cache[key]
+    try:
+        from eurika.api import get_learning_insights
+
+        insights = get_learning_insights(project_root, top_n=20)
+        hints = (insights.get("recommendations") or {}).get("policy_adjustment_hints") or []
+        pairs: set[tuple[str, str]] = set()
+        for h in hints:
+            p = str(h.get("pair") or "")
+            if "|" in p:
+                parts = p.split("|", 1)
+                pairs.add((parts[0].strip(), parts[1].strip()))
+        result = frozenset(pairs)
+        _policy_adjustment_pairs_cache[key] = result
+        return result
+    except Exception:
+        return frozenset()
 
 
 def _load_deny_candidates(project_root: Path | None) -> list[dict[str, Any]]:
@@ -287,7 +321,7 @@ def evaluate_operation(
     )
 
     if decision in {"allow", "review"}:
-        weak_decision, weak_reason = _weak_pair_policy(op, mode=config.mode)
+        weak_decision, weak_reason = _weak_pair_policy(op, mode=config.mode, project_root=project_root)
         if weak_decision is not None and weak_reason is not None:
             decision = weak_decision
             reason = weak_reason

@@ -89,6 +89,34 @@ def test_policy_weak_pair_deny_in_auto() -> None:
     assert "weak pair" in out.reason or "blocked" in out.reason
 
 
+def test_policy_weak_pair_promoted_to_review_when_rate_ge_25(tmp_path: Path) -> None:
+    """Phase E: when long_function|refactor_code_smell reaches rate≥25%, total≥5 → auto: review (not deny)."""
+    import os
+    os.environ["EURIKA_DISABLE_GLOBAL_MEMORY"] = "1"
+    try:
+        from eurika.storage import ProjectMemory
+
+        memory = ProjectMemory(tmp_path)
+        op = {"kind": "refactor_code_smell", "smell_type": "long_function", "target_file": "a.py"}
+        for i in range(5):
+            memory.learning.append(
+                project_root=tmp_path,
+                modules=["a.py"],
+                operations=[op],
+                risks=[],
+                verify_success=(i < 2),
+            )
+        cfg = PolicyConfig(
+            mode="auto", max_ops=100, max_files=100, allow_test_files=False, auto_apply_max_risk="high",
+        )
+        eval_op = {"kind": "refactor_code_smell", "target_file": "b.py", "smell_type": "long_function", "description": "refactor"}
+        out = evaluate_operation(eval_op, config=cfg, index=1, seen_files=set(), project_root=tmp_path)
+        assert out.decision == "review", "Phase E: weak pair with rate≥25% should be promoted to review in auto"
+        assert "promoted" in out.reason or "rate" in out.reason
+    finally:
+        os.environ.pop("EURIKA_DISABLE_GLOBAL_MEMORY", None)
+
+
 def test_policy_weak_pair_review_in_hybrid() -> None:
     cfg = load_policy_config("hybrid")
     op = {"kind": "split_module", "target_file": "x.py", "smell_type": "hub", "description": "split"}

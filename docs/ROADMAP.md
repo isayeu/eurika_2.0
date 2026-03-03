@@ -248,7 +248,7 @@ storage/        state_store, event_log, learning_store (dumb persistence)
 ### 6.3 Операционность
 
 - KPI: `verify_success_rate` по smell|action|target (prioritized_smell_actions ✅)
-- refactor_code_smell — план: docs/REFACTOR_CODE_SMELL_PLAN.md (Phase 1–4 ✅; Phase E: policy adjust при rate≥25% — hints в learning-kpi)
+- refactor_code_smell — план: docs/REFACTOR_CODE_SMELL_PLAN.md (Phase 1–4 ✅; Phase E: policy adjust при rate≥25% ✅ — deny→review в auto)
 
 ### 6.4 Архитектура (L3↛L5)
 
