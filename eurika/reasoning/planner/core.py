@@ -10,16 +10,34 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 if TYPE_CHECKING:
     from eurika.analysis.graph import ProjectGraph
 
-def analyze(graph: 'ProjectGraph', *, summary_risks: Optional[List[str]]=None, trends: Optional[Dict[str, str]]=None, learning_stats: Optional[Dict[str, Dict[str, Any]]]=None, top_n: int=8) -> Dict[str, Any]:
+def analyze(
+    graph: 'ProjectGraph',
+    *,
+    summary_risks: Optional[List[str]] = None,
+    trends: Optional[Dict[str, str]] = None,
+    learning_stats: Optional[Dict[str, Dict[str, Any]]] = None,
+    top_n: int = 8,
+    project_root: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     Run planning analysis: smells + priorities from graph.
 
     Returns dict with: smells, priorities, targets.
+    When project_root is provided, decay (failure_penalty, freshness_bonus) is applied.
     """
     from eurika.reasoning.graph_ops import priority_from_graph, targets_from_graph
     smells = detect_smells(graph)
-    priorities = priority_from_graph(graph, smells, summary_risks, top_n, learning_stats=learning_stats)
-    targets = targets_from_graph(graph, smells, summary_risks, top_n, learning_stats=learning_stats)
+    root = str(project_root) if project_root else None
+    priorities = priority_from_graph(
+        graph, smells, summary_risks, top_n,
+        learning_stats=learning_stats,
+        project_root=root,
+    )
+    targets = targets_from_graph(
+        graph, smells, summary_risks, top_n,
+        learning_stats=learning_stats,
+        project_root=root,
+    )
     return {'smells': smells, 'priorities': priorities, 'targets': targets}
 
 def propose_actions(project_root: str, summary: Dict[str, Any], smells: List[Any], history_info: Dict[str, Any], priorities: List[Dict[str, Any]], *, learning_stats: Optional[Dict[str, Dict[str, Any]]]=None) -> Any:

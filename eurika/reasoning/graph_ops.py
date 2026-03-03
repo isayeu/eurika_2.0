@@ -86,15 +86,18 @@ def targets_from_graph(
     summary_risks: Optional[List[str]] = None,
     top_n: int = 8,
     learning_stats: Optional[Dict[str, Dict[str, Any]]] = None,
+    project_root: Optional[Path] = None,
 ) -> List[Dict[str, Any]]:
     """
     Build explicit targets (target_file, kind) from graph structure (ROADMAP 3.1.4, R5 2.2).
 
     Uses graph.nodes and graph.edges: only nodes present in the graph,
-    kind derived from smells, ordering from priority_from_graph (with learning_stats).
+    kind derived from smells, ordering from priority_from_graph (with learning_stats, decay).
     """
     priorities = priority_from_graph(
-        graph, smells, summary_risks, top_n, learning_stats=learning_stats
+        graph, smells, summary_risks, top_n,
+        learning_stats=learning_stats,
+        project_root=project_root,
     )
     smells_by_node: Dict[str, List[str]] = {}
     for s in smells:
@@ -185,13 +188,13 @@ def priority_from_graph(
     summary_risks: Optional[List[str]] = None,
     top_n: int = 8,
     learning_stats: Optional[Dict[str, Dict[str, Any]]] = None,
+    project_root: Optional[Path] = None,
 ) -> List[Dict[str, Any]]:
     """
     Return ordered list of modules for refactoring (ROADMAP 3.1.1, R5 2.2).
 
     Combines severity, graph structure (degree, fan-in, fan-out), summary risks,
-    and learning stats (past success rate for smell|action). Higher success =
-    higher priority (fixes that tend to work).
+    learning stats (past success rate), and decay (failure_penalty, freshness_bonus).
     """
     fan = graph.fan_in_out()
     scores, reasons = _init_scores_from_smells(smells)
@@ -203,6 +206,10 @@ def priority_from_graph(
         smell_types = reasons.get(node, [])
         degree_bonus = _degree_bonus(fi, fo, smell_types)
         scores[node] = scores[node] + degree_bonus
+
+    if project_root:
+        from eurika.reasoning.priority_decay import apply_decay
+        apply_decay(scores, reasons, lambda n: refactor_kind_for_smells(reasons.get(n, [])), project_root)
 
     ordered = sorted(scores.items(), key=lambda x: -x[1])[:top_n]
     return [

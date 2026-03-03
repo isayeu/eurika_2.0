@@ -47,6 +47,49 @@ def test_get_recent_failures_skips_success_events(tmp_path: Path) -> None:
     assert get_recent_failures(tmp_path) == []
 
 
+def test_failure_log_artifact(tmp_path: Path) -> None:
+    """record_outcome with failure_reason writes to .eurika/failures.json (Review III)."""
+    from eurika.storage import record_outcome
+
+    record_outcome(
+        tmp_path,
+        modules=["a.py"],
+        operations=[
+            {"target_file": "a.py", "kind": "split_module"},
+            {"target_file": "b.py", "kind": "extract_class"},
+        ],
+        risks=[],
+        verify_success=False,
+        failure_reason="metrics_worsened",
+    )
+    failures_file = tmp_path / ".eurika" / "failures.json"
+    assert failures_file.exists()
+    import json
+
+    data = json.loads(failures_file.read_text())
+    failures = data.get("failures", [])
+    assert len(failures) >= 2
+    targets = {(f["target_file"], f["kind"], f["failure_reason"]) for f in failures}
+    assert ("a.py", "split_module", "metrics_worsened") in targets
+    assert ("b.py", "extract_class", "metrics_worsened") in targets
+
+
+def test_get_recent_failures_prefers_failure_log(tmp_path: Path) -> None:
+    """get_recent_failures returns from failure log when present."""
+    from eurika.storage import record_outcome
+
+    record_outcome(
+        tmp_path,
+        modules=["x.py"],
+        operations=[{"target_file": "x.py", "kind": "refactor_module"}],
+        risks=[],
+        verify_success=False,
+        failure_reason="verify_failed",
+    )
+    failures = get_recent_failures(tmp_path, limit=5)
+    assert ("x.py", "refactor_module", "verify_failed") in failures
+
+
 def test_sort_deprioritizes_recent_failures() -> None:
     """sort_and_reindex_by_learning puts recent-failure ops last (Review III)."""
     from patch_plan import PatchOperation

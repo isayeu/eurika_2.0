@@ -327,7 +327,23 @@ while True:
 **Направления развития:**
 
 1. **Стабильное ядро** — один железобетонный цикл, потом наращивать.
-2. **Настоящая память** — short/long term, failure log; приоритет целей, забывание, конфликт целей.
+2. **Настоящая память** — short/long term, failure log; приоритет целей, забывание, конфликт целей. **Failure log:** .eurika/failures.json (append при record_outcome+failure_reason), bounded 100 entries; get_recent_failures читает из failure log, fallback на events.
+
+   **Формализация STM/LTM (review §2):**
+
+   | Тип | Роль | Реализация | Scope |
+   |-----|------|------------|-------|
+   | **STM** | Контекст текущего цикла | ExecutionContext (snapshot_before/after, candidates, simulation_result, delta_score); SessionMemory (verify_success/fail в сессии) | один fix cycle |
+   | **LTM** | Агрегаты и история | EventLog (events.json), LearningStore (learning_stats, get_merged_learning_stats), ArchitectureHistory, failure log, StateStore checkpoints, weights | все циклы |
+   | **Failure log** | Провалы для самокоррекции | .eurika/failures.json, get_recent_failures | bounded 100 |
+
+   **Остаётся (будущее):** приоритет целей, забывание (decay), конфликт целей, явное изменение стратегии.
+
+   **Следующие шаги (приоритизировано):**
+   1. Приоритет целей — ✅ Architecture.md §3.4 (targets_from_graph, priority_from_graph, prioritized_smell_actions).
+   2. Забывание — ✅ bounded retention + decay: priority_decay.apply_decay в priority_from_graph; effective_priority = base × (1 − failure_penalty) × freshness_bonus; archive после 5 провалов.
+   3. Конфликт целей / изменение стратегии — ✅ meta_controller при деградации (skip_adaptation, learning_rate_scale); явные named стратегии — позже.
+
 3. **Самокоррекция** — анализ *решений* (почему план провалился, какая гипотеза не сработала), не только кода. failure_reason в patch/learn events; architect получает failure в recent_events; planner deprioritize: get_recent_failures → sort_and_reindex_by_learning(recent_failures=...) — ops с metrics_worsened/simulation_errors/verify_failed идут последними.
 
 **Чего не делать сейчас:** онлайн-патчинг, self-rewriting modules, автоматическое изменение архитектуры, 50 новых классов.
@@ -358,6 +374,7 @@ while True:
 - [x] **DeltaEvaluator:** eurika/evaluation/delta_evaluator.py — compute_delta(before, after, metrics_fn) → verify_metrics
 - [x] **Review соответствие:** Planner 4 компонента и Storage 3 слоя — маппинг задокументирован в §5.8
 - [x] **StateStore:** eurika/storage/state_store.py — save_checkpoint, load_checkpoint, snapshot_from_checkpoint; prepare сохраняет "latest" при build context
+- [x] **STM/LTM формализация:** маппинг в §5.9 (ExecutionContext=STM, EventLog/LearningStore/ArchitectureHistory/failure_log/StateStore/weights=LTM)
 
 ### 6.1 Структура и размер файлов
 

@@ -82,6 +82,7 @@ def _build_patch_plan_inputs(root: Path, window: int) -> tuple[Any, Any, Dict[st
         summary_risks=summary.get('risks'),
         top_n=8,
         learning_stats=learning_stats,
+        project_root=root,
     )
     return (graph, smells, summary, history_info, priorities)
 

@@ -418,6 +418,8 @@ class ArchitectureSnapshot:
 
 **Разделение (review §2):** LLM — отдельный сервис, вызываемый только из hints_provider при необходимости. Risk — в rank_candidates (energy_ranking) и filter_policy. Mutation — только в patch_engine (L4).
 
+**Приоритет целей (Goal priority, ROADMAP §5.9):** `targets_from_graph` выбирает top_n модулей по score (graph_ops); `priority_from_graph` — порядок по centrality/smells. `prioritized_smell_actions` (learning_api) — KPI по smell|action для doctor/dashboard. **Decay (v1.1):** `priority_decay.apply_decay` — failure_penalty (из failure_log), freshness_bonus (со временем), archive после 5 провалов. Итог: targets упорядочены по score × decay; filter_policy и sort_and_reindex_by_learning применяют learning и recent_failures.
+
 **ArchitectureSnapshot (§3):** `planner.models.ArchitectureSnapshot` — graph + metrics + smells + root/summary/history/diff. `collect_facts` возвращает dict; при миграции — PlanningFacts dataclass или ArchitectureSnapshot.
 
 ---

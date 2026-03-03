@@ -29,8 +29,19 @@ def record_outcome(
     """
     if not operations:
         return
-    from .memory import ProjectMemory
     from .global_memory import append_learn_to_global
+    from .memory import ProjectMemory
+
+    if verify_success is False and failure_reason:
+        from .failure_log import append_failures
+
+        entries = [
+            (str(op.get("target_file") or ""), str(op.get("kind") or ""), failure_reason)
+            for op in operations
+            if op.get("target_file") or op.get("kind")
+        ]
+        if entries:
+            append_failures(project_root, entries)
 
     memory = ProjectMemory(project_root)
     memory.learning.append(
@@ -56,13 +67,18 @@ def get_recent_failures(
     limit: int = 5,
 ) -> List[tuple[str, str, str]]:
     """
-    Return (target_file, kind, failure_reason) from recent failed learn events (Review III самокоррекция).
+    Return (target_file, kind, failure_reason) from failure log + learn events (Review III).
+
+    Failure log (.eurika/failures.json) is primary; events are fallback for backward compat.
     """
+    from .failure_log import load_recent_failures
     from .memory import ProjectMemory
 
+    out = load_recent_failures(project_root, limit=limit)
+    if out:
+        return out[:20]
     memory = ProjectMemory(project_root)
     events = memory.events.recent_events(limit=limit, types=("learn",))
-    out: List[tuple[str, str, str]] = []
     seen: set[tuple[str, str, str]] = set()
     for e in events:
         if e.result is not False:

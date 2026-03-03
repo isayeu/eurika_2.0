@@ -19,6 +19,7 @@ FILES = {
     "observations": "observations.json",
     "history": "history.json",
     "weights": "weights.json",
+    "failures": "failures.json",
 }
 
 # Legacy filenames in project root (for migration)

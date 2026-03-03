@@ -123,6 +123,37 @@ def test_priority_from_graph_with_learning_stats():
     assert "a" in names or "b" in names
 
 
+def test_priority_from_graph_with_decay(tmp_path):
+    """Decay v1.1: targets with failures in failure_log get deprioritized."""
+    import json
+    from eurika.smells.models import ArchSmell
+
+    (tmp_path / ".eurika").mkdir()
+    (tmp_path / ".eurika" / "failures.json").write_text(
+        json.dumps({
+            "failures": [
+                {"target_file": "a.py", "kind": "split_module", "failure_reason": "verify_failed", "timestamp": 1000},
+                {"target_file": "a.py", "kind": "split_module", "failure_reason": "verify_failed", "timestamp": 1001},
+            ]
+        }),
+        encoding="utf-8",
+    )
+    g = _make_graph(["a.py", "b.py"], {"a.py": ["b.py"], "b.py": []})
+    smells = [
+        ArchSmell(type="god_module", nodes=["a.py"], severity=5.0, description=""),
+        ArchSmell(type="god_module", nodes=["b.py"], severity=4.0, description=""),
+    ]
+    prio = priority_from_graph(
+        g, smells, summary_risks=None, top_n=8,
+        project_root=tmp_path,
+    )
+    names = [p["name"] for p in prio]
+    # a.py has 2 failures → penalty; b.py none → should rank higher
+    assert "a.py" in names
+    assert "b.py" in names
+    assert names.index("b.py") < names.index("a.py")
+
+
 def test_priority_from_graph_includes_summary_risks():
     """priority_from_graph adds weight for nodes mentioned in summary_risks."""
     from eurika.smells.models import ArchSmell

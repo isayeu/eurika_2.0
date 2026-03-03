@@ -96,7 +96,10 @@ def build_patch_operations(project_root: str, summary: Dict[str, Any], smells: L
     """Build patch operations from diagnostics input. ROADMAP 3.0.5.4: oss_patterns enriches hints."""
     operations: List[PatchOperation] = []
     cycles_handled: set[frozenset[str]] = set()
-    plan_targets = _build_plan_targets(priorities, smells, smells_by_node, summary, graph=graph, learning_stats=learning_stats)
+    plan_targets = _build_plan_targets(
+        priorities, smells, smells_by_node, summary,
+        graph=graph, learning_stats=learning_stats, project_root=project_root,
+    )
     oss = oss_patterns or {}
     for idx, target in enumerate(plan_targets, start=1):
         operations.extend(_operations_for_target(project_root, idx, target, smells_by_node, cycles_handled, graph=graph, self_map=self_map, oss_patterns=oss))
@@ -110,11 +113,12 @@ def build_patch_operations(project_root: str, summary: Dict[str, Any], smells: L
         operations = operations[:cap]
     return operations
 
-def _build_plan_targets(priorities: List[Dict[str, Any]], smells: List[ArchSmell], smells_by_node: Dict[str, List[ArchSmell]], summary: Dict[str, Any], *, graph: Optional['ProjectGraph'], learning_stats: Optional[Dict[str, Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
-    """Build plan targets either from graph or priorities fallback (R5 2.2: learning_stats)."""
+def _build_plan_targets(priorities: List[Dict[str, Any]], smells: List[ArchSmell], smells_by_node: Dict[str, List[ArchSmell]], summary: Dict[str, Any], *, graph: Optional['ProjectGraph'], learning_stats: Optional[Dict[str, Dict[str, Any]]] = None, project_root: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Build plan targets either from graph or priorities fallback (R5 2.2: learning_stats, decay)."""
     from eurika.reasoning.graph_ops import refactor_kind_for_smells, targets_from_graph
     if graph:
-        return targets_from_graph(graph, smells, summary_risks=summary.get('risks'), top_n=8, learning_stats=learning_stats)
+        root = Path(project_root) if project_root else None
+        return targets_from_graph(graph, smells, summary_risks=summary.get('risks'), top_n=8, learning_stats=learning_stats, project_root=root)
     targets = [{'name': p.get('name') or p.get('module') or '', 'kind': refactor_kind_for_smells([s.type for s in smells_by_node.get(p.get('name') or '', [])]), 'reasons': p.get('reasons') or []} for p in priorities[:8]]
     return [t for t in targets if t['name']]
 

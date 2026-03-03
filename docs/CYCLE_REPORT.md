@@ -2,6 +2,9 @@
 
 ## Current state (2026-03-03)
 
+- **114. Dogfooding после decay v1.1 (2026-03):** fix . --dry-run. Would apply: 1 split_module (patch_plan.py). Decision summary: blocked by policy=35, critic=35, human=35. Files=379, Smells=118. Цикл scan→diagnose→plan прошёл, decay учтён в приоритизации.
+- **113. Decay v1.1 интеграция (2026-03):** priority_decay.apply_decay в priority_from_graph; project_root передаётся из api/__init__._build_patch_plan_inputs и planner/core.analyze; effective_priority = base × (1 − failure_penalty) × freshness_bonus; archive после 5 провалов.
+- **112. Review III сессия (2026-03):** StateStore (save/load_checkpoint, .eurika/state/); failure_reason в architect recent_events и planner deprioritize (get_recent_failures → sort_and_reindex); bounded evolution (EURIKA_MAX_OPS_PER_CYCLE=12); failure log (.eurika/failures.json, 100 entries); Terminal newline после [done] exit_code; STM/LTM формализация в ROADMAP §5.9, §6.0.1.
 - **111. Ритуал 2.1 (направление C):** scan → doctor → report-snapshot → fix --allow-low-risk-campaign. modified=0. LLM budget не исчерпан (calls=3/15). Все 36 ops denied на validate (risk=high, policy). Doctor: modules=368, risk=46.
 - **110. Ритуал 2.1 (направление C):** scan → doctor → report-snapshot → fix --allow-low-risk-campaign. modified=0, skipped=0. Все запланированные ops denied (risk, LLM budget). Doctor: modules=368, risk=46.
 - **109. Whitelist promote (§107 candidates):** whitelist-draft . --all-kinds → 7 ops merged в .eurika/operation_whitelist.json и operation_whitelist.controlled.json. Polygon (imports_ok, deep_nesting, extractable_block, long_function) — allow_in_auto.
