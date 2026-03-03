@@ -2,6 +2,7 @@
 
 ## Current state (2026-03-03)
 
+- **116. Decay v1.2 (2026-03):** Step 3 recovery (success cancels failure), Step 4 forgetting (time-weighted). decay_polygon.py, test_decay_dynamics. fix . --dry-run: 0 ops, cycle OK, Files=382.
 - **115. Fix apply (2026-03):** fix . --allow-low-risk-campaign. modified=2 (patch_plan.py, patch_plan_extracted.py), 1 split_module, verify=✓. apply_rate=2.0, rollback_rate=0.0.
 - **114. Dogfooding после decay v1.1 (2026-03):** fix . --dry-run. Would apply: 1 split_module (patch_plan.py). Decision summary: blocked by policy=35, critic=35, human=35. Files=379, Smells=118. Цикл scan→diagnose→plan прошёл, decay учтён в приоритизации.
 - **113. Decay v1.1 интеграция (2026-03):** priority_decay.apply_decay в priority_from_graph; project_root передаётся из api/__init__._build_patch_plan_inputs и planner/core.analyze; effective_priority = base × (1 − failure_penalty) × freshness_bonus; archive после 5 провалов.
