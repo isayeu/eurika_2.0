@@ -30,3 +30,16 @@ def propose_actions(project_root: str, summary: Dict[str, Any], smells: List[Any
     """
     from architecture_planner import build_action_plan
     return build_action_plan(project_root=str(project_root), summary=summary, smells=smells, history_info=history_info, priorities=priorities, learning_stats=learning_stats)
+
+# TODO: Refactor eurika/reasoning/planner/core.py (god_module -> split_module)
+# Suggested steps:
+# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
+# - Identify distinct concerns and split this module into focused units.
+# - Reduce total degree (fan-in + fan-out) via extraction.
+# - OSS (django): django/template/backends/django.py — Consider splitting into smaller modules; extract coherent sub-responsibilities.
+# - Extract from imports: architecture_planner.py.
+# - Consider grouping callers: eurika/core/pipeline.py, eurika/core/snapshot.py, eurika/evolution/diff.py.
+# - Introduce facade for callers: architecture_pipeline.py, eurika/core/pipeline.py, eurika/core/snapshot.py....
+# - Extract architecture-related logic into `architecture_planner_core.py`
+# - Group planning algorithms and strategies into `planning_algorithms.py`
+# - Separate snapshot creation and handling logic into `snapshot_handler.py`

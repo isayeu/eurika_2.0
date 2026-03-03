@@ -2,6 +2,14 @@
 
 Как накапливать verify_success по polygon drills (extract_block_to_helper, extract_nested_function) для whitelist и policy.
 
+## Подготовка
+
+```bash
+./scripts/polygon_prep.sh
+```
+
+Выполняет scan (refresh self_map) и pytest polygon semantics. Дальше — fix с hybrid + allow-low-risk.
+
 ---
 
 ## Вариант A: Qt Hybrid (рекомендуется)

@@ -305,7 +305,7 @@ storage/        state_store, event_log, learning_store (dumb persistence)
 | split_module         | ✅ Часто реальный                       |
 | refactor_code_smell  | TODO-маркер или extract_block (гибрид)  |
 
-**Для повышения:** интернет, LLM, pattern library, curated repos (3.0.5).
+**Для повышения:** интернет, LLM, pattern library, curated repos (3.0.5). Pattern library: до 3 OSS snippets в LLM extract prompt, snippet до 800 символов; curated_repos.light + flask.
 
 ---
 

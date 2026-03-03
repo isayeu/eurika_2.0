@@ -289,7 +289,7 @@ def _load_oss_snippets_for_smell(root: Path, smell_type: str, max_count: int = 2
             if isinstance(e, dict) and e.get("snippet"):
                 proj = e.get("project", "?")
                 mod = e.get("module", "?")
-                snip = str(e["snippet"])[:400].rstrip()
+                snip = str(e["snippet"])[:800].rstrip()
                 if snip:
                     snippets.append(f"[{proj}:{mod}]\n```\n{snip}\n```")
         return snippets

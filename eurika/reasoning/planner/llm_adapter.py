@@ -276,7 +276,7 @@ def _build_extract_patch_prompt(function_name: str, full_source: str, oss_snippe
         f"```python\n{preview}\n```\n\n"
     )
     if oss_snippets:
-        base += "\nReference:\n" + "\n".join(oss_snippets[:1]) + "\n\n"
+        base += "\nOSS Reference (extract-style examples):\n" + "\n".join(oss_snippets[:3]) + "\n\n"
     base += "Reply with the full refactored Python code only (inside ```python ... ``` or raw)."
     return base
 
@@ -342,7 +342,7 @@ def ask_llm_extract_patch(
         try:
             from eurika.api.ops import _load_oss_snippets_for_smell
             root = Path(project_root).resolve()
-            oss = _load_oss_snippets_for_smell(root, "long_function", max_count=2)
+            oss = _load_oss_snippets_for_smell(root, "long_function", max_count=4)
         except Exception:
             pass
     prompt = _build_extract_patch_prompt(function_name, content, oss or None)

@@ -1,4 +1,4 @@
-"""DRILL_UNUSED_IMPORTS: remove_unused_import — добавить неиспользуемые импорты, fix удалит."""
+"""DRILL_UNUSED_IMPORTS: remove_unused_import — неиспользуемые импорты, fix удалит."""
 from pathlib import Path
 
 

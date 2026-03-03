@@ -84,6 +84,15 @@
 - Op `llm_extract_block` с `params.new_content` — patch_apply заменяет файл новым содержимым
 - Budget/circuit-breaker как у ask_ollama_split_hints
 
+## Quick start: refactor_code_smell с LLM
+
+```bash
+eurika learn-github . --light --limit-repos 3 --scan --build-patterns
+EURIKA_USE_LLM_EXTRACT=1 eurika fix . --allow-low-risk-campaign
+```
+
+После build-patterns: `pattern_library.json` содержит long_function/deep_nesting snippets из OSS. LLM использует их как few-shot (до 3 примеров, до 800 символов каждый).
+
 ## Файлы для изменений
 
 - `eurika/api/ops.py` — get_code_smell_operations, _use_llm_extract, опка llm_extract_block
