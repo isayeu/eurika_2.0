@@ -74,3 +74,4 @@ eurika-qt .
 ## Опционально (продвинутое)
 
 - **EURIKA_WEIGHT_ADAPTATION=1** — включить адаптацию весов при fix (медленное обучение по success/fail). По умолчанию выключено.
+- **EURIKA_META_CONTROLLER=1** — при включённой weight adaptation: meta-controller переключает стратегию при деградации (низкий success rate, серия регрессий).

@@ -76,6 +76,7 @@ DEFAULT_RULES: tuple[ImportRule, ...] = (
     ImportRule(path_pattern="architecture_planner_", forbidden_imports=("patch_apply",)),
     # Planning layer must not depend on Execution (Architecture.md §0.5).
     ImportRule(path_pattern="eurika/reasoning/", forbidden_imports=("patch_apply", "patch_engine")),
+    ImportRule(path_pattern="eurika/cognition/", forbidden_imports=("patch_apply", "patch_engine")),
     # Analysis layer must not depend on Execution.
     ImportRule(path_pattern="eurika/smells/", forbidden_imports=("patch_apply", "patch_engine")),
     ImportRule(path_pattern="eurika/analysis/", forbidden_imports=("patch_apply", "patch_engine")),
@@ -104,6 +105,7 @@ DEFAULT_LAYER_PATH_RULES: tuple[LayerPathRule, ...] = (
     LayerPathRule(path_pattern="patch_plan.py", layer=3),
     LayerPathRule(path_pattern="eurika/reasoning/", layer=3),
     LayerPathRule(path_pattern="eurika/reasoning/planner/", layer=3),
+    LayerPathRule(path_pattern="eurika/cognition/", layer=3),
     LayerPathRule(path_pattern="eurika/analysis/", layer=2),
     LayerPathRule(path_pattern="eurika/smells/", layer=2),
     LayerPathRule(path_pattern="code_awareness", layer=2),
@@ -135,6 +137,7 @@ DEFAULT_LAYER_IMPORT_RULES: tuple[LayerImportRule, ...] = (
     LayerImportRule(import_prefix="architecture_planner", layer=3),
     LayerImportRule(import_prefix="patch_plan", layer=3),
     LayerImportRule(import_prefix="eurika.reasoning.planner", layer=3),
+    LayerImportRule(import_prefix="eurika.cognition", layer=3),
     LayerImportRule(import_prefix="eurika.analysis", layer=2),
     LayerImportRule(import_prefix="eurika.smells", layer=2),
     LayerImportRule(import_prefix="code_awareness", layer=2),

@@ -221,6 +221,7 @@ snapshot_before, candidates, selected_action, simulated_snapshot, snapshot_after
 3. Planner ранжирует по ΔEnergy = E_before - E_after; Score = Delta - Risk
 4. ExperienceStore — record_outcome без изменения весов
 5. Weight adaptation — медленно, bounded [0.02..0.25], EURIKA_WEIGHT_ADAPTATION=1; откат: удалить .eurika/weights.json
+6. Meta-controller (v4.0) — eurika/cognition/meta_controller.py; при деградации (low success rate, 3+ регрессий подряд) — skip_adaptation или learning_rate_scale=0.5; EURIKA_META_CONTROLLER=1
 
 **Target pipeline (v3.x):**
 ```

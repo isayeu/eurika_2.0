@@ -268,7 +268,7 @@ storage/        state_store, event_log, learning_store (dumb persistence)
 ### 6.7 Execution Model (по review 2026 II)
 
 - §5.7 этапы 1–7: MetricVector, EnergyModel, ΔEnergy, ExecutionContext, ArchitectureSnapshot, ExperienceStore, Weight adaptation — ✅
-- **Следующая фаза (v4.0):** meta-controller — переключение стратегий при деградации; только после стабилизации v3.5.
+- **v4.0 meta-controller:** переключение стратегий при деградации — ✅ `eurika/cognition/meta_controller.py`; `EURIKA_META_CONTROLLER=1` при `EURIKA_WEIGHT_ADAPTATION=1`.
 
 ---
 

@@ -192,8 +192,18 @@ def append_fix_cycle_memory(
             import os
             if path and os.environ.get("EURIKA_WEIGHT_ADAPTATION", "").strip().lower() in ("1", "true", "yes"):
                 try:
-                    from eurika.analysis.weight_store import adapt_weights_from_experience
-                    adapt_weights_from_experience(path)
+                    lr = 0.02
+                    if os.environ.get("EURIKA_META_CONTROLLER", "").strip().lower() in ("1", "true", "yes"):
+                        from eurika.cognition import evaluate_policy
+                        policy = evaluate_policy(path)
+                        if policy.skip_adaptation:
+                            pass
+                        else:
+                            from eurika.analysis.weight_store import adapt_weights_from_experience
+                            adapt_weights_from_experience(path, learning_rate=lr * policy.learning_rate_scale)
+                    else:
+                        from eurika.analysis.weight_store import adapt_weights_from_experience
+                        adapt_weights_from_experience(path, learning_rate=lr)
                 except Exception:
                     pass
         memory.events.append_event(
