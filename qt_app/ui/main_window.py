@@ -91,6 +91,11 @@ class MainWindow(QMainWindow):
         self.use_llm_extract_check.toggled.connect(self._sync_preview)
         self.allow_low_risk_campaign_check.toggled.connect(self._sync_preview)
         self.team_mode_check.toggled.connect(self._sync_preview)
+        if getattr(self, "learn_light_check", None):
+            self.learn_light_check.toggled.connect(self._sync_preview)
+            self.learn_scan_check.toggled.connect(self._sync_preview)
+            self.learn_build_patterns_check.toggled.connect(self._sync_preview)
+            self.learn_limit_spin.valueChanged.connect(self._sync_preview)
         self.run_btn.clicked.connect(lambda: command_handlers.run_command(self))
         self.stop_btn.clicked.connect(self._command_service.stop)
         self.ruff_btn.clicked.connect(lambda: command_handlers.run_ruff(self))
@@ -192,6 +197,27 @@ class MainWindow(QMainWindow):
             self.preview_label.setText(' '.join(parts))
             self.module_edit.setEnabled(False)
             return
+        if cmd in {'whitelist-draft', 'campaign-undo'}:
+            self.preview_label.setText(' '.join(parts))
+            self.module_edit.setEnabled(False)
+            return
+        if cmd == 'learn-github':
+            if getattr(self, 'learn_light_check', None) and self.learn_light_check.isChecked():
+                parts.append('--light')
+            if getattr(self, 'learn_scan_check', None) and self.learn_scan_check.isChecked():
+                parts.append('--scan')
+            if getattr(self, 'learn_build_patterns_check', None) and self.learn_build_patterns_check.isChecked():
+                parts.append('--build-patterns')
+            lim = getattr(self, 'learn_limit_spin', None)
+            if lim and lim.value() > 0:
+                parts.extend(['--limit-repos', str(lim.value())])
+            self.preview_label.setText(' '.join(parts))
+            self.module_edit.setEnabled(False)
+            return
+        if cmd in {'clean-imports', 'self-check'}:
+            self.preview_label.setText(' '.join(parts))
+            self.module_edit.setEnabled(False)
+            return
         if cmd in {'doctor', 'fix', 'cycle', 'explain'}:
             parts.extend(['--window', str(self.window_spin.value())])
         if self.dry_run_check.isChecked() and cmd in {'fix', 'cycle'}:
@@ -210,6 +236,12 @@ class MainWindow(QMainWindow):
             parts.append('[LLM extract]')
         self.preview_label.setText(' '.join(parts))
         self.module_edit.setEnabled(cmd == 'explain')
+        show_learn = cmd == 'learn-github'
+        for attr in ('learn_label', 'learn_light_check', 'learn_scan_check', 'learn_build_patterns_check',
+                     'learn_limit_label', 'learn_limit_spin'):
+            w = getattr(self, attr, None)
+            if w:
+                w.setVisible(show_learn)
 
     def _resolve_ollama_model_for_command(self) -> str:
         """Model for doctor/fix/cycle: prefer Installed combo (Models tab), else Chat model settings."""

@@ -29,9 +29,10 @@ def build_commands_tab(main: MainWindow) -> None:
     controls = QGroupBox("Core Command Panel")
     controls_layout = QFormLayout(controls)
     main.command_combo = QComboBox()
-    main.command_combo.addItems(
-        ["scan", "doctor", "fix", "cycle", "explain", "report-snapshot", "learning-kpi"]
-    )
+    main.command_combo.addItems([
+        "scan", "doctor", "fix", "cycle", "explain", "report-snapshot", "learning-kpi",
+        "learn-github", "clean-imports", "self-check", "whitelist-draft", "campaign-undo",
+    ])
     controls_layout.addRow("Command", main.command_combo)
     main.module_edit = QLineEdit()
     main.module_edit.setPlaceholderText("Required for explain: eurika/api/serve.py")
@@ -61,6 +62,20 @@ def build_commands_tab(main: MainWindow) -> None:
     main.team_mode_check.setToolTip(
         "Propose only: save plan to .eurika/pending_plan.json, then use Approvals tab"
     )
+    main.learn_light_check = QCheckBox("--light (learn-github)")
+    main.learn_light_check.setChecked(True)
+    main.learn_light_check.setToolTip("Light curated list: starlette, httpx — faster")
+    main.learn_scan_check = QCheckBox("--scan (learn-github)")
+    main.learn_scan_check.setChecked(True)
+    main.learn_scan_check.setToolTip("Run eurika scan on each cloned repo")
+    main.learn_build_patterns_check = QCheckBox("--build-patterns")
+    main.learn_build_patterns_check.setChecked(True)
+    main.learn_build_patterns_check.setToolTip("Build pattern library → .eurika/pattern_library.json (Phase 5 OSS)")
+    main.learn_limit_spin = QSpinBox()
+    main.learn_limit_spin.setRange(0, 20)
+    main.learn_limit_spin.setValue(2)
+    main.learn_limit_spin.setSpecialValueText("all")
+    main.learn_limit_spin.setToolTip("--limit-repos: use first N repos (0=all)")
     options_row.addWidget(main.dry_run_check)
     options_row.addWidget(main.no_llm_check)
     options_row.addWidget(main.no_clean_imports_check)
@@ -68,6 +83,14 @@ def build_commands_tab(main: MainWindow) -> None:
     options_row.addWidget(main.use_llm_extract_check)
     options_row.addWidget(main.allow_low_risk_campaign_check)
     options_row.addWidget(main.team_mode_check)
+    main.learn_label = QLabel("| Learn:")
+    main.learn_limit_label = QLabel("limit-repos:")
+    options_row.addWidget(main.learn_label)
+    options_row.addWidget(main.learn_light_check)
+    options_row.addWidget(main.learn_scan_check)
+    options_row.addWidget(main.learn_build_patterns_check)
+    options_row.addWidget(main.learn_limit_label)
+    options_row.addWidget(main.learn_limit_spin)
     options_row.addStretch(1)
     controls_layout.addRow("Options", options_row)
     action_row = QHBoxLayout()

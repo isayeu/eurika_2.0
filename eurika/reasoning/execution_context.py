@@ -7,7 +7,15 @@ ExecutionContext — единый контекст pipeline (ROADMAP §5.7, revi
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import TYPE_CHECKING, List, Optional
+
+if TYPE_CHECKING:
+    from eurika.reasoning.planner.models import (
+        ArchitectureSnapshot,
+        RefactorAction,
+        RefactorCandidate,
+        RiskReport,
+    )
 
 
 @dataclass
@@ -18,10 +26,10 @@ class ExecutionContext:
     Only the Orchestrator should mutate this. All services are pure.
     """
 
-    snapshot_before: Optional[Any] = None  # ArchitectureSnapshot
-    candidates: Optional[List[Any]] = None  # RefactorCandidate[]
-    selected_action: Optional[Any] = None  # RefactorAction
-    simulated_snapshot: Optional[Any] = None  # ArchitectureSnapshot
-    snapshot_after: Optional[Any] = None  # ArchitectureSnapshot
-    risk_report: Optional[Any] = None  # RiskReport
+    snapshot_before: Optional["ArchitectureSnapshot"] = None
+    candidates: Optional[List["RefactorCandidate"]] = None
+    selected_action: Optional["RefactorAction"] = None
+    simulated_snapshot: Optional["ArchitectureSnapshot"] = None
+    snapshot_after: Optional["ArchitectureSnapshot"] = None
+    risk_report: Optional["RiskReport"] = None
     delta_score: Optional[float] = None

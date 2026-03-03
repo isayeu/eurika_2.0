@@ -139,6 +139,22 @@ def test_ask_ollama_respects_max_calls_budget(monkeypatch: pytest.MonkeyPatch) -
     assert mock_cli.call_count == 1
 
 
+def test_ask_ollama_unlimited_budget_allows_multiple_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    """EURIKA_LLM_HINTS_MAX_CALLS=0 and BUDGET_SEC=0 mean unlimited; multiple calls allowed."""
+    monkeypatch.setenv("EURIKA_LLM_HINTS_MAX_CALLS", "0")
+    monkeypatch.setenv("EURIKA_LLM_HINTS_BUDGET_SEC", "0")
+    with patch("eurika.reasoning.planner.llm_adapter._use_llm_hints", return_value=True):
+        with patch("eurika.reasoning.architect._call_ollama_cli") as mock_cli:
+            mock_cli.return_value = ("- Extract helpers", None)
+            r1 = ask_ollama_split_hints("god_module", "a.py", {"imports_from": [], "imported_by": []})
+            r2 = ask_ollama_split_hints("god_module", "b.py", {"imports_from": [], "imported_by": []})
+    assert len(r1) >= 1
+    assert len(r2) >= 1
+    assert mock_cli.call_count == 2
+    stats = llm_hint_runtime_stats()
+    assert stats["budget_exhausted"] is False
+
+
 def test_ask_ollama_caches_result_per_module() -> None:
     """Repeated request for same smell/module should not re-call Ollama."""
     with patch("eurika.reasoning.planner.llm_adapter._use_llm_hints", return_value=True):

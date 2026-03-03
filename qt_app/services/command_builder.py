@@ -5,7 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 
-SUPPORTED_COMMANDS = {"scan", "doctor", "fix", "cycle", "explain", "report-snapshot", "learning-kpi"}
+SUPPORTED_COMMANDS = {
+    "scan", "doctor", "fix", "cycle", "explain", "report-snapshot", "learning-kpi",
+    "learn-github", "clean-imports", "self-check", "whitelist-draft", "campaign-undo",
+}
 
 
 def build_cli_args(
@@ -20,6 +23,10 @@ def build_cli_args(
     no_code_smells: bool = False,
     allow_low_risk_campaign: bool = False,
     team_mode: bool = False,
+    learn_light: bool = True,
+    learn_scan: bool = True,
+    learn_build_patterns: bool = True,
+    learn_limit_repos: int = 0,
 ) -> list[str]:
     """Return argument vector for `python -m eurika_cli` execution."""
     if command not in SUPPORTED_COMMANDS:
@@ -37,6 +44,22 @@ def build_cli_args(
         args.append(root)
         if window > 0:
             args.extend(["--window", str(window)])
+        return args
+
+    if command == "learn-github":
+        args.append(root)
+        if learn_light:
+            args.append("--light")
+        if learn_scan:
+            args.append("--scan")
+        if learn_build_patterns:
+            args.append("--build-patterns")
+        if learn_limit_repos > 0:
+            args.extend(["--limit-repos", str(learn_limit_repos)])
+        return args
+
+    if command in ("clean-imports", "self-check", "whitelist-draft", "campaign-undo"):
+        args.append(root)
         return args
 
     args.append(root)

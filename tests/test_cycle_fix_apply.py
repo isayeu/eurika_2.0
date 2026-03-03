@@ -513,8 +513,8 @@ def test_apply_campaign_memory_allow_retry_keeps_operations(tmp_path: Path) -> N
     assert len(skipped) == 0
 
 
-def test_apply_campaign_memory_allow_low_risk_bypasses_remove_unused_import(tmp_path: Path) -> None:
-    """allow_low_risk=True lets remove_unused_import through campaign skip."""
+def test_apply_campaign_memory_allow_low_risk_does_not_bypass_remove_unused_import(tmp_path: Path) -> None:
+    """CYCLE_REPORT §107: remove_unused_import no longer bypasses campaign skip (23% success)."""
     import os
 
     from cli.orchestration.prepare import apply_campaign_memory
@@ -538,8 +538,9 @@ def test_apply_campaign_memory_allow_low_risk_bypasses_remove_unused_import(tmp_
             allow_retry=False,
             allow_low_risk=True,
         )
-        assert len(out_ops) == 2
-        assert len(skipped) == 0
+        assert len(out_ops) == 1
+        assert len(skipped) == 1
+        assert skipped[0].get("target_file") == "bar.py"
     finally:
         if orig is not None:
             os.environ["EURIKA_CAMPAIGN_ALLOW_LOW_RISK"] = orig

@@ -148,7 +148,7 @@ UI.md ✓; README ✓; критерии B.7–B.10 выполнены:
 | #     | Шаг                    | Описание                                          | Статус |
 | ----- | ---------------------- | ------------------------------------------------- | ------ |
 | CR-G1 | chat_intents.yaml      | Паттерны, emit, intent_hints; match_direct_intent | ✅     |
-| CR-G2 | Векторная память       | Embeddings для fuzzy match (опционально)          | —      |
+| CR-G2 | Векторная память       | Embeddings для fuzzy match (опционально)          | ✅ EURIKA_USE_VECTOR_INTENT=1 |
 | CR-G3 | PyTorch-классификатор  | Только при 100+ интентов (опционально)            | —      |
 
 ---

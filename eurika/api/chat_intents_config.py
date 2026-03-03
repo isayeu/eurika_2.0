@@ -11,12 +11,17 @@ _CACHE_ROOT: Optional[Path] = None
 
 
 def _load_config(root: Path) -> dict[str, Any]:
-    """Load chat_intents.yaml; cache per root."""
+    """Load chat_intents.yaml; cache per root.
+
+    Paths (in order): .eurika/config/chat_intents.yaml, then docs/chat_intents.example.yaml.
+    """
     global _CACHE, _CACHE_ROOT
     root = Path(root).resolve()
     if _CACHE is not None and _CACHE_ROOT == root:
         return _CACHE
     path = root / ".eurika" / "config" / "chat_intents.yaml"
+    if not path.exists():
+        path = root / "docs" / "chat_intents.example.yaml"
     if not path.exists():
         _CACHE = {}
         _CACHE_ROOT = root

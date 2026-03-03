@@ -70,23 +70,25 @@ def get_chat_dialog_state(project_root: Path) -> Dict[str, Any]:
     root = Path(project_root).resolve()
     path = root / ".eurika" / "chat_history" / "dialog_state.json"
     if not path.exists():
-        return {"active_goal": {}, "pending_clarification": {}, "pending_plan": {}, "last_execution": {}}
+        return {"active_goal": {}, "pending_clarification": {}, "pending_plan": {}, "pending_git_commit": {}, "last_execution": {}}
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(raw, dict):
-            return {"active_goal": {}, "pending_clarification": {}, "pending_plan": {}, "last_execution": {}}
+            return {"active_goal": {}, "pending_clarification": {}, "pending_plan": {}, "pending_git_commit": {}, "last_execution": {}}
         active = raw.get("active_goal")
         pending = raw.get("pending_clarification")
         pending_plan = raw.get("pending_plan")
+        pending_git_commit = raw.get("pending_git_commit")
         last_execution = raw.get("last_execution")
         return {
             "active_goal": active if isinstance(active, dict) else {},
             "pending_clarification": pending if isinstance(pending, dict) else {},
             "pending_plan": pending_plan if isinstance(pending_plan, dict) else {},
+            "pending_git_commit": pending_git_commit if isinstance(pending_git_commit, dict) else {},
             "last_execution": last_execution if isinstance(last_execution, dict) else {},
         }
     except (json.JSONDecodeError, OSError):
-        return {"active_goal": {}, "pending_clarification": {}, "pending_plan": {}, "last_execution": {}}
+        return {"active_goal": {}, "pending_clarification": {}, "pending_plan": {}, "pending_git_commit": {}, "last_execution": {}}
 
 
 def _chat_intent_outcome_from_text(text: str) -> str | None:

@@ -1,0 +1,238 @@
+# Chat intents config — copy to .eurika/config/chat_intents.yaml
+# CR-G1: match_direct_intent (exact, patterns, require)
+# CR-G2: vector fuzzy match (EURIKA_USE_VECTOR_INTENT=1) — vector_exemplars, vector_min_similarity
+# Язык: русский приоритетен в exemplars для fuzzy match
+
+version: 1
+
+# CR-G2: Cosine similarity threshold for fuzzy match. 0.68–0.85. Lower = more permissive.
+# Env override: EURIKA_VECTOR_MIN_SIM
+vector_min_similarity: 0.72
+
+# Подсказки для LLM (русский). Используется в промпте, если задано.
+intent_hints: |
+  - Коммит → «собери коммит»: git status+diff, затем «применяй».
+  - Ритуал → «проведи ритуал» или «прогони scan doctor»: eurika scan . → doctor . → report-snapshot . → fix .
+  - Отчёт → «покажи отчёт»: отображение doctor report.
+  - Рефакторинг → «рефактори» + путь, или eurika fix .
+  - Release check → «прогони release check»: ./scripts/release_check.sh
+  - Файлы → «выполни ls» или «покажи структуру проекта».
+  - Путь сохранённого → «покажи полный путь к файлу» после «сохрани в ...».
+
+# Prefix that skips intent match (treated as LLM question)
+# question_prefix: "^(что|как|зачем|почему|why|what|how|where)\\s"
+
+intents:
+  show_report:
+    patterns:
+      - "покажи отчёт"
+      - "покажи отчет"
+      - "сформируй отчет"
+      - "сформируй отчёт"
+      - "посмотри результат"
+      - "покажи результат"
+      - "show report"
+      - "doctor report"
+      - "scan report"
+      - "результат scan"
+      - "результат doctor"
+    vector_exemplars:
+      - "покажи отчёт"
+      - "покажи результат анализа"
+      - "покажи отчёт по проекту"
+      - "сформируй отчёт doctor"
+      - "дай отчёт doctor"
+      - "отчёт по анализу"
+      - "report please"
+      - "show me the doctor report"
+      - "scan report"
+    emit: null
+
+  ritual:
+    patterns:
+      - "проведи ритуал"
+      - "прогони ритуал"
+      - "запусти ритуал"
+      - "run ritual"
+      - "прогони scan"
+      - "запусти scan doctor"
+      - "scan doctor"
+      - "scan → doctor"
+      - "eurika scan"
+      - "eurika doctor"
+      - "report-snapshot"
+    vector_exemplars:
+      - "проведи ритуал"
+      - "прогони ритуал"
+      - "запусти ритуал"
+      - "прогони scan doctor report-snapshot"
+      - "запусти scan doctor"
+      - "run full ritual"
+      - "eurika scan doctor"
+    emit: "$ eurika scan . && eurika doctor . && eurika report-snapshot ."
+
+  release_check:
+    patterns:
+      - "прогони release check"
+      - "прогони release_check"
+      - "прогони release-check"
+      - "прогони releasecheck"
+      - "run release check"
+      - "запусти release check"
+      - "выполни release check"
+      - "release check"
+      - "release_check"
+    vector_exemplars:
+      - "прогони release check"
+      - "прогони release_check"
+      - "запусти release check"
+      - "выполни release check"
+      - "run release check"
+    emit: "$ ./scripts/release_check.sh"
+
+  roadmap_verify:
+    patterns:
+      - "проверь фазу"
+      - "сверь roadmap"
+      - "verify phase"
+      - "проверь 2.7"
+      - "сверь roadmap с фазами"
+    vector_exemplars:
+      - "проверь фазу 2.7"
+      - "сверь roadmap"
+      - "проверь фазу"
+      - "сверь с roadmap"
+      - "verify phase 3.0"
+    emit: null
+
+  git_commit:
+    patterns:
+      - "собери коммит"
+      - "сделай коммит"
+      - "создай коммит"
+      - "закоммить"
+      - "закоммит"
+      - "собери commit"
+      - "сделай commit"
+      - "commit changes"
+      - "commit the changes"
+      - "git status"
+      - "git diff"
+      - "покажи status"
+      - "покажи diff"
+    vector_exemplars:
+      - "собери коммит"
+      - "сделай коммит"
+      - "закоммить изменения"
+      - "создай коммит"
+      - "сделай commit"
+      - "commit the changes"
+      - "покажи git status"
+    emit: null
+
+  project_ls:
+    patterns:
+      - " ls "
+      - "команду ls"
+      - "выполни ls"
+      - "run ls"
+      - "execute ls"
+      - "list root"
+      - "list files"
+      - "покажи файлы"
+    exact: ["ls"]
+    vector_exemplars:
+      - "выполни ls"
+      - "покажи файлы в корне"
+      - "list root files"
+      - "команду ls"
+    emit: "$ ls -la"
+
+  project_tree:
+    patterns:
+      - "покажи структ"
+      - "покажи дерево"
+      - "какая структура"
+      - "структуру проекта"
+      - "фактическую структуру"
+      - "tree"
+      - "project structure"
+      - "folder structure"
+    vector_exemplars:
+      - "покажи структуру проекта"
+      - "покажи дерево каталогов"
+      - "какая структура проекта"
+      - "покажи фактическую структуру"
+      - "project structure"
+    emit: "$ eurika project-tree ."
+
+  saved_file_path:
+    patterns:
+      - "полный путь к файлу"
+      - "полный путь к последнему"
+      - "full path of file"
+      - "absolute path"
+      - "где сохранён файл"
+    vector_exemplars:
+      - "покажи полный путь к файлу"
+      - "где сохранён последний файл"
+      - "full path of saved file"
+    emit: null
+
+  add_api_test:
+    patterns:
+      - "добавь тест"
+      - "тест для endpoint"
+      - "покрой тестами /api"
+      - "тест для /api"
+      - "test for /api"
+    require: ["/api"]
+    vector_exemplars:
+      - "добавь тест для /api/summary"
+      - "тест для endpoint /api/chat"
+      - "покрой тестами /api/summary"
+      - "test for /api/chat endpoint"
+    emit: null
+
+  add_module_test:
+    patterns:
+      - "добавь тест"
+      - "тест для модуля"
+      - "покрой тестами"
+      - "test for module"
+    exclude: ["/api"]
+    vector_exemplars:
+      - "добавь тест для eurika/api/serve.py"
+      - "тест для модуля eurika.api.serve"
+      - "покрой тестами eurika/polygon/long_function"
+      - "test for eurika.api.serve"
+    emit: null
+
+  show_file:
+    patterns:
+      - "покажи файл"
+      - "покажи содержимое"
+      - "открой файл"
+      - "прочитай файл"
+      - "show file"
+      - "read file"
+      - "open file"
+    vector_exemplars:
+      - "покажи файл eurika/api/chat.py"
+      - "открой файл docs/ROADMAP.md"
+      - "прочитай файл"
+      - "покажи содержимое файла"
+      - "show file docs/ROADMAP.md"
+    emit: null
+
+  identity:
+    exact:
+      - "ты кто"
+      - "кто ты"
+      - "who are you"
+      - "what are you"
+    vector_exemplars:
+      - "ты кто"
+      - "кто ты такой"
+      - "who are you"
+    emit: null

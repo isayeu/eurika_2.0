@@ -1,11 +1,265 @@
 # Отчёт цикла Eurika
 
-## Current state (2026-03-02)
+## Current state (2026-03-03)
 
+- **111. Ритуал 2.1 (направление C):** scan → doctor → report-snapshot → fix --allow-low-risk-campaign. modified=0. LLM budget не исчерпан (calls=3/15). Все 36 ops denied на validate (risk=high, policy). Doctor: modules=368, risk=46.
+- **110. Ритуал 2.1 (направление C):** scan → doctor → report-snapshot → fix --allow-low-risk-campaign. modified=0, skipped=0. Все запланированные ops denied (risk, LLM budget). Doctor: modules=368, risk=46.
+- **109. Whitelist promote (§107 candidates):** whitelist-draft . --all-kinds → 7 ops merged в .eurika/operation_whitelist.json и operation_whitelist.controlled.json. Polygon (imports_ok, deep_nesting, extractable_block, long_function) — allow_in_auto.
+- **108. remove_unused_import 23%:** Campaign block — remove_unused_import не bypass campaign skip (под §102). Эмиссия: skip targets с verify_success_rate<0.25 (total≥2) по learning. polygon/imports_ok — через whitelist при allow_low_risk.
+- **107. Ритуал 2.1 (полный прогон):** scan → doctor → report-snapshot → fix --allow-low-risk-campaign. modified=4, skipped=0, verify=✓. modules=368, risk=46. apply_rate=1.0, rollback_rate=0.0.
+- **106. Phase 5 OSS before/after:** git_refactors — before/after из git log refactor commits; pattern_library long_function_before_after; ask_llm_extract_patch предпочитает before_after.
+- **105. CR-G2 Векторная память:** chat_vector.py — Ollama /api/embed, match_fuzzy_intent; resolve_direct_handler fallback. EURIKA_USE_VECTOR_INTENT=1, OLLAMA_EMBED_MODEL, OLLAMA_HOST.
+- **104. ArchitectureSnapshot усиление (review §3):** root, summary, history, diff; from_core_snapshot; ExecutionContext типизирован. planner.models.
+- **103. Planner decomposition (review §2):** PlannerEngine — collect_facts → generate_candidates → rank_candidates → output_plan. `eurika/reasoning/planner/engine.py`: модули collect_facts, generate_candidates, rank_candidates, output_plan, run_patch_plan. `build_patch_plan` делегирует в run_patch_plan. Тесты test_graph_ops, test_planner_llm ✓.
+- **102. Ритуал 2.1 + campaign block:** report-snapshot после fix (modified=1, core.py split_module). modules=363, risk=46, verify=✓. Campaign block: llm_extract_block skip для cli/wiring/parser.py, dispatch.py (0% verify_success, ломали learning-kpi/report-snapshot). ops.py: _LLM_EXTRACT_SKIP_PATTERNS.
 - **101. REFACTOR_CODE_SMELL_PLAN Phase 2:** polygon refactor_code_smell_drill — long_function без extractable block/nested; тест test_polygon_refactor_code_smell_drill_semantics.
 - **100. 6.3 refactor_code_smell план:** docs/REFACTOR_CODE_SMELL_PLAN.md — анализ 0%, варианты A–E, фазы 1–5.
 - **99. 3.0.1 Multi-repo fix/cycle:** test_multi_repo_fix_aggregated_report — eurika fix [path1 path2] пишет eurika_fix_report_aggregated.json в paths[0].
-- **98. CR-E3 Практика: крупный рефакторинг в Composer:** polygon split_demo — пример split модуля по composer-scenarios.mdc. До: один файл validators+formatters ~80 LOC. После: split_demo_validators.py, split_demo_formatters.py, split_demo.py (фасад). test_polygon_split_demo_semantics.
+- **98. CR-E3 Практика: крупный рефакторинг в Composer:** polygon split_demo — split_demo_validators, split_demo_formatters, split_demo (фасад).
+- **97.6–89:** ритуалы, Learning from GitHub, polygon, whitelist, R1–R5.
+
+---
+
+## 111. Snapshot (2026-03-03) — Ритуал 2.1 направление C
+
+### report-snapshot
+
+| Блок | Значение |
+|------|----------|
+| **Fix** | modified=0, skipped=0, verify=N/A |
+| **telemetry** | apply_rate=0.0, no_op_rate=0.0, rollback_rate=0.0, verify_duration_ms=0 |
+| **Doctor** | modules=368, deps=107, risk=46, apply_rate=1.0137 (last 10), rollback_rate=0.4 |
+| **Context** | context_targets=0, recent_verify_fail_targets=10, campaign_rejected_targets=0 |
+
+### LLM budget (дефолт 15/300 после §110)
+- calls_used=3, max_calls=15, budget_exhausted=false
+- Ops denied на validate: risk=high, historically weak pair
+
+### Learning (by_action_kind)
+- remove_unused_import: 23% (16 success, 53 fail)
+- extract_nested_function: 67% (2 success, 1 fail)
+- extract_block_to_helper: 67% (4 success, 2 fail)
+- llm_extract_block: 62% (5 success, 3 fail)
+- split_module: 100% (1 success, 0 fail)
+
+### by_smell_action (KPI)
+- unknown\|remove_unused_import: 23%
+- long_function\|extract_nested_function: 67%
+- deep_nesting\|extract_block_to_helper: 67%
+- long_function\|llm_extract_block: 62%
+- god_module\|split_module: 50%
+
+### whitelist_candidates
+- cli/core_handlers_watch.py\|llm_extract_block
+- eurika/api/serve.py\|remove_unused_import
+- eurika/polygon/deep_nesting.py\|extract_block_to_helper
+- eurika/polygon/extractable_block.py\|extract_block_to_helper
+- eurika/polygon/imports_ok.py\|remove_unused_import
+- eurika/polygon/long_function.py\|extract_nested_function
+- eurika/reasoning/planner/core.py\|split_module
+
+---
+
+## 110. Snapshot (2026-03-03) — Ритуал 2.1 направление C
+
+### report-snapshot
+
+| Блок | Значение |
+|------|----------|
+| **Fix** | modified=0, skipped=0, verify=N/A |
+| **telemetry** | apply_rate=0.0, no_op_rate=0.0, rollback_rate=0.0, verify_duration_ms=0 |
+| **Doctor** | modules=368, deps=107, risk=46, apply_rate=1.0137 (last 10), rollback_rate=0.4 |
+| **Context** | context_targets=0, recent_verify_fail_targets=10, campaign_rejected_targets=0 |
+
+### Context effect
+- apply_rate: current=0.0, baseline=1.0137 (Δ -101.4pp)
+- Ops planned, все denied на validate (risk, LLM budget exhausted)
+
+### Learning (by_action_kind)
+- remove_unused_import: 23% (16 success, 53 fail)
+- extract_nested_function: 67% (2 success, 1 fail)
+- extract_block_to_helper: 67% (4 success, 2 fail)
+- llm_extract_block: 62% (5 success, 3 fail)
+- split_module: 100% (1 success, 0 fail)
+
+### by_smell_action (KPI)
+- unknown\|remove_unused_import: 23%
+- long_function\|extract_nested_function: 67%
+- deep_nesting\|extract_block_to_helper: 67%
+- long_function\|llm_extract_block: 62%
+- god_module\|split_module: 50%
+
+### whitelist_candidates
+- cli/core_handlers_watch.py\|llm_extract_block
+- eurika/api/serve.py\|remove_unused_import
+- eurika/polygon/deep_nesting.py\|extract_block_to_helper
+- eurika/polygon/extractable_block.py\|extract_block_to_helper
+- eurika/polygon/imports_ok.py\|remove_unused_import
+- eurika/polygon/long_function.py\|extract_nested_function
+- eurika/reasoning/planner/core.py\|split_module
+
+---
+
+## 107. Snapshot (2026-03-03) — Ритуал 2.1 полный прогон
+
+### report-snapshot
+
+| Блок | Значение |
+|------|----------|
+| **Fix** | modified=4, skipped=0, verify=True |
+| **verify_metrics** | before=46, after=46 |
+| **telemetry** | apply_rate=1.0, no_op_rate=0.0, rollback_rate=0.0, verify_duration_ms=1045, median_verify_time_ms=1237 |
+| **Doctor** | modules=368, deps=107, risk=46, apply_rate=1.0119 (last 10), rollback_rate=0.5 |
+| **Context** | context_targets=4, recent_verify_fail_targets=10, campaign_rejected_targets=0 |
+
+### Learning (by_action_kind)
+- remove_unused_import: 23% (16 success, 53 fail)
+- extract_nested_function: 67% (2 success, 1 fail)
+- extract_block_to_helper: 67% (4 success, 2 fail)
+- llm_extract_block: 62% (5 success, 3 fail)
+- split_module: 100% (1 success, 0 fail)
+
+### by_smell_action (KPI)
+- unknown\|remove_unused_import: 23%
+- long_function\|extract_nested_function: 67%
+- deep_nesting\|extract_block_to_helper: 67%
+- long_function\|llm_extract_block: 62%
+- god_module\|split_module: 50%
+
+### whitelist_candidates
+- cli/core_handlers_watch.py\|llm_extract_block
+- eurika/api/serve.py\|remove_unused_import
+- eurika/polygon/deep_nesting.py\|extract_block_to_helper
+- eurika/polygon/extractable_block.py\|extract_block_to_helper
+- eurika/polygon/imports_ok.py\|remove_unused_import
+- eurika/polygon/long_function.py\|extract_nested_function
+- eurika/reasoning/planner/core.py\|split_module
+
+---
+
+## 106. Phase 5 OSS before/after — REFACTOR_CODE_SMELL_PLAN
+
+### Scope
+
+Извлечение before/after пар из git history curated repos для LLM few-shot (REFACTOR_CODE_SMELL_PLAN Phase 5 C).
+
+### Изменения
+
+| Файл | Изменение |
+|------|-----------|
+| `eurika/learning/git_refactors.py` | **NEW** — extract_before_after_from_repo, extract_before_after_from_repos; git log --grep refactor\|extract\|simplify |
+| `eurika/learning/pattern_library.py` | extract_before_after_patterns; merge в extract_patterns_from_repos |
+| `eurika/api/ops.py` | _load_oss_before_after_for_smell |
+| `eurika/reasoning/planner/llm_adapter.py` | ask_llm_extract_patch: предпочитает before_after над snippet |
+
+### Flow
+
+`eurika learn-github . --build-patterns` → extract_before_after_from_repos по cache_dir → long_function_before_after в pattern_library.json → ask_llm_extract_patch загружает 1 before/after пример в промпт.
+
+### Ограничения
+
+- Только curated repos с git; коммиты с refactor\|extract\|simplify в message
+- Файлы 15–400 строк; до 10 записей
+
+---
+
+## 105. CR-G2 Векторная память — 2026-03-03
+
+### Scope
+
+Embeddings для fuzzy match интентов (ROADMAP §5.4 CR-G2). Опционально: `EURIKA_USE_VECTOR_INTENT=1`.
+
+### Изменения
+
+| Файл | Изменение |
+|------|-----------|
+| `eurika/api/chat_vector.py` | **NEW** — _ollama_embed, _cosine_sim, match_fuzzy_intent; cache в .eurika/vector_intent_cache.json |
+| `eurika/api/chat_direct.py` | Fallback в resolve_direct_handler после match_direct_intent |
+| `tests/test_chat_vector.py` | test_cosine_sim, disabled_by_default, mock_embed, resolve_fallback |
+
+### Env
+
+- `EURIKA_USE_VECTOR_INTENT=1` — включить fuzzy match
+- `OLLAMA_EMBED_MODEL` — модель (default: nomic-embed-text)
+- `OLLAMA_HOST` — http://localhost:11434
+
+### Flow
+
+match_direct_intent → (fail) → match_fuzzy_intent (если включено) → Ollama embed message + exemplars из chat_intents.yaml → cosine sim ≥ 0.72 → handler.
+
+---
+
+## 104. ArchitectureSnapshot усиление (review §3) — 2026-03-03
+
+### Scope
+
+Единая модель состояния: graph + metrics + smells + root + summary + history + diff. Вместо loosely coupled dict (review §3).
+
+### Изменения
+
+| Файл | Изменение |
+|------|-----------|
+| `eurika/reasoning/planner/models.py` | ArchitectureSnapshot: root, summary, history, diff; from_core_snapshot(core_snap) |
+| `eurika/reasoning/execution_context.py` | Типы ArchitectureSnapshot, RefactorCandidate, RefactorAction, RiskReport |
+| `tests/test_architecture_snapshot.py` | test_from_graph_and_smells_with_root_summary, test_from_core_snapshot |
+
+### Bridge
+
+`ArchitectureSnapshot.from_core_snapshot(core_snap)` — конвертация pipeline output → unified model. Report принимает оба (smells = SmellReport или ArchSmell, duck typing).
+
+---
+
+## 103. Planner decomposition (review §2) — 2026-03-03
+
+### Scope
+
+PlannerEngine вместо "God Engine": явные 4 шага collect_facts → generate_candidates → rank_candidates → output_plan (docs/review.md §2).
+
+### Изменения
+
+| Файл | Изменение |
+|------|-----------|
+| `eurika/reasoning/planner/engine.py` | **NEW** — collect_facts, generate_candidates, rank_candidates, output_plan, run_patch_plan |
+| `architecture_planner_build_plan.py` | build_patch_plan делегирует в run_patch_plan |
+
+### API (без изменений для вызывающих)
+
+- `architecture_planner.build_patch_plan` — подпись та же, поведение то же.
+- agent, eurika/api, tests — без правок.
+
+---
+
+## 102. Snapshot (2026-03-03) — Ритуал 2.1 + campaign block
+
+### report-snapshot
+
+| Блок | Значение |
+|------|----------|
+| **Fix** | modified=1, skipped=37, verify=True |
+| **verify_metrics** | before=46, after=46 |
+| **telemetry** | apply_rate=1.0, no_op_rate=1.0, rollback_rate=0.0, verify_duration_ms=1224 |
+| **Doctor** | modules=363, risk=46, apply_rate=1.012 (last 9), rollback_rate=0.56 |
+| **Context** | context_targets=31, recent_verify_fail_targets=10, campaign_rejected_targets=0 |
+
+### Learning (by_action_kind)
+- remove_unused_import: 22% (15 success, 53 fail)
+- llm_extract_block: 62% (5 success, 3 fail)
+- split_module: 100% (1 success, 0 fail)
+- extract_block_to_helper: 50% (2 success, 2 fail)
+- extract_nested_function: 50% (1 success, 1 fail)
+
+### by_smell_action (KPI)
+- unknown|remove_unused_import: 22%
+- long_function|llm_extract_block: 62%
+- god_module|split_module: 50%
+
+### Campaign block (ops.py)
+- `_LLM_EXTRACT_SKIP_PATTERNS`: cli/wiring/parser.py, cli/wiring/dispatch.py — llm_extract_block не предлагается (0% verify_success, ломали CLI).
+
+### whitelist_candidates
+- cli/core_handlers_watch.py|llm_extract_block
+- eurika/reasoning/planner/core.py|split_module
+- polygon drills (imports_ok, deep_nesting, extractable_block, long_function)
 - **97.6 Ритуал 2.1 (2026-03-01):** scan → doctor --no-llm → report-snapshot → fix --allow-low-risk-campaign. modules=278, risk=46, apply_rate=1.0, rollback_rate=0.0. Fix: ops blocked (policy/critic/human 16); modified=0. Learning: remove_unused_import 68%, extract_block 57%, extract_nested 75%. by_smell_action: deep_nesting|extract_block 89%, long_function|extract_nested 75%, long_function|extract_block 0%. Drill long_function_extractable_block в whitelist (operation_whitelist.controlled.json); для apply нужен hybrid/team-mode approve или merge в .eurika/operation_whitelist.json.
 - **97.5 Пробелы (ROADMAP):** long_function|extract_block — polygon drill long_function_extractable_block.py + whitelist; Domain vs Presentation — get_suggest_plan_data + report/suggest_plan_format; Cross-project memory — уже в planner (get_merged_learning_stats); R5 — docs/R5_PLUGIN_INTERFACE.md.
 - **97.4 Ритуал 2.1 (2026-03-01):** scan → doctor --no-llm → report-snapshot. modules=278, risk=46, apply_rate=1.0, rollback_rate=0.0. Learning: remove_unused_import 68%, extract_block_to_helper 57%, extract_nested_function 75%. by_smell_action: deep_nesting|extract_block 89%, long_function|extract_nested 75%, long_function|extract_block 0%. CI: coverage в pytest step (--cov=eurika --cov=cli).

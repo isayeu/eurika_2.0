@@ -574,3 +574,11 @@ eurika agent feedback-summary .
 | `eurika_doctor_report.json` | Отчёт doctor (summary, history, architect, patch_plan) — по умолчанию |
 | `.eurika_backups/<run_id>/` | Бэкапы при patch-apply --apply |
 | `.eurika/campaign_checkpoints/*.json` | Checkpoint-метаданные кампаний apply (run_ids, status, targets) для `eurika campaign-undo` |
+| `.eurika/config/chat_intents.yaml` | Интенты Chat (CR-G1, CR-G2). Fallback: docs/chat_intents.example.yaml |
+
+### Chat intents (CR-G2)
+
+- **Путь:** `.eurika/config/chat_intents.yaml` или `docs/chat_intents.example.yaml`
+- **EURIKA_USE_VECTOR_INTENT=1** — включить fuzzy match через Ollama embeddings
+- **vector_min_similarity** — порог cosine sim (0.68–0.85). Env: `EURIKA_VECTOR_MIN_SIM`
+- **vector_exemplars** — фразы для embedding match (лучше чем patterns для fuzzy)

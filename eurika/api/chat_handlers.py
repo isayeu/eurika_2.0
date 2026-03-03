@@ -162,6 +162,8 @@ def run_direct_handlers(
             result["terminal_exit_code"] = exit_code
         return result
     if handler_id == "git_commit":
+        import secrets
+
         from eurika.api.chat_tools import git_diff, git_status
 
         ok_status, status_out = git_status(root)
@@ -182,9 +184,13 @@ def run_direct_handlers(
                     proposed = inferred if inferred else propose_commit_message_from_status(status_out)
                 else:
                     proposed = propose_commit_message_from_status(status_out)
-            state["pending_git_commit"] = {"message": proposed}
+            token = secrets.token_hex(4)
+            state["pending_git_commit"] = {"message": proposed, "token": token}
             save_dialog_state(root, state)
-            blocks.append(f"\nПредлагаю коммит с сообщением: «{proposed}». Напиши **применяй** для подтверждения.")
+            blocks.append(
+                f"\nПредлагаю коммит с сообщением: «{proposed}». "
+                f"Напиши **применяй token:{token}** для подтверждения (или нажми [Apply])."
+            )
         else:
             blocks.append("\nНет изменений для коммита.")
         text = "\n\n".join(blocks)

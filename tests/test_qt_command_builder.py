@@ -48,6 +48,47 @@ def test_build_cli_args_doctor_no_llm() -> None:
     assert "--window" in args
 
 
+def test_build_cli_args_clean_imports() -> None:
+    args = build_cli_args(command="clean-imports", project_root=".")
+    assert args[0] == "clean-imports"
+    assert args[1] == str(Path(".").resolve())
+
+
+def test_build_cli_args_self_check() -> None:
+    args = build_cli_args(command="self-check", project_root="/proj")
+    assert args[0] == "self-check"
+    assert "/proj" in args[1]
+
+
+def test_build_cli_args_whitelist_draft() -> None:
+    args = build_cli_args(command="whitelist-draft", project_root=".")
+    assert args[0] == "whitelist-draft"
+    assert args[1] == str(Path(".").resolve())
+
+
+def test_build_cli_args_campaign_undo() -> None:
+    args = build_cli_args(command="campaign-undo", project_root="/proj")
+    assert args[0] == "campaign-undo"
+    assert "/proj" in args[1]
+
+
+def test_build_cli_args_learn_github() -> None:
+    args = build_cli_args(
+        command="learn-github",
+        project_root=".",
+        learn_light=True,
+        learn_scan=True,
+        learn_build_patterns=True,
+        learn_limit_repos=2,
+    )
+    assert args[0] == "learn-github"
+    assert "--light" in args
+    assert "--scan" in args
+    assert "--build-patterns" in args
+    assert "--limit-repos" in args
+    assert "2" in args
+
+
 def test_doctor_no_llm_runs_from_ui_args() -> None:
     """Verify doctor --no-llm completes when invoked as the Qt UI would."""
     args = build_cli_args(

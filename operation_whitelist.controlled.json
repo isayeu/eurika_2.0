@@ -1,10 +1,9 @@
 {
   "meta": {
     "version": 1,
-    "purpose": "3.6 KPI controlled whitelist seed + polygon long_function|extract_block drill"
+    "purpose": "Whitelist promote §108: whitelist-draft + polygon drills"
   },
   "operations": [
-    {"kind": "remove_unused_import", "allow_in_hybrid": true, "allow_in_auto": true},
     {"kind": "fix_import", "allow_in_hybrid": true, "allow_in_auto": false},
     {
       "kind": "extract_block_to_helper",
@@ -12,6 +11,52 @@
       "smell_type": "long_function",
       "allow_in_hybrid": true,
       "allow_in_auto": true
+    },
+    {
+      "kind": "llm_extract_block",
+      "target_file": "cli/core_handlers_watch.py",
+      "allow_in_hybrid": true,
+      "allow_in_auto": false,
+      "location": "handle_watch"
+    },
+    {
+      "kind": "remove_unused_import",
+      "target_file": "eurika/api/serve.py",
+      "allow_in_hybrid": true,
+      "allow_in_auto": false
+    },
+    {
+      "kind": "extract_block_to_helper",
+      "target_file": "eurika/polygon/deep_nesting.py",
+      "allow_in_hybrid": true,
+      "allow_in_auto": true,
+      "location": "polygon_deep_nesting_extractable"
+    },
+    {
+      "kind": "extract_block_to_helper",
+      "target_file": "eurika/polygon/extractable_block.py",
+      "allow_in_hybrid": true,
+      "allow_in_auto": true,
+      "location": "polygon_extractable_block"
+    },
+    {
+      "kind": "remove_unused_import",
+      "target_file": "eurika/polygon/imports_ok.py",
+      "allow_in_hybrid": true,
+      "allow_in_auto": true
+    },
+    {
+      "kind": "extract_nested_function",
+      "target_file": "eurika/polygon/long_function.py",
+      "allow_in_hybrid": true,
+      "allow_in_auto": true,
+      "location": "polygon_long_function"
+    },
+    {
+      "kind": "split_module",
+      "target_file": "eurika/reasoning/planner/core.py",
+      "allow_in_hybrid": true,
+      "allow_in_auto": false
     }
   ]
 }

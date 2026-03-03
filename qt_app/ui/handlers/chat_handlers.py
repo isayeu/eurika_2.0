@@ -90,11 +90,17 @@ def refresh_chat_goal_view(main: MainWindow) -> None:
         changed = last_execution.get("artifacts_changed") or []
         if isinstance(changed, list) and changed:
             lines.append(f"- changed={', '.join((str(x) for x in changed[:6]))}")
+    pending_git = state.get("pending_git_commit") if isinstance(state, dict) else None
+    if isinstance(pending_git, dict) and pending_git.get("message"):
+        lines.append("")
+        lines.append("Pending git commit:")
+        lines.append(f"- message: {pending_git.get('message', '-')}")
     if not lines:
         lines.append("No active interpreted goal yet.")
     main.chat_goal_view.setPlainText("\n".join(lines))
     has_pending_plan = isinstance(pending_plan, dict) and bool(pending_plan)
-    has_effective_pending = has_pending_plan or main._pending_plan_fallback_active
+    has_pending_git = isinstance(pending_git, dict) and bool(pending_git.get("message"))
+    has_effective_pending = has_pending_plan or has_pending_git or main._pending_plan_fallback_active
     main.chat_apply_btn.setEnabled(has_effective_pending)
     main.chat_reject_btn.setEnabled(has_effective_pending)
     if has_pending_plan and isinstance(pending_plan, dict):
@@ -118,6 +124,13 @@ def refresh_chat_goal_view(main: MainWindow) -> None:
             main.chat_pending_label.setToolTip("")
             main.chat_apply_btn.setToolTip("")
             main.chat_reject_btn.setToolTip("")
+    elif has_pending_git and isinstance(pending_git, dict):
+        main._pending_plan_token = str(pending_git.get("token") or "")
+        msg_preview = str(pending_git.get("message", ""))[:50]
+        main.chat_pending_label.setText(f"Pending git commit: {msg_preview}...")
+        main.chat_pending_label.setToolTip(f"Commit message: {pending_git.get('message', '-')}")
+        main.chat_apply_btn.setToolTip("Apply git commit")
+        main.chat_reject_btn.setToolTip("Reject git commit")
     elif main._pending_plan_fallback_active:
         if main._pending_plan_token:
             main.chat_pending_label.setText(

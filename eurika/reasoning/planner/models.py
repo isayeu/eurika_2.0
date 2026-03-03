@@ -8,6 +8,7 @@ Replaces fragmented structures across planner/action_plan/patch_plan.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
@@ -117,20 +118,30 @@ class RiskReport:
 @dataclass
 class ArchitectureSnapshot:
     """
-    Unified state model: graph + MetricVector + smells (ROADMAP §5.7, review 2026 II).
+    Unified state model: graph + MetricVector + smells (ROADMAP §5.7, review §3).
 
-    Single source of truth for architecture state. Used by ExecutionContext.
+    Single source of truth for architecture state. Used by ExecutionContext, report.
+    Strengthened: root, summary, history, diff — для совместимости с core/pipeline.
     """
 
     graph: Any  # ProjectGraph
     metrics: "MetricVector"
     smells: List[SmellReport]
+    root: Optional[Path] = None
+    summary: Optional[Dict[str, Any]] = None
+    history: Optional[Dict[str, Any]] = None
+    diff: Optional[Dict[str, Any]] = None
 
     @classmethod
     def from_graph_and_smells(
         cls,
         graph: "ProjectGraph",
         smells: List[Any],
+        *,
+        root: Optional[Path] = None,
+        summary: Optional[Dict[str, Any]] = None,
+        history: Optional[Dict[str, Any]] = None,
+        diff: Optional[Dict[str, Any]] = None,
     ) -> "ArchitectureSnapshot":
         """Build from ProjectGraph and ArchSmell list."""
         from eurika.analysis.metric_vector import compute_metric_vector
@@ -141,7 +152,31 @@ class ArchitectureSnapshot:
             SmellReport.from_arch_smell(s, hint=get_remediation_hint(getattr(s, "type", "")))
             for s in smells
         ]
-        return cls(graph=graph, metrics=metrics, smells=smell_reports)
+        return cls(
+            graph=graph,
+            metrics=metrics,
+            smells=smell_reports,
+            root=root,
+            summary=summary,
+            history=history,
+            diff=diff,
+        )
+
+    @classmethod
+    def from_core_snapshot(cls, core_snap: Any) -> "ArchitectureSnapshot":
+        """
+        Build unified snapshot from core.ArchitectureSnapshot (pipeline output).
+
+        Bridge for pipeline → planner/report. Avoids dict/loosely-coupled passing (review §3).
+        """
+        return cls.from_graph_and_smells(
+            core_snap.graph,
+            core_snap.smells,
+            root=getattr(core_snap, "root", None),
+            summary=getattr(core_snap, "summary", None),
+            history=getattr(core_snap, "history", None),
+            diff=getattr(core_snap, "diff", None),
+        )
 
 
 @dataclass

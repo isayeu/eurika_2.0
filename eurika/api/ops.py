@@ -19,11 +19,23 @@ _EXTRACT_BLOCK_SKIP_PATTERNS: frozenset[str] = frozenset({
     "eurika/reasoning/planner/llm_adapter.py", "report/", "cli/orchestration/",
 })
 
+# Campaign block: llm_extract_block broke parser/dispatch (NameError _add_other_commands); 0% verify_success.
+_LLM_EXTRACT_SKIP_PATTERNS: frozenset[str] = frozenset({
+    "cli/wiring/parser.py",
+    "cli/wiring/dispatch.py",
+})
+
 
 def _should_skip_extract_block_target(rel_path: str) -> bool:
     """Skip extract_block_to_helper for paths where extraction often breaks verify."""
     r = rel_path.replace("\\", "/")
     return any(r.startswith(p) or p in r for p in _EXTRACT_BLOCK_SKIP_PATTERNS)
+
+
+def _should_skip_llm_extract_target(rel_path: str) -> bool:
+    """Skip llm_extract_block for targets where it historically breaks (campaign block)."""
+    r = rel_path.replace("\\", "/")
+    return any(r == p or r.startswith(p + "/") for p in _LLM_EXTRACT_SKIP_PATTERNS)
 
 
 def _should_skip_extract_nested_candidate(
@@ -297,6 +309,37 @@ def _load_oss_snippets_for_smell(root: Path, smell_type: str, max_count: int = 2
         return []
 
 
+def _load_oss_before_after_for_smell(root: Path, smell_type: str, max_count: int = 1) -> List[str]:
+    """
+    Load OSS before/after refactor pairs (Phase 5). Richer than snippet for LLM extract.
+    Returns list of formatted strings: "Before:\\n```\\n...\\n```\\nAfter:\\n```\\n...\\n```".
+    """
+    key = f"{smell_type}_before_after"
+    lib_path = root / ".eurika" / "pattern_library.json"
+    if not lib_path.exists():
+        return []
+    try:
+        from eurika.learning.pattern_library import load_pattern_library
+
+        lib = load_pattern_library(lib_path)
+        entries = lib.get(key) or []
+        result: List[str] = []
+        for e in entries[:max_count]:
+            if not isinstance(e, dict) or not e.get("before") or not e.get("after"):
+                continue
+            proj = e.get("project", "?")
+            mod = e.get("module", "?")
+            before = str(e["before"])[:1200].rstrip()
+            after = str(e["after"])[:1200].rstrip()
+            if before and after:
+                result.append(
+                    f"[{proj}:{mod}]\nBefore:\n```\n{before}\n```\nAfter:\n```\n{after}\n```"
+                )
+        return result
+    except Exception:
+        return []
+
+
 def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
     """
     Build patch operations for code-level smells (long_function, deep_nesting).
@@ -413,6 +456,7 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
                 smell.kind == "long_function"
                 and loc_key not in fixed_locations
                 and _use_llm_extract()
+                and not _should_skip_llm_extract_target(rel)
             ):
                 try:
                     from eurika.reasoning.planner.llm_adapter import ask_llm_extract_patch
@@ -447,6 +491,29 @@ _REMOVE_UNUSED_IMPORT_SKIP: frozenset[str] = frozenset({
 })
 
 
+def _remove_unused_import_low_verify_targets(root: Path) -> frozenset[str]:
+    """Targets with verify_success_rate < 0.25 for remove_unused_import (total>=2). CYCLE_REPORT §107."""
+    try:
+        from eurika.api import get_learning_insights
+
+        insights = get_learning_insights(root, top_n=50)
+        result: set[str] = set()
+        for item in insights.get("by_target") or []:
+            if str(item.get("action_kind") or "") != "remove_unused_import":
+                continue
+            total = int(item.get("total", 0) or 0)
+            if total < 2:
+                continue
+            rate = float(item.get("verify_success_rate", 0) or 0)
+            if rate < 0.25:
+                target = str(item.get("target_file") or "").replace("\\", "/")
+                if target:
+                    result.add(target)
+        return frozenset(result)
+    except Exception:
+        return frozenset()
+
+
 def get_clean_imports_operations(project_root: Path) -> List[Dict[str, Any]]:
     """
     Build patch operations to remove unused imports (ROADMAP 2.4.2).
@@ -471,6 +538,9 @@ def get_clean_imports_operations(project_root: Path) -> List[Dict[str, Any]]:
             continue
         rel = str(p.relative_to(root)).replace("\\", "/")
         if rel in _REMOVE_UNUSED_IMPORT_SKIP:
+            continue
+        low_verify = _remove_unused_import_low_verify_targets(root)
+        if rel in low_verify:
             continue
         if rel.startswith("tests/"):
             continue

@@ -40,6 +40,7 @@ class CommandService(QObject):
         self._process.readyReadStandardOutput.connect(self._on_stdout)
         self._process.readyReadStandardError.connect(self._on_stderr)
         self._process.finished.connect(self._on_finished)
+        self._process.stateChanged.connect(self._on_process_state_changed)
         self._process.errorOccurred.connect(self._on_error)
 
     def _set_state(self, state: str) -> None:
@@ -61,6 +62,10 @@ class CommandService(QObject):
         allow_low_risk_campaign: bool = False,
         team_mode: bool = False,
         ollama_model: str = "",
+        learn_light: bool = True,
+        learn_scan: bool = True,
+        learn_build_patterns: bool = True,
+        learn_limit_repos: int = 0,
     ) -> None:
         if self._process.state() != QProcess.NotRunning:
             self.error_line.emit("A command is already running.")
@@ -78,6 +83,10 @@ class CommandService(QObject):
                 no_code_smells=no_code_smells,
                 allow_low_risk_campaign=allow_low_risk_campaign,
                 team_mode=team_mode,
+                learn_light=learn_light,
+                learn_scan=learn_scan,
+                learn_build_patterns=learn_build_patterns,
+                learn_limit_repos=learn_limit_repos,
             )
         except ValueError as exc:
             self.error_line.emit(str(exc))
@@ -194,10 +203,18 @@ class CommandService(QObject):
         if data:
             self.error_line.emit(data)
 
-    def _on_finished(self, exit_code: int, _exit_status: QProcess.ExitStatus) -> None:
+    def _on_finished(self, exit_code: int = 0, _exit_status: QProcess.ExitStatus = QProcess.ExitStatus.NormalExit) -> None:
         self.command_finished.emit(exit_code)
-        # R2: explicit state model — emit done/error before returning to idle
-        terminal = CycleState.DONE if exit_code == 0 else CycleState.ERROR
+        self._transition_to_idle(exit_code == 0)
+
+    def _on_process_state_changed(self, new_state: QProcess.ProcessState) -> None:
+        """Fallback: when process becomes NotRunning, ensure we leave thinking (release_check/bash edge case)."""
+        if new_state == QProcess.ProcessState.NotRunning and self._state == CycleState.THINKING.value:
+            exit_code = self._process.exitCode()
+            self._transition_to_idle(exit_code == 0)
+
+    def _transition_to_idle(self, success: bool) -> None:
+        terminal = CycleState.DONE if success else CycleState.ERROR
         self._set_state(terminal.value)
         QTimer.singleShot(300, lambda: self._set_state(CycleState.IDLE.value))
 

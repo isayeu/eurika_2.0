@@ -1,11 +1,10 @@
 """Extracted from parent module to reduce complexity."""
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from eurika.reasoning.planner.actions import actions_from_arch_plan
 from eurika.reasoning.planner.analysis import build_steps_from_priorities, index_smells_by_node
+from eurika.reasoning.planner.engine import run_patch_plan
 from eurika.reasoning.planner.types import ArchitecturePlan
-from eurika.reasoning.planner_patch_ops import build_patch_operations
 from eurika.smells.detector import ArchSmell
 from patch_plan import PatchPlan
 
@@ -57,6 +56,8 @@ def build_patch_plan(
     """
     Build a first-approximation PatchPlan from diagnostics.
 
+    Delegates to PlannerEngine: collect_facts → generate_candidates → rank → output_plan (review §2).
+
     v0.1: for each top-priority module, create a textual patch operation
     that describes the intended refactor. Uses smell types and step kinds
     to support (smell_type, action_kind) learning aggregation.
@@ -65,31 +66,13 @@ def build_patch_plan(
     When graph is provided, diff hints are enriched with graph-derived suggestions.
     ROADMAP 3.0.5.4: OSS pattern library enriches diff hints when .eurika/pattern_library.json exists.
     """
-    smells_by_node = index_smells_by_node(smells)
-    oss_patterns: Dict[str, Any] = {}
-    try:
-        lib_path = Path(project_root) / ".eurika" / "pattern_library.json"
-        if lib_path.exists():
-            from eurika.learning.pattern_library import load_pattern_library
-
-            oss_patterns = load_pattern_library(lib_path)
-    except Exception:
-        pass
-    operations = build_patch_operations(
+    return run_patch_plan(
         project_root=project_root,
         summary=summary,
         smells=smells,
+        history_info=history_info,
         priorities=priorities,
-        smells_by_node=smells_by_node,
         learning_stats=learning_stats,
         graph=graph,
         self_map=self_map,
-        oss_patterns=oss_patterns,
     )
-    if graph is not None:
-        from eurika.reasoning.planner.energy_ranking import rank_operations_by_energy
-
-        operations = rank_operations_by_energy(
-            operations, graph, smells, project_root=Path(project_root)
-        )
-    return PatchPlan(project_root=project_root, operations=operations)

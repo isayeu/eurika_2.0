@@ -315,7 +315,9 @@ def apply_session_rejections(
     return dict(patch_plan, operations=kept), kept, skipped
 
 
-_CAMPAIGN_BYPASS_LOW_RISK_KINDS = frozenset({"remove_unused_import"})
+# CYCLE_REPORT §107: remove_unused_import 23% — не bypass campaign skip, чтобы не переприменять к 2+ fail targets.
+# polygon/imports_ok остаётся через _op_in_polygon_whitelist при allow_low_risk.
+_CAMPAIGN_BYPASS_LOW_RISK_KINDS = frozenset()  # was: remove_unused_import
 
 
 def _op_in_polygon_whitelist(op: dict[str, Any], path: Path) -> bool:

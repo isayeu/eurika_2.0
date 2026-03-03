@@ -71,12 +71,26 @@ def _extract_code_smell_patterns(project_root: Path, project: str) -> dict[str, 
     return out
 
 
+def extract_before_after_patterns(cache_dir: Path) -> dict[str, list[dict[str, Any]]]:
+    """
+    Extract before/after refactor pairs from OSS git history (Phase 5).
+    Returns long_function_before_after, deep_nesting_before_after.
+    """
+    try:
+        from eurika.learning.git_refactors import extract_before_after_from_repos
+
+        return extract_before_after_from_repos(cache_dir, max_per_kind=10)
+    except Exception:
+        return {"long_function_before_after": [], "deep_nesting_before_after": []}
+
+
 def extract_patterns_from_repos(cache_dir: Path) -> dict[str, Any]:
     """
     Extract architecture and code smell patterns from curated repos.
 
     Architecture: god_module, hub, bottleneck, cyclic_dependency from self_map.json.
     Code smells: long_function, deep_nesting from CodeAwareness (KPI 4).
+    Phase 5: OSS before/after from git refactor commits.
     """
     patterns: dict[str, list[dict[str, Any]]] = {
         "god_module": [],
@@ -116,6 +130,9 @@ def extract_patterns_from_repos(cache_dir: Path) -> dict[str, Any]:
             for e in code_smells.get(kind, [])[:30]:
                 if len(patterns[kind]) < 30:
                     patterns[kind].append(e)
+    before_after = extract_before_after_patterns(cache_dir)
+    for key in ("long_function_before_after", "deep_nesting_before_after"):
+        patterns[key] = before_after.get(key, [])
     return patterns
 
 

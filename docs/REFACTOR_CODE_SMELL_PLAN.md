@@ -59,9 +59,10 @@
 
 - **Быстро:** даёт воспроизводимый сценарий для тестов
 
-### E. Поэтапный выход из WEAK
+### E. Поэтапный выход из WEAK (✅ реализовано)
 
-При достижении rate ≥ 25% (total ≥ 5) для `long_function|refactor_code_smell` — рассмотреть переход из deny в review для auto. При 50%+ — возможен allow для whitelisted targets.
+При достижении rate ≥ 25% (total ≥ 5) для `long_function|refactor_code_smell` — auto: **review** (вместо deny). При 50%+ — возможен allow для whitelisted targets.
+- Мониторинг: `report-snapshot` и `learning-kpi` показывают `policy_adjustment (Phase E)` при rate≥25%, total≥5.
 
 ---
 
@@ -72,8 +73,8 @@
 | 1 | B: min_lines=3 для long_function (✅ сделано) | — |
 | 2 | D: polygon drill refactor_code_smell (без extract) | ✅ refactor_code_smell_drill.py |
 | 3 | A: EURIKA_USE_LLM_EXTRACT + ask_llm_extract_patch (✅ реализовано) | — |
-| 4 | E: мониторинг learning-kpi, policy adjust при rate ≥ 25% | ✅ policy_adjustment_hints + **policy применяет**: deny→review в auto при rate≥25%, total≥5 |
-| 5 | C: OSS before/after (при наличии ресурсов) | 2+ недели |
+| 4 | E: мониторинг learning-kpi, policy adjust при rate ≥ 25% | ✅ policy_adjustment_hints + policy: deny→review в auto при rate≥25%, total≥5. report-snapshot выводит policy_adjustment (Phase E) |
+| 5 | C: OSS before/after (при наличии ресурсов) | ✅ git_refactors + pattern_library |
 
 ---
 
@@ -91,7 +92,7 @@ eurika learn-github . --light --limit-repos 3 --scan --build-patterns
 EURIKA_USE_LLM_EXTRACT=1 eurika fix . --allow-low-risk-campaign
 ```
 
-После build-patterns: `pattern_library.json` содержит long_function/deep_nesting snippets из OSS. LLM использует их как few-shot (до 3 примеров, до 800 символов каждый).
+После build-patterns: `pattern_library.json` содержит long_function/deep_nesting snippets и **long_function_before_after** (Phase 5) из git refactor commits. LLM предпочитает before/after пары при наличии.
 
 ## Файлы для изменений
 

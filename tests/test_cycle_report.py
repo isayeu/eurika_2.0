@@ -254,6 +254,37 @@ def test_whitelist_draft_all_kinds_includes_other_kinds(tmp_path: Path) -> None:
     assert "split_module" in kinds
 
 
+def test_report_snapshot_includes_policy_adjustment_when_weak_pair_reaches_threshold(tmp_path: Path) -> None:
+    """When long_function|refactor_code_smell reaches rate≥25%, total≥5, report-snapshot shows policy_adjustment (Phase E)."""
+    import os
+    os.environ["EURIKA_DISABLE_GLOBAL_MEMORY"] = "1"
+    try:
+        from eurika.storage import ProjectMemory
+
+        (tmp_path / "eurika_fix_report.json").write_text(
+            json.dumps({"modified": [], "skipped": [], "verify": {"success": None}}),
+            encoding="utf-8",
+        )
+        memory = ProjectMemory(tmp_path)
+        op = {"kind": "refactor_code_smell", "smell_type": "long_function", "target_file": "a.py"}
+        for i in range(6):
+            memory.learning.append(
+                project_root=tmp_path,
+                modules=["a.py"],
+                operations=[op],
+                risks=[],
+                verify_success=(i < 2),
+            )
+        from report.report_snapshot import format_report_snapshot
+
+        out = format_report_snapshot(tmp_path)
+        assert "policy_adjustment (Phase E)" in out
+        assert "long_function|refactor_code_smell" in out
+        assert "rate=33" in out or "33.3" in out or "33%" in out
+    finally:
+        os.environ.pop("EURIKA_DISABLE_GLOBAL_MEMORY", None)
+
+
 def test_whitelist_draft_rejects_unknown_kind(tmp_path: Path) -> None:
     """Unknown --kinds should fail fast with a clear CLI error."""
     result = subprocess.run(

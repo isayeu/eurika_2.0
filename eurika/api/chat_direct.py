@@ -121,6 +121,15 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
     matched = match_direct_intent(root, msg)
     if matched:
         return matched
+    # CR-G2: vector fuzzy match when direct fails (EURIKA_USE_VECTOR_INTENT=1)
+    try:
+        from eurika.api.chat_vector import match_fuzzy_intent
+
+        fuzzy = match_fuzzy_intent(root, msg)
+        if fuzzy:
+            return (fuzzy[0], fuzzy[1])
+    except Exception:
+        pass
     if is_identity_question(msg):
         return ("identity", None)
     if is_ls_request(msg):

@@ -202,6 +202,21 @@ def format_report_snapshot(path: Path) -> str:
             lines.append('- Operation keys with 2+ verify_success and no repeated verify_fail; candidates for .eurika/operation_whitelist.json')
             for key in whitelist_candidates[:10]:
                 lines.append(f'- {key}')
+        try:
+            from eurika.api import get_learning_insights
+            insights = get_learning_insights(path, top_n=20)
+            adj = (insights.get('recommendations') or {}).get('policy_adjustment_hints') or []
+            if adj:
+                lines.append('')
+                lines.append('### policy_adjustment (Phase E)')
+                lines.append('- WEAK pairs with rate≥25%, total≥5 → auto: review (not deny)')
+                for h in adj[:5]:
+                    pair = h.get('pair', '?')
+                    rate = float(h.get('verify_success_rate', 0) or 0) * 100
+                    total = int(h.get('total', 0) or 0)
+                    lines.append(f'- {pair}: rate={rate:.1f}%, total={total}')
+        except Exception:
+            pass
     if not lines:
         lines.append('(No eurika_doctor_report.json or eurika_fix_report.json found. Run doctor/fix first.)')
     if load_errors:

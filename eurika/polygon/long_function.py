@@ -4,17 +4,16 @@
 CodeAwareness long_function: >50 lines; padding добавлен для прохода порога.
 """
 
+def _compute_first_half() -> int:
+    a = 1
+    b = 2
+    c = 3
+    d = 4
+    e = 5
+    return a + b + c + d + e
 
 def polygon_long_function() -> int:
     """Длинная функция с вложенной def для extract_nested_function."""
-    def _compute_first_half() -> int:
-        a = 1
-        b = 2
-        c = 3
-        d = 4
-        e = 5
-        return a + b + c + d + e
-
     f = 6
     g = 7
     h = 8

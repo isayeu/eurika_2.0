@@ -30,23 +30,23 @@ def _ollama_model() -> str:
 
 
 def _max_hint_calls() -> int:
-    """Per-run cap for planner LLM calls to avoid diagnose stalls."""
-    raw = os.environ.get("EURIKA_LLM_HINTS_MAX_CALLS", "3")
+    """Per-run cap for planner LLM calls. 0 or -1 = unlimited."""
+    raw = os.environ.get("EURIKA_LLM_HINTS_MAX_CALLS", "15")
     try:
-        return max(0, int(raw))
+        v = int(raw)
+        return -1 if v <= 0 else v
     except ValueError:
-        return 3
+        return 15
 
 
 def _hints_budget_sec() -> float:
-    """Per-run wall-clock budget for planner LLM calls (seconds).
-    Includes architect hints and ask_llm_extract_patch; Ollama can take 30–40s.
-    """
-    raw = os.environ.get("EURIKA_LLM_HINTS_BUDGET_SEC", "60")
+    """Per-run wall-clock budget for planner LLM calls (seconds). 0 or -1 = unlimited."""
+    raw = os.environ.get("EURIKA_LLM_HINTS_BUDGET_SEC", "300")
     try:
-        return max(0.0, float(raw))
+        v = float(raw)
+        return -1.0 if v <= 0 else v
     except ValueError:
-        return 60.0
+        return 300.0
 
 
 def _reset_hint_runtime_state() -> None:
@@ -62,16 +62,19 @@ def _reset_hint_runtime_state() -> None:
 def _llm_hint_allowed() -> bool:
     """Runtime guard against long diagnose due to many/slow LLM hints."""
     global _HINT_BUDGET_START
-    if _HINT_CALLS >= _max_hint_calls():
+    if _HINT_CIRCUIT_BROKEN:
+        return False
+    max_calls = _max_hint_calls()
+    if max_calls >= 0 and _HINT_CALLS >= max_calls:
         return False
     budget = _hints_budget_sec()
-    if budget <= 0:
-        return False
-    now = time.monotonic()
-    if _HINT_BUDGET_START <= 0.0:
-        _HINT_BUDGET_START = now
-        return True
-    return (now - _HINT_BUDGET_START) <= budget
+    if budget > 0:
+        now = time.monotonic()
+        if _HINT_BUDGET_START <= 0.0:
+            _HINT_BUDGET_START = now
+        if (now - _HINT_BUDGET_START) > budget:
+            return False
+    return True
 
 
 def _register_llm_hint_call() -> None:
@@ -82,8 +85,10 @@ def _register_llm_hint_call() -> None:
 def _disable_llm_hints_for_run() -> None:
     """Circuit-breaker after hard timeout/connectivity failures."""
     global _HINT_CALLS, _HINT_CIRCUIT_BROKEN
-    _HINT_CALLS = _max_hint_calls()
     _HINT_CIRCUIT_BROKEN = True
+    max_calls = _max_hint_calls()
+    if max_calls >= 0:
+        _HINT_CALLS = max_calls
 
 
 def llm_hint_runtime_stats() -> Dict[str, Any]:
@@ -93,10 +98,9 @@ def llm_hint_runtime_stats() -> Dict[str, Any]:
     elapsed_sec = 0.0
     if _HINT_BUDGET_START > 0.0:
         elapsed_sec = max(0.0, time.monotonic() - _HINT_BUDGET_START)
-    budget_exhausted = bool(
-        (_HINT_CALLS >= max_calls)
-        or (budget_sec > 0 and _HINT_BUDGET_START > 0.0 and elapsed_sec > budget_sec)
-    )
+    calls_exhausted = max_calls >= 0 and _HINT_CALLS >= max_calls
+    time_exhausted = budget_sec > 0 and _HINT_BUDGET_START > 0.0 and elapsed_sec > budget_sec
+    budget_exhausted = bool(calls_exhausted or time_exhausted)
     return {
         "calls_used": int(_HINT_CALLS),
         "max_calls": int(max_calls),
@@ -252,17 +256,19 @@ _EXTRACT_PATCH_CALLS = 0
 
 
 def _max_extract_patch_calls() -> int:
-    """Separate budget for ask_llm_extract_patch (not shared with architect hints)."""
-    raw = os.environ.get("EURIKA_LLM_EXTRACT_MAX_CALLS", "3")
+    """Separate budget for ask_llm_extract_patch. 0 or -1 = unlimited."""
+    raw = os.environ.get("EURIKA_LLM_EXTRACT_MAX_CALLS", "15")
     try:
-        return max(0, int(raw))
+        v = int(raw)
+        return -1 if v <= 0 else v
     except ValueError:
-        return 3
+        return 15
 
 
 def _llm_extract_allowed() -> bool:
     """Budget check for LLM extract — independent of architect _HINT_CALLS."""
-    return _EXTRACT_PATCH_CALLS < _max_extract_patch_calls()
+    max_calls = _max_extract_patch_calls()
+    return max_calls < 0 or _EXTRACT_PATCH_CALLS < max_calls
 
 
 def _build_extract_patch_prompt(function_name: str, full_source: str, oss_snippets: list[str] | None) -> str:
@@ -276,7 +282,8 @@ def _build_extract_patch_prompt(function_name: str, full_source: str, oss_snippe
         f"```python\n{preview}\n```\n\n"
     )
     if oss_snippets:
-        base += "\nOSS Reference (extract-style examples):\n" + "\n".join(oss_snippets[:3]) + "\n\n"
+        ref_label = "OSS before/after (Phase 5):" if any("Before:" in s for s in oss_snippets) else "OSS Reference (extract-style examples):"
+        base += f"\n{ref_label}\n" + "\n".join(oss_snippets[:3]) + "\n\n"
     base += "Reply with the full refactored Python code only (inside ```python ... ``` or raw)."
     return base
 
@@ -315,7 +322,7 @@ def ask_llm_extract_patch(
     Ask LLM to generate refactored file content (extract helper from long function).
     REFACTOR_CODE_SMELL_PLAN Phase 3. Returns new file content or None.
 
-    Uses separate budget (EURIKA_LLM_EXTRACT_MAX_CALLS, default 3) so architect
+    Uses separate budget (EURIKA_LLM_EXTRACT_MAX_CALLS, default 15) so architect
     hints during diagnose do not exhaust it.
     """
     global _EXTRACT_PATCH_CALLS
@@ -340,9 +347,10 @@ def ask_llm_extract_patch(
     oss: list[str] = []
     if project_root:
         try:
-            from eurika.api.ops import _load_oss_snippets_for_smell
+            from eurika.api.ops import _load_oss_before_after_for_smell, _load_oss_snippets_for_smell
             root = Path(project_root).resolve()
-            oss = _load_oss_snippets_for_smell(root, "long_function", max_count=4)
+            before_after = _load_oss_before_after_for_smell(root, "long_function", max_count=1)
+            oss = before_after or _load_oss_snippets_for_smell(root, "long_function", max_count=4)
         except Exception:
             pass
     prompt = _build_extract_patch_prompt(function_name, content, oss or None)

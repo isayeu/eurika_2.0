@@ -37,8 +37,13 @@ def run_command(main: MainWindow) -> None:
         QMessageBox.warning(main, "Invalid project root", msg)
         return
     ollama_model = main._resolve_ollama_model_for_command()
+    cmd = main.command_combo.currentText()
+    learn_light = getattr(main, "learn_light_check", None) and main.learn_light_check.isChecked()
+    learn_scan = getattr(main, "learn_scan_check", None) and main.learn_scan_check.isChecked()
+    learn_build = getattr(main, "learn_build_patterns_check", None) and main.learn_build_patterns_check.isChecked()
+    learn_limit = main.learn_limit_spin.value() if getattr(main, "learn_limit_spin", None) else 0
     main._command_service.start(
-        command=main.command_combo.currentText(),
+        command=cmd,
         project_root=root,
         module=main.module_edit.text().strip(),
         window=main.window_spin.value(),
@@ -50,6 +55,10 @@ def run_command(main: MainWindow) -> None:
         allow_low_risk_campaign=main.allow_low_risk_campaign_check.isChecked(),
         team_mode=main.team_mode_check.isChecked(),
         ollama_model=ollama_model,
+        learn_light=learn_light,
+        learn_scan=learn_scan,
+        learn_build_patterns=learn_build,
+        learn_limit_repos=learn_limit,
     )
 
 
