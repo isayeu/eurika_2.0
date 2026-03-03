@@ -152,8 +152,16 @@ class LearningView:
         operations: List[Dict[str, Any]],
         risks: List[str],
         verify_success: Optional[bool],
+        *,
+        delta_energy: Optional[float] = None,
+        failure_reason: Optional[str] = None,
     ) -> None:
         self._ensure_migrated()
+        output: Dict[str, Any] = {}
+        if delta_energy is not None:
+            output["delta_energy"] = delta_energy
+        if failure_reason is not None:
+            output["failure_reason"] = failure_reason
         self._events.append_event(
             type="learn",
             input={
@@ -162,7 +170,7 @@ class LearningView:
                 "operations": list(operations),
                 "risks": list(risks),
             },
-            output={},
+            output=output,
             result=verify_success,
         )
 

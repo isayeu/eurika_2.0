@@ -151,6 +151,20 @@ def test_format_recent_events():
     assert "a.py" in s
 
 
+def test_format_recent_events_includes_failure_reason():
+    """When verify=False and failure_reason present, it appears in output (Review III самокоррекция)."""
+    events = [
+        Event(
+            type="patch",
+            input={},
+            output={"modified": ["x.py"], "failure_reason": "metrics_worsened"},
+            result=False,
+        ),
+    ]
+    s = _format_recent_events(events)
+    assert "failure=metrics_worsened" in s
+
+
 def test_llm_interpret_falls_back_to_ollama_on_primary_error() -> None:
     """When ollama CLI fails, _llm_interpret falls back to ollama HTTP (new flow: CLI first)."""
     summary = {"system": {"modules": 1, "dependencies": 0, "cycles": 0}, "maturity": "low"}

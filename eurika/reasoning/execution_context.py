@@ -15,6 +15,7 @@ if TYPE_CHECKING:
         RefactorAction,
         RefactorCandidate,
         RiskReport,
+        SimulationResult,
     )
 
 
@@ -30,6 +31,7 @@ class ExecutionContext:
     candidates: Optional[List["RefactorCandidate"]] = None
     selected_action: Optional["RefactorAction"] = None
     simulated_snapshot: Optional["ArchitectureSnapshot"] = None
+    simulation_result: Optional["SimulationResult"] = None
     snapshot_after: Optional["ArchitectureSnapshot"] = None
     risk_report: Optional["RiskReport"] = None
     delta_score: Optional[float] = None

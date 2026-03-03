@@ -79,22 +79,30 @@ def prepare_rescan_before(path: Path, backup_dir_name: str) -> Path:
     return rescan_before
 
 
-def _compute_rescan_metrics(
-    old_snap: Any,
-    new_snap: Any,
-    metrics_from_graph: Any,
-) -> dict[str, Any]:
-    """Compute verify_metrics dict from before/after snapshots."""
-    trends: dict[str, Any] = {}
-    metrics_before = metrics_from_graph(old_snap.graph, old_snap.smells, trends)
-    metrics_after = metrics_from_graph(new_snap.graph, new_snap.smells, trends)
-    before_score = metrics_before.get("score", 0)
-    after_score = metrics_after.get("score", 0)
-    return {
-        "success": after_score >= before_score,
-        "before_score": before_score,
-        "after_score": after_score,
-    }
+def _update_execution_context_after_rescan(
+    result: Any,
+    report: FixReport,
+    path: Path,
+    build_snapshot_from_self_map: Any,
+) -> None:
+    """Fill context.snapshot_after and context.delta_score (EXECUTION_MODEL_PLAN §C)."""
+    ctx = (result.output or {}).get("execution_context")
+    if ctx is None:
+        return
+    vm = report.get("verify_metrics") or {}
+    before = vm.get("before_score")
+    after = vm.get("after_score")
+    if before is not None and after is not None:
+        ctx.delta_score = round(after - before, 4)
+        report["delta_score"] = ctx.delta_score
+    if report.get("verify", {}).get("success") and (path / "self_map.json").exists():
+        try:
+            from eurika.reasoning.planner.models import ArchitectureSnapshot
+
+            core_snap = build_snapshot_from_self_map(path / "self_map.json")
+            ctx.snapshot_after = ArchitectureSnapshot.from_core_snapshot(core_snap)
+        except Exception:
+            pass
 
 
 def enrich_report_with_rescan(
@@ -128,7 +136,9 @@ def enrich_report_with_rescan(
             "maturity": diff["maturity"],
             "centrality_shifts": diff.get("centrality_shifts", [])[:10],
         }
-        vm = _compute_rescan_metrics(old_snap, new_snap, metrics_from_graph)
+        from eurika.evaluation import compute_delta
+
+        vm = compute_delta(old_snap, new_snap, metrics_from_graph)
         report["verify_metrics"] = vm
         if vm["after_score"] < vm["before_score"] and report.get("run_id"):
             rb = rollback_patch(path, report["run_id"])
@@ -182,12 +192,24 @@ def append_fix_cycle_memory(
             SessionMemory(path).record_verify_success(operations)
         if operations:
             from eurika.storage import record_outcome
+
+            ctx = (result.output or {}).get("execution_context")
+            delta_energy = getattr(ctx, "delta_score", None) if ctx else None
+            failure_reason = None
+            if verify_success is False:
+                failure_reason = (
+                    report.get("aborted_reason")
+                    or (report.get("rollback") or {}).get("reason")
+                    or "verify_failed"
+                )
             record_outcome(
                 path,
                 modules_for_learning,
                 learning_operations,
                 risks,
                 verify_success,
+                delta_energy=delta_energy,
+                failure_reason=failure_reason,
             )
             import os
             if path and os.environ.get("EURIKA_WEIGHT_ADAPTATION", "").strip().lower() in ("1", "true", "yes"):
@@ -206,16 +228,27 @@ def append_fix_cycle_memory(
                         adapt_weights_from_experience(path, learning_rate=lr)
                 except Exception:
                     pass
+        out: dict[str, Any] = {
+            "modified": modified,
+            "skipped": report.get("skipped", []),
+            "run_id": report.get("run_id"),
+            "verify_success": verify_success,
+            "verify_duration_ms": report.get("verify_duration_ms"),
+        }
+        delta = report.get("delta_score")
+        if delta is not None:
+            out["delta_score"] = delta
+        if verify_success is False:
+            failure_reason = (
+                report.get("aborted_reason")
+                or (report.get("rollback") or {}).get("reason")
+                or "verify_failed"
+            )
+            out["failure_reason"] = failure_reason
         memory.events.append_event(
             type="patch",
             input={"operations_count": len(operations)},
-            output={
-                "modified": modified,
-                "skipped": report.get("skipped", []),
-                "run_id": report.get("run_id"),
-                "verify_success": verify_success,
-                "verify_duration_ms": report.get("verify_duration_ms"),
-            },
+            output=out,
             result=verify_success,
         )
     except Exception:
@@ -337,10 +370,13 @@ def execute_fix_apply_stage(
     # ROADMAP v3.0 Stage 3: simulation-first apply — simulate before disk writes
     from patch_engine import simulate_patch
 
-    from eurika.reasoning.planner.models import risk_report_from_plan
+    from eurika.reasoning.planner.models import risk_report_from_plan, SimulationResult
 
     simulation = simulate_patch(path, patch_plan)
     risk_report = risk_report_from_plan(patch_plan)
+    ctx = (result.output or {}).get("execution_context")
+    if ctx is not None:
+        ctx.simulation_result = SimulationResult.from_simulate_dict(simulation)
     if simulation.get("errors"):
         _LOG.warning("Simulation found errors, aborting apply: %s", simulation["errors"])
         report: FixReport = {
@@ -444,6 +480,9 @@ def execute_fix_apply_stage(
         path, report, rescan_before, quiet, run_scan,
         build_snapshot_from_self_map, diff_architecture_snapshots,
         metrics_from_graph, rollback_patch,
+    )
+    _update_execution_context_after_rescan(
+        result, report, path, build_snapshot_from_self_map,
     )
     modified = report.get("modified", [])
     verify_success = report["verify"]["success"]

@@ -7,7 +7,7 @@ Separate service for filtering and sorting operations before output.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from eurika.reasoning.planner.heuristics import (
     SMELL_ACTION_SEP,
@@ -131,17 +131,41 @@ def apply_smell_action_filters(
     return filtered
 
 
+_DEPRIORITIZE_REASONS = frozenset(("metrics_worsened", "simulation_errors", "verify_failed"))
+
+
+def _is_recent_failure(
+    op: PatchOperation,
+    recent_failures: Sequence[Tuple[str, str, str]],
+) -> bool:
+    """True if (target_file, kind) matches a recent failure with deprioritize reason."""
+    if not recent_failures:
+        return False
+    fail_set = {
+        (tf, k)
+        for tf, k, reason in recent_failures
+        if reason in _DEPRIORITIZE_REASONS
+    }
+    return (op.target_file or "", op.kind or "") in fail_set
+
+
 def sort_and_reindex_by_learning(
     operations: List[PatchOperation],
     learning_stats: Optional[Dict[str, Dict[str, Any]]],
+    *,
+    recent_failures: Optional[Sequence[Tuple[str, str, str]]] = None,
 ) -> List[PatchOperation]:
-    """Sort operations by historical success rate and normalize index prefix."""
-    if not learning_stats:
+    """Sort operations by historical success rate; deprioritize recent failures (Review III)."""
+    recent_failures = recent_failures or ()
+    if not learning_stats and not recent_failures:
         return operations
     ordered = sorted(
         operations,
-        key=lambda op: _success_rate_for_op(op, learning_stats),
-        reverse=True,
+        key=lambda op: (
+            _is_recent_failure(op, recent_failures),
+            -_success_rate_for_op(op, learning_stats),
+        ),
+        reverse=False,
     )
     reindexed: List[PatchOperation] = []
     for idx, op in enumerate(ordered, start=1):

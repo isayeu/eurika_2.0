@@ -6,7 +6,7 @@
 
 | Пакет | Публичные точки входа | Импорт |
 |-------|------------------------|--------|
-| **eurika.storage** | `ProjectMemory`, `Event`, `EventStore`, `event_engine`, `ExperienceStore`, `record_outcome`, `get_statistics`, `SessionMemory`, `operation_key`, `aggregate_operational_metrics` | `from eurika.storage import ProjectMemory, record_outcome, ExperienceStore` |
+| **eurika.storage** | `ProjectMemory`, `Event`, `EventStore`, `event_engine`, `ExperienceStore`, `record_outcome`, `get_recent_failures`, `get_statistics`, `SessionMemory`, `operation_key`, `aggregate_operational_metrics`, `save_checkpoint`, `load_checkpoint`, `has_checkpoint`, `snapshot_from_checkpoint` | `from eurika.storage import ProjectMemory, get_recent_failures, save_checkpoint` |
 | **eurika.agent** | `run_agent_cycle`, `DefaultToolContract`, `OrchestratorToolset`, `WEAK_SMELL_ACTION_PAIRS`, `evaluate_operation`, `is_whitelisted_for_auto` | `from eurika.agent import run_agent_cycle, is_whitelisted_for_auto` |
 | **eurika.reasoning** | `advisor`, `architect`, `planner`, `heuristics`, `graph_ops` | `from eurika.reasoning import architect`<br>`from eurika.reasoning.architect import build_context_sources` |
 | **eurika.reasoning.architect** | `build_context_sources`, `call_llm_with_prompt`, `interpret_architecture` | `from eurika.reasoning.architect import build_context_sources` |
@@ -16,6 +16,7 @@
 | **eurika.knowledge** | `SMELL_TO_KNOWLEDGE_TOPICS`, providers (`CompositeKnowledgeProvider`, `LocalKnowledgeProvider`, …) | `from eurika.knowledge import SMELL_TO_KNOWLEDGE_TOPICS, CompositeKnowledgeProvider` |
 | **eurika.analysis** | `graph`, `scanner`, `metrics`, `cycles`, `self_map`, `topology`, `scoring`, `metric_vector`, `energy_model`, `weight_store` | `from eurika.analysis import graph, scoring, metric_vector, energy_model, weight_store` |
 | **eurika.smells** | `detector`, `rules`, `models` | `from eurika.smells import detector` |
+| **eurika.evaluation** | `compute_delta` | `from eurika.evaluation import compute_delta` |
 | **eurika.evolution** | `history`, `diff` | `from eurika.evolution import history` |
 | **eurika.refactor** | `remove_import_from_file`, `remove_unused_imports` | `from eurika.refactor import remove_unused_imports` |
 | **eurika.reporting** | `text`, `markdown`, `json_reporting` | `from eurika.reporting import markdown` |

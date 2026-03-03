@@ -78,10 +78,11 @@ else
   echo "  (rg not installed, skip)"
 fi
 
-_step "9. Smoke (install + scan + doctor --no-llm)"
+_step "9. Smoke (install + scan + doctor --no-llm + fix --dry-run) [B.13]"
 $PIP install -e . -q
 $PY -m eurika_cli scan . -q || echo "  (scan warning, continue)"
 $PY -m eurika_cli doctor . --no-llm || echo "  (doctor warning, continue)"
+$PY -m eurika_cli fix . --dry-run -q || echo "  (fix --dry-run warning, continue)"
 
 echo ""
 echo "==> Release check PASSED"

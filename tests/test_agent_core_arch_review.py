@@ -61,6 +61,33 @@ def test_arch_review_agent_core_on_self(tmp_path: Path) -> None:
     assert "steps" in plan_args
 
 
+def test_arch_review_uses_snapshot_when_execution_context_provided(tmp_path: Path) -> None:
+    """When payload has execution_context.snapshot_before, agent uses it (EXECUTION_MODEL_PLAN §E)."""
+    from eurika.analysis.self_map import build_graph_from_self_map
+    from eurika.reasoning.planner.models import ArchitectureSnapshot
+    from eurika.smells.detector import detect_architecture_smells
+
+    project_root = ROOT
+    assert run_scan(project_root) == 0
+    graph = build_graph_from_self_map(project_root / "self_map.json")
+    smells_raw = detect_architecture_smells(graph)
+    snap = ArchitectureSnapshot.from_graph_and_smells(graph, smells_raw)
+    ctx = type("Ctx", (), {"snapshot_before": snap})()
+
+    agent = ArchReviewAgentCore(project_root=project_root)
+    event = InputEvent(
+        type="arch_review",
+        payload={"path": str(project_root), "window": 3, "execution_context": ctx},
+        source="test",
+    )
+    result = agent.handle(event)
+
+    assert result.success is True
+    proposals = result.output.get("proposals", [])
+    actions = {p["action"] for p in proposals}
+    assert "suggest_patch_plan" in actions
+
+
 def test_arch_evolution_query_on_self(tmp_path: Path) -> None:
     """
     Smoke-test for arch_evolution_query scenario:

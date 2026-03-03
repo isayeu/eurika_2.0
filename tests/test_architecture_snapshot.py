@@ -58,6 +58,62 @@ def test_architecture_snapshot_from_graph_and_smells_with_root_summary() -> None
     assert snap.history == {"trends": {}}
 
 
+def test_update_execution_context_after_rescan() -> None:
+    """_update_execution_context_after_rescan fills delta_score and snapshot_after (EXECUTION_MODEL_PLAN §C)."""
+    from eurika.orchestration.apply_stage import _update_execution_context_after_rescan
+
+    ctx = ExecutionContext()
+    result = type("R", (), {"output": {"execution_context": ctx}})()
+    report: dict = {
+        "verify": {"success": True},
+        "verify_metrics": {"before_score": 0.5, "after_score": 0.7},
+    }
+    _update_execution_context_after_rescan(result, report, Path("/nonexistent"), lambda _: None)
+    assert ctx.delta_score == 0.2
+    assert report["delta_score"] == 0.2
+
+
+def test_simulation_result_in_context(tmp_path: Path) -> None:
+    """execute_fix_apply_stage fills context.simulation_result (EXECUTION_MODEL_PLAN §D)."""
+    from eurika.orchestration.apply_stage import execute_fix_apply_stage
+
+    (tmp_path / "foo.py").write_text("x = 1\n", encoding="utf-8")
+    ops = [{"target_file": "foo.py", "kind": "remove_unused_import"}]
+    plan = {"operations": ops}
+    ctx = type("ExecutionContext", (), {"simulation_result": None, "snapshot_before": None})()
+    result = type("R", (), {"output": {"execution_context": ctx, "policy_decisions": []}})()
+    report, _, _ = execute_fix_apply_stage(
+        tmp_path,
+        plan,
+        ops,
+        session_id=None,
+        quiet=True,
+        verify_cmd=None,
+        verify_timeout=None,
+        backup_dir=".eurika_backups",
+        apply_and_verify=lambda *a, **k: {"modified": [], "verify": {"success": True}},
+        run_scan=lambda *a: 0,
+        build_snapshot_from_self_map=lambda *a: {},
+        diff_architecture_snapshots=lambda *a: {},
+        metrics_from_graph=lambda *a: {},
+        rollback_patch=lambda *a: {},
+        result=result,
+    )
+    assert ctx.simulation_result is not None
+    assert hasattr(ctx.simulation_result, "errors")
+    assert hasattr(ctx.simulation_result, "would_modify")
+
+
+def test_update_execution_context_skips_without_context() -> None:
+    """_update_execution_context_after_rescan no-ops when result has no execution_context."""
+    from eurika.orchestration.apply_stage import _update_execution_context_after_rescan
+
+    result = type("R", (), {"output": {}})()
+    report = {"verify": {"success": True}, "verify_metrics": {"before_score": 0.5, "after_score": 0.7}}
+    _update_execution_context_after_rescan(result, report, Path("/x"), lambda _: None)
+    assert "delta_score" not in report
+
+
 def test_architecture_snapshot_from_core_snapshot() -> None:
     """from_core_snapshot builds unified snapshot from pipeline output (review §3)."""
     class CoreSnapshot:

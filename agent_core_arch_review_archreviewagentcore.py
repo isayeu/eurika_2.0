@@ -43,7 +43,7 @@ class ArchReviewAgentCore:
         window = int(event.payload.get('window', 5))
         try:
             if event.type == 'arch_review':
-                return self._handle_arch_review(root, window)
+                return self._handle_arch_review(root, window, event.payload)
             if event.type == 'arch_evolution_query':
                 return self._handle_arch_evolution_query(root, window)
             if event.type == 'arch_action_dry_run':
@@ -54,8 +54,12 @@ class ArchReviewAgentCore:
             return Result(success=False, output={'error': 'arch_event_failed', 'message': str(exc)}, side_effects=['ArchReviewAgentCore: exception during arch event'])
         return Result(success=False, output={'error': 'unsupported_event_type', 'expected': ['arch_review', 'arch_evolution_query', 'arch_action_dry_run', 'arch_action_simulate'], 'actual': event.type}, side_effects=['ArchReviewAgentCore: unsupported event type'])
 
-    def _handle_arch_review(self, root: Path, window: int) -> Result:
-        summary, smells, graph = self._load_structure(root)
+    def _handle_arch_review(self, root: Path, window: int, payload: Dict[str, Any]) -> Result:
+        ctx = payload.get('execution_context')
+        if ctx is not None and getattr(ctx, 'snapshot_before', None) is not None:
+            summary, smells, graph = self._structure_from_snapshot(ctx.snapshot_before)
+        else:
+            summary, smells, graph = self._load_structure(root)
         history_info = self._load_history(root, window=window)
         observations_info = self._load_observations(root)
         explain = self._build_explain_risk(summary, smells)
@@ -102,6 +106,15 @@ class ArchReviewAgentCore:
         simulation = sandbox.dry_run(action_plan)
         proposal = DecisionProposal(action='simulate_actions', arguments={'action_plan': action_plan.to_dict(), 'simulation': simulation}, confidence=0.7, rationale='Simulation performed in a read-only sandbox based on the derived ActionPlan; no code changes were applied to the target project.')
         return Result(success=True, output={'type': 'arch_action_simulate', 'project_root': str(root), 'summary': summary, 'history': {'trends': history_info['trends'], 'regressions': history_info['regressions'], 'evolution_report': history_info['evolution_report']}, 'proposals': [asdict(proposal)]}, side_effects=['ArchReviewAgentCore: read self_map.json', 'ArchReviewAgentCore: read architecture_history.json', 'ArchReviewAgentCore: sandbox dry-run executed'])
+
+    def _structure_from_snapshot(self, snapshot: Any) -> tuple[Dict[str, Any], List[ArchSmell], Any]:
+        """Derive summary, smells, graph from ArchitectureSnapshot (EXECUTION_MODEL_PLAN §E)."""
+        graph = snapshot.graph
+        summary = snapshot.summary
+        if summary is None:
+            summary = build_summary(graph, [ArchSmell(type=s.type, nodes=s.nodes, severity=s.severity, description=s.description) for s in snapshot.smells])
+        smells = [ArchSmell(type=s.type, nodes=s.nodes, severity=s.severity, description=s.description) for s in snapshot.smells]
+        return (summary, smells, graph)
 
     def _load_structure(self, root: Path) -> tuple[Dict[str, Any], List[ArchSmell], 'ProjectGraph']:
         """Load self_map and derive graph, smells + summary."""

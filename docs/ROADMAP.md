@@ -20,12 +20,14 @@
 | Качество кода           | 8/10   | Чистота структуры     | 5.5/10 |
 | Концепция               | 9/10   | Контроль сложности    | 6/10   |
 | Операционность          | 5/10   | Тестируемость         | 6/10   |
-| Продуктовая готовность  | 6.5/10 | Продакшн-готовность   | 4/10   |
+| Продуктовая готовность  | 7/10   | Продакшн-готовность   | 4/10   |
 | Потенциал               | 9.5/10 |                       |        |
 
 **Вывод ревью (2026):** «Функционально мощный, архитектурно нестабильный, структурно перегруженный.» Риски: God CLI, backups в дереве, orchestration без формальной модели. **Стратегия:** усиливать execution — критично; усиливать LLM — преждевременно.
 
-**Review II (2026):** «Стало лучше структурно» — 8.5/10 амбиция, 7/10 архитектура. Ключевая проблема: отсутствие единого Execution Model; комбинаторный рост логики. Рекомендация: **freeze фичей**, ввести MetricVector + EnergyModel, затем ΔEnergy, ExperienceStore, адаптация весов. Подробно: **docs/review.md**.
+**Review II (2026):** «Стало лучше структурно» — 8.5/10 амбиция, 7/10 архитектура. Ключевая проблема: отсутствие единого Execution Model; комбинаторный рост логики. Рекомендация: **freeze фичей**, ввести MetricVector + EnergyModel, затем ΔEnergy, ExperienceStore, адаптация весов. Подробно: **docs/review.md** §1.
+
+**Review III (2026):** Идея 9/10, Амбиция 10/10, Структурность 7/10, **Стабильность ядра 5/10**, Фокус 6/10. Позиция: Tool ✔ Smart refactor ✔ → переход к Energy-based optimizer. Ключевой совет: **упростить ядро, один автономный цикл идеальным, потом наращивать**. Чего избегать: новые фичи, новые smell, self-rewriting, онлайн-патчинг. docs/review.md §2.
 
 **Обновление (февраль 2026):** Split тяжёлых модулей (task_executor, serve, fix_cycle_impl, core_handlers, chat) — P0.4 выполнен; pipeline_model; test_cycle → test_cycle_report; CR rules (docs, pre-commit, test-api) в .eurika/rules; Qt MVP: hybrid approvals, dashboard, Stop. **Рост:** чистота структуры 4→5.5, контроль сложности 5→6, тестируемость ?→6, продуктовая 6→6.5. **Остаётся:** refactor_code_smell 0%, test_graph_ops/test_api крупные при необходимости, продакшн 4/10.
 
@@ -86,7 +88,7 @@ Curated repos (Django, FastAPI) → pattern library → повышение verif
 
 ### 4.2 Направление B — Продуктовая готовность 6→7/10
 
-UI.md ✓; README ✓; критерии **B.7–B.10** выполнены (текущая оценка 6.5/10). Критерии для 7/10 — **B.11–B.14**:
+UI.md ✓; README ✓; критерии **B.7–B.14** выполнены. Оценка 7/10 достигнута (март 2026).
 
 | #   | Критерий                         | Описание                                      | Статус |
 | --- | -------------------------------- | --------------------------------------------- | ------ |
@@ -94,12 +96,12 @@ UI.md ✓; README ✓; критерии **B.7–B.10** выполнены (те�
 | B.8 | Notes tab в GUI                  | Заметки сохраняются в `.eurika/notes.txt`     | ✅ |
 | B.9 | Onboarding ≤ 10 мин              | Новичок: clone → scan/doctor/fix за 10 мин     | ✅ docs/ONBOARDING.md |
 | B.10| `.eurika/rules/*` в проекте      | docs.mdc, pre-commit.mdc, test-api.mdc        | ✅ |
-| **B.11** | Troubleshooting                 | `docs/TROUBLESHOOTING.md`: типовые ошибки (verify timeout, ModuleNotFoundError, LLM fallback, self_map missing) и решения; ссылка из README/ONBOARDING | — |
-| **B.12** | Qt first-run UX                 | При `eurika-qt` без project root — folder picker + подсказка «Выберите проект»; нет пустого экрана | — |
-| **B.13** | Dogfooding в ритуале            | DOGFOODING.md + release_check step 9 (smoke); после значимых изменений — прогон `fix --dry-run` и обновление CYCLE_REPORT по необходимости | — |
+| **B.11** | Troubleshooting                 | `docs/TROUBLESHOOTING.md`: типовые ошибки (verify timeout, ModuleNotFoundError, LLM fallback, self_map missing) и решения; ссылка из README/ONBOARDING | ✅ |
+| **B.12** | Qt first-run UX                 | При `eurika-qt` без project root — folder picker + подсказка «Выберите проект»; нет пустого экрана | ✅ |
+| **B.13** | Dogfooding в ритуале            | DOGFOODING.md + release_check step 9 (smoke); после значимых изменений — прогон `fix --dry-run` и обновление CYCLE_REPORT по необходимости | ✅ |
 | **B.14** | Dependency firewall в CI        | EURIKA_STRICT_LAYER_FIREWALL=1 в release_check (шаг 3) — уже включён; явная проверка при PR/merge | ✅ |
 
-**План:** B.11 (TROUBLESHOOTING.md), B.12 (Qt first-run), B.13 (dogfooding ритуал). B.14 выполнен.
+**План:** B.11 ✅; B.12 ✅; B.13 ✅. B.14 выполнен.
 
 ### 4.3 Направление C — Ритуал 2.1
 
@@ -227,15 +229,135 @@ evaluation/     delta_evaluator
 storage/        state_store, event_log, learning_store (dumb persistence)
 ```
 
+### 5.8 Сводка review (для нового ревью)
+
+**Источник:** docs/review.md. Извлечённые рекомендации и антипаттерны.
+
+**Проблемы (что следить):**
+
+| Проблема | Описание | Статус |
+|----------|----------|--------|
+| Смешение абстракций | В одном модуле: domain, orchestration, LLM, risk, mutation | Частично: hints_provider, filter_policy вынесены |
+| Planner = God Engine | Анализ, решение, LLM, риск, patch, симуляция в planner | Частично: engine 4 шага; LLM в hints_provider |
+| Нет жёсткой доменной модели | smells, graph, patches как dict | ArchitectureSnapshot, ExecutionContext есть; dict ещё в patch_plan |
+| Нет явного pipeline | Нет одного orchestrator над всем | orchestration есть; ExecutionContext частично в prepare |
+| Storage умный | event/session/campaign/learning + логика | Упрощение к State/Event/Learning — в плане |
+| planner→storage→learning→planner | Скрытая циклическая зависимость | Избегать: storage = write-only |
+
+**Принципы (review):**
+
+1. **Planner** — чистая decision-машина: collect_facts → generate → rank → output. Не мутирует, не пишет, не применяет. LLM — отдельный сервис (injectable).
+2. **Storage** — dumb persistence: StateStore, EventLog, LearningStore. Без вызовов planner, без решений, без изменения graph.
+3. **ExecutionContext** — единый контекст; только Orchestrator мутирует. Все сервисы — чистые.
+4. **Score Delta:** `delta = score(after) - score(before)`; planner ранжирует по delta. Без этого — rule-engine, не AI.
+5. **SimulationEngine** — отдельно; Planner только вызывает `simulate(snapshot, action)`.
+6. **Порядок миграции:** MetricVector → EnergyModel → ΔEnergy → ExperienceStore → Weight adaptation. Не learning сначала, не перестройка planner до MetricVector.
+
+**Целевое разделение слоёв:**
+
+| Слой | Ответственность |
+|------|-----------------|
+| analysis | только анализ |
+| planning | только выбор действий |
+| simulation | только dry-run |
+| execution | только применение |
+| evaluation | только сравнение before/after |
+| storage | dumb persistence (только запись) |
+
+**Эволюция (v2.x → v4.0):** rule-based → energy-based → adaptive weights → meta-strategy.
+
+**Угроза:** добавление фич без execution-модели → потеря управляемости через 2–3 версии.
+
+**Storage 3 слоя (review):** StateStore (save/load snapshot), EventLog (append-only), LearningStore (record_outcome, get_statistics). Никакой логики внутри.
+
+**Соответствие Planner 4 компонента (текущее → целевое):**
+
+| Целевое | Текущая реализация |
+|--------|---------------------|
+| planner_engine | `run_patch_plan` — оркестрирует 4 шага |
+| candidate_generator | `generate_candidates` → build_patch_operations |
+| scoring | `rank_candidates` → energy_ranking.rank_operations_by_energy |
+| risk_model | `risk_report_from_plan` в planner.models |
+
+**Соответствие Storage 3 слоя (текущее → целевое):**
+
+| Целевое | Текущая реализация |
+|--------|---------------------|
+| EventLog | `event_engine` (EventStore) — append-only events |
+| LearningStore | `LearningView` + `ExperienceStore.record_outcome`, `get_statistics` |
+| StateStore | save_checkpoint / load_checkpoint / snapshot_from_checkpoint — eurika/storage/state_store.py; persistence в .eurika/state/ |
+
+**Стратегия тестирования (review):** Level 1 — unit CandidateGenerator/Scorer/RiskModel; Level 2 — simulation без FS; Level 3 — planner integration (mocked); Level 4 — full pipeline (мини-репо с cycle).
+
+**Жёсткий совет (review):** Не добавлять новые фичи, пока planner не станет чистым, storage не станет тупым, snapshot не станет единым источником правды.
+
+---
+
+### 5.9 Review III — автономность и цикл (2026)
+
+**Источник:** docs/review.md §1–§3.
+
+**Соответствие:** MetricVector, EnergyModel, State (ExecutionContext, ArchitectureSnapshot) уже есть (§5.7, §6.0.1). Review III п. «нет формального пространства состояний» — частично закрыт. **Замкнутость цикла:** delta_score → patch event, learn event; record_outcome(delta_energy). Остаётся: bounded evolution, самокоррекция решений.
+
+**Шкала зрелости (где мы):**
+
+| Уровень | Статус |
+|---------|--------|
+| Tool | ✔ |
+| Smart refactor engine | ✔ |
+| Energy-based optimizer | ⏳ |
+| Adaptive AI system | ⏳ |
+| Autonomous cognitive architect | 🚧 |
+
+Переход между 2 и 3.
+
+**Минимальный замкнутый цикл автономии (обязателен):**
+
+```python
+while True:
+    goal = select_goal()
+    plan = build_plan(goal)
+    result = execute(plan)
+    evaluation = evaluate(result)
+    update_memory(evaluation)
+```
+
+Без этого цикла — не автономность. Eurika: scan→doctor→plan→patch→verify есть; **замкнутость:** delta_score в patch event и learn event (output), record_outcome(delta_energy=ctx.delta_score) — evaluation persist для следующего цикла.
+
+**Направления развития:**
+
+1. **Стабильное ядро** — один железобетонный цикл, потом наращивать.
+2. **Настоящая память** — short/long term, failure log; приоритет целей, забывание, конфликт целей.
+3. **Самокоррекция** — анализ *решений* (почему план провалился, какая гипотеза не сработала), не только кода. failure_reason в patch/learn events; architect получает failure в recent_events; planner deprioritize: get_recent_failures → sort_and_reindex_by_learning(recent_failures=...) — ops с metrics_worsened/simulation_errors/verify_failed идут последними.
+
+**Чего не делать сейчас:** онлайн-патчинг, self-rewriting modules, автоматическое изменение архитектуры, 50 новых классов.
+
+**Bounded evolution (review §1):** EURIKA_MAX_OPS_PER_CYCLE (default 12) — cap операций за fix cycle; 0 = без лимита.
+
+**Прогресс (Review III):** зрелость +40%, цели +60%, стратегия +70%, формализация +20%. Формализация отстаёт — нормально.
+
+**Рекомендация:** долгая игра (вариант 3) — эволюция от простого ядра. Только с самоограничением.
+
 ---
 
 ## 6. Открытый бэклог (следующие шаги)
 
-### 6.0 Продуктовая готовность 6.5→7/10 (B.11–B.13)
+### 6.0 Продуктовая готовность 7/10 (B.11–B.14 выполнены)
 
-- [ ] **B.11** Создать `docs/TROUBLESHOOTING.md`: verify timeout, ModuleNotFoundError, LLM fallback, self_map missing; ссылка из README/ONBOARDING
-- [ ] **B.12** Qt first-run: при запуске без project root — folder picker + подсказка; нет пустого экрана
-- [ ] **B.13** Dogfooding ритуал: зафиксировать в ROADMAP/DOGFOODING; после значимых изменений — fix --dry-run, при необходимости обновить CYCLE_REPORT
+- [x] **B.11** Создать `docs/TROUBLESHOOTING.md`: verify timeout, ModuleNotFoundError, LLM fallback, self_map missing; ссылка из README/ONBOARDING ✅
+- [x] **B.12** Qt first-run: при запуске без project root — folder picker + подсказка; нет пустого экрана ✅
+- [x] **B.13** Dogfooding ритуал: зафиксировать в ROADMAP/DOGFOODING; после значимых изменений — fix --dry-run, при необходимости обновить CYCLE_REPORT ✅
+
+### 6.0.1 Execution Model — интеграция ExecutionContext в fix-cycle (review §1–3)
+
+- [x] **Этап A:** Внедрить ExecutionContext в prepare; snapshot_before из ArchitectureSnapshot.from_core_snapshot ✅
+- [x] **Этап B:** RiskReport в context (prepare) — risk_report_from_plan(patch_plan) → context.risk_report
+- [x] **Этап C:** snapshot_after, delta_score в context (apply_stage) — _update_execution_context_after_rescan; delta_score в eurika_fix_report.json
+- [x] **Этап D:** SimulationResult в context — simulation_result = SimulationResult.from_simulate_dict(simulation) сразу после simulate_patch
+- [x] **Этап E:** planner через context.snapshot_before — ctx строится до diagnose, передаётся в agent; _structure_from_snapshot при наличии snapshot
+- [x] **DeltaEvaluator:** eurika/evaluation/delta_evaluator.py — compute_delta(before, after, metrics_fn) → verify_metrics
+- [x] **Review соответствие:** Planner 4 компонента и Storage 3 слоя — маппинг задокументирован в §5.8
+- [x] **StateStore:** eurika/storage/state_store.py — save_checkpoint, load_checkpoint, snapshot_from_checkpoint; prepare сохраняет "latest" при build context
 
 ### 6.1 Структура и размер файлов
 

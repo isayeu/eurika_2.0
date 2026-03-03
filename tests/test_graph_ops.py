@@ -662,6 +662,35 @@ def test_build_patch_plan_disables_smell_action_from_env(monkeypatch) -> None:
     )
 
 
+def test_max_ops_per_cycle_caps_plan(monkeypatch, tmp_path: Path) -> None:
+    """EURIKA_MAX_OPS_PER_CYCLE caps operations per fix cycle (bounded evolution)."""
+    from architecture_planner import build_patch_plan
+    from eurika.smells.models import ArchSmell
+
+    monkeypatch.setenv("EURIKA_MAX_OPS_PER_CYCLE", "3")
+    g = _make_graph(["a", "b", "c", "d", "e"], {"a": ["b"], "b": ["c"], "c": [], "d": [], "e": []})
+    smells = [
+        ArchSmell(type="god_module", nodes=["a"], severity=5.0, description=""),
+        ArchSmell(type="god_module", nodes=["b"], severity=4.0, description=""),
+        ArchSmell(type="god_module", nodes=["c"], severity=4.0, description=""),
+        ArchSmell(type="god_module", nodes=["d"], severity=3.0, description=""),
+        ArchSmell(type="god_module", nodes=["e"], severity=3.0, description=""),
+    ]
+    summary = {"risks": []}
+    history_info = {"trends": {}}
+    priorities = [{"name": n, "reasons": ["god_module"]} for n in ("a", "b", "c", "d", "e")]
+
+    plan = build_patch_plan(
+        project_root=str(tmp_path),
+        summary=summary,
+        smells=smells,
+        history_info=history_info,
+        priorities=priorities,
+        graph=g,
+    )
+    assert len(plan.operations) <= 3
+
+
 def test_build_patch_plan_fallbacks_hub_split_module_on_low_success(tmp_path: Path) -> None:
     """Low-success hub|split_module falls back to refactor_module (safer action)."""
     from architecture_planner import build_patch_plan

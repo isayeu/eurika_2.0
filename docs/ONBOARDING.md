@@ -71,6 +71,8 @@ eurika-qt .
 
 Новичок выполняет clone → scan → doctor → fix (или fix --dry-run) за ≤ 10 минут следуя этой инструкции.
 
+При ошибках (verify timeout, ModuleNotFoundError, LLM fallback, self_map missing) см. [docs/TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+
 ## Опционально (продвинутое)
 
 - **EURIKA_WEIGHT_ADAPTATION=1** — включить адаптацию весов при fix (медленное обучение по success/fail). По умолчанию выключено.

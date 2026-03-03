@@ -9,8 +9,36 @@ from typing import Any, Literal, cast
 
 from .contracts import FixReport, OperationRecord, PatchPlan
 from .logging import get_logger
+from eurika.storage import save_checkpoint
 
 _LOG = get_logger("orchestration.prepare")
+
+
+def _build_execution_context(
+    path: Path,
+    patch_plan: PatchPlan | None = None,
+) -> Any | None:
+    """
+    Build ExecutionContext with snapshot_before (EXECUTION_MODEL_PLAN §A) and
+    risk_report from patch_plan (§B).
+
+    Returns None if self_map.json missing. Used by prepare to populate context.
+    """
+    self_map_path = path / "self_map.json"
+    if not self_map_path.exists():
+        return None
+    try:
+        from eurika.core.pipeline import build_snapshot_from_self_map
+        from eurika.reasoning.execution_context import ExecutionContext
+        from eurika.reasoning.planner.models import ArchitectureSnapshot, risk_report_from_plan
+
+        core_snap = build_snapshot_from_self_map(self_map_path)
+        planner_snap = ArchitectureSnapshot.from_core_snapshot(core_snap)
+        risk_report = risk_report_from_plan(patch_plan) if patch_plan is not None else None
+        save_checkpoint(path, "latest")
+        return ExecutionContext(snapshot_before=planner_snap, risk_report=risk_report)
+    except Exception:
+        return None
 
 
 def run_fix_scan_stage(path: Path, quiet: bool, run_scan: Any) -> bool:
@@ -317,7 +345,7 @@ def apply_session_rejections(
 
 # CYCLE_REPORT §107: remove_unused_import 23% — не bypass campaign skip, чтобы не переприменять к 2+ fail targets.
 # polygon/imports_ok остаётся через _op_in_polygon_whitelist при allow_low_risk.
-_CAMPAIGN_BYPASS_LOW_RISK_KINDS = frozenset()  # was: remove_unused_import
+_CAMPAIGN_BYPASS_LOW_RISK_KINDS: frozenset[str] = frozenset()  # was: remove_unused_import
 
 
 def _op_in_polygon_whitelist(op: dict[str, Any], path: Path) -> bool:
@@ -376,19 +404,27 @@ def apply_campaign_memory(
     return dict(patch_plan, operations=kept), kept, skipped
 
 
-def run_fix_diagnose_stage(path: Path, window: int, quiet: bool) -> Any:
-    """Run diagnose stage via ArchReviewAgentCore."""
+def run_fix_diagnose_stage(
+    path: Path,
+    window: int,
+    quiet: bool,
+    execution_context: Any | None = None,
+) -> Any:
+    """Run diagnose stage via ArchReviewAgentCore.
+
+    When execution_context with snapshot_before is provided, agent uses it
+    for patch planning (EXECUTION_MODEL_PLAN §E) instead of reloading structure.
+    """
     from agent_core import InputEvent
     from agent_core_arch_review import ArchReviewAgentCore
 
     if not quiet:
         _LOG.info("--- Step 2/4: diagnose ---")
     agent = ArchReviewAgentCore(project_root=path)
-    event = InputEvent(
-        type="arch_review",
-        payload={"path": str(path), "window": window},
-        source="cli",
-    )
+    payload: dict[str, Any] = {"path": str(path), "window": window}
+    if execution_context is not None:
+        payload["execution_context"] = execution_context
+    event = InputEvent(type="arch_review", payload=payload, source="cli")
     return agent.handle(event)
 
 
@@ -466,7 +502,8 @@ def prepare_fix_cycle_operations(
                 None, None, [],
             )
 
-    result = run_fix_diagnose_stage(path, window, quiet)
+    ctx = _build_execution_context(path, None)
+    result = run_fix_diagnose_stage(path, window, quiet, execution_context=ctx)
     if not result.success:
         return _early_exit(1, result.output, result, None, [])
     _attach_llm_hint_runtime(result)
@@ -478,6 +515,13 @@ def prepare_fix_cycle_operations(
         operations: list[OperationRecord] = []
     else:
         patch_plan, operations = cast(tuple[PatchPlan, list[OperationRecord]], extracted)
+    if ctx is not None and patch_plan is not None:
+        try:
+            from eurika.reasoning.planner.models import risk_report_from_plan
+
+            ctx.risk_report = risk_report_from_plan(patch_plan)
+        except Exception:
+            pass
     patch_plan, operations = prepend_fix_operations(
         path, patch_plan, operations, no_clean_imports, no_code_smells
     )
@@ -515,7 +559,7 @@ def prepare_fix_cycle_operations(
     if context_sources:
         patch_plan["context_sources"] = context_sources  # type: ignore[assignment]
     if not operations:
-        return {
+        early_dict = {
             "return_code": 0,
             "report": {
                 "message": "Patch plan has no operations. Cycle complete.",
@@ -530,12 +574,17 @@ def prepare_fix_cycle_operations(
             "modified": [],
             "verify_success": True,
             "agent_result": result,
-        }, result, patch_plan, []
+        }
+        if ctx is not None:
+            early_dict["execution_context"] = ctx
+        return early_dict, result, patch_plan, []
     if session_skipped:
         result.output["session_skipped"] = len(session_skipped)
     result.output["policy_decisions"] = policy_decisions
     result.output["critic_decisions"] = critic_decisions
     result.output["context_sources"] = context_sources
+    if ctx is not None:
+        result.output["execution_context"] = ctx
     return None, result, patch_plan, operations
 
 

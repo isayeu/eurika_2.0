@@ -19,11 +19,13 @@ def record_outcome(
     verify_success: Optional[bool],
     *,
     delta_energy: Optional[float] = None,
+    failure_reason: Optional[str] = None,
 ) -> None:
     """
     Записать outcome patch-apply + verify в локальный и глобальный store.
 
-    Не меняет веса EnergyModel. delta_energy — для будущего этапа 7 (weight adaptation).
+    Не меняет веса EnergyModel. delta_energy — для этапа 7 (weight adaptation).
+    failure_reason — при verify_success=False для самокоррекции (Review III).
     """
     if not operations:
         return
@@ -37,6 +39,8 @@ def record_outcome(
         operations=operations,
         risks=list(risks),
         verify_success=verify_success,
+        delta_energy=delta_energy,
+        failure_reason=failure_reason,
     )
     append_learn_to_global(
         project_root,
@@ -45,6 +49,36 @@ def record_outcome(
         list(risks),
         verify_success,
     )
+
+
+def get_recent_failures(
+    project_root: Path,
+    limit: int = 5,
+) -> List[tuple[str, str, str]]:
+    """
+    Return (target_file, kind, failure_reason) from recent failed learn events (Review III самокоррекция).
+    """
+    from .memory import ProjectMemory
+
+    memory = ProjectMemory(project_root)
+    events = memory.events.recent_events(limit=limit, types=("learn",))
+    out: List[tuple[str, str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for e in events:
+        if e.result is not False:
+            continue
+        fail = (e.output or {}).get("failure_reason") if hasattr(e, "output") else None
+        if not fail:
+            continue
+        for op in (e.input or {}).get("operations", []):
+            tf = str(op.get("target_file") or "")
+            k = str(op.get("kind") or "")
+            if tf or k:
+                key = (tf, k, fail)
+                if key not in seen:
+                    seen.add(key)
+                    out.append(key)
+    return out[:20]
 
 
 def get_statistics(
@@ -83,6 +117,7 @@ class ExperienceStore:
         verify_success: Optional[bool],
         *,
         delta_energy: Optional[float] = None,
+        failure_reason: Optional[str] = None,
     ) -> None:
         record_outcome(
             self.project_root,
@@ -91,6 +126,7 @@ class ExperienceStore:
             risks,
             verify_success,
             delta_energy=delta_energy,
+            failure_reason=failure_reason,
         )
 
     def get_statistics(

@@ -8,7 +8,7 @@
 
 ## Быстрый старт
 
-**Onboarding ≤ 10 мин:** clone → scan → doctor → fix. См. [docs/ONBOARDING.md](docs/ONBOARDING.md) (B.9).
+**Onboarding ≤ 10 мин:** clone → scan → doctor → fix. См. [docs/ONBOARDING.md](docs/ONBOARDING.md) (B.9). При проблемах — [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
 ### Установка (venv-нейтрально)
 
@@ -161,6 +161,7 @@ Fallback-модель для локального OpenAI-compatible endpoint Oll
 - **docs/ROADMAP.md** — план задач, оценка зрелости, «что не хватает», план прорыва, этапы до продуктовой 1.0
 - **docs/REPORT.md** — текущий статус, оценка по review, следующий шаг
 - **docs/Architecture.md** — структура системы, замкнутый цикл, Patch Engine (целевой API), направление 2.1
+- **docs/TROUBLESHOOTING.md** — типовые ошибки (verify timeout, ModuleNotFoundError, LLM fallback, self_map missing) и решения
 - **docs/CLI.md** — справочник команд, рекомендуемый цикл
 - **docs/DOGFOODING.md** — ритуал полного цикла на самом Eurika (scan → doctor → fix), про venv
 - **docs/KNOWLEDGE_LAYER.md** — Knowledge Provider Layer (контракт, формат `eurika_knowledge.json`, интеграция с doctor/architect). Пример: `docs/eurika_knowledge.example.json`.

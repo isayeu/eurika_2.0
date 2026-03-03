@@ -9,10 +9,12 @@ from eurika.reasoning.planner.filter_policy import (
     apply_smell_action_filters,
     sort_and_reindex_by_learning,
 )
+from eurika.storage import get_recent_failures
 from eurika.reasoning.planner.heuristics import (
     EXTRACT_CLASS_SKIP_PATTERNS,
     FACADE_MODULES,
     STEP_KIND_TO_ACTION,
+    max_ops_per_cycle,
 )
 from eurika.reasoning.planner.hints_provider import (
     build_hints_and_params,
@@ -99,7 +101,13 @@ def build_patch_operations(project_root: str, summary: Dict[str, Any], smells: L
     for idx, target in enumerate(plan_targets, start=1):
         operations.extend(_operations_for_target(project_root, idx, target, smells_by_node, cycles_handled, graph=graph, self_map=self_map, oss_patterns=oss))
     operations = apply_smell_action_filters(project_root, operations, learning_stats)
-    operations = sort_and_reindex_by_learning(operations, learning_stats)
+    recent_failures = get_recent_failures(Path(project_root), limit=5)
+    operations = sort_and_reindex_by_learning(
+        operations, learning_stats, recent_failures=recent_failures
+    )
+    cap = max_ops_per_cycle()
+    if cap > 0 and len(operations) > cap:
+        operations = operations[:cap]
     return operations
 
 def _build_plan_targets(priorities: List[Dict[str, Any]], smells: List[ArchSmell], smells_by_node: Dict[str, List[ArchSmell]], summary: Dict[str, Any], *, graph: Optional['ProjectGraph'], learning_stats: Optional[Dict[str, Dict[str, Any]]] = None) -> List[Dict[str, Any]]:

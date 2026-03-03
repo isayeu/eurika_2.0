@@ -14,7 +14,6 @@ from eurika.reasoning.planner.heuristics import diff_hints_for
 
 if TYPE_CHECKING:
     from eurika.analysis.graph import ProjectGraph
-    from eurika.smells.detector import ArchSmell
 
 
 def _sanitize_split_params(
@@ -133,7 +132,7 @@ def build_hints_and_params(
     graph: Optional["ProjectGraph"] = None,
     oss_patterns: Optional[Dict[str, Any]] = None,
     llm_hints_fn: Optional[
-        Callable[[str, str, str, Dict[str, Any], str], List[str]]
+        Callable[[str, str, str, Dict[str, Any]], List[str]]
     ] = None,
 ) -> tuple[List[str], Optional[Dict[str, Any]]]:
     """

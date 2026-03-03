@@ -22,7 +22,7 @@ __all__ = ["build_context_sources", "call_llm_with_prompt", "get_architect_data"
 
 
 def _format_recent_events(events: List['Event'], max_chars: int=500) -> str:
-    """Format recent patch/learn events for architect prompt (ROADMAP 3.2.3)."""
+    """Format recent patch/learn events for architect prompt (ROADMAP 3.2.3, Review III самокоррекция)."""
     if not events:
         return ''
     lines: List[str] = []
@@ -30,12 +30,16 @@ def _format_recent_events(events: List['Event'], max_chars: int=500) -> str:
         if e.type == 'patch':
             modified = e.output.get('modified', [])
             res = e.result
-            lines.append(f'patch: modified {len(modified)} file(s), verify={res}')
+            fail = e.output.get('failure_reason')
+            extra = f', failure={fail}' if (res is False and fail) else ''
+            lines.append(f'patch: modified {len(modified)} file(s), verify={res}{extra}')
         elif e.type == 'learn':
             modules = e.input.get('modules', [])
             res = e.result
+            fail = e.output.get('failure_reason')
             mods = ', '.join(modules[:3]) + ('...' if len(modules) > 3 else '')
-            lines.append(f'learn: modules [{mods}], success={res}')
+            extra = f', failure={fail}' if (res is False and fail) else ''
+            lines.append(f'learn: modules [{mods}], success={res}{extra}')
         else:
             lines.append(f'{e.type}: result={e.result}')
     out = '; '.join(lines)

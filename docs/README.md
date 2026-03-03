@@ -5,6 +5,8 @@
 | Документ | Описание |
 |----------|----------|
 | [Architecture.md](Architecture.md) | Карта слоёв, правила зависимостей, API boundaries |
+| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Типовые ошибки: verify timeout, ModuleNotFoundError, LLM fallback, self_map |
+| [EXECUTION_MODEL_PLAN.md](EXECUTION_MODEL_PLAN.md) | Миграция fix-cycle на ExecutionContext/ArchitectureSnapshot (review §1–3) |
 | [ROADMAP.md](ROADMAP.md) | План задач, оценка зрелости, этапы |
 | [review.md](review.md) | Диагноз, план прорыва |
 | [CLI.md](CLI.md) | Справочник команд, рекомендуемый цикл |

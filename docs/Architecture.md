@@ -236,7 +236,7 @@ User/CLI → ExecutionOrchestrator
     → Storage (write only)
 ```
 
-Детали: **ROADMAP.md** §5.7, **docs/review.md**.
+План миграции: **docs/EXECUTION_MODEL_PLAN.md** (этапы A–E). Детали: **ROADMAP.md** §5.7, **docs/review.md**.
 
 ---
 

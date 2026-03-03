@@ -7,6 +7,15 @@ from typing import Dict, List, Optional
 
 SMELL_ACTION_SEP = "|"
 
+# Bounded evolution (review §1): max ops per fix cycle. 0 = unlimited.
+def max_ops_per_cycle() -> int:
+    """EURIKA_MAX_OPS_PER_CYCLE: cap operations per fix cycle. Default 12."""
+    try:
+        val = int(os.environ.get("EURIKA_MAX_OPS_PER_CYCLE", "12"))
+        return max(0, val)
+    except (ValueError, TypeError):
+        return 12
+
 STEP_KIND_TO_ACTION: Dict[str, str] = {
     "split_module": "split_module",
     "introduce_facade": "introduce_facade",

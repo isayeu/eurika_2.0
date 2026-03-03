@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 from PySide6.QtCore import QProcess, QTimer
 from PySide6.QtGui import QCloseEvent, QShowEvent
-from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton, QTabWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton, QTabWidget, QVBoxLayout, QWidget
 from qt_app.adapters.eurika_api_adapter import EurikaApiAdapter
 from qt_app.services.command_service import CommandService
 from qt_app.services.settings_service import SettingsService
@@ -59,6 +59,19 @@ class MainWindow(QMainWindow):
         self.browse_btn = QPushButton('Browse')
         top_row.addWidget(self.browse_btn)
         root_layout.addLayout(top_row)
+        self._first_run_hint = QFrame()
+        self._first_run_hint.setFrameShape(QFrame.StyledPanel)
+        self._first_run_hint.setStyleSheet("QFrame { background-color: #f5f0e6; border: 1px solid #ddd; border-radius: 4px; }")
+        hint_layout = QHBoxLayout(self._first_run_hint)
+        hint_layout.setContentsMargins(12, 8, 12, 8)
+        hint_label = QLabel(
+            "Выберите проект — нажмите Browse или введите путь к корню Python-проекта (pyproject.toml или self_map.json). "
+            "Без проекта команды scan/doctor/fix недоступны."
+        )
+        hint_label.setWordWrap(True)
+        hint_label.setStyleSheet("color: #444; font-size: 13px;")
+        hint_layout.addWidget(hint_label)
+        root_layout.addWidget(self._first_run_hint)
         self.tabs = QTabWidget()
         root_layout.addWidget(self.tabs, 1)
         commands_tab.build_commands_tab(self)
@@ -147,13 +160,15 @@ class MainWindow(QMainWindow):
             ollama_handlers.start_ollama_server(self)
 
     def _prompt_project_root_if_empty(self) -> None:
-        """First-run UX: when project root is empty, prompt user to select folder."""
+        """First-run UX (B.12): when project root is empty, open folder picker and show hint."""
         if self._is_closing:
             return
         if os.environ.get('QT_QPA_PLATFORM') == 'offscreen':
             return
         if not self.root_edit.text().strip():
-            selected = QFileDialog.getExistingDirectory(self, 'Select project root', default_start_directory())
+            selected = QFileDialog.getExistingDirectory(
+                self, 'Выберите корень проекта', default_start_directory()
+            )
             if selected:
                 self._set_project_root(selected)
 
@@ -161,6 +176,8 @@ class MainWindow(QMainWindow):
         self.root_edit.setText(value)
         self._api.set_project_root(value)
         self._settings.set_project_root(value)
+        is_empty = not (value or '').strip()
+        self._first_run_hint.setVisible(is_empty)
         root_resolved = str(Path(value or '.').resolve()) if value else ''
         if hasattr(self, '_terminal_cwd'):
             self._terminal_cwd = root_resolved
@@ -181,9 +198,7 @@ class MainWindow(QMainWindow):
             self._set_project_root(selected)
 
     def _on_root_edited(self) -> None:
-        value = self.root_edit.text().strip()
-        if value:
-            self._set_project_root(value)
+        self._set_project_root(self.root_edit.text().strip())
 
     def _sync_preview(self) -> None:
         cmd = self.command_combo.currentText()

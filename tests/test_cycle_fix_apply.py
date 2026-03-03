@@ -397,6 +397,24 @@ def test_append_fix_cycle_memory_tolerates_memory_write_error(tmp_path: Path) ->
         append_fix_cycle_memory(tmp_path, result, operations, report, verify_success=True)
 
 
+def test_append_fix_cycle_memory_persists_failure_reason(tmp_path: Path) -> None:
+    """When verify fails, failure_reason is persisted in patch event (Review III самокоррекция)."""
+    from types import SimpleNamespace
+
+    from cli.orchestration.apply_stage import append_fix_cycle_memory
+    from eurika.storage import ProjectMemory
+
+    result = SimpleNamespace(output={"summary": {"risks": []}})
+    operations = [{"target_file": "a.py", "kind": "split_module"}]
+    report = {"modified": ["a.py"], "rollback": {"done": True, "reason": "metrics_worsened"}}
+    append_fix_cycle_memory(tmp_path, result, operations, report, verify_success=False)
+
+    patch_events = ProjectMemory(tmp_path).events.by_type("patch")
+    assert patch_events
+    out = getattr(patch_events[-1], "output", {}) or {}
+    assert out.get("failure_reason") == "metrics_worsened"
+
+
 def test_append_fix_cycle_memory_records_not_applied_outcome(tmp_path: Path) -> None:
     """Learning record should preserve not_applied outcome for accurate action stats."""
     from types import SimpleNamespace

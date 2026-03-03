@@ -1,6 +1,21 @@
-# Dogfooding — полный цикл на самом Eurika
+# Dogfooding — полный цикл на самом Eurika (B.13)
 
 Ритуал: прогнать продуктовый цикл на корне проекта Eurika, чтобы проверить работу инструмента на своей кодовой базе.
+
+## Ритуал после значимых изменений (B.13)
+
+После изменений в planner, patch-операциях, orchestration или CLI:
+
+1. **fix --dry-run** — убедиться, что план строится без ошибок:
+   ```bash
+   eurika fix . --dry-run
+   ```
+2. **При необходимости** обновить CYCLE_REPORT.md:
+   - Выполнить `eurika doctor .` и `eurika fix .` (или `eurika cycle .`)
+   - Запустить `eurika report-snapshot .`
+   - Вставить или обновить секции в `docs/CYCLE_REPORT.md` (§1 Fix, §2 Doctor, §3 Learning)
+
+Smoke-прогон входит в `./scripts/release_check.sh` (шаг 9): install → scan → doctor --no-llm → fix --dry-run.
 
 ## Где venv
 
