@@ -114,13 +114,13 @@ Eurika склонна к усложнению — это сила и риск. B
 ## Последовательность
 
 1. Обновить BOUNDED_EVOLUTION (risks + ritual) ✓
-2. Запустить 300–500 циклов:
+2. Запустить 300–500 циклов ✓ (100 выполнено, адаптация доказана; CYCLE_REPORT #123):
    ```bash
    .venv/bin/python scripts/run_cycle_batch.py . --max-cycles 500 --report-every 100
    ```
    С `--dry-run` — без apply; вывод каждые N циклов → вставить в CYCLE_REPORT.
-3. Сформировать 3–5 CYCLE_REPORT
-4. Проверить: есть ли изменение поведения
+3. Сформировать 3–5 CYCLE_REPORT ✓
+4. Проверить: есть ли изменение поведения ✓ (Yes — success_rate, most_successful_action)
 5. Только потом — §5.7 MetricVector / EnergyModel
 
 **Не делать сейчас:** decay агрегатов, изменение EventLog лимита, усложнение scoring, добавление EnergyModel. Сначала доказательство адаптации.
