@@ -207,8 +207,13 @@ def sort_and_reindex_by_learning(
     if not learning_stats and not recent_failures and not failed_kind_plan_pairs:
         return operations
     has_tf_kind_fail = _is_recent_failure
-    has_kind_plan_fail = lambda op: _is_recent_failure_by_kind_plan(op, plan_hash, failed_kind_plan_pairs)
-    penalty = lambda op: _failure_penalty_weight(op, plan_hash, kind_plan_counts)
+
+    def has_kind_plan_fail(op: PatchOperation) -> bool:
+        return _is_recent_failure_by_kind_plan(op, plan_hash, failed_kind_plan_pairs)
+
+    def penalty(op: PatchOperation) -> float:
+        return _failure_penalty_weight(op, plan_hash, kind_plan_counts)
+
     ordered = sorted(
         operations,
         key=lambda op: (

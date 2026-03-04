@@ -26,7 +26,7 @@ def inject_failures(
     failure_reason: str = "verify_failed",
 ) -> None:
     """Добавить count провалов в EventLog для (target_file, kind). Single source of truth."""
-    from eurika.storage import ProjectMemory, record_outcome
+    from eurika.storage import record_outcome
 
     for i in range(count):
         record_outcome(
