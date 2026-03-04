@@ -21,19 +21,10 @@ def test_apply_decay_no_project_root() -> None:
 
 
 def test_apply_decay_reduces_score_for_recent_failures(tmp_path: Path) -> None:
-    """Targets with failures in failure log get penalty."""
-    import json
-    (tmp_path / ".eurika").mkdir()
-    failures_path = tmp_path / ".eurika" / "failures.json"
-    failures_path.write_text(
-        json.dumps({
-            "failures": [
-                {"target_file": "a.py", "kind": "split_module", "failure_reason": "metrics_worsened", "timestamp": 1000},
-                {"target_file": "a.py", "kind": "split_module", "failure_reason": "metrics_worsened", "timestamp": 1001},
-            ]
-        }),
-        encoding="utf-8",
-    )
+    """Targets with failures in EventLog get penalty."""
+    from eurika.polygon.decay_polygon import inject_failures
+
+    inject_failures(tmp_path, "a.py", "split_module", 2, failure_reason="metrics_worsened")
     scores = {"a.py": 10.0, "b.py": 8.0}
     reasons = {"a.py": ["god_module"], "b.py": ["hub"]}
     apply_decay(scores, reasons, lambda n: "split_module" if n == "a.py" else "refactor_module", tmp_path)
@@ -43,16 +34,9 @@ def test_apply_decay_reduces_score_for_recent_failures(tmp_path: Path) -> None:
 
 def test_apply_decay_archive_after_n_failures(tmp_path: Path) -> None:
     """Targets with 5+ failures get heavy deprioritization."""
-    import json
-    (tmp_path / ".eurika").mkdir()
-    failures = [
-        {"target_file": "stuck.py", "kind": "extract_class", "failure_reason": "verify_failed", "timestamp": 1000 + i}
-        for i in range(6)
-    ]
-    (tmp_path / ".eurika" / "failures.json").write_text(
-        json.dumps({"failures": failures}),
-        encoding="utf-8",
-    )
+    from eurika.polygon.decay_polygon import inject_failures
+
+    inject_failures(tmp_path, "stuck.py", "extract_class", 6)
     scores = {"stuck.py": 10.0, "fresh.py": 5.0}
     reasons = {"stuck.py": ["god_module"], "fresh.py": ["hub"]}
     apply_decay(scores, reasons, lambda n: "extract_class" if n == "stuck.py" else "refactor_module", tmp_path)

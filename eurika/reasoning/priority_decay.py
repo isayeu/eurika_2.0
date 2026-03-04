@@ -14,7 +14,6 @@ effective_priority = base_priority * (1 - failure_penalty) * freshness_bonus
 
 from __future__ import annotations
 
-import json
 import time
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
@@ -51,39 +50,32 @@ def _load_success_counts(project_root: Path) -> Dict[Tuple[str, str], int]:
 def _load_failure_counts_and_last_attempt(
     project_root: Path,
 ) -> Tuple[Dict[Tuple[str, str], int], Dict[Tuple[str, str], float], Dict[Tuple[str, str], List[float]]]:
-    """(target_file, kind) -> failure_count; last_attempt_ts; failure_timestamps (for forgetting)."""
+    """(target_file, kind) -> failure_count; last_attempt_ts; failure_timestamps. Single source: EventLog."""
     from eurika.storage.memory import ProjectMemory
-    from eurika.storage.paths import storage_path
 
     counts: Dict[Tuple[str, str], int] = {}
     last_ts: Dict[Tuple[str, str], float] = {}
     failure_timestamps: Dict[Tuple[str, str], List[float]] = {}
 
-    path = storage_path(Path(project_root).resolve(), "failures")
-    if path.exists():
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            for r in data.get("failures", []):
-                tf = str(r.get("target_file") or "")
-                k = str(r.get("kind") or "")
-                ts = float(r.get("timestamp", 0))
+    memory = ProjectMemory(project_root)
+    for e in memory.events.recent_events(limit=100, types=("learn",)):
+        ts = float(getattr(e, "timestamp", 0) or 0)
+        if e.result is False:
+            for op in (e.input or {}).get("operations", []):
+                tf = str(op.get("target_file") or "")
+                k = str(op.get("kind") or "")
                 if tf or k:
                     key = (tf, k)
                     counts[key] = counts.get(key, 0) + 1
                     last_ts[key] = max(last_ts.get(key, 0), ts)
                     failure_timestamps.setdefault(key, []).append(ts)
-        except (json.JSONDecodeError, OSError):
-            pass
-
-    memory = ProjectMemory(project_root)
-    for e in memory.events.recent_events(limit=100, types=("learn",)):
-        ts = getattr(e, "timestamp", 0) or 0
-        for op in (e.input or {}).get("operations", []):
-            tf = str(op.get("target_file") or "")
-            k = str(op.get("kind") or "")
-            if tf or k:
-                key = (tf, k)
-                last_ts[key] = max(last_ts.get(key, 0), ts)
+        else:
+            for op in (e.input or {}).get("operations", []):
+                tf = str(op.get("target_file") or "")
+                k = str(op.get("kind") or "")
+                if tf or k:
+                    key = (tf, k)
+                    last_ts[key] = max(last_ts.get(key, 0), ts)
 
     return counts, last_ts, failure_timestamps
 

@@ -25,11 +25,18 @@ def inject_failures(
     *,
     failure_reason: str = "verify_failed",
 ) -> None:
-    """Добавить count провалов в failure_log для (target_file, kind)."""
-    from eurika.storage.failure_log import append_failures
+    """Добавить count провалов в EventLog для (target_file, kind). Single source of truth."""
+    from eurika.storage import ProjectMemory, record_outcome
 
     for i in range(count):
-        append_failures(project_root, [(target_file, kind, failure_reason)])
+        record_outcome(
+            project_root,
+            modules=[target_file],
+            operations=[{"target_file": target_file, "kind": kind}],
+            risks=[],
+            verify_success=False,
+            failure_reason=failure_reason,
+        )
         if i < count - 1:
             time.sleep(0.001)
 

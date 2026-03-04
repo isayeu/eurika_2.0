@@ -13,6 +13,7 @@ import pytest
 
 from eurika.polygon.decay_polygon import (
     inject_failures,
+    inject_success,
     run_decay_observation,
     scenario_controlled_failures,
 )
@@ -27,18 +28,13 @@ def _kind_fn(node: str) -> str:
 
 
 def test_inject_failures(tmp_path: Path) -> None:
-    """Контролируемые провалы: inject создаёт записи в failure_log."""
-    import json
+    """Контролируемые провалы: inject создаёт learn events в EventLog."""
+    from eurika.storage import get_recent_failures
 
-    from eurika.storage.paths import storage_path
-
-    (tmp_path / ".eurika").mkdir(parents=True)
     inject_failures(tmp_path, "stuck.py", "split_module", 2)
-    path = storage_path(tmp_path, "failures")
-    data = json.loads(path.read_text(encoding="utf-8"))
-    records = data.get("failures", [])
-    assert len(records) >= 2
-    assert all(r.get("target_file") == "stuck.py" for r in records[:2])
+    failures = get_recent_failures(tmp_path, limit=5)
+    assert len(failures) >= 1
+    assert any((tf == "stuck.py" and k == "split_module") for tf, k, _ in failures)
 
 
 def test_scenario_controlled_failures(tmp_path: Path) -> None:
@@ -71,14 +67,15 @@ def test_scenario_controlled_failures(tmp_path: Path) -> None:
 
 def test_decay_priority_drops_monotonically(tmp_path: Path) -> None:
     """Прирост провалов → монотонное падение effective_priority."""
+    from eurika.storage.paths import storage_path
+
     (tmp_path / ".eurika").mkdir(parents=True)
     base = 10.0
     scores_by_failures: dict[int, float] = {}
     for n in range(6):
-        # Сброс failure_log для каждой итерации
-        failures_path = tmp_path / ".eurika" / "failures.json"
-        if failures_path.exists():
-            failures_path.unlink()
+        events_path = storage_path(tmp_path, "events")
+        if events_path.exists():
+            events_path.unlink()
         inject_failures(tmp_path, "x.py", "split_module", n)
         scores = {"x.py": base}
         reasons = {"x.py": ["god_module"]}
@@ -112,21 +109,21 @@ def test_decay_archive_after_5(tmp_path: Path) -> None:
 
 def test_decay_forgetting_old_failures(tmp_path: Path) -> None:
     """Step 4: старые провалы весят меньше. 4 old + 1 success vs 4 fresh — old выше."""
-    import json
     import time
 
-    from eurika.polygon.decay_polygon import inject_success
-    from eurika.storage.paths import storage_path
+    from eurika.storage import ProjectMemory
 
     (tmp_path / ".eurika").mkdir(parents=True)
-    path = storage_path(tmp_path, "failures")
-    path.parent.mkdir(parents=True, exist_ok=True)
+    mem = ProjectMemory(tmp_path)
     old_ts = time.time() - 60 * 86400
-    records = [
-        {"target_file": "old.py", "kind": "split_module", "failure_reason": "verify_failed", "timestamp": old_ts + i}
-        for i in range(4)
-    ]
-    path.write_text(json.dumps({"failures": records}), encoding="utf-8")
+    for i in range(4):
+        mem.events.append_event(
+            "learn",
+            {"project_root": str(tmp_path), "modules": ["old.py"], "operations": [{"target_file": "old.py", "kind": "split_module"}], "risks": []},
+            {"failure_reason": "verify_failed"},
+            False,
+            timestamp=old_ts + i,
+        )
     inject_success(tmp_path, "old.py", "split_module", 1)
     inject_failures(tmp_path, "fresh.py", "split_module", 4)
     scores = {"old.py": 10.0, "fresh.py": 10.0}
