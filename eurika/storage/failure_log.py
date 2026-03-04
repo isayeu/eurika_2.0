@@ -1,8 +1,8 @@
 """
-Failure log — bounded append-only store for failed operations (Review III направление 2).
+Failure log — legacy; FailureLog is now a bounded view over EventLog (ARCHITECTURE_MEMORY_REVIEW).
 
-Persists (target_file, kind, failure_reason, timestamp) to .eurika/failures.json.
-Bounded to MAX_FAILURES entries; planner uses get_recent_failures to deprioritize.
+get_recent_failures reads from EventLog (learn events, result=False). Single source of truth.
+append_failures/load_recent_failures kept for migration; not used by record_outcome.
 """
 
 from __future__ import annotations

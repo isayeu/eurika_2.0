@@ -48,7 +48,7 @@ def test_get_recent_failures_skips_success_events(tmp_path: Path) -> None:
 
 
 def test_failure_log_artifact(tmp_path: Path) -> None:
-    """record_outcome with failure_reason writes to .eurika/failures.json (Review III)."""
+    """record_outcome with failure_reason writes to EventLog; get_recent_failures reads from it (single source)."""
     from eurika.storage import record_outcome
 
     record_outcome(
@@ -62,20 +62,15 @@ def test_failure_log_artifact(tmp_path: Path) -> None:
         verify_success=False,
         failure_reason="metrics_worsened",
     )
-    failures_file = tmp_path / ".eurika" / "failures.json"
-    assert failures_file.exists()
-    import json
-
-    data = json.loads(failures_file.read_text())
-    failures = data.get("failures", [])
+    failures = get_recent_failures(tmp_path, limit=5)
     assert len(failures) >= 2
-    targets = {(f["target_file"], f["kind"], f["failure_reason"]) for f in failures}
+    targets = set(failures)
     assert ("a.py", "split_module", "metrics_worsened") in targets
     assert ("b.py", "extract_class", "metrics_worsened") in targets
 
 
-def test_get_recent_failures_prefers_failure_log(tmp_path: Path) -> None:
-    """get_recent_failures returns from failure log when present."""
+def test_get_recent_failures_from_learn_events(tmp_path: Path) -> None:
+    """get_recent_failures reads from EventLog (single source of truth)."""
     from eurika.storage import record_outcome
 
     record_outcome(

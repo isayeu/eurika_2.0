@@ -7,8 +7,41 @@ record_outcome — только запись, без обновления Energy
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+
+def _plan_hash_from_operations(operations: List[Dict[str, Any]]) -> str:
+    """Deterministic hash of plan (target_file, kind) for strategy-level deprioritization."""
+    keys = sorted(
+        (str(o.get("target_file") or ""), str(o.get("kind") or ""))
+        for o in operations
+        if o.get("target_file") or o.get("kind")
+    )
+    raw = "|".join(f"{tf}:{k}" for tf, k in keys)
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def plan_hash_from_ops(ops: List[Any]) -> str:
+    """Plan hash from operations (dicts or objects with target_file, kind). For planner."""
+    dict_ops = []
+    for o in ops:
+        if hasattr(o, "target_file"):
+            dict_ops.append({"target_file": getattr(o, "target_file"), "kind": getattr(o, "kind", "")})
+        elif isinstance(o, dict):
+            dict_ops.append(o)
+    return _plan_hash_from_operations(dict_ops)
+
+
+def _goal_id_from_operations(operations: List[Dict[str, Any]]) -> str:
+    """Primary goal: first op's target|kind for causal analysis."""
+    for op in operations:
+        tf = str(op.get("target_file") or "")
+        k = str(op.get("kind") or "")
+        if tf or k:
+            return f"{tf}|{k}"
+    return "unknown"
 
 
 def record_outcome(
@@ -20,28 +53,26 @@ def record_outcome(
     *,
     delta_energy: Optional[float] = None,
     failure_reason: Optional[str] = None,
+    goal_id: Optional[str] = None,
+    plan_hash: Optional[str] = None,
+    confidence: Optional[float] = None,
 ) -> None:
     """
     Записать outcome patch-apply + verify в локальный и глобальный store.
 
     Не меняет веса EnergyModel. delta_energy — для этапа 7 (weight adaptation).
     failure_reason — при verify_success=False для самокоррекции (Review III).
+    goal_id, plan_hash, confidence — привязка к стратегии (ARCHITECTURE_MEMORY_REVIEW §2).
     """
     if not operations:
         return
     from .global_memory import append_learn_to_global
     from .memory import ProjectMemory
 
-    if verify_success is False and failure_reason:
-        from .failure_log import append_failures
-
-        entries = [
-            (str(op.get("target_file") or ""), str(op.get("kind") or ""), failure_reason)
-            for op in operations
-            if op.get("target_file") or op.get("kind")
-        ]
-        if entries:
-            append_failures(project_root, entries)
+    if goal_id is None:
+        goal_id = _goal_id_from_operations(operations)
+    if plan_hash is None and verify_success is False:
+        plan_hash = _plan_hash_from_operations(operations)
 
     memory = ProjectMemory(project_root)
     memory.learning.append(
@@ -52,6 +83,9 @@ def record_outcome(
         verify_success=verify_success,
         delta_energy=delta_energy,
         failure_reason=failure_reason,
+        goal_id=goal_id,
+        plan_hash=plan_hash,
+        confidence=confidence,
     )
     append_learn_to_global(
         project_root,
@@ -67,25 +101,37 @@ def get_recent_failures(
     limit: int = 5,
 ) -> List[tuple[str, str, str]]:
     """
-    Return (target_file, kind, failure_reason) from failure log + learn events (Review III).
+    Return (target_file, kind, failure_reason) — bounded view over EventLog (Review III).
 
-    Failure log (.eurika/failures.json) is primary; events are fallback for backward compat.
+    Single source of truth: learn events with result=False.
     """
-    from .failure_log import load_recent_failures
+    enriched = get_recent_failures_enriched(project_root, limit=limit)
+    return [(e["target_file"], e["kind"], e["failure_reason"]) for e in enriched]
+
+
+def get_recent_failures_enriched(
+    project_root: Path,
+    limit: int = 5,
+) -> List[Dict[str, Any]]:
+    """
+    Return enriched failures: target_file, kind, failure_reason, goal_id, plan_hash, confidence.
+
+    For strategy-level deprioritization (ARCHITECTURE_MEMORY_REVIEW §2).
+    """
     from .memory import ProjectMemory
 
-    out = load_recent_failures(project_root, limit=limit)
-    if out:
-        return out[:20]
     memory = ProjectMemory(project_root)
-    events = memory.events.recent_events(limit=limit, types=("learn",))
+    events = memory.events.recent_events(limit=min(100, limit * 10), types=("learn",))
+    out: list[Dict[str, Any]] = []
     seen: set[tuple[str, str, str]] = set()
     for e in events:
         if e.result is not False:
             continue
-        fail = (e.output or {}).get("failure_reason") if hasattr(e, "output") else None
-        if not fail:
-            continue
+        o = e.output or {}
+        fail = o.get("failure_reason", "verify_failed")
+        goal_id = o.get("goal_id")
+        plan_hash = o.get("plan_hash")
+        confidence = o.get("confidence")
         for op in (e.input or {}).get("operations", []):
             tf = str(op.get("target_file") or "")
             k = str(op.get("kind") or "")
@@ -93,8 +139,68 @@ def get_recent_failures(
                 key = (tf, k, fail)
                 if key not in seen:
                     seen.add(key)
-                    out.append(key)
-    return out[:20]
+                    out.append({
+                        "target_file": tf,
+                        "kind": k,
+                        "failure_reason": fail,
+                        "goal_id": goal_id,
+                        "plan_hash": plan_hash,
+                        "confidence": confidence,
+                    })
+        if len(out) >= limit:
+            break
+    return out[:limit]
+
+
+def get_recent_failed_plan_hashes(project_root: Path, limit: int = 10) -> frozenset[str]:
+    """Plan hashes that failed recently — for strategy deprioritization."""
+    enriched = get_recent_failures_enriched(project_root, limit=limit)
+    return frozenset(
+        h for e in enriched
+        for h in (e.get("plan_hash") or "",)
+        if h
+    )
+
+
+def get_recent_failed_kind_plan_pairs(project_root: Path, limit: int = 15) -> frozenset[tuple[str, str]]:
+    """(kind, plan_hash) pairs that failed — deprioritize by action_kind + plan_hash."""
+    enriched = get_recent_failures_enriched(project_root, limit=limit)
+    return frozenset(
+        (e.get("kind") or "", e.get("plan_hash") or "")
+        for e in enriched
+        if (e.get("plan_hash") or "") and (e.get("kind") or "")
+    )
+
+
+def get_plan_hash_failure_counts(project_root: Path, limit: int = 20) -> dict[str, int]:
+    """plan_hash -> count of failures. For frequency-based deprioritization."""
+    from collections import Counter
+
+    enriched = get_recent_failures_enriched(project_root, limit=limit)
+    ph_list = [e.get("plan_hash") or "" for e in enriched if e.get("plan_hash")]
+    return dict(Counter(ph_list))
+
+
+def get_kind_plan_failure_counts(project_root: Path, limit: int = 20) -> dict[tuple[str, str], int]:
+    """(kind, plan_hash) -> count of failures. From raw events (no dedup) for frequency."""
+    from collections import Counter
+
+    from .memory import ProjectMemory
+
+    memory = ProjectMemory(project_root)
+    events = memory.events.recent_events(limit=min(200, limit * 10), types=("learn",))
+    pairs: list[tuple[str, str]] = []
+    for e in events:
+        if e.result is not False:
+            continue
+        ph = (e.output or {}).get("plan_hash") or ""
+        if not ph:
+            continue
+        for op in (e.input or {}).get("operations", []):
+            k = str(op.get("kind") or "")
+            if k:
+                pairs.append((k, ph))
+    return dict(Counter(pairs))
 
 
 def get_statistics(
@@ -134,6 +240,9 @@ class ExperienceStore:
         *,
         delta_energy: Optional[float] = None,
         failure_reason: Optional[str] = None,
+        goal_id: Optional[str] = None,
+        plan_hash: Optional[str] = None,
+        confidence: Optional[float] = None,
     ) -> None:
         record_outcome(
             self.project_root,
@@ -143,6 +252,9 @@ class ExperienceStore:
             verify_success,
             delta_energy=delta_energy,
             failure_reason=failure_reason,
+            goal_id=goal_id,
+            plan_hash=plan_hash,
+            confidence=confidence,
         )
 
     def get_statistics(

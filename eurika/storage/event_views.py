@@ -155,6 +155,9 @@ class LearningView:
         *,
         delta_energy: Optional[float] = None,
         failure_reason: Optional[str] = None,
+        goal_id: Optional[str] = None,
+        plan_hash: Optional[str] = None,
+        confidence: Optional[float] = None,
     ) -> None:
         self._ensure_migrated()
         output: Dict[str, Any] = {}
@@ -162,6 +165,12 @@ class LearningView:
             output["delta_energy"] = delta_energy
         if failure_reason is not None:
             output["failure_reason"] = failure_reason
+        if goal_id is not None:
+            output["goal_id"] = goal_id
+        if plan_hash is not None:
+            output["plan_hash"] = plan_hash
+        if confidence is not None:
+            output["confidence"] = confidence
         self._events.append_event(
             type="learn",
             input={

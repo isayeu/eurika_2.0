@@ -6,10 +6,17 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from eurika.reasoning.planner.filter_policy import (
+    apply_failure_based_fallback,
     apply_smell_action_filters,
     sort_and_reindex_by_learning,
 )
-from eurika.storage import get_recent_failures
+from eurika.storage import (
+    get_kind_plan_failure_counts,
+    get_recent_failures,
+    get_recent_failed_kind_plan_pairs,
+    get_recent_failed_plan_hashes,
+    plan_hash_from_ops,
+)
 from eurika.reasoning.planner.heuristics import (
     EXTRACT_CLASS_SKIP_PATTERNS,
     FACADE_MODULES,
@@ -102,11 +109,36 @@ def build_patch_operations(project_root: str, summary: Dict[str, Any], smells: L
     )
     oss = oss_patterns or {}
     for idx, target in enumerate(plan_targets, start=1):
-        operations.extend(_operations_for_target(project_root, idx, target, smells_by_node, cycles_handled, graph=graph, self_map=self_map, oss_patterns=oss))
+        operations.extend(
+            _operations_for_target(
+                project_root,
+                idx,
+                target,
+                smells_by_node,
+                cycles_handled,
+                graph=graph,
+                self_map=self_map,
+                oss_patterns=oss,
+                learning_stats=learning_stats,
+            )
+        )
     operations = apply_smell_action_filters(project_root, operations, learning_stats)
     recent_failures = get_recent_failures(Path(project_root), limit=5)
+    failed_plans = get_recent_failed_plan_hashes(Path(project_root), limit=10)
+    failed_kind_plan_pairs = get_recent_failed_kind_plan_pairs(Path(project_root), limit=15)
+    kind_plan_counts = get_kind_plan_failure_counts(Path(project_root), limit=20)
+    plan_sig = plan_hash_from_ops(operations)
+    if plan_sig in failed_plans:
+        operations = list(reversed(operations))
+    operations = apply_failure_based_fallback(operations, kind_plan_counts)
+    plan_sig = plan_hash_from_ops(operations)
     operations = sort_and_reindex_by_learning(
-        operations, learning_stats, recent_failures=recent_failures
+        operations,
+        learning_stats,
+        recent_failures=recent_failures,
+        failed_kind_plan_pairs=failed_kind_plan_pairs,
+        plan_hash=plan_sig,
+        kind_plan_counts=kind_plan_counts,
     )
     cap = max_ops_per_cycle()
     if cap > 0 and len(operations) > cap:
@@ -208,18 +240,48 @@ def _existing_extracted_class_is_synced(project_root: str, target_file: str, tar
             return required_methods.issubset(existing_methods)
     return False
 
-def _append_default_refactor_operation(operations: List[PatchOperation], project_root: str, name: str, idx: int, desc_lines: List[str], smell_type: str, action_kind: str, node_smells: List[ArchSmell], *, graph: Optional['ProjectGraph'], oss_patterns: Optional[Dict[str, Any]]=None) -> None:
-    """Build and append the default TODO refactor operation for a target (review §2: hints via hints_provider)."""
+def _append_default_refactor_operation(
+    operations: List[PatchOperation],
+    project_root: str,
+    name: str,
+    idx: int,
+    desc_lines: List[str],
+    smell_type: str,
+    action_kind: str,
+    node_smells: List[ArchSmell],
+    *,
+    graph: Optional["ProjectGraph"],
+    oss_patterns: Optional[Dict[str, Any]] = None,
+    learning_stats: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> None:
+    """Build and append the default TODO refactor operation (review §2). OSS hints limited by success_rate."""
     hints, split_params = build_hints_and_params(
-        project_root, smell_type, action_kind, node_smells, name,
-        graph=graph, oss_patterns=oss_patterns or {},
+        project_root,
+        smell_type,
+        action_kind,
+        node_smells,
+        name,
+        graph=graph,
+        oss_patterns=oss_patterns or {},
+        learning_stats=learning_stats,
         llm_hints_fn=default_llm_hints_fn,
     )
     hint_lines = '\n'.join((f'# - {hint}' for hint in hints))
     diff_hint = f'# TODO: Refactor {name} ({smell_type} -> {action_kind})\n# Suggested steps:\n{hint_lines}\n'
     operations.append(PatchOperation(target_file=name, kind=action_kind, description=' '.join(desc_lines), diff=diff_hint, smell_type=smell_type, params=split_params))
 
-def _operations_for_target(project_root: str, idx: int, target: Dict[str, Any], smells_by_node: Dict[str, List[ArchSmell]], cycles_handled: set[frozenset[str]], *, graph: Optional['ProjectGraph'], self_map: Optional[Dict[str, Any]], oss_patterns: Optional[Dict[str, Any]]=None) -> List[PatchOperation]:
+def _operations_for_target(
+    project_root: str,
+    idx: int,
+    target: Dict[str, Any],
+    smells_by_node: Dict[str, List[ArchSmell]],
+    cycles_handled: set[frozenset[str]],
+    *,
+    graph: Optional["ProjectGraph"],
+    self_map: Optional[Dict[str, Any]] = None,
+    oss_patterns: Optional[Dict[str, Any]] = None,
+    learning_stats: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> List[PatchOperation]:
     """Build patch operations for a single target module."""
     from eurika.reasoning.graph_ops import refactor_kind_for_smells
     name = target.get('name') or ''
@@ -248,5 +310,17 @@ def _operations_for_target(project_root: str, idx: int, target: Dict[str, Any], 
         if _is_thin_reexport_module(path):
             return operations
     _maybe_add_extract_class_operation(operations, project_root, name, idx, smell_type, action_kind)
-    _append_default_refactor_operation(operations, project_root, name, idx, desc_lines, smell_type, action_kind, node_smells, graph=graph, oss_patterns=oss_patterns or {})
+    _append_default_refactor_operation(
+        operations,
+        project_root,
+        name,
+        idx,
+        desc_lines,
+        smell_type,
+        action_kind,
+        node_smells,
+        graph=graph,
+        oss_patterns=oss_patterns or {},
+        learning_stats=learning_stats,
+    )
     return operations

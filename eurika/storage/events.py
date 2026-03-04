@@ -103,13 +103,19 @@ class EventStore:
         input: Dict[str, Any],
         output: Dict[str, Any],
         result: Optional[Any] = None,
+        *,
+        timestamp: Optional[float] = None,
     ) -> None:
         """Append one event and persist. input/output are normalized to JSON-safe."""
+        kw: Dict[str, Any] = {}
+        if timestamp is not None:
+            kw["timestamp"] = timestamp
         event = Event(
             type=type,
             input=_json_safe(input),
             output=_json_safe(output),
             result=result,
+            **kw,
         )
         self._events.append(event)
         self._save()

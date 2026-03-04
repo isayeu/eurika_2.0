@@ -2,6 +2,7 @@
 Hints provider: graph + OSS hints; LLM optional (review §2).
 
 Separates hint-building from LLM. LLM called only when llm_hints_fn provided.
+Operational pattern library: OSS hints limited by success_rate (MEMORY.md).
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ import ast
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 
-from eurika.reasoning.planner.heuristics import diff_hints_for
+from eurika.reasoning.planner.heuristics import SMELL_ACTION_SEP, diff_hints_for
 
 if TYPE_CHECKING:
     from eurika.analysis.graph import ProjectGraph
@@ -122,6 +123,23 @@ def _has_split_candidates_for_hinted_stems(file_path: Path, hinted_stems: set[st
     return False
 
 
+def _oss_hint_limit_for_smell_action(
+    learning_stats: Optional[Dict[str, Dict[str, Any]]],
+    smell_type: str,
+    action_kind: str,
+) -> int:
+    """Max OSS hints for (smell_type, action_kind). 0 when low success rate (operational pattern library)."""
+    if not learning_stats:
+        return 3
+    key = f"{smell_type or 'unknown'}{SMELL_ACTION_SEP}{action_kind or ''}"
+    d = learning_stats.get(key, {})
+    total = d.get("total", 0)
+    if total < 3:
+        return 3
+    rate = (d.get("success", 0) or 0) / total
+    return 0 if rate < 0.25 else 3
+
+
 def build_hints_and_params(
     project_root: str,
     smell_type: str,
@@ -131,6 +149,7 @@ def build_hints_and_params(
     *,
     graph: Optional["ProjectGraph"] = None,
     oss_patterns: Optional[Dict[str, Any]] = None,
+    learning_stats: Optional[Dict[str, Dict[str, Any]]] = None,
     llm_hints_fn: Optional[
         Callable[[str, str, str, Dict[str, Any]], List[str]]
     ] = None,
@@ -140,12 +159,14 @@ def build_hints_and_params(
 
     llm_hints_fn(smell_type, name, project_root, graph_context) -> List[str].
     When None, LLM is not called.
+    Operational: OSS hints limited by success_rate (pattern library influenced by learning loop).
     """
     hints = list(diff_hints_for(smell_type, action_kind))
     oss = oss_patterns or {}
+    max_oss = _oss_hint_limit_for_smell_action(learning_stats, smell_type, action_kind)
     entries = oss.get(smell_type, [])
-    if isinstance(entries, list):
-        for e in entries[:3]:
+    if isinstance(entries, list) and max_oss > 0:
+        for e in entries[:max_oss]:
             if isinstance(e, dict):
                 proj = e.get("project", "?")
                 mod = e.get("module", "?")

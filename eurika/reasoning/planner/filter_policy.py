@@ -81,6 +81,24 @@ def _should_emit_default_todo_op(
     return True
 
 
+def apply_failure_based_fallback(
+    operations: List[PatchOperation],
+    kind_plan_counts: dict[tuple[str, str], int],
+    min_failures_for_fallback: int = 2,
+) -> List[PatchOperation]:
+    """When (kind, plan_hash) failed min_failures_for_fallback+ times, swap to fallback kind."""
+    result: List[PatchOperation] = []
+    for op in operations:
+        k = op.kind or ""
+        fail_count = sum(c for (kk, _), c in kind_plan_counts.items() if kk == k)
+        if fail_count >= min_failures_for_fallback:
+            fallback = fallback_kind_for_low_success(op.smell_type or "unknown", k)
+            if fallback:
+                op = _rebuild_operation_with_kind(op, fallback)
+        result.append(op)
+    return result
+
+
 def apply_smell_action_filters(
     project_root: str,
     operations: List[PatchOperation],
@@ -149,20 +167,54 @@ def _is_recent_failure(
     return (op.target_file or "", op.kind or "") in fail_set
 
 
+def _is_recent_failure_by_kind_plan(
+    op: PatchOperation,
+    plan_hash: str,
+    failed_kind_plan_pairs: frozenset[tuple[str, str]],
+) -> bool:
+    """True if (kind, plan_hash) failed — deprioritize when retrying same plan."""
+    if not plan_hash or not failed_kind_plan_pairs:
+        return False
+    return (op.kind or "", plan_hash) in failed_kind_plan_pairs
+
+
+def _failure_penalty_weight(
+    op: PatchOperation,
+    plan_hash: str,
+    kind_plan_counts: Optional[dict[tuple[str, str], int]],
+) -> int:
+    """0 = no penalty, 1 = single failure, 2 = repeated (count >= 2)."""
+    if not kind_plan_counts:
+        return 0
+    count = kind_plan_counts.get((op.kind or "", plan_hash), 0)
+    return 2 if count >= 2 else (1 if count >= 1 else 0)
+
+
 def sort_and_reindex_by_learning(
     operations: List[PatchOperation],
     learning_stats: Optional[Dict[str, Dict[str, Any]]],
     *,
     recent_failures: Optional[Sequence[Tuple[str, str, str]]] = None,
+    failed_kind_plan_pairs: Optional[frozenset[tuple[str, str]]] = None,
+    plan_hash: Optional[str] = None,
+    kind_plan_counts: Optional[dict[tuple[str, str], int]] = None,
 ) -> List[PatchOperation]:
-    """Sort operations by historical success rate; deprioritize recent failures (Review III)."""
+    """Sort operations by historical success rate; deprioritize by (target_file,kind) and (kind,plan_hash)."""
     recent_failures = recent_failures or ()
-    if not learning_stats and not recent_failures:
+    failed_kind_plan_pairs = failed_kind_plan_pairs or frozenset()
+    plan_hash = plan_hash or ""
+    kind_plan_counts = kind_plan_counts or {}
+    if not learning_stats and not recent_failures and not failed_kind_plan_pairs:
         return operations
+    has_tf_kind_fail = _is_recent_failure
+    has_kind_plan_fail = lambda op: _is_recent_failure_by_kind_plan(op, plan_hash, failed_kind_plan_pairs)
+    penalty = lambda op: _failure_penalty_weight(op, plan_hash, kind_plan_counts)
     ordered = sorted(
         operations,
         key=lambda op: (
-            _is_recent_failure(op, recent_failures),
+            penalty(op),
+            has_tf_kind_fail(op, recent_failures),
+            has_kind_plan_fail(op),
             -_success_rate_for_op(op, learning_stats),
         ),
         reverse=False,
