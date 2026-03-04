@@ -124,20 +124,11 @@ def test_priority_from_graph_with_learning_stats():
 
 
 def test_priority_from_graph_with_decay(tmp_path):
-    """Decay v1.1: targets with failures in failure_log get deprioritized."""
-    import json
+    """Decay v1.1: targets with failures in EventLog get deprioritized."""
+    from eurika.polygon.decay_polygon import inject_failures
     from eurika.smells.models import ArchSmell
 
-    (tmp_path / ".eurika").mkdir()
-    (tmp_path / ".eurika" / "failures.json").write_text(
-        json.dumps({
-            "failures": [
-                {"target_file": "a.py", "kind": "split_module", "failure_reason": "verify_failed", "timestamp": 1000},
-                {"target_file": "a.py", "kind": "split_module", "failure_reason": "verify_failed", "timestamp": 1001},
-            ]
-        }),
-        encoding="utf-8",
-    )
+    inject_failures(tmp_path, "a.py", "split_module", 2)
     g = _make_graph(["a.py", "b.py"], {"a.py": ["b.py"], "b.py": []})
     smells = [
         ArchSmell(type="god_module", nodes=["a.py"], severity=5.0, description=""),

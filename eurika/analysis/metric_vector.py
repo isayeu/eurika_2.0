@@ -20,7 +20,7 @@ class MetricVector:
     """
     Fixed-dimension vector for architecture state (review 2026 II).
 
-    All components in [0, 1]. Higher cohesion = better; higher others = worse.
+    All components in [0, 1]. Higher cohesion = better; higher others = structural debt.
     """
 
     complexity: float
@@ -40,6 +40,25 @@ class MetricVector:
             self.layering_violations,
             self.entropy,
         )
+
+
+def _compute_coupling(graph: "ProjectGraph", degrees: List[int], total_edges: int) -> float:
+    n = len(graph.nodes)
+    max_degree = max(degrees) if degrees else 0
+    max_possible = n * (n - 1) if n > 1 else 1
+    coupling = min(1.0, total_edges / max_possible * 10) if max_possible else 0.0
+    if max_degree > 0:
+        avg_degree = mean(degrees)
+        coupling = max(coupling, min(1.0, avg_degree / (max_degree + 1)))
+    return coupling
+
+
+def _compute_complexity(cycles: List[Any], degrees: List[int], max_degree: int) -> float:
+    cycle_penalty = min(1.0, len(cycles) * 0.2)
+    sigma = pstdev(degrees) if len(degrees) > 1 else 0.0
+    degree_spread = min(1.0, sigma / (max_degree + 1)) if max_degree else 0.0
+    complexity = min(1.0, cycle_penalty * 0.6 + degree_spread * 0.4)
+    return complexity
 
 
 def compute_metric_vector(graph: "ProjectGraph", smells: List[Any]) -> MetricVector:
@@ -64,47 +83,33 @@ def compute_metric_vector(graph: "ProjectGraph", smells: List[Any]) -> MetricVec
     total_edges = sum(len(graph.edges.get(node, [])) for node in graph.nodes)
     cycles = graph.find_cycles()
 
-    # Coupling: 0=low, 1=high
-    max_degree = max(degrees) if degrees else 0
-    max_possible = n * (n - 1) if n > 1 else 1
-    coupling = min(1.0, total_edges / max_possible * 10) if max_possible else 0.0
-    if max_degree > 0:
-        avg_degree = mean(degrees)
-        coupling = max(coupling, min(1.0, avg_degree / (max_degree + 1)))
+    coupling = _compute_coupling(graph, degrees, total_edges)
+    complexity = _compute_complexity(cycles, degrees, max(degrees) if degrees else 0)
 
-    # Complexity: cycles + degree variance. 0=low, 1=high
-    cycle_penalty = min(1.0, len(cycles) * 0.2)
-    sigma = pstdev(degrees) if len(degrees) > 1 else 0.0
-    degree_spread = min(1.0, sigma / (max_degree + 1)) if max_degree else 0.0
-    complexity = min(1.0, cycle_penalty * 0.6 + degree_spread * 0.4)
-
-    # Cohesion: inverse of god-module concentration. High = focused modules
+    # Cohesion: inverse of god-module concentration
     god_count = sum(1 for s in smells if getattr(s, "type", "") == "god_module")
     bottleneck_count = sum(1 for s in smells if getattr(s, "type", "") == "bottleneck")
     cohesion = max(0.0, 1.0 - (god_count + bottleneck_count) / (n + 1))
     low_fanout = sum(1 for fi, fo in fan.values() if fo <= 2)
     cohesion = (cohesion + low_fanout / (n + 1)) / 2 if n else 0.5
 
-    # Instability: I = fan_out/(fan_in+fan_out) per module; 0=stable, 1=unstable
-    instabilities = []
-    for node in graph.nodes:
-        fi, fo = fan[node]
-        total = fi + fo
-        instabilities.append(fo / total if total > 0 else 0.0)
+    # Instability: Martin's I = fan_out / (fan_in + fan_out), averaged
+    instabilities = [
+        fo / (fi + fo + 1e-9) for fi, fo in fan.values()
+    ]
     instability = mean(instabilities) if instabilities else 0.5
 
-    # Layering violations: cycles break layer discipline (ROADMAP §5.7)
+    # Layering violations: from cycle count
     layering_violations = min(1.0, len(cycles) * 0.15)
 
-    # Entropy: structural diversity of degrees (normalized)
-    sigma_deg = pstdev(degrees) if len(degrees) > 1 else 0.0
-    entropy = min(1.0, sigma_deg / (max_degree + 1)) if max_degree else 0.0
+    # Entropy: degree dispersion
+    entropy = min(1.0, pstdev(degrees) / (max(degrees) + 1)) if len(degrees) > 1 else 0.0
 
     return MetricVector(
-        complexity=round(complexity, 4),
-        coupling=round(coupling, 4),
-        cohesion=round(cohesion, 4),
-        instability=round(instability, 4),
-        layering_violations=round(layering_violations, 4),
-        entropy=round(entropy, 4),
+        complexity=complexity,
+        coupling=coupling,
+        cohesion=cohesion,
+        instability=instability,
+        layering_violations=layering_violations,
+        entropy=entropy,
     )

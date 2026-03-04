@@ -2,6 +2,12 @@
 
 ## Current state (2026-03-03)
 
+- **122. Enriched failure event (2026-03):** goal_id, plan_hash, confidence в learn events. get_recent_failures_enriched, get_recent_failed_plan_hashes. Planner: при failed plan_hash — reverse порядка ops. ARCHITECTURE_MEMORY_REVIEW §2.
+- **121. Минимальный STM в ExecutionContext (2026-03):** current_goal, attempt_count, session_failures. Поля опциональны; ARCHITECTURE_MEMORY_REVIEW §5.
+- **120. Верификация: память влияет на решения (2026-03):** tests/test_memory_influences_planner.py — planner deprioritize op после провалов; priority_from_graph decay. ARCHITECTURE_MEMORY_REVIEW §Верификация.
+- **119. FailureLog = view над EventLog (2026-03):** Один источник истины. record_outcome пишет только в EventLog; get_recent_failures и priority_decay читают из events. Убрана двойная истина (ARCHITECTURE_MEMORY_REVIEW).
+- **118. MEMORY.md (2026-03):** docs/MEMORY.md — формализация EventLog, FailureLog, LearningStore (контракты, точки входа, связи). ROADMAP + docs.mdc обновлены.
+- **117. Самокоррекция в fix-flow (2026-03):** ArchReviewAgentCore при наличии graph+root использует priority_from_graph (decay, learning_stats, degree bonus) вместо _score_modules_by_smells. Decay (failure_penalty, archive после 5 провалов) теперь действует в diagnose. priority_from_graph возвращает score в модулях.
 - **116. Decay v1.2 (2026-03):** Step 3 recovery (success cancels failure), Step 4 forgetting (time-weighted). decay_polygon.py, test_decay_dynamics. fix . --dry-run: 0 ops, cycle OK, Files=382.
 - **115. Fix apply (2026-03):** fix . --allow-low-risk-campaign. modified=2 (patch_plan.py, patch_plan_extracted.py), 1 split_module, verify=✓. apply_rate=2.0, rollback_rate=0.0.
 - **114. Dogfooding после decay v1.1 (2026-03):** fix . --dry-run. Would apply: 1 split_module (patch_plan.py). Decision summary: blocked by policy=35, critic=35, human=35. Files=379, Smells=118. Цикл scan→diagnose→plan прошёл, decay учтён в приоритизации.

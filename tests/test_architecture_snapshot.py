@@ -37,6 +37,9 @@ def test_execution_context_defaults() -> None:
     assert ctx.snapshot_before is None
     assert ctx.candidates is None
     assert ctx.delta_score is None
+    assert ctx.current_goal is None
+    assert ctx.attempt_count == 0
+    assert ctx.session_failures == 0
 
 
 def test_execution_context_with_snapshot() -> None:

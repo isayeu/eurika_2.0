@@ -109,6 +109,21 @@ class ExecutionContext:
 
 ---
 
+## Аудит стабильного ядра (2026-03)
+
+| Критерий | Статус | Детали |
+|----------|--------|--------|
+| **Planner чистый** | ✅ | Planner читает storage (get_recent_failures, learning_stats), не пишет. Запись только из orchestration/apply_stage. |
+| **Storage dumb** | ✅ | experience_store, failure_log — тонкие фасады. event_views — read-side агрегация, без planning-логики. |
+| **Snapshot единственный источник** | ✅ | prepare → ctx.snapshot_before; ArchReviewAgentCore при ctx использует _structure_from_snapshot; fallback _load_structure только при ctx=None (нет self_map). |
+| **Самокоррекция** | ✅ | failure_reason: aborted_reason/rollback.reason/verify_failed → record_outcome → failure_log; planner_patch_ops вызывает get_recent_failures → sort_and_reindex_by_learning(recent_failures=...) для deprioritize. |
+
+**Planner read-side:** `_suggest_extract_class`, `_is_thin_reexport_module` читают `file_path.read_text()` — допустимые heuristics; planner не мутирует storage/orchestration.
+
+**Edge-case ctx=None:** При skip_scan или отсутствии self_map.json `_build_execution_context` возвращает None. Agent получает ctx=None и использует `_load_structure` → FileNotFoundError при отсутствии self_map. Ожидаемо: fix требует предварительный scan (или self_map из прошлого run). Два источника (snapshot vs load_structure) не используются в одном проходе.
+
+---
+
 ## Ссылки
 
 - **review.md** — §1 ExecutionContext, §2 разделение слоёв, §3 Score Delta

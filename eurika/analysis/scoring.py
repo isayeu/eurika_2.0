@@ -8,7 +8,7 @@ All scores in [0, 1]; higher cohesion/modularity = better, higher coupling/compl
 from __future__ import annotations
 
 from statistics import mean, pstdev
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
 if TYPE_CHECKING:
     from eurika.analysis.graph import ProjectGraph
@@ -35,37 +35,48 @@ def compute_architecture_scores(
     total_edges = sum(len(graph.edges.get(node, [])) for node in graph.nodes)
     cycles = graph.find_cycles()
 
-    # Coupling: edges / (n * max_out) or degree concentration. 0=low, 1=high.
+    coupling = _compute_coupling(n, total_edges, degrees)
+    complexity = _compute_complexity(cycles, degrees)
+    cohesion = _compute_cohesion(smells, n, fan)
+    modularity = _compute_modularity(graph, n)
+
+    return {"cohesion": cohesion, "coupling": coupling, "complexity": complexity, "modularity": modularity}
+
+
+def _compute_coupling(n: int, total_edges: int, degrees: List[int]) -> float:
     max_degree = max(degrees) if degrees else 0
     max_possible = n * (n - 1) if n > 1 else 1
     coupling = min(1.0, total_edges / max_possible * 10) if max_possible else 0.0
     if max_degree > 0:
         avg_degree = mean(degrees)
         coupling = max(coupling, min(1.0, avg_degree / (max_degree + 1)))
+    return coupling
 
-    # Complexity: cycles + degree variance. 0=low, 1=high.
+
+def _compute_complexity(cycles: List[Any], degrees: List[int]) -> float:
     cycle_penalty = min(1.0, len(cycles) * 0.2)
     sigma = pstdev(degrees) if len(degrees) > 1 else 0.0
-    degree_spread = min(1.0, sigma / (max_degree + 1)) if max_degree else 0.0
+    degree_spread = min(1.0, sigma / (max(degrees) + 1)) if max(degrees) else 0.0
     complexity = min(1.0, cycle_penalty * 0.6 + degree_spread * 0.4)
+    return complexity
 
-    # Cohesion: inverse of god-module concentration. High = modules are focused.
+
+def _compute_cohesion(smells: List[Any], n: int, fan: Dict[Any, Tuple[int, int]]) -> float:
     god_count = sum(1 for s in smells if getattr(s, "type", "") == "god_module")
     bottleneck_count = sum(1 for s in smells if getattr(s, "type", "") == "bottleneck")
     cohesion = max(0.0, 1.0 - (god_count + bottleneck_count) / (n + 1))
     low_fanout = sum(1 for fi, fo in fan.values() if fo <= 2)
     cohesion = (cohesion + low_fanout / (n + 1)) / 2 if n else 0.5
+    return cohesion
 
-    # Modularity: layer compliance, few cycles. High = good separation.
+
+def _compute_modularity(graph: "ProjectGraph", n: int) -> float:
     layers_dict = graph.layers()
-    max_layer = max(layers_dict.values()) if layers_dict else 0
-    layer_spread = max_layer / (n + 1) if n else 0
-    cycle_ok = max(0.0, 1.0 - len(cycles) * 0.15)
-    modularity = min(1.0, (layer_spread * 0.3 + cycle_ok * 0.7))
-
-    return {
-        "cohesion": round(cohesion, 4),
-        "coupling": round(coupling, 4),
-        "complexity": round(complexity, 4),
-        "modularity": round(modularity, 4),
-    }
+    if not layers_dict or n == 0:
+        return 0.5
+    max_layer = max(layers_dict.values())
+    if max_layer == 0:
+        return 0.5
+    layer_spread = len(set(layers_dict.values())) / (max_layer + 1)
+    modularity = min(1.0, layer_spread)
+    return modularity

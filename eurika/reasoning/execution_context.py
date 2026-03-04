@@ -25,6 +25,9 @@ class ExecutionContext:
     Unified context for fix-cycle pipeline (review 2026 II).
 
     Only the Orchestrator should mutate this. All services are pure.
+
+    STM (ARCHITECTURE_MEMORY_REVIEW §5): current_goal, attempt_count, session_failures —
+    контекст текущего цикла, не сохраняется навсегда.
     """
 
     snapshot_before: Optional["ArchitectureSnapshot"] = None
@@ -35,3 +38,7 @@ class ExecutionContext:
     snapshot_after: Optional["ArchitectureSnapshot"] = None
     risk_report: Optional["RiskReport"] = None
     delta_score: Optional[float] = None
+
+    current_goal: Optional[str] = None
+    attempt_count: int = 0
+    session_failures: int = 0

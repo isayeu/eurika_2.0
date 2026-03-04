@@ -6,7 +6,7 @@
 
 | Пакет | Публичные точки входа | Импорт |
 |-------|------------------------|--------|
-| **eurika.storage** | `ProjectMemory`, `Event`, `EventStore`, `event_engine`, `ExperienceStore`, `record_outcome`, `get_recent_failures`, `get_statistics`, `SessionMemory`, `operation_key`, `aggregate_operational_metrics`, `save_checkpoint`, `load_checkpoint`, `has_checkpoint`, `snapshot_from_checkpoint` | `from eurika.storage import ProjectMemory, get_recent_failures, save_checkpoint` |
+| **eurika.storage** | `ProjectMemory`, `Event`, `EventStore`, `event_engine`, `ExperienceStore`, `record_outcome`, `get_recent_failures`, `get_recent_failures_enriched`, `get_recent_failed_plan_hashes`, `plan_hash_from_ops`, `get_statistics`, `SessionMemory`, `operation_key`, `aggregate_operational_metrics`, `save_checkpoint`, `load_checkpoint`, `has_checkpoint`, `snapshot_from_checkpoint` | `from eurika.storage import ProjectMemory, get_recent_failures, save_checkpoint` |
 | **eurika.agent** | `run_agent_cycle`, `DefaultToolContract`, `OrchestratorToolset`, `WEAK_SMELL_ACTION_PAIRS`, `evaluate_operation`, `is_whitelisted_for_auto` | `from eurika.agent import run_agent_cycle, is_whitelisted_for_auto` |
 | **eurika.reasoning** | `advisor`, `architect`, `planner`, `heuristics`, `graph_ops` | `from eurika.reasoning import architect`<br>`from eurika.reasoning.architect import build_context_sources` |
 | **eurika.reasoning.architect** | `build_context_sources`, `call_llm_with_prompt`, `interpret_architecture` | `from eurika.reasoning.architect import build_context_sources` |

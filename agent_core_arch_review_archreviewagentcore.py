@@ -64,7 +64,7 @@ class ArchReviewAgentCore:
         observations_info = self._load_observations(root)
         explain = self._build_explain_risk(summary, smells)
         evolution = self._build_summarize_evolution(trends=history_info['trends'], regressions=history_info['regressions'], evolution_report=history_info['evolution_report'])
-        priority = self._build_prioritize_modules(summary, smells, history_info)
+        priority = self._build_prioritize_modules(summary, smells, history_info, graph=graph, root=root)
         plan = self._build_plan(root=root, summary=summary, smells=smells, history_info=history_info, priority_modules=priority.arguments.get('modules', []))
         action_plan = self._build_action_plan(root=root, summary=summary, smells=smells, history_info=history_info, priority_modules=priority.arguments.get('modules', []))
         patch_plan = self._build_patch_plan(root=root, summary=summary, smells=smells, history_info=history_info, priority_modules=priority.arguments.get('modules', []), graph=graph)
@@ -84,9 +84,9 @@ class ArchReviewAgentCore:
         This keeps the layer strictly read-only; execution is delegated to
         external tools or sandboxes.
         """
-        summary, smells, _ = self._load_structure(root)
+        summary, smells, graph = self._load_structure(root)
         history_info = self._load_history(root, window=window)
-        priority = self._build_prioritize_modules(summary, smells, history_info)
+        priority = self._build_prioritize_modules(summary, smells, history_info, graph=graph, root=root)
         priority_modules = priority.arguments.get('modules', [])
         action_plan: ActionPlan = build_action_plan(project_root=str(root), summary=summary, smells=smells, history_info=history_info, priorities=priority_modules)
         proposal = DecisionProposal(action='suggest_action_plan', arguments={'action_plan': action_plan.to_dict()}, confidence=0.7, rationale='Action plan derived from architecture plan inputs: prioritized modules, architectural smells and history trends. Execution is not performed by this AgentCore and is expected to be handled by an external sandbox.')
@@ -97,9 +97,9 @@ class ArchReviewAgentCore:
         Build an ActionPlan from diagnostics and simulate its execution
         via ExecutorSandbox.dry_run, without modifying any code.
         """
-        summary, smells, _ = self._load_structure(root)
+        summary, smells, graph = self._load_structure(root)
         history_info = self._load_history(root, window=window)
-        priority = self._build_prioritize_modules(summary, smells, history_info)
+        priority = self._build_prioritize_modules(summary, smells, history_info, graph=graph, root=root)
         priority_modules = priority.arguments.get('modules', [])
         action_plan: ActionPlan = build_action_plan(project_root=str(root), summary=summary, smells=smells, history_info=history_info, priorities=priority_modules)
         sandbox = ExecutorSandbox(project_root=root)
@@ -195,20 +195,49 @@ class ArchReviewAgentCore:
         """Convert scored modules into a sorted priority list."""
         return [{'name': name, 'score': round(info['score'], 3), 'reasons': info['reasons']} for name, info in sorted(scored.items(), key=lambda kv: kv[1]['score'], reverse=True)]
 
-    def _build_prioritize_modules(self, summary: Dict[str, Any], smells: List[ArchSmell], history_info: Dict[str, Any]) -> DecisionProposal:
+    def _build_prioritize_modules(
+        self,
+        summary: Dict[str, Any],
+        smells: List[ArchSmell],
+        history_info: Dict[str, Any],
+        *,
+        graph: Optional['ProjectGraph'] = None,
+        root: Optional[Path] = None,
+    ) -> DecisionProposal:
         """
-        Build a simple, explainable prioritization over modules.
-
-        Heuristic v0.3 draft:
-        - assign base score from smells severity per module;
-        - boost modules mentioned in summary.risks;
-        - optionally nudge score based on trends (if smells are increasing).
+        Build prioritization over modules. When graph + root available, uses
+        priority_from_graph (decay, learning_stats, degree bonus); else heuristic.
         """
+        if graph is not None and root is not None:
+            try:
+                from eurika.reasoning.graph_ops import priority_from_graph
+                from eurika.storage.global_memory import get_merged_learning_stats
+                learning_stats = get_merged_learning_stats(root)
+                modules = priority_from_graph(
+                    graph, smells,
+                    summary_risks=summary.get('risks'),
+                    top_n=12,
+                    learning_stats=learning_stats,
+                    project_root=root,
+                )
+                arguments: Dict[str, Any] = {'modules': modules}
+                return DecisionProposal(
+                    action='prioritize_modules',
+                    arguments=arguments,
+                    confidence=0.8,
+                    rationale='Module priorities from graph (severity, degree, learning, decay).',
+                )
+            except Exception:
+                pass
         scored = self._score_modules_by_smells(summary, smells, history_info)
         modules = self._build_priority_list(scored)
-        arguments: Dict[str, Any] = {'modules': modules}
-        rationale_lines = ['Module priorities are derived from accumulated architectural smell severities, explicit risks in the architecture summary and, optionally, smell trends from history.']
-        return DecisionProposal(action='prioritize_modules', arguments=arguments, confidence=0.8, rationale=' '.join(rationale_lines))
+        arguments = {'modules': modules}
+        return DecisionProposal(
+            action='prioritize_modules',
+            arguments=arguments,
+            confidence=0.8,
+            rationale='Module priorities from smells severity, summary risks, trends.',
+        )
 
     def _build_plan(self, root: Path, summary: Dict[str, Any], smells: List[ArchSmell], history_info: Dict[str, Any], priority_modules: List[Dict[str, Any]]) -> DecisionProposal:
         """

@@ -213,8 +213,8 @@ def priority_from_graph(
 
     ordered = sorted(scores.items(), key=lambda x: -x[1])[:top_n]
     return [
-        {"name": name, "reasons": reasons.get(name, [])}
-        for name, _ in ordered
+        {"name": name, "score": round(score, 3), "reasons": reasons.get(name, [])}
+        for name, score in ordered
     ]
 
 

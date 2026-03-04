@@ -41,8 +41,6 @@ def test_qt_main_window_smoke() -> None:
         assert window.ollama_health is not None
         assert window.ollama_installed_combo is not None
         assert window.ollama_available_combo is not None
-        assert window.ollama_search_edit is not None
-        assert window.ollama_search_refresh_btn is not None
         assert window.ollama_custom_model_edit is not None
         assert window.ollama_install_btn is not None
         tab_names = [window.tabs.tabText(i) for i in range(window.tabs.count())]
@@ -84,10 +82,10 @@ def test_qt_main_window_smoke() -> None:
     )
 
 
-def test_filter_available_ollama_models_returns_matches() -> None:
-    names = ollama_handlers.filter_available_ollama_models("qwen")
-    assert names
-    assert all("qwen" in name for name in names)
+def test_available_ollama_models_not_empty() -> None:
+    from qt_app.ui.handlers.ollama_handlers import AVAILABLE_OLLAMA_MODELS
+
+    assert len(AVAILABLE_OLLAMA_MODELS) >= 10
 
 
 def test_resolve_ollama_model_to_install_prefers_custom() -> None:

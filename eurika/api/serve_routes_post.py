@@ -4,7 +4,6 @@ from pathlib import Path
 from eurika.api import preview_operation, save_approvals
 from . import serve as _serve
 from .serve_exec import EXEC_TIMEOUT_MAX, EXEC_TIMEOUT_MIN, exec_eurika_command
-from .serve_utils import parse_bool_flag
 
 def dispatch_api_post(handler, project_root: Path, path: str, body: dict | None) -> bool:
     """Handle POST requests. Returns True if handled."""
@@ -38,62 +37,21 @@ def dispatch_api_post(handler, project_root: Path, path: str, body: dict | None)
             _serve._json_response(handler, {'error': 'invalid command payload', 'hint': 'Expected command: string'}, status=400)
             return True
         raw_timeout = body.get('timeout', 120)
-        if raw_timeout is None:
-            timeout = None
-        else:
-            try:
-                timeout = int(raw_timeout)
-            except (TypeError, ValueError):
-                _serve._json_response(handler, {'error': 'invalid timeout payload', 'hint': 'Expected timeout: integer or null'}, status=400)
-                return True
-            if timeout < EXEC_TIMEOUT_MIN or timeout > EXEC_TIMEOUT_MAX:
-                _serve._json_response(handler, {'error': 'invalid timeout range', 'hint': f'Expected timeout: {EXEC_TIMEOUT_MIN}..{EXEC_TIMEOUT_MAX} seconds (or null for unlimited)'}, status=400)
-                return True
-        data = exec_eurika_command(project_root, command, timeout=timeout)
-        _serve._json_response(handler, data)
-        return True
-    if path == '/api/ask_architect':
-        from eurika.orchestration.doctor import run_doctor_cycle
-        no_llm_raw = (body or {}).get('no_llm', False)
-        no_llm = parse_bool_flag(no_llm_raw)
-        if no_llm is None:
-            _serve._json_response(handler, {'error': 'invalid no_llm payload', 'hint': 'Expected no_llm: boolean'}, status=400)
+        timeout = _compute_timeout(raw_timeout)
+        if timeout is None:
+            _serve._json_response(handler, {'error': 'invalid timeout payload', 'hint': 'Expected timeout: integer or null'}, status=400)
             return True
-        doctor_data = run_doctor_cycle(project_root, window=5, no_llm=no_llm)
-        if doctor_data.get('error'):
-            _serve._json_response(handler, {'error': doctor_data['error'], 'text': ''})
-            return True
-        text = doctor_data.get('architect_text') or ''
-        _serve._json_response(handler, {'text': text})
-        return True
-    if path == '/api/chat':
-        if not body or 'message' not in body:
-            _serve._json_response(handler, {'error': "JSON body with 'message' required"}, status=400)
-            return True
-        msg = body.get('message')
-        if not isinstance(msg, str):
-            _serve._json_response(handler, {'error': 'invalid message payload', 'hint': 'Expected message: string'}, status=400)
-            return True
-        raw_history = body.get('history')
-        history: list[dict[str, str]] | None = None
-        if raw_history is not None:
-            if not isinstance(raw_history, list):
-                _serve._json_response(handler, {'error': 'invalid history payload', 'hint': 'Expected history: list[object]'}, status=400)
-                return True
-            normalized: list[dict[str, str]] = []
-            for item in raw_history:
-                if not isinstance(item, dict):
-                    _serve._json_response(handler, {'error': 'invalid history payload', 'hint': 'Expected history: list[object]'}, status=400)
-                    return True
-                role = item.get('role', 'user')
-                content = item.get('content', '')
-                if not isinstance(role, str) or not isinstance(content, str):
-                    _serve._json_response(handler, {'error': 'invalid history payload', 'hint': 'Expected role/content: string'}, status=400)
-                    return True
-                normalized.append({'role': role, 'content': content})
-            history = normalized
-        from eurika.api.chat import chat_send
-        data = chat_send(project_root, msg, history=history)
-        _serve._json_response(handler, {'text': data.get('text', ''), 'error': data.get('error')})
+        _serve._json_response(handler, exec_eurika_command(project_root, command, timeout))
         return True
     return False
+
+def _compute_timeout(raw_timeout):
+    if raw_timeout is None:
+        return None
+    try:
+        timeout = int(raw_timeout)
+    except (TypeError, ValueError):
+        return None
+    if timeout < EXEC_TIMEOUT_MIN or timeout > EXEC_TIMEOUT_MAX:
+        return None
+    return timeout

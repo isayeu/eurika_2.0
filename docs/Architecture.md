@@ -215,6 +215,13 @@ snapshot_before, candidates, selected_action, simulated_snapshot, snapshot_after
 | evaluation | только сравнение before/after |
 | storage | dumb persistence (ExperienceStore, record_outcome, get_statistics) |
 
+**Контракты стабильного ядра (audit 2026-03):**
+| Компонент | Контракт |
+|-----------|----------|
+| **Planner** | Только чтение: get_recent_failures, learning_stats. Не пишет в storage. Запись outcomes — только orchestration/apply_stage. |
+| **Storage** | Тонкие фасады (record_outcome, get_recent_failures). event_views — read-side агрегация, без планирования. |
+| **Snapshot** | prepare строит ctx.snapshot_before из self_map → agent при ctx использует _structure_from_snapshot. Fallback _load_structure только при ctx=None. |
+
 **MetricVector + EnergyModel (порядок по ROADMAP §5.7):**
 1. MetricVector — фиксированная размерность (complexity, coupling, cohesion, instability, layering_violations, entropy)
 2. EnergyModel: Energy = W · MetricVector
