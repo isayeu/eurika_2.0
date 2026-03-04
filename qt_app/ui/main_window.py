@@ -35,7 +35,7 @@ from qt_app.ui.styles import (
 from qt_app.ui.theme import apply_app_theme
 from .handlers import approve_handlers, chat_handlers, command_handlers, dashboard_handlers, notes_handlers, ollama_handlers
 from .main_window_helpers import ChatWorker, default_start_directory
-from .tabs import approve_tab, chat_tab, commands_tab, dashboard_tab, graph_tab, models_tab, notes_tab, terminal_tab
+from .tabs import approve_tab, chat_tab, commands_tab, dashboard_tab, graph_tab, help_tab, models_tab, notes_tab, terminal_tab
 
 class MainWindow(QMainWindow):
     """Desktop-first shell for running core Eurika workflows."""
@@ -117,6 +117,7 @@ class MainWindow(QMainWindow):
         chat_tab.build_chat_tab(self)
         terminal_tab.build_terminal_tab(self)
         notes_tab.build_notes_tab(self)
+        help_tab.build_help_tab(self)
         self.status_label = QLabel("Ready")
         self.status_label.setStyleSheet(get_status_style())
         root_layout.addWidget(self.status_label)
