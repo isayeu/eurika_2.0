@@ -1,7 +1,8 @@
 # Отчёт цикла Eurika
 
-## Current state (2026-03-03)
+## Current state (2026-03-04)
 
+- **123. 100 fix cycles batch (2026-03):** run_cycle_batch 100 циклов (БЕЗ --dry-run). CYCLE_REPORT ritual @25, @50, @75, @100. **Адаптация: Yes** — success_rate 0.83→1.14, rollback 0.2→0, most_successful_action: extract_nested_function (67%) → extract_block_to_helper (100%) → remove_unused_import (100%). top_failure_reason: incomplete_or_broken_llm_extract. BOUNDED_EVOLUTION §6.
 - **122. Enriched failure event (2026-03):** goal_id, plan_hash, confidence в learn events. get_recent_failures_enriched, get_recent_failed_plan_hashes. Planner: при failed plan_hash — reverse порядка ops. ARCHITECTURE_MEMORY_REVIEW §2.
 - **121. Минимальный STM в ExecutionContext (2026-03):** current_goal, attempt_count, session_failures. Поля опциональны; ARCHITECTURE_MEMORY_REVIEW §5.
 - **120. Верификация: память влияет на решения (2026-03):** tests/test_memory_influences_planner.py — planner deprioritize op после провалов; priority_from_graph decay. ARCHITECTURE_MEMORY_REVIEW §Верификация.
@@ -28,6 +29,21 @@
 - **99. 3.0.1 Multi-repo fix/cycle:** test_multi_repo_fix_aggregated_report — eurika fix [path1 path2] пишет eurika_fix_report_aggregated.json в paths[0].
 - **98. CR-E3 Практика: крупный рефакторинг в Composer:** polygon split_demo — split_demo_validators, split_demo_formatters, split_demo (фасад).
 - **97.6–89:** ритуалы, Learning from GitHub, polygon, whitelist, R1–R5.
+
+---
+
+## 123. Snapshot (2026-03-04) — 100 cycles batch (CYCLE_REPORT ritual)
+
+Циклы 25, 50, 75, 100. **Был ли сдвиг поведения? Yes.** most_successful_action менялся; success_rate и rollback_rate улучшились.
+
+| Цикл | success_rate | rollback_rate | most_successful_action | events.json |
+|------|--------------|---------------|------------------------|-------------|
+| 25 | 0.83 | 0.2 | extract_nested_function (67%) | 303 KB |
+| 50 | 0.95 | 0.125 | extract_block_to_helper (100%) | 258 KB |
+| 75 | 0.95 | 0.125 | extract_block_to_helper (100%) | 258 KB |
+| 100 | 1.14 | 0.0 | remove_unused_import (100%) | 231 KB |
+
+top_failure_reason: incomplete_or_broken_llm_extract (constant). most_deprioritized_goal: N/A.
 
 ---
 
