@@ -2,6 +2,8 @@
 
 По **review.md**: онлайн-ресурсы и внешний knowledge подключаются **только после** детерминированного ядра (Patch Engine, Verify, rollback). Иначе — хаос и потеря воспроизводимости.
 
+**Статус (2026):** интегрирован в doctor, architect, explain. API: `eurika.api.get_knowledge(project_root, topic)`; GET /api/knowledge?topic=...&online=0.
+
 ## Контракт
 
 Не «LLM + поиск в интернете», а **Knowledge Provider Layer**.
@@ -68,7 +70,7 @@ Verify stage
 
 Ключ темы нормализуется: пробелы → `_`, lowercase. Запрос по теме `"PEP 701"` ищет ключ `pep_701`.
 
-**Пример файла:** скопируйте `docs/eurika_knowledge.example.json` в корень проекта как `eurika_knowledge.json` и при необходимости отредактируйте. Темы в примере: `python`, `python_3_14`, `architecture_refactor`, `deprecated_api`, `typing`, `cyclic_imports`, `version_migration`, `security`, `async_patterns`.
+**Пример файла:** скопируйте `docs/eurika_knowledge.example.json` в корень проекта как `eurika_knowledge.json` и при необходимости отредактируйте. Темы в примере: `python`, `python_3_14`, `architecture_refactor`, `deprecated_api`, `typing`, `cyclic_imports`, `version_migration`, `security`, `async_patterns`. **Примеры использования API:** `examples/knowledge/` — Python-скрипт, curl, вариант `eurika_knowledge.variant.json`.
 
 ### Кэш сетевых ответов (.eurika/knowledge_cache)
 

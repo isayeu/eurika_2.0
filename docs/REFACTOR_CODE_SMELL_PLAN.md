@@ -39,8 +39,8 @@
 
 ### B. Расширение heuristics (приоритет 2)
 
-- Уменьшить `min_lines` для suggest_extract_block (сейчас 5 для long_function)
-- Добавить поддержку block-типов: with, try/except
+- Уменьшить `min_lines` для suggest_extract_block: long_function=3 ✅; deep_nesting=3 ✅ (было 5)
+- Добавить поддержку block-типов: with, try/except — ✅ уже поддерживаются (ast.With, ast.Try)
 - Улучшить detect extractable block — больше паттернов
 
 - **Эффект:** больше случаев → extract_block_to_helper вместо refactor_code_smell

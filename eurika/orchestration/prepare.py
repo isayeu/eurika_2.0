@@ -420,6 +420,7 @@ def run_fix_diagnose_stage(
 
     if not quiet:
         _LOG.info("--- Step 2/4: diagnose ---")
+        _LOG.info("diagnose: architect (LLM) + planner hints — может занять 1–2 мин при Ollama")
     agent = ArchReviewAgentCore(project_root=path)
     payload: dict[str, Any] = {"path": str(path), "window": window}
     if execution_context is not None:

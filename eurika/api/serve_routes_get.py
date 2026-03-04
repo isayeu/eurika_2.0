@@ -10,6 +10,8 @@ from eurika.api import (
     get_diff,
     get_graph,
     get_history,
+    get_knowledge,
+    get_metrics,
     get_operational_metrics,
     get_patch_plan,
     get_pattern_library,
@@ -33,6 +35,9 @@ def dispatch_api_get(
         include_plugins = query.get("include_plugins", ["0"])[0].lower() in ("1", "true", "yes")
         _serve._json_response(handler, get_summary(project_root, include_plugins=include_plugins))
         return True
+    if path == "/api/metrics":
+        _serve._json_response(handler, get_metrics(project_root))
+        return True
     if path == "/api/self_guard":
         _serve._json_response(handler, get_self_guard(project_root))
         return True
@@ -54,6 +59,7 @@ def dispatch_api_get(
             "project_root": str(project_root),
             "endpoints": [
                 "GET /api/summary?include_plugins=1 — summary (R5: merge plugin smells when 1)",
+                "GET /api/metrics — MetricVector + Energy (ROADMAP §5.7 Execution Model)",
                 "GET /api/self_guard — R5 SELF-GUARD health gate (violations, alarms)",
                 "GET /api/risk_prediction?top_n=10 — R5 top modules by regression risk",
                 "GET /api/smells_with_plugins?include_plugins=1 — R5 Eurika + plugin smells",
@@ -65,6 +71,7 @@ def dispatch_api_get(
                 "GET /api/graph — dependency graph (nodes=modules, edges=imports)",
                 "GET /api/operational_metrics?window=10 — apply-rate, rollback-rate, median verify time",
                 "GET /api/pattern_library?with_samples=1 — OSS pattern library (Learning from GitHub 3.0.5)",
+                "GET /api/knowledge?topic=...&online=0 — Knowledge Layer query (KNOWLEDGE_LAYER.md)",
                 "GET /api/pending_plan — team-mode plan for approve UI (ROADMAP 3.5.6)",
                 "GET /api/file?path=... — read file content (for diff preview)",
                 "POST /api/operation_preview — preview single-file op diff (ROADMAP 3.6.7)",
@@ -105,6 +112,14 @@ def dispatch_api_get(
     if path == "/api/pattern_library":
         samples = query.get("with_samples", ["1"])[0].lower() not in ("0", "false", "no")
         _serve._json_response(handler, get_pattern_library(project_root, with_samples=samples))
+        return True
+    if path == "/api/knowledge":
+        topic_q = query.get("topic", [])
+        if not topic_q:
+            _serve._json_response(handler, {"error": "query param 'topic' required (e.g. ?topic=python)"}, status=400)
+            return True
+        online = query.get("online", ["0"])[0].lower() in ("1", "true", "yes")
+        _serve._json_response(handler, get_knowledge(project_root, topic_q[0], online=online))
         return True
     if path == "/api/pending_plan":
         _serve._json_response(handler, get_pending_plan(project_root))

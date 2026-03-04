@@ -56,6 +56,8 @@ eurika fix .
 
 Или через Qt: `eurika-qt .` → вкладка Commands → scan/doctor/fix, Run.
 
+**Опционально:** для обогащения architect локальными заметками — скопируйте `docs/eurika_knowledge.example.json` в корень проекта как `eurika_knowledge.json` и при необходимости отредактируйте темы. Примеры вызова API: `examples/knowledge/`.
+
 ## Qt-путь (альтернатива CLI)
 
 ```bash

@@ -29,6 +29,12 @@ def _ollama_model() -> str:
     return os.environ.get("OLLAMA_OPENAI_MODEL", "qwen2.5-coder:7b")
 
 
+def _trace_planner(msg: str) -> None:
+    """Progress trace for diagnose observability (stderr)."""
+    import logging
+    logging.getLogger("eurika.reasoning.planner.llm_adapter").info(f"eurika: planner — {msg}")
+
+
 def _max_hint_calls() -> int:
     """Per-run cap for planner LLM calls. 0 or -1 = unlimited."""
     raw = os.environ.get("EURIKA_LLM_HINTS_MAX_CALLS", "15")
@@ -480,6 +486,7 @@ def ask_ollama_split_hints(
         _HINT_CACHE[cache_key] = []
         return []
     _register_llm_hint_call()
+    _trace_planner(f"split hints для {module_name} (ollama, до 120s)...")
     try:
         from eurika.reasoning.architect import _call_ollama_cli
 

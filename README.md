@@ -164,7 +164,7 @@ Fallback-модель для локального OpenAI-compatible endpoint Oll
 - **docs/TROUBLESHOOTING.md** — типовые ошибки (verify timeout, ModuleNotFoundError, LLM fallback, self_map missing) и решения
 - **docs/CLI.md** — справочник команд, рекомендуемый цикл
 - **docs/DOGFOODING.md** — ритуал полного цикла на самом Eurika (scan → doctor → fix), про venv
-- **docs/KNOWLEDGE_LAYER.md** — Knowledge Provider Layer (контракт, формат `eurika_knowledge.json`, интеграция с doctor/architect). Пример: `docs/eurika_knowledge.example.json`.
+- **docs/KNOWLEDGE_LAYER.md** — Knowledge Provider Layer (контракт, формат `eurika_knowledge.json`, интеграция с doctor/architect). Пример: `docs/eurika_knowledge.example.json`. Примеры кода: `examples/knowledge/`.
 - **docs/SPEC.md** — контракт проекта (v0.1–v0.4), текущий фокус
 - **docs/THEORY.md** — идеология и философия Eurika
 

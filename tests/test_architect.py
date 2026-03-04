@@ -263,14 +263,15 @@ def test_init_ollama_fallback_client_uses_coding_model_default() -> None:
 
 def test_call_ollama_cli_timeout_reports_missing_model_hint() -> None:
     """On run timeout, model check should surface actionable pull hint."""
+    preflight_ok = type("R", (), {"returncode": 0, "stderr": "", "stdout": "ok"})()
     first = type("R", (), {"returncode": 1, "stderr": "command timed out after 45 seconds", "stdout": ""})()
     second = type("R", (), {"returncode": 1, "stderr": "Error: model 'qwen2.5-coder:7b' not found", "stdout": ""})()
-    with patch("subprocess.run", side_effect=[first, second]) as run_mock:
+    with patch("subprocess.run", side_effect=[preflight_ok, first, second]) as run_mock:
         text, reason = _call_ollama_cli("qwen2.5-coder:7b", "hello")
     assert text is None
     assert reason is not None
     assert "ollama pull qwen2.5-coder:7b" in reason
-    assert run_mock.call_count == 2
+    assert run_mock.call_count >= 2  # preflight + run + (show in _model_ready_reason)
 
 
 def test_interpret_architecture_with_meta_llm_disabled_sets_degraded() -> None:

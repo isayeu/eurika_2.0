@@ -5,8 +5,11 @@ Single entry point: analyze, detect_smells, propose_actions.
 Delegates to planner submodules and architecture_planner.
 """
 from __future__ import annotations
-from eurika.reasoning.planner.core_extracted import detect_smells
+
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+from eurika.reasoning.planner.core_extracted import detect_smells
 if TYPE_CHECKING:
     from eurika.analysis.graph import ProjectGraph
 
@@ -27,7 +30,7 @@ def analyze(
     """
     from eurika.reasoning.graph_ops import priority_from_graph, targets_from_graph
     smells = detect_smells(graph)
-    root = str(project_root) if project_root else None
+    root = Path(project_root) if project_root else None
     priorities = priority_from_graph(
         graph, smells, summary_risks, top_n,
         learning_stats=learning_stats,

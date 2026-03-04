@@ -69,6 +69,40 @@ def get_summary(
     return summary
 
 
+def get_metrics(project_root: Path) -> Dict[str, Any]:
+    """
+    MetricVector + Energy for current architecture state (ROADMAP §5.7 Execution Model).
+
+    Returns { metrics: {complexity, coupling, cohesion, ...}, energy, error? }.
+    Requires self_map.json. Used by dashboard, delta tracking.
+    """
+    from eurika.analysis.energy_model import EnergyModel
+    from eurika.analysis.metric_vector import MetricVector, compute_metric_vector
+    from eurika.analysis.self_map import build_graph_from_self_map
+    from eurika.smells.detector import detect_architecture_smells
+
+    root = Path(project_root).resolve()
+    self_map_path = root / "self_map.json"
+    if not self_map_path.exists():
+        return {"error": "self_map.json not found", "path": str(self_map_path)}
+    graph = build_graph_from_self_map(self_map_path)
+    smells = detect_architecture_smells(graph)
+    metrics: MetricVector = compute_metric_vector(graph, smells)
+    model = EnergyModel()
+    energy = model.compute(metrics)
+    return {
+        "metrics": {
+            "complexity": metrics.complexity,
+            "coupling": metrics.coupling,
+            "cohesion": metrics.cohesion,
+            "instability": metrics.instability,
+            "layering_violations": metrics.layering_violations,
+            "entropy": metrics.entropy,
+        },
+        "energy": round(energy, 4),
+    }
+
+
 def get_risk_prediction(project_root: Path, top_n: int = 10) -> Dict[str, Any]:
     """R5 2.1: Top modules by regression risk (smells + centrality + trends)."""
     from eurika.reasoning.risk_prediction import predict_module_regression_risk

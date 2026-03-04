@@ -13,8 +13,8 @@
 | **eurika.reasoning.planner** | `analyze`, `detect_smells`, `propose_actions`, `Action`, `ActionPlan`, `ArchitectureModel`, `ArchitectureSnapshot`, `RefactorCandidate`, `PatchOperation`, `PatchPlan`, `RefactorAction`, `RiskReport`, `SmellReport`, `SimulationResult`, `risk_report_from_plan`, `build_plan`, `build_action_plan`, `build_patch_plan` | `from eurika.reasoning.planner import analyze, ArchitectureSnapshot` |
 | **eurika.reasoning.execution_context** | `ExecutionContext` | `from eurika.reasoning.execution_context import ExecutionContext` |
 | **eurika.reasoning.action_plan** | `Action`, `ActionPlan` | `from eurika.reasoning.action_plan import Action, ActionPlan` |
-| **eurika.knowledge** | `SMELL_TO_KNOWLEDGE_TOPICS`, providers (`CompositeKnowledgeProvider`, `LocalKnowledgeProvider`, …) | `from eurika.knowledge import SMELL_TO_KNOWLEDGE_TOPICS, CompositeKnowledgeProvider` |
-| **eurika.analysis** | `graph`, `scanner`, `metrics`, `cycles`, `self_map`, `topology`, `scoring`, `metric_vector`, `energy_model`, `weight_store` | `from eurika.analysis import graph, scoring, metric_vector, energy_model, weight_store` |
+| **eurika.knowledge** | `SMELL_TO_KNOWLEDGE_TOPICS`, providers (`CompositeKnowledgeProvider`, `LocalKnowledgeProvider`, …). API: `eurika.api.get_knowledge(project_root, topic)` | `from eurika.knowledge import SMELL_TO_KNOWLEDGE_TOPICS`; `from eurika.api import get_knowledge` |
+| **eurika.analysis** | `graph`, `scanner`, `metrics`, `cycles`, `self_map`, `topology`, `scoring`, `metric_vector`, `energy_model`, `weight_store`. API: `get_metrics(project_root)` → MetricVector + Energy (ROADMAP §5.7) | `from eurika.analysis import graph, metric_vector, energy_model`; `from eurika.api import get_metrics` |
 | **eurika.smells** | `detector`, `rules`, `models` | `from eurika.smells import detector` |
 | **eurika.evaluation** | `compute_delta` | `from eurika.evaluation import compute_delta` |
 | **eurika.evolution** | `history`, `diff` | `from eurika.evolution import history` |

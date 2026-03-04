@@ -330,12 +330,44 @@ def _call_llm_architect(client: Any, model: str, prompt: str, max_tokens: int=35
     except Exception as e:
         return (None, str(e))
 
+def _ollama_preflight_check(model: str) -> str | None:
+    """Быстрая проверка: Ollama запущен и модель доступна. None если ок. При timeout пропускаем (daemon может быть занят)."""
+    import subprocess
+    try:
+        r = subprocess.run(
+            ['ollama', 'show', model],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+            stdin=subprocess.DEVNULL,
+        )
+        if r.returncode == 0:
+            return None
+        err = (r.stderr or r.stdout or '').strip().lower()
+        if 'not found' in err or 'no such model' in err:
+            return f"модель '{model}' не найдена — выполните `ollama pull {model}`"
+        if 'could not connect' in err or 'connection refused' in err:
+            return "Ollama не отвечает — запустите `ollama serve`"
+        if 'timed out' in err:
+            return None  # ollama run уже обработает timeout и _model_ready_reason
+        return f"ollama show: {err[:200]}"
+    except FileNotFoundError:
+        return "ollama не найден в PATH"
+    except subprocess.TimeoutExpired:
+        return None  # daemon занят — продолжаем, run сам обработает
+    except Exception as e:
+        return str(e)
+
+
 def _call_ollama_cli(model: str, prompt: str, timeout_override: int | None = None) -> tuple[str | None, str | None]:
     """Fallback path via local `ollama run` CLI when HTTP endpoints are unavailable.
     EURIKA_OLLAMA_CLI_TIMEOUT_SEC: 0=unlimited, else seconds (default 120).
     timeout_override: use instead of env (e.g. EURIKA_LLM_EXTRACT_TIMEOUT_SEC for extract)."""
     import os
     import subprocess
+    import threading
+    import time
     if timeout_override is not None:
         cli_timeout_sec = timeout_override if timeout_override > 0 else None
     else:
@@ -345,10 +377,20 @@ def _call_ollama_cli(model: str, prompt: str, timeout_override: int | None = Non
             cli_timeout_sec = None if val <= 0 else val
         except (ValueError, TypeError):
             cli_timeout_sec = 120
-    if cli_timeout_sec:
-        _trace_architect(f"ollama CLI: waiting up to {cli_timeout_sec}s...")
 
-    def _run_once(timeout_sec: int | None = None) -> tuple[str | None, str | None]:
+    preflight = _ollama_preflight_check(model)
+    if preflight:
+        _trace_architect(f"ollama preflight: {preflight}")
+        return (None, preflight)
+
+    progress_interval = 15
+    show_progress = os.environ.get('EURIKA_OLLAMA_PROGRESS', '1').strip().lower() in ('1', 'true', 'yes')
+    if cli_timeout_sec:
+        _trace_architect(f"ollama CLI: ожидание до {cli_timeout_sec}s...")
+
+    _result: list = []
+
+    def _run_subprocess(timeout_sec: int | None) -> None:
         t = timeout_sec if timeout_sec is not None else cli_timeout_sec
         try:
             r = subprocess.run(
@@ -360,16 +402,47 @@ def _call_ollama_cli(model: str, prompt: str, timeout_override: int | None = Non
                 stdin=subprocess.DEVNULL,
             )
         except FileNotFoundError:
-            return (None, 'ollama CLI not found in PATH')
+            _result.append((None, 'ollama CLI not found in PATH'))
+            return
+        except subprocess.TimeoutExpired:
+            _result.append((None, f'timed out after {t}s'))
+            return
+        except OSError as e:
+            _result.append((None, str(e)))
+            return
         except Exception as e:
-            return (None, str(e))
+            _result.append((None, str(e)))
+            return
         if r.returncode != 0:
             reason = (r.stderr or r.stdout or '').strip() or f'ollama exited with code {r.returncode}'
-            return (None, reason)
+            _result.append((None, reason))
+            return
         text = (r.stdout or '').strip()
         if not text:
-            return (None, 'empty ollama CLI response')
-        return (text, None)
+            _result.append((None, 'empty ollama CLI response'))
+            return
+        _result.append((text, None))
+
+    def _run_once(timeout_sec: int | None = None) -> tuple[str | None, str | None]:
+        _result.clear()
+        t = timeout_sec if timeout_sec is not None else cli_timeout_sec
+        if show_progress and t and t >= progress_interval:
+            th = threading.Thread(target=_run_subprocess, args=(t,), daemon=True)
+            th.start()
+            start = time.monotonic()
+            last_printed = 0
+            while th.is_alive():
+                time.sleep(5)
+                elapsed = int(time.monotonic() - start)
+                if elapsed - last_printed >= progress_interval:
+                    _trace_architect(f"  ... {elapsed}s (ollama обрабатывает)")
+                    last_printed = elapsed
+            th.join(timeout=2)
+            if _result:
+                return _result[0]
+            return (None, 'internal: no result from subprocess')
+        _run_subprocess(t)
+        return _result[0] if _result else (None, 'internal: no result')
 
     def _model_ready_reason() -> str | None:
         try:
@@ -453,7 +526,7 @@ def _llm_interpret(summary: Dict[str, Any], history: Dict[str, Any], patch_plan:
             _trace_architect(f"ollama HTTP failed: {fallback_call_reason}; trying ollama CLI...")
             fallback_reason = fallback_call_reason
         cli_model = fallback_model or 'qwen2.5-coder:7b'
-        _trace_architect(f"trying ollama CLI (model={cli_model})...")
+        _trace_architect(f"architect: ollama CLI fallback (model={cli_model}), до 120s...")
         cli_prompt = _build_ollama_cli_prompt(summary, history, patch_plan)
         cli_text, cli_reason = _call_ollama_cli(cli_model, cli_prompt)
         if cli_text:
@@ -462,7 +535,7 @@ def _llm_interpret(summary: Dict[str, Any], history: Dict[str, Any], patch_plan:
         return (None, f"primary failed ({primary_reason or 'unknown'}); ollama HTTP failed ({fallback_reason or 'unknown'}); ollama CLI failed ({cli_reason or 'unknown'})")
     import os
     cli_model = os.environ.get('OLLAMA_OPENAI_MODEL', 'qwen2.5-coder:7b')
-    _trace_architect(f"trying ollama CLI first (model={cli_model})...")
+    _trace_architect(f"architect: ollama CLI (model={cli_model}), до 120s...")
     cli_prompt = _build_ollama_cli_prompt(summary, history, patch_plan)
     cli_text, cli_reason = _call_ollama_cli(cli_model, cli_prompt)
     if cli_text:

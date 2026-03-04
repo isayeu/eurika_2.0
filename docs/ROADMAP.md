@@ -418,6 +418,7 @@ while True:
 
 - §5.7 этапы 1–7: MetricVector, EnergyModel, ΔEnergy, ExecutionContext, ArchitectureSnapshot, ExperienceStore, Weight adaptation — ✅
 - **v4.0 meta-controller:** переключение стратегий при деградации — ✅ `eurika/cognition/meta_controller.py`; `EURIKA_META_CONTROLLER=1` при `EURIKA_WEIGHT_ADAPTATION=1`.
+- **GET /api/metrics:** MetricVector + Energy для текущего состояния — ✅ `eurika.api.get_metrics`; для dashboard, delta tracking.
 
 ---
 
@@ -475,4 +476,4 @@ while True:
 - **v0.5–v1.0:** pipeline, history, CLI, smells 2.0, JSON API — ✅
 - **Чеклист v1.0:** разделы 1–6 выполнены — ✅
 - **Этапы v0.1–v0.7:** AgentCore, FeedbackStore, Action plan, patch apply, learning — ✅
-- **Knowledge Layer:** после стабилизации ядра; контракт в docs/KNOWLEDGE_LAYER.md
+- **Knowledge Layer:** ✅ контракт docs/KNOWLEDGE_LAYER.md; eurika.api.get_knowledge; GET /api/knowledge?topic=...; ONBOARDING опциональный eurika_knowledge.json

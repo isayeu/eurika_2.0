@@ -77,6 +77,47 @@ def test_dispatch_api_get_pattern_library_with_data(tmp_path: Path, monkeypatch)
     assert "starlette" in (data.get("projects") or [])
 
 
+def test_dispatch_api_get_metrics_returns_error_when_no_self_map(tmp_path: Path, monkeypatch) -> None:
+    """GET /api/metrics returns error when self_map.json missing."""
+    captured: dict[str, object] = {}
+
+    def _fake_json_response(_handler, data: dict, status: int = 200) -> None:
+        captured["status"] = status
+        captured["data"] = data
+
+    monkeypatch.setattr(api_serve, "_json_response", _fake_json_response)
+    handled = api_serve._dispatch_api_get(_DummyHandler(), tmp_path, "/api/metrics", {})
+    assert handled is True
+    data = captured.get("data") or {}
+    assert "error" in data
+    assert "self_map" in data.get("error", "").lower()
+
+
+def test_dispatch_api_get_metrics_returns_structured(tmp_path: Path, monkeypatch) -> None:
+    """GET /api/metrics returns metrics dict + energy when self_map exists (ROADMAP §5.7)."""
+    (tmp_path / "self_map.json").write_text(
+        '{"modules":[{"path":"a.py"},{"path":"b.py"}],"dependencies":{"a.py":["b"],"b.py":[]}}',
+        encoding="utf-8",
+    )
+    captured: dict[str, object] = {}
+
+    def _fake_json_response(_handler, data: dict, status: int = 200) -> None:
+        captured["status"] = status
+        captured["data"] = data
+
+    monkeypatch.setattr(api_serve, "_json_response", _fake_json_response)
+    handled = api_serve._dispatch_api_get(_DummyHandler(), tmp_path, "/api/metrics", {})
+    assert handled is True
+    assert captured.get("status") == 200
+    data = captured.get("data") or {}
+    assert "metrics" in data
+    assert "energy" in data
+    m = data["metrics"]
+    assert "complexity" in m and "coupling" in m and "cohesion" in m
+    assert "instability" in m and "layering_violations" in m and "entropy" in m
+    assert isinstance(data["energy"], (int, float))
+
+
 def test_dispatch_api_get_self_guard_returns_dict(tmp_path: Path, monkeypatch) -> None:
     """GET /api/self_guard should return dict with forbidden_count, layer_viol_count, pass (CR-B1)."""
     captured: dict[str, object] = {}
@@ -133,6 +174,46 @@ def test_dispatch_api_get_file_rejects_traversal_like_path(tmp_path: Path, monke
     assert handled is True
     assert captured.get("status") == 400
     assert (captured.get("data") or {}).get("error") == "invalid path"
+
+
+def test_dispatch_api_get_knowledge_requires_topic(tmp_path: Path, monkeypatch) -> None:
+    """GET /api/knowledge should return 400 when topic query param is missing."""
+    captured: dict[str, object] = {}
+
+    def _fake_json_response(_handler, data: dict, status: int = 200) -> None:
+        captured["status"] = status
+        captured["data"] = data
+
+    monkeypatch.setattr(api_serve, "_json_response", _fake_json_response)
+    handled = api_serve._dispatch_api_get(_DummyHandler(), tmp_path, "/api/knowledge", {})
+    assert handled is True
+    assert captured.get("status") == 400
+    assert (captured.get("data") or {}).get("error") == "query param 'topic' required (e.g. ?topic=python)"
+
+
+def test_dispatch_api_get_knowledge_returns_structured(tmp_path: Path, monkeypatch) -> None:
+    """GET /api/knowledge?topic=python returns topic, source, fragments from Knowledge Layer."""
+    (tmp_path / "eurika_knowledge.json").write_text(
+        '{"topics": {"python": [{"title": "PEP 701", "content": "f-strings"}]}}',
+        encoding="utf-8",
+    )
+    captured: dict[str, object] = {}
+
+    def _fake_json_response(_handler, data: dict, status: int = 200) -> None:
+        captured["status"] = status
+        captured["data"] = data
+
+    monkeypatch.setattr(api_serve, "_json_response", _fake_json_response)
+    handled = api_serve._dispatch_api_get(
+        _DummyHandler(), tmp_path, "/api/knowledge", {"topic": ["python"]}
+    )
+    assert handled is True
+    assert captured.get("status") == 200
+    data = captured.get("data") or {}
+    assert data.get("topic") == "python"
+    assert "source" in data
+    assert "fragments" in data
+    assert len(data.get("fragments") or []) >= 1
 
 
 def test_dispatch_api_get_history_returns_dict(tmp_path: Path, monkeypatch) -> None:

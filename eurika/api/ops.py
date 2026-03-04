@@ -441,7 +441,7 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
                 if deep_mode == "skip" or loc_key in fixed_locations:
                     continue
                 if deep_mode in ("heuristic", "hybrid"):
-                    block_suggestion = suggest_extract_block(file_path, smell.location)
+                    block_suggestion = suggest_extract_block(file_path, smell.location, min_lines=3)
                     if block_suggestion and not _should_skip_extract_block_target(rel):
                         helper_name, block_line, line_count, extra = block_suggestion
                         ops.append(

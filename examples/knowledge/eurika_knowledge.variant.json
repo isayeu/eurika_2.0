@@ -1,0 +1,94 @@
+{
+  "topics": {
+    "python": [
+      {
+        "title": "PEP 701 – Syntactic formalization of f-strings",
+        "content": "In modern Python, f-strings can contain nested quotes and backslashes. Use for clearer formatting and fewer workarounds."
+      },
+      {
+        "title": "What's New in Python 3.14",
+        "content": "Track syntax updates, typing changes, and runtime performance improvements in the active target version."
+      },
+      {
+        "title": "Dataclasses and structural typing",
+        "content": "dataclasses.dataclass reduces boilerplate. For structural typing consider Protocol (PEP 544) and runtime_checkable."
+      }
+    ],
+    "python_3_14": [
+      {
+        "title": "New type parameter syntax",
+        "content": "Use this topic for curated notes and migration hints specific to Python 3.14."
+      }
+    ],
+    "architecture_refactor": [
+      {
+        "title": "Split god module",
+        "content": "Extract cohesive subsets into new modules; reduce fan-out of the original; update imports."
+      },
+      {
+        "title": "Introduce facade",
+        "content": "Create a thin _api.py module that re-exports public symbols. Hide internal implementation; clients import from facade only."
+      }
+    ],
+    "deprecated_api": [
+      {
+        "title": "Deprecated API",
+        "content": "Check release notes for removed or deprecated APIs; prefer replacement APIs before upgrading. Pin known-good versions if needed."
+      }
+    ],
+    "typing": [
+      {
+        "title": "Type hints",
+        "content": "PEP 484; use typing and typing_extensions. For static checking: mypy, pyright. Keep examples aligned with the active Python target."
+      },
+      {
+        "title": "TYPE_CHECKING and forward refs",
+        "content": "For type-only imports use if TYPE_CHECKING: ... to avoid runtime cycles. Forward references: 'ClassName' or from __future__ import annotations."
+      }
+    ],
+    "cyclic_imports": [
+      {
+        "title": "Break import cycles",
+        "content": "Move shared types to a separate module; use TYPE_CHECKING for type-only imports; or defer imports inside functions."
+      },
+      {
+        "title": "Dependency inversion",
+        "content": "Introduce an abstraction layer between modules A and B that import each other. Dependency should flow in one direction only."
+      }
+    ],
+    "version_migration": [
+      {
+        "title": "Python version upgrade",
+        "content": "Check What's New and Deprecation sections. Test with target version; update syntax and typing constructs; replace removed stdlib APIs; fix deprecated APIs."
+      },
+      {
+        "title": "Dependency upgrade",
+        "content": "Pin or constrain versions; run tests; check CHANGELOG for breaking changes. Use tools: pip-audit, safety."
+      }
+    ],
+    "security": [
+      {
+        "title": "Vulnerable dependencies",
+        "content": "Run pip-audit or safety check. Update vulnerable packages; prefer maintained alternatives. Avoid eval, exec on untrusted input."
+      }
+    ],
+    "async_patterns": [
+      {
+        "title": "Async/await",
+        "content": "asyncio; async def, await. Avoid blocking in async code. Use asyncio.run() for top-level. Context managers: async with."
+      }
+    ],
+    "god_module": [
+      {
+        "title": "God module smell",
+        "content": "Module with too many responsibilities or high fan-out. Split by domain, extract cohesive classes/functions into new modules."
+      }
+    ],
+    "bottleneck": [
+      {
+        "title": "Bottleneck module",
+        "content": "Too many modules depend on one. Introduce facade or split into smaller modules with clear boundaries."
+      }
+    ]
+  }
+}

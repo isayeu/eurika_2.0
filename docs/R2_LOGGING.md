@@ -26,3 +26,12 @@
 
 - `EURIKA_LOG_LEVEL` — DEBUG, INFO, WARNING, ERROR
 - `configure_cli_logging(quiet=..., verbose=...)` — --quiet → WARNING, --verbose → DEBUG
+
+## Progress traces (diagnose)
+
+При `eurika fix` / `eurika doctor` шаг diagnose выводит в stderr:
+- `diagnose: architect (LLM) + planner hints — может занять 1–2 мин при Ollama`
+- `eurika: architect — architect: ollama CLI (model=...), до 120s...`
+- `eurika: planner — split hints для <module> (ollama, до 120s)...`
+
+Это помогает понять, какой LLM-вызов выполняется при долгом ожидании.

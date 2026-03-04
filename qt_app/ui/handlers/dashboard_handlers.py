@@ -62,6 +62,8 @@ def refresh_dashboard(main: MainWindow) -> None:
         main.dashboard_risk.setText("-")
         main.dashboard_maturity.setText(summary.get("error", "-"))
         main.dashboard_trends.setText("-")
+        if hasattr(main, "dashboard_energy"):
+            main.dashboard_energy.setText("-")
         main.dashboard_risks_text.setPlainText("")
         guard = main._api.get_self_guard()
         if guard.get("pass"):
@@ -98,6 +100,11 @@ def refresh_dashboard(main: MainWindow) -> None:
         f"centralization={trends.get('centralization', '-')}",
     ]
     main.dashboard_trends.setText(", ".join(trend_parts))
+    metrics_data = main._api.get_metrics()
+    if isinstance(metrics_data, dict) and "energy" in metrics_data and "error" not in metrics_data:
+        main.dashboard_energy.setText(f"{metrics_data['energy']:.4f}")
+    elif hasattr(main, "dashboard_energy"):
+        main.dashboard_energy.setText("-")
     if hasattr(main, "dashboard_history_text"):
         evo = history.get("evolution_report", "")
         main.dashboard_history_text.setPlainText(

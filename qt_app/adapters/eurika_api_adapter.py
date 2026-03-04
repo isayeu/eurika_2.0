@@ -17,6 +17,7 @@ from eurika.api import (
     get_graph,
     get_history,
     get_learning_insights,
+    get_metrics,
     get_operational_metrics,
     get_patch_plan,
     get_pending_plan,
@@ -62,6 +63,10 @@ class EurikaApiAdapter:
 
     def get_history(self, window: int = 5) -> dict[str, Any]:
         return get_history(self._root(), window=window)
+
+    def get_metrics(self) -> dict[str, Any]:
+        """MetricVector + Energy (ROADMAP §5.7 Execution Model)."""
+        return get_metrics(self._root())
 
     def get_operational_metrics(self, window: int = 10) -> dict[str, Any]:
         return get_operational_metrics(self._root(), window=window)
