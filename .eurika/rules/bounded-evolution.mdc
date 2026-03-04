@@ -1,0 +1,35 @@
+---
+description: Bounded evolution — лимиты логов, памяти, planner; запрет крупных фич без отчёта
+alwaysApply: false
+globs: ["**/*.py", "**/*.md", ".eurika/**"]
+---
+
+# Bounded Evolution — дисциплина роста
+
+При правках следить за лимитами. Не расползаться.
+
+## Лимиты (не нарушать без явной причины)
+
+| Что | Лимит |
+|-----|-------|
+| EventLog | MAX_EVENTS=500 (eurika/storage/events.py) |
+| ops per cycle | EURIKA_MAX_OPS_PER_CYCLE=12 |
+| read limits | get_recent_* limit 5–20, не увеличивать без обоснования |
+| file size | 400 candidate, 600 must split |
+| OSS hints | max 3 per op |
+
+## Крупная фича
+
+**Крупная** = новый модуль >200 LOC, ≥3 файлов в разных подсистемах, новый тип события, новый smell/action.
+
+**Перед реализацией:** краткий отчёт в docs/CYCLE_REPORT.md или docs/FEATURE_*.md (цель, области, лимиты, откат).
+
+Не начинать крупную фичу без явного одобрения пользователя.
+
+## CYCLE_REPORT Ritual
+
+Каждые 100 циклов — чеклист: success_rate, top_failure_reason, most_deprioritized goal, most successful action_kind, memory size, **сдвиг поведения (Yes/No)**.
+
+## Ссылка
+
+**docs/BOUNDED_EVOLUTION.md** — полное описание, risks, ritual.

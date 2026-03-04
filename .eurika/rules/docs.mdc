@@ -16,6 +16,8 @@ alwaysApply: true
 | **@docs/ROADMAP.md** | План задач, фазы, §5.7 Execution Model (MetricVector, EnergyModel) |
 | **@docs/review.md** | Архитектурное ревью 2026 II: Execution Model, Planner/Storage хирургия, Energy-based AI |
 | **@docs/ONBOARDING.md** | Onboarding ≤ 10 мин — clone → scan/doctor/fix (B.9) |
+| **@docs/MEMORY.md** | EventLog, FailureLog, LearningStore — минимальная формализация памяти |
+| **@docs/BOUNDED_EVOLUTION.md** | Дисциплина роста: лимиты логов, памяти, planner; крупные фичи — только с отчётом |
 
 Импорты — только через публичный API из API_BOUNDARIES. Нарушения слоёв проверяет dependency firewall.
 
@@ -35,3 +37,5 @@ alwaysApply: true
 | API, serve, Chat | @eurika/api/ |
 | CLI, команды | @cli/, @docs/CLI.md |
 | Execution Model, MetricVector, EnergyModel | @docs/review.md, @docs/ROADMAP.md §5.7 |
+| Storage, память, EventLog/LearningStore | @docs/MEMORY.md, @eurika/storage/ |
+| Bounded evolution, лимиты, крупные фичи | @docs/BOUNDED_EVOLUTION.md, @.eurika/rules/bounded-evolution.mdc |

@@ -327,7 +327,7 @@ while True:
 **Направления развития:**
 
 1. **Стабильное ядро** — один железобетонный цикл, потом наращивать.
-2. **Настоящая память** — short/long term, failure log; приоритет целей, забывание, конфликт целей. **Failure log:** .eurika/failures.json (append при record_outcome+failure_reason), bounded 100 entries; get_recent_failures читает из failure log, fallback на events.
+2. **Настоящая память** — short/long term, failure log; приоритет целей, забывание, конфликт целей. **Failure log:** view над EventLog (learn, result=False); get_recent_failures читает из events. Один источник истины (ARCHITECTURE_MEMORY_REVIEW).
 
    **Формализация STM/LTM (review §2):**
 
@@ -335,7 +335,9 @@ while True:
    |-----|------|------------|-------|
    | **STM** | Контекст текущего цикла | ExecutionContext (snapshot_before/after, candidates, simulation_result, delta_score); SessionMemory (verify_success/fail в сессии) | один fix cycle |
    | **LTM** | Агрегаты и история | EventLog (events.json), LearningStore (learning_stats, get_merged_learning_stats), ArchitectureHistory, failure log, StateStore checkpoints, weights | все циклы |
-   | **Failure log** | Провалы для самокоррекции | .eurika/failures.json, get_recent_failures | bounded 100 |
+   | **Failure log** | Провалы для самокоррекции | view над EventLog, get_recent_failures | bounded по limit |
+
+   **Формализация:** docs/MEMORY.md — EventLog, FailureLog, LearningStore (минимальный контракт).
 
    **Остаётся (будущее):** приоритет целей, забывание (decay), конфликт целей, явное изменение стратегии.
 
@@ -348,7 +350,7 @@ while True:
 
 **Чего не делать сейчас:** онлайн-патчинг, self-rewriting modules, автоматическое изменение архитектуры, 50 новых классов.
 
-**Bounded evolution (review §1):** EURIKA_MAX_OPS_PER_CYCLE (default 12) — cap операций за fix cycle; 0 = без лимита.
+**Bounded evolution (review §1):** EURIKA_MAX_OPS_PER_CYCLE (default 12) — cap операций за fix cycle; 0 = без лимита. **Целевой вектор:** bounded evolution → часть execution model; EnergyModel → resource constraint, а не scoring layer. Сейчас не реализовывать — сначала доказательство адаптации (CYCLE_REPORT ritual, 300–500 циклов). docs/BOUNDED_EVOLUTION.md.
 
 **Прогресс (Review III):** зрелость +40%, цели +60%, стратегия +70%, формализация +20%. Формализация отстаёт — нормально.
 
@@ -393,6 +395,7 @@ while True:
 - Hybrid approvals: Load plan, approve/reject per row, Save, apply-approved ✅ (Save feedback: "X approved, Y rejected")
 - Dashboard: Summary, risks, SELF-GUARD, Ops, History sub-tab, Run scan button ✅
 - Quality: Ruff, Mypy, Release check (CR-F1) ✅
+- Dark theme: View → Dark theme; сохранение в qt_settings.json ✅
 
 ### 6.3 Операционность
 
