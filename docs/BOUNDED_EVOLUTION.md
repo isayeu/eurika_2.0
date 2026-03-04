@@ -121,9 +121,9 @@ Eurika склонна к усложнению — это сила и риск. B
    С `--dry-run` — без apply; вывод каждые N циклов → вставить в CYCLE_REPORT.
 3. Сформировать 3–5 CYCLE_REPORT ✓
 4. Проверить: есть ли изменение поведения ✓ (Yes — success_rate, most_successful_action)
-5. Только потом — §5.7 MetricVector / EnergyModel
+5. §5.7 — bounded evolution как часть execution model (целевой вектор зафиксирован в ROADMAP)
 
-**Не делать сейчас:** decay агрегатов, изменение EventLog лимита, усложнение scoring, добавление EnergyModel. Сначала доказательство адаптации.
+**Следующий фокус:** EnergyModel как resource constraint (energy budget, caps) — документировать контракт, не менять реализацию без необходимости. Decay агрегатов, high-value events — по мере появления пробелов (§5 Risks).
 
 ---
 

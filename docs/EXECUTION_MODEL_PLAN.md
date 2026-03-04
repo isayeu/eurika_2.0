@@ -4,6 +4,14 @@
 
 ---
 
+## Bounded evolution в Execution Model (2026-03)
+
+**Статус:** целевой вектор зафиксирован. Адаптация доказана (CYCLE_REPORT #123, 100 циклов).
+
+**Следующий шаг:** EnergyModel как **resource constraint** (energy budget, caps), а не только scoring layer. Ограничения (MAX_EVENTS, EURIKA_MAX_OPS_PER_CYCLE) — часть execution contract. Не реализовывать новый код до необходимости; документировать контракт в Architecture.md / review.
+
+---
+
 ## Текущее состояние
 
 | Компонент | Статус | Где |

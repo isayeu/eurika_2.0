@@ -229,6 +229,7 @@ snapshot_before, candidates, selected_action, simulated_snapshot, snapshot_after
 4. ExperienceStore — record_outcome без изменения весов
 5. Weight adaptation — медленно, bounded [0.02..0.25], EURIKA_WEIGHT_ADAPTATION=1; откат: удалить .eurika/weights.json
 6. Meta-controller (v4.0) — eurika/cognition/meta_controller.py; при деградации (low success rate, 3+ регрессий подряд) — skip_adaptation или learning_rate_scale=0.5; EURIKA_META_CONTROLLER=1
+7. **Bounded evolution (2026-03):** EnergyModel — target как resource constraint (energy budget, caps), не только scoring. EURIKA_MAX_OPS_PER_CYCLE=12, MAX_EVENTS=500. Адаптация доказана (CYCLE_REPORT #123). docs/BOUNDED_EVOLUTION.md.
 
 **Target pipeline (v3.x):**
 ```
