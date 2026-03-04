@@ -5,10 +5,34 @@ from pathlib import Path
 from typing import Any
 from PySide6.QtCore import QProcess, QTimer
 from PySide6.QtGui import QCloseEvent, QShowEvent
-from PySide6.QtWidgets import QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton, QTabWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMenu,
+    QMenuBar,
+    QPushButton,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
 from qt_app.adapters.eurika_api_adapter import EurikaApiAdapter
 from qt_app.services.command_service import CommandService
 from qt_app.services.settings_service import SettingsService
+from qt_app.ui.styles import (
+    CONTENT_MARGINS,
+    get_hint_label_stylesheet,
+    get_hint_stylesheet,
+    get_secondary_hint,
+    get_status_style,
+    is_dark_theme,
+    set_theme_dark,
+)
+from qt_app.ui.theme import apply_app_theme
 from .handlers import approve_handlers, chat_handlers, command_handlers, dashboard_handlers, notes_handlers, ollama_handlers
 from .main_window_helpers import ChatWorker, default_start_directory
 from .tabs import approve_tab, chat_tab, commands_tab, dashboard_tab, graph_tab, models_tab, notes_tab, terminal_tab
@@ -48,29 +72,40 @@ class MainWindow(QMainWindow):
         ollama_handlers.setup_ollama_health_timer(self)
 
     def _build_ui(self) -> None:
+        menubar = QMenuBar(self)
+        view_menu = QMenu("View", self)
+        self._dark_theme_action = view_menu.addAction("Dark theme")
+        self._dark_theme_action.setCheckable(True)
+        self._dark_theme_action.setChecked(is_dark_theme())
+        self._dark_theme_action.triggered.connect(self._on_toggle_dark_theme)
+        menubar.addMenu(view_menu)
+        self.setMenuBar(menubar)
         central = QWidget(self)
         self.setCentralWidget(central)
         root_layout = QVBoxLayout(central)
+        root_layout.setContentsMargins(*CONTENT_MARGINS)
+        root_layout.setSpacing(8)
         top_row = QHBoxLayout()
-        top_row.addWidget(QLabel('Project root:'))
+        top_row.setSpacing(8)
+        top_row.addWidget(QLabel("Project root:"))
         self.root_edit = QLineEdit()
-        self.root_edit.setPlaceholderText('Select project root')
+        self.root_edit.setPlaceholderText("Select project root (pyproject.toml or self_map.json)")
         top_row.addWidget(self.root_edit, 1)
-        self.browse_btn = QPushButton('Browse')
+        self.browse_btn = QPushButton("Browse")
         top_row.addWidget(self.browse_btn)
         root_layout.addLayout(top_row)
         self._first_run_hint = QFrame()
         self._first_run_hint.setFrameShape(QFrame.StyledPanel)
-        self._first_run_hint.setStyleSheet("QFrame { background-color: #f5f0e6; border: 1px solid #ddd; border-radius: 4px; }")
+        self._first_run_hint.setStyleSheet(get_hint_stylesheet())
         hint_layout = QHBoxLayout(self._first_run_hint)
-        hint_layout.setContentsMargins(12, 8, 12, 8)
-        hint_label = QLabel(
-            "Выберите проект — нажмите Browse или введите путь к корню Python-проекта (pyproject.toml или self_map.json). "
+        hint_layout.setContentsMargins(12, 10, 12, 10)
+        self._first_run_hint_label = QLabel(
+            "Выберите проект — Browse или путь к корню Python-проекта. "
             "Без проекта команды scan/doctor/fix недоступны."
         )
-        hint_label.setWordWrap(True)
-        hint_label.setStyleSheet("color: #444; font-size: 13px;")
-        hint_layout.addWidget(hint_label)
+        self._first_run_hint_label.setWordWrap(True)
+        self._first_run_hint_label.setStyleSheet(get_hint_label_stylesheet())
+        hint_layout.addWidget(self._first_run_hint_label)
         root_layout.addWidget(self._first_run_hint)
         self.tabs = QTabWidget()
         root_layout.addWidget(self.tabs, 1)
@@ -82,8 +117,29 @@ class MainWindow(QMainWindow):
         chat_tab.build_chat_tab(self)
         terminal_tab.build_terminal_tab(self)
         notes_tab.build_notes_tab(self)
-        self.status_label = QLabel('Idle')
+        self.status_label = QLabel("Ready")
+        self.status_label.setStyleSheet(get_status_style())
         root_layout.addWidget(self.status_label)
+
+    def _on_toggle_dark_theme(self, checked: bool) -> None:
+        self._settings.set_theme("dark" if checked else "light")
+        set_theme_dark(checked)
+        apply_app_theme(QApplication.instance(), checked)
+        self._refresh_theme_styles()
+
+    def _refresh_theme_styles(self) -> None:
+        """Re-apply theme-dependent styles to custom widgets."""
+        self._first_run_hint.setStyleSheet(get_hint_stylesheet())
+        self._first_run_hint_label.setStyleSheet(get_hint_label_stylesheet())
+        self.status_label.setStyleSheet(get_status_style())
+        if hasattr(self, "approve_hint"):
+            self.approve_hint.setStyleSheet(get_secondary_hint())
+        if hasattr(self, "approve_diff_label"):
+            self.approve_diff_label.setStyleSheet(get_secondary_hint())
+        if hasattr(self, "graph_hint"):
+            self.graph_hint.setStyleSheet(get_secondary_hint())
+        if hasattr(self, "ollama_pull_progress_label"):
+            self.ollama_pull_progress_label.setStyleSheet(get_secondary_hint())
 
     def _on_tab_changed(self, index: int) -> None:
         """Lazy-load Graph WebEngine when user first opens Graph tab."""
@@ -94,6 +150,8 @@ class MainWindow(QMainWindow):
     def _wire_events(self) -> None:
         self.browse_btn.clicked.connect(self._select_root)
         self.root_edit.editingFinished.connect(self._on_root_edited)
+        if getattr(self, "module_browse_btn", None):
+            self.module_browse_btn.clicked.connect(lambda: command_handlers.select_module(self))
         self.command_combo.currentTextChanged.connect(self._sync_preview)
         self.module_edit.textChanged.connect(self._sync_preview)
         self.window_spin.valueChanged.connect(self._sync_preview)
@@ -137,7 +195,6 @@ class MainWindow(QMainWindow):
         self.ollama_refresh_models_btn.clicked.connect(lambda: ollama_handlers.refresh_ollama_models(self, user_initiated=True))
         self.ollama_install_btn.clicked.connect(lambda: ollama_handlers.install_selected_ollama_model(self))
         self.ollama_installed_combo.currentTextChanged.connect(lambda v: ollama_handlers.sync_chat_model_from_installed(self, v))
-        self.ollama_search_refresh_btn.clicked.connect(lambda: ollama_handlers.refresh_ollama_catalog(self))
         self._command_service.command_started.connect(lambda c: command_handlers.on_command_started(self, c))
         self._command_service.output_line.connect(lambda line: command_handlers.append_stdout(self, line))
         self._command_service.error_line.connect(lambda line: command_handlers.append_stderr(self, line))
@@ -189,6 +246,8 @@ class MainWindow(QMainWindow):
         if self.tabs.currentIndex() == self.graph_tab_index:
             graph_tab.refresh_graph(self)
         self._sync_preview()
+        if self._command_service.state == "idle":
+            command_handlers.on_state_changed(self, "idle")
 
     def _select_root(self) -> None:
         start = (self.root_edit.text() or '').strip()

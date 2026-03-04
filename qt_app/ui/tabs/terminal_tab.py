@@ -6,6 +6,8 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from qt_app.ui.styles import TAB_MARGINS
+
 from PySide6.QtCore import QProcess
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QGroupBox, QHBoxLayout, QLabel, QPushButton, QTextEdit, QVBoxLayout, QWidget
@@ -20,6 +22,7 @@ def build_terminal_tab(main: MainWindow) -> None:
     """Build Terminal tab: output from Commands + manual shell commands."""
     main.terminal_tab = tab = QWidget()
     layout = QVBoxLayout(tab)
+    layout.setContentsMargins(*TAB_MARGINS)
     emulator_box = QGroupBox("Terminal")
     emulator_box.setStyleSheet("QGroupBox { color: #0f0; }")
     emulator_box.setToolTip(

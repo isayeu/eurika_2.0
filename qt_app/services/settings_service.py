@@ -49,3 +49,14 @@ class SettingsService:
         data["project_root"] = project_root
         self.save(data)
 
+    def get_theme(self) -> str:
+        """Return 'light' or 'dark'."""
+        data = self.load()
+        t = data.get("theme", "light")
+        return "dark" if t == "dark" else "light"
+
+    def set_theme(self, theme: str) -> None:
+        data = self.load()
+        data["theme"] = "dark" if theme == "dark" else "light"
+        self.save(data)
+

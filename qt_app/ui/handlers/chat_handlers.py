@@ -32,7 +32,6 @@ def load_chat_preferences(main: MainWindow) -> None:
     main.ollama_hsa_edit.setText(str(data.get("ollama_hsa_override_gfx", "10.3.0")))
     main.ollama_rocr_edit.setText(str(data.get("ollama_rocr_visible_devices", "0")))
     main.ollama_hip_edit.setText(str(data.get("ollama_hip_visible_devices", "0")))
-    main.ollama_search_edit.setText(str(data.get("ollama_search_query", "qwen")))
     main.ollama_custom_model_edit.setText(str(data.get("ollama_custom_model", "")))
     saved_available = str(data.get("ollama_available_model", "")).strip()
     main._saved_available_model = saved_available
@@ -158,7 +157,6 @@ def save_chat_preferences(main: MainWindow) -> None:
     data["ollama_hsa_override_gfx"] = main.ollama_hsa_edit.text().strip()
     data["ollama_rocr_visible_devices"] = main.ollama_rocr_edit.text().strip()
     data["ollama_hip_visible_devices"] = main.ollama_hip_edit.text().strip()
-    data["ollama_search_query"] = main.ollama_search_edit.text().strip()
     data["ollama_custom_model"] = main.ollama_custom_model_edit.text().strip()
     data["ollama_available_model"] = main.ollama_available_combo.currentText().strip()
     main._settings.save(data)

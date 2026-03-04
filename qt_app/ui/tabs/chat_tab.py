@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from qt_app.ui.styles import TAB_MARGINS
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QGroupBox,
@@ -23,8 +25,8 @@ def build_chat_tab(main: MainWindow) -> None:
     """Build Chat tab: history, compose, apply/reject buttons."""
     tab = QWidget()
     layout = QVBoxLayout(tab)
-    layout.setContentsMargins(6, 6, 6, 6)
-    layout.setSpacing(6)
+    layout.setContentsMargins(*TAB_MARGINS)
+    layout.setSpacing(8)
     history_box = QGroupBox("Session chat history")
     history_layout = QVBoxLayout(history_box)
     main.chat_goal_view = QTextEdit()

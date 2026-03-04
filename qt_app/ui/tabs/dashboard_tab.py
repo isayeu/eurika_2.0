@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from qt_app.ui.styles import BTN_COMPACT_WIDTH, SECTION_SPACING, TAB_MARGINS
+
 from PySide6.QtWidgets import (
     QFormLayout,
     QGridLayout,
@@ -64,6 +66,7 @@ def _build_overview_panel(main: MainWindow) -> QWidget:
     guard_layout.addWidget(main.dashboard_self_guard_text)
     main.dashboard_firewall_detail_btn = QPushButton("Детали firewall")
     main.dashboard_firewall_detail_btn.setToolTip("Forbidden/layer/subsystem bypass")
+    main.dashboard_firewall_detail_btn.setMaximumWidth(BTN_COMPACT_WIDTH)
     guard_layout.addWidget(main.dashboard_firewall_detail_btn)
     right_layout.addWidget(guard_group)
     ops_group = QGroupBox("Ops")
@@ -138,7 +141,8 @@ def build_dashboard_tab(main: MainWindow) -> None:
     """Build Dashboard tab: overview + sub-tabs for Risks and Learning."""
     tab = QWidget()
     layout = QVBoxLayout(tab)
-    layout.setSpacing(8)
+    layout.setContentsMargins(*TAB_MARGINS)
+    layout.setSpacing(SECTION_SPACING)
     refresh_row = QHBoxLayout()
     main.refresh_dashboard_btn = QPushButton("Обновить")
     main.run_scan_dashboard_btn = QPushButton("Run scan")

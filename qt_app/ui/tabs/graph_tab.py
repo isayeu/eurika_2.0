@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
+from qt_app.ui.styles import get_secondary_hint, TAB_MARGINS
+
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPushButton, QSizePolicy, QTextEdit, QVBoxLayout, QWidget
 
 from ..main_window_helpers import create_graph_page
@@ -16,12 +18,13 @@ def build_graph_tab(main: MainWindow) -> None:
     """Build Graph tab: lazy-load QWebEngineView on first use."""
     tab = QWidget()
     layout = QVBoxLayout(tab)
+    layout.setContentsMargins(*TAB_MARGINS)
     row = QHBoxLayout()
     main.refresh_graph_btn = QPushButton("Refresh graph")
     main.refresh_graph_btn.setToolTip("Load dependency graph from self_map.json (run scan first)")
     row.addWidget(main.refresh_graph_btn)
     main.graph_hint = QLabel("Run eurika scan . to generate self_map.json")
-    main.graph_hint.setStyleSheet("color: gray; font-size: 11px;")
+    main.graph_hint.setStyleSheet(get_secondary_hint())
     row.addWidget(main.graph_hint, 1)
     layout.addLayout(row)
     main.graph_placeholder = QWidget()

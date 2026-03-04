@@ -15,6 +15,10 @@
 | **Terminal** | Output команд (scan, doctor, fix…) + поле ввода для shell (ls, pwd, eurika scan .) |
 | **Notes** | Персональные заметки во время работы. Сохраняются в `.eurika/notes.txt` проекта (или `~/.eurika/notes.txt` без проекта). Загрузка при смене project root. |
 
+### Тема оформления (Dark theme)
+
+**View → Dark theme** — переключение светлой/тёмной темы. Выбор сохраняется в `~/.eurika/qt_settings.json`. При запуске тема загружается из настроек.
+
 ### Chat: @-mentions (ROADMAP 3.6.5)
 
 Сужение контекста через `@module` и `@smell`. Примеры (по данным `eurika scan` / `eurika doctor`):

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from qt_app.ui.styles import get_secondary_hint, TAB_MARGINS
+
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
@@ -22,12 +24,15 @@ def build_approve_tab(main: MainWindow) -> None:
     """Build Approvals tab: team-mode flow, approvals table, diff preview."""
     tab = QWidget()
     layout = QVBoxLayout(tab)
+    layout.setContentsMargins(*TAB_MARGINS)
+    layout.setSpacing(8)
     hint = QLabel(
         "Team-mode: Run fix --team-mode → Load plan → Approve/reject → Save → Run apply-approved. "
         "Or: Run fix --dry-run (Commands) → Run apply-from-report to apply without re-scan."
     )
     hint.setWordWrap(True)
-    hint.setStyleSheet("color: gray; font-size: 11px;")
+    main.approve_hint = hint
+    hint.setStyleSheet(get_secondary_hint())
     layout.addWidget(hint)
     top = QHBoxLayout()
     main.run_team_mode_btn = QPushButton("Run fix (team-mode)")
@@ -47,13 +52,15 @@ def build_approve_tab(main: MainWindow) -> None:
     main.approvals_table = QTableWidget(0, 5)
     main.approvals_table.setHorizontalHeaderLabels(["#", "Target", "Kind", "Risk", "Decision"])
     header = main.approvals_table.horizontalHeader()
+    header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
     header.setSectionResizeMode(1, QHeaderView.Stretch)
     header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
     header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
     header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
     layout.addWidget(main.approvals_table, 1)
     diff_label = QLabel("Diff preview (select a row):")
-    diff_label.setStyleSheet("color: gray; font-size: 11px;")
+    main.approve_diff_label = diff_label
+    diff_label.setStyleSheet(get_secondary_hint())
     layout.addWidget(diff_label)
     main.approvals_diff_text = QPlainTextEdit()
     main.approvals_diff_text.setReadOnly(True)

@@ -6,10 +6,34 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QProcess
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QFileDialog, QMessageBox
 
 if TYPE_CHECKING:
     from ..main_window import MainWindow
+
+
+def select_module(main: MainWindow) -> None:
+    """Open file picker to select a Python module from project root."""
+    root = main.root_edit.text().strip() or "."
+    base = Path(root).resolve()
+    if not base.exists() or not base.is_dir():
+        QMessageBox.warning(
+            main, "Select module",
+            "Select project root first.",
+        )
+        return
+    path, _ = QFileDialog.getOpenFileName(
+        main,
+        "Select module",
+        str(base),
+        "Python files (*.py);;All files (*)",
+    )
+    if path:
+        try:
+            rel = Path(path).resolve().relative_to(base)
+            main.module_edit.setText(str(rel).replace("\\", "/"))
+        except ValueError:
+            main.module_edit.setText(path)
 
 
 def validate_project_root(root: str) -> tuple[bool, str]:
@@ -221,8 +245,19 @@ def format_fix_report_summary(main: MainWindow) -> str:
     return " | ".join(parts) if parts else ""
 
 
+def _format_idle_status(main: MainWindow) -> str:
+    """Status text when idle: Ready · <project_path>."""
+    root = (main.root_edit.text() or "").strip() or "."
+    if len(root) > 48:
+        root = "…" + root[-45:]
+    return f"Ready · {root}" if root != "." else "Ready — select project root"
+
+
 def on_state_changed(main: MainWindow, state: str) -> None:
-    main.status_label.setText(f"State: {state}")
+    if state == "idle":
+        main.status_label.setText(_format_idle_status(main))
+    else:
+        main.status_label.setText(f"State: {state}")
     running = state in {"thinking", "stopping"}
     main.stop_btn.setEnabled(running)
     main.run_btn.setEnabled(not running)

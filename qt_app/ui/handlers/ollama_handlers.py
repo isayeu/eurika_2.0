@@ -14,14 +14,18 @@ if TYPE_CHECKING:
 AVAILABLE_OLLAMA_MODELS = [
     "qwen2.5-coder:7b",
     "qwen2.5-coder:14b",
+    "qwen2.5:7b",
     "llama3.1:8b",
     "llama3.2:3b",
+    "llama3.2:1b",
     "mistral:7b",
     "phi4:latest",
     "deepseek-r1:8b",
     "deepseek-r1:14b",
     "gemma2:9b",
     "codellama:13b",
+    "command-r:8b",
+    "ninja:latest",
 ]
 
 
@@ -215,22 +219,8 @@ def refresh_ollama_catalog(main: MainWindow) -> None:
     from .chat_handlers import save_chat_preferences
 
     save_chat_preferences(main)
-    query = main.ollama_search_edit.text().strip() or "qwen"
-    names = filter_available_ollama_models(query)
     current = main.ollama_available_combo.currentText()
     main.ollama_available_combo.clear()
-    if names:
-        main.ollama_available_combo.addItems(names)
-        if current in names:
-            main.ollama_available_combo.setCurrentText(current)
-        if (
-            main._saved_available_model
-            and main.ollama_available_combo.findText(main._saved_available_model) >= 0
-        ):
-            main.ollama_available_combo.setCurrentText(main._saved_available_model)
-            main._saved_available_model = ""
-        main.ollama_install_status.setText(f"Catalog: {len(names)} models (filtered)")
-        return
     main.ollama_available_combo.addItems(AVAILABLE_OLLAMA_MODELS)
     if (
         main._saved_available_model
@@ -238,7 +228,8 @@ def refresh_ollama_catalog(main: MainWindow) -> None:
     ):
         main.ollama_available_combo.setCurrentText(main._saved_available_model)
         main._saved_available_model = ""
-    main.ollama_install_status.setText("Catalog: no matches, showing full list")
+    if current and main.ollama_available_combo.findText(current) >= 0:
+        main.ollama_available_combo.setCurrentText(current)
 
 
 def on_ollama_task_stdout(main: MainWindow) -> None:
@@ -302,13 +293,6 @@ def on_ollama_task_error(main: MainWindow, _error: QProcess.ProcessError) -> Non
     main.ollama_install_status.setText("Install: error")
     main._ollama_task_mode = ""
     main._ollama_task_model = ""
-
-
-def filter_available_ollama_models(query: str) -> list[str]:
-    q = (query or "").strip().lower()
-    if not q:
-        return list(AVAILABLE_OLLAMA_MODELS)
-    return [m for m in AVAILABLE_OLLAMA_MODELS if q in m.lower()]
 
 
 def resolve_ollama_model_to_install(custom_value: str, selected_value: str) -> str:

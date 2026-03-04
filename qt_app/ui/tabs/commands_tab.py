@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from qt_app.ui.styles import COMBO_MAX_WIDTH, SPIN_MAX_WIDTH, TAB_MARGINS
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -26,6 +28,8 @@ def build_commands_tab(main: MainWindow) -> None:
     """Build Commands tab: scan, doctor, fix, cycle, explain, options, run/stop."""
     main.commands_tab = tab = QWidget()
     layout = QVBoxLayout(tab)
+    layout.setContentsMargins(*TAB_MARGINS)
+    layout.setSpacing(10)
     controls = QGroupBox("Core Command Panel")
     controls_layout = QFormLayout(controls)
     main.command_combo = QComboBox()
@@ -33,13 +37,24 @@ def build_commands_tab(main: MainWindow) -> None:
         "scan", "doctor", "fix", "cycle", "explain", "report-snapshot", "learning-kpi",
         "learn-github", "clean-imports", "self-check", "whitelist-draft", "campaign-undo",
     ])
+    main.command_combo.setMaximumWidth(COMBO_MAX_WIDTH)
     controls_layout.addRow("Command", main.command_combo)
+    module_row = QHBoxLayout()
     main.module_edit = QLineEdit()
     main.module_edit.setPlaceholderText("Required for explain: eurika/api/serve.py")
-    controls_layout.addRow("Module", main.module_edit)
+    main.module_edit.setMaximumWidth(320)
+    main.module_browse_btn = QPushButton("…")
+    main.module_browse_btn.setFixedWidth(32)
+    main.module_browse_btn.setToolTip("Select module file from project")
+    module_row.addWidget(main.module_edit)
+    module_row.addWidget(main.module_browse_btn)
+    module_row.addStretch(1)
+    controls_layout.addRow("Module", module_row)
     main.window_spin = QSpinBox()
     main.window_spin.setRange(1, 100)
     main.window_spin.setValue(5)
+    main.window_spin.setMaximumWidth(SPIN_MAX_WIDTH)
+    main.window_spin.setToolTip("--window N: history size for doctor/fix/cycle/explain (default 5)")
     controls_layout.addRow("Window", main.window_spin)
     options_row = QHBoxLayout()
     main.dry_run_check = QCheckBox("--dry-run")
@@ -96,6 +111,7 @@ def build_commands_tab(main: MainWindow) -> None:
     action_row = QHBoxLayout()
     main.preview_label = QLabel("eurika scan .")
     main.preview_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+    main.preview_label.setWordWrap(True)
     action_row.addWidget(main.preview_label, 1)
     main.run_btn = QPushButton("Run")
     main.stop_btn = QPushButton("Stop")

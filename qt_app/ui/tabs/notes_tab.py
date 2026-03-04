@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from qt_app.ui.styles import TAB_MARGINS
+
 from PySide6.QtWidgets import QHBoxLayout, QPushButton, QTextEdit, QVBoxLayout, QWidget
 
 if TYPE_CHECKING:
@@ -13,7 +15,7 @@ def build_notes_tab(main: MainWindow) -> None:
     """Build Notes tab: text area + Save button."""
     tab = QWidget()
     layout = QVBoxLayout(tab)
-    layout.setContentsMargins(6, 6, 6, 6)
+    layout.setContentsMargins(*TAB_MARGINS)
     main.notes_text = QTextEdit()
     main.notes_text.setPlaceholderText("Заметки для текущей сессии. Сохраняются в .eurika/notes.txt проекта.")
     main.notes_text.setAcceptRichText(False)
