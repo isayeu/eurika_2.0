@@ -40,6 +40,7 @@ def run_fix_cycle_impl(
     allow_low_risk_campaign: bool = False,
     team_mode: bool = False,
     apply_approved: bool = False,
+    apply_from_report: bool = False,
     approve_ops: str | None = None,
     reject_ops: str | None = None,
     fix_cycle_deps: Callable[[], FixCycleDeps],
@@ -69,6 +70,21 @@ def run_fix_cycle_impl(
     deps = fix_cycle_deps()
     run_scan = deps["run_scan"]
     patch_plan: PatchPlan | None = None
+
+    if apply_from_report:
+        from .fix_cycle_apply_from_report import run_apply_from_report_path
+
+        return run_apply_from_report_path(
+            path,
+            session_id=session_id,
+            quiet=quiet,
+            verify_cmd=verify_cmd,
+            verify_timeout=verify_timeout,
+            deps=deps,
+            execute_fix_apply_stage=execute_fix_apply_stage,
+            build_fix_cycle_result=build_fix_cycle_result,
+            attach_fix_telemetry=attach_fix_telemetry,
+        )
 
     if apply_approved:
         from .fix_cycle_apply_approved import run_apply_approved_path

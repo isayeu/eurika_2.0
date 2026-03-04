@@ -119,6 +119,19 @@ class CommandService(QObject):
         self._process.setWorkingDirectory(root)
         self._process.start(sys.executable, args)
 
+    def run_apply_from_report(self, *, project_root: str) -> None:
+        """Apply patch_plan from eurika_fix_report.json (after dry-run); no re-scan/LLM."""
+        if self._process.state() != QProcess.NotRunning:
+            self.error_line.emit("A command is already running.")
+            return
+        root = str(Path(project_root or ".").resolve())
+        args = ["-m", "eurika_cli", "fix", root, "--apply-from-report"]
+        self._active_command = f"eurika fix {root} --apply-from-report"
+        self.command_started.emit(self._active_command)
+        self._set_state(CycleState.THINKING.value)
+        self._process.setWorkingDirectory(root)
+        self._process.start(sys.executable, args)
+
     def run_ruff(self, *, project_root: str) -> None:
         """Run ruff check eurika cli from project root. Uses .venv if present."""
         if self._process.state() != QProcess.NotRunning:

@@ -43,6 +43,7 @@ def handle_fix(args: Any) -> int:
             online=getattr(args, "online", False),
             team_mode=getattr(args, "team_mode", False),
             apply_approved=getattr(args, "apply_approved", False),
+            apply_from_report=getattr(args, "apply_from_report", False),
             approve_ops=getattr(args, "approve_ops", None),
             reject_ops=getattr(args, "reject_ops", None),
         )
@@ -94,6 +95,7 @@ def handle_cycle(args: Any) -> int:
             online=getattr(args, "online", False),
             team_mode=getattr(args, "team_mode", False),
             apply_approved=getattr(args, "apply_approved", False),
+            apply_from_report=getattr(args, "apply_from_report", False),
             approve_ops=getattr(args, "approve_ops", None),
             reject_ops=getattr(args, "reject_ops", None),
         )

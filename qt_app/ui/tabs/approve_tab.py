@@ -23,7 +23,8 @@ def build_approve_tab(main: MainWindow) -> None:
     tab = QWidget()
     layout = QVBoxLayout(tab)
     hint = QLabel(
-        "1. Run fix with --team-mode (Commands tab) → 2. Load plan → 3. Approve/reject per row → 4. Save → 5. Run apply-approved"
+        "Team-mode: Run fix --team-mode → Load plan → Approve/reject → Save → Run apply-approved. "
+        "Or: Run fix --dry-run (Commands) → Run apply-from-report to apply without re-scan."
     )
     hint.setWordWrap(True)
     hint.setStyleSheet("color: gray; font-size: 11px;")
@@ -34,10 +35,13 @@ def build_approve_tab(main: MainWindow) -> None:
     main.load_pending_btn = QPushButton("Load pending plan")
     main.save_approvals_btn = QPushButton("Save approve/reject")
     main.apply_approved_btn = QPushButton("Run apply-approved")
+    main.apply_from_report_btn = QPushButton("Apply from report")
+    main.apply_from_report_btn.setToolTip("Apply plan from eurika_fix_report.json (after dry-run); skips re-scan/LLM")
     top.addWidget(main.run_team_mode_btn)
     top.addWidget(main.load_pending_btn)
     top.addWidget(main.save_approvals_btn)
     top.addWidget(main.apply_approved_btn)
+    top.addWidget(main.apply_from_report_btn)
     top.addStretch(1)
     layout.addLayout(top)
     main.approvals_table = QTableWidget(0, 5)

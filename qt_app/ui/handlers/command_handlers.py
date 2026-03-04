@@ -130,6 +130,24 @@ def run_apply_approved(main: MainWindow) -> None:
     main._command_service.run_apply_approved(project_root=root)
 
 
+def run_apply_from_report(main: MainWindow) -> None:
+    root = main.root_edit.text().strip() or "."
+    ok, msg = validate_project_root(root)
+    if not ok:
+        QMessageBox.warning(main, "Invalid project root", msg)
+        return
+    report_path = Path(root).resolve() / "eurika_fix_report.json"
+    if not report_path.is_file():
+        QMessageBox.warning(
+            main,
+            "Apply from report",
+            "eurika_fix_report.json not found. Run fix --dry-run first (Commands tab).",
+        )
+        return
+    main.tabs.setCurrentIndex(main.tabs.indexOf(main.commands_tab))
+    main._command_service.run_apply_from_report(project_root=root)
+
+
 def on_command_started(main: MainWindow, command_line: str) -> None:
     from ..tabs import terminal_tab
     terminal_tab._append_stream(main, f"$ {command_line}\n")

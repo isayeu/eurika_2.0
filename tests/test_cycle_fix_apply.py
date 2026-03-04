@@ -335,22 +335,25 @@ def test_fix_cycle_approve_ops_selects_subset() -> None:
     assert skipped.get("b.py") == "not_in_approved_set"
 
 
-def test_fix_cycle_reject_ops_conflict_returns_error() -> None:
-    """Conflicting --approve-ops/--reject-ops indexes return deterministic error."""
+def test_fix_cycle_approve_reject_overlap_approve_wins() -> None:
+    """Overlapping --approve-ops/--reject-ops: approve wins (index in both → approved)."""
     from cli.orchestrator import run_cycle
 
     fake_result = MagicMock()
     fake_result.output = {"policy_decisions": [], "critic_decisions": []}
     ops = [
         {"target_file": "a.py", "kind": "split_module", "approval_state": "approved", "critic_verdict": "allow"},
+        {"target_file": "b.py", "kind": "remove_unused_import", "approval_state": "approved", "critic_verdict": "allow"},
     ]
     with (
         patch("eurika.orchestration.entry.load_fix_cycle_deps", return_value={"run_scan": lambda *_args, **_kwargs: True}),
         patch("eurika.orchestration.entry._prepare_fix_cycle_operations", return_value=(None, fake_result, {"operations": ops}, ops)),
     ):
         out = run_cycle(ROOT, mode="fix", dry_run=True, quiet=True, approve_ops="1", reject_ops="1")
-    assert out.get("return_code") == 1
-    assert "Conflicting indexes" in ((out.get("report") or {}).get("error") or "")
+    # Index 1 in both → treated as approved (no error)
+    selected = out.get("operations") or []
+    assert len(selected) == 1
+    assert selected[0].get("target_file") == "a.py"
 
 
 def test_fix_cycle_noop_writes_fresh_fix_report(tmp_path: Path) -> None:
@@ -618,3 +621,48 @@ def test_deprioritize_weak_pairs_puts_weak_last(tmp_path: Path) -> None:
     assert reordered[0]["target_file"] == "b.py"
     assert reordered[1]["target_file"] in ("a.py", "c.py")
     assert reordered[2]["target_file"] in ("a.py", "c.py")
+
+
+def test_apply_from_report_uses_dry_run_plan(tmp_path: Path) -> None:
+    """--apply-from-report loads patch_plan from eurika_fix_report.json and applies without re-scan."""
+    from cli.orchestrator import run_cycle
+
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "foo.py").write_text("import os\nx = 1\n", encoding="utf-8")
+    (proj / "tests").mkdir()
+    (proj / "tests" / "__init__.py").write_text("", encoding="utf-8")
+    (proj / "tests" / "test_foo.py").write_text("def test_foo(): assert True\n", encoding="utf-8")
+    (proj / "pyproject.toml").write_text(
+        "[tool.pytest.ini_options]\ntestpaths=['tests']\n", encoding="utf-8"
+    )
+    report_data = {
+        "dry_run": True,
+        "patch_plan": {
+            "operations": [
+                {"target_file": "foo.py", "kind": "remove_unused_import"},
+            ],
+        },
+    }
+    (proj / "eurika_fix_report.json").write_text(
+        json.dumps(report_data), encoding="utf-8"
+    )
+
+    out = run_cycle(proj, mode="fix", apply_from_report=True, quiet=True)
+
+    assert out.get("return_code") == 0, out
+    modified = out.get("modified", [])
+    assert "foo.py" in modified, f"expected foo.py in modified, got {modified}"
+    assert out.get("verify_success") is True
+    content = (proj / "foo.py").read_text(encoding="utf-8")
+    assert "import os" not in content, "remove_unused_import should have removed unused import"
+
+
+def test_apply_from_report_no_report_returns_error(tmp_path: Path) -> None:
+    """--apply-from-report when no eurika_fix_report.json returns helpful error."""
+    from cli.orchestrator import run_cycle
+
+    # No eurika_fix_report.json
+    out = run_cycle(tmp_path, mode="fix", apply_from_report=True, quiet=True)
+    assert out.get("return_code") == 1
+    assert "No dry-run report" in (out.get("report", {}).get("error") or "")

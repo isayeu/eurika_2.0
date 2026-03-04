@@ -35,8 +35,8 @@ def filter_executable_operations(
         reason = ""
         if approval_state != "approved":
             reason = f"approval_state={approval_state}"
-        elif team_override and decision_source == "team":
-            pass  # team approved: bypass critic
+        elif team_override and decision_source in {"team", "report"}:
+            pass  # team/report approved: bypass critic
         elif critic_verdict not in {"allow", "review"}:
             reason = f"critic_verdict={critic_verdict}"
         if reason:
@@ -89,9 +89,10 @@ def select_operations_by_indexes(
     reject_idx, err = parse_operation_indexes(reject_ops, len(operations), flag_name="--reject-ops")
     if err:
         return [], [], err
+    # Remove overlap: approve wins (index in both → treated as approved)
     overlap = approve_idx & reject_idx
     if overlap:
-        return [], [], f"Conflicting indexes in --approve-ops and --reject-ops: {sorted(overlap)}"
+        reject_idx = reject_idx - overlap
 
     if not approve_idx and not reject_idx:
         return operations, [], None

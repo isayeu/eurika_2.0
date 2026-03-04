@@ -78,17 +78,25 @@ eurika doctor . --no-llm
 
 Полный цикл: scan → arch-review → patch-apply --apply --verify. **По умолчанию** план fix включает операции **remove_unused_import** (clean-imports) для файлов с неиспользуемыми импортами; затем — архитектурные патчи (remove_cyclic_import, split_module и т.д.). Эквивалент `eurika agent cycle` с применением патчей и проверкой тестами. После apply запускается **pytest** (или `--verify-cmd` / `[tool.eurika] verify_cmd` в pyproject.toml); для верификации нужен установленный pytest: `pip install pytest` или `pip install -e ".[test]"`. **Отчёт сохраняется в `eurika_fix_report.json`** (при apply — полный; при `--dry-run` — `dry_run: true` + `patch_plan`).
 
-**Опции:** `--window N`, `--dry-run` (только план, без apply; сохраняет eurika_fix_report.json), `--quiet` / `-q` (минимальный вывод, итог в JSON), `--runtime-mode {assist,hybrid,auto}` (режим agent runtime), `--non-interactive` (для `hybrid`: не спрашивать approve/reject, детерминированный режим для CI), `--session-id ID` (память решений сессии для `hybrid`), `--approve-ops IDX[,IDX...]` (явно одобрить операции по индексам, 1-based), `--reject-ops IDX[,IDX...]` (явно отклонить операции по индексам), `--no-clean-imports` (исключить remove_unused_import из плана), `--no-code-smells` (исключить refactor_code_smell — long_function, deep_nesting — из плана), `--verify-cmd CMD` (переопределить команду верификации, напр. `python manage.py test` для Django; иначе используется `[tool.eurika] verify_cmd` в pyproject.toml или pytest), `--interval SEC` (авто-повтор каждые SEC секунд, 0=один раз; Ctrl+C для остановки).
+**Опции:** `--window N`, `--dry-run` (только план, без apply; сохраняет eurika_fix_report.json), `--apply-from-report` (применить план из `eurika_fix_report.json` после dry-run, без повторного scan/diagnose; экономия времени после LLM-прогона), `--quiet` / `-q` (минимальный вывод, итог в JSON), `--runtime-mode {assist,hybrid,auto}` (режим agent runtime), `--non-interactive` (для `hybrid`: не спрашивать approve/reject, детерминированный режим для CI), `--session-id ID` (память решений сессии для `hybrid`), `--approve-ops IDX[,IDX...]` (явно одобрить операции по индексам, 1-based), `--reject-ops IDX[,IDX...]` (явно отклонить операции по индексам), `--no-clean-imports` (исключить remove_unused_import из плана), `--no-code-smells` (исключить refactor_code_smell — long_function, deep_nesting — из плана), `--verify-cmd CMD` (переопределить команду верификации, напр. `python manage.py test` для Django; иначе используется `[tool.eurika] verify_cmd` в pyproject.toml или pytest), `--interval SEC` (авто-повтор каждые SEC секунд, 0=один раз; Ctrl+C для остановки).
+
+**Рекомендуемый поток: dry-run → apply-from-report**
+
+```bash
+eurika fix . --dry-run          # scan + diagnose (LLM) + plan; сохраняет eurika_fix_report.json
+eurika fix . --apply-from-report # применить план без повторного scan/diagnose
+```
 
 **Manual per-op approval (без интерактива):**
 
 - Индексы считаются по порядку операций в плане (начиная с 1).
 - Если задан `--approve-ops`, все неуказанные операции считаются отклонёнными (`not_in_approved_set`).
-- `--approve-ops` и `--reject-ops` не должны пересекаться; при конфликте команда завершается с ошибкой.
+- При пересечении индексов в `--approve-ops` и `--reject-ops` приоритет у approve (индекс считается одобренным).
 
 ```bash
 eurika fix .
 eurika fix . --dry-run
+eurika fix . --apply-from-report # apply plan from last dry-run (no re-scan)
 eurika fix . --team-mode      # propose; plan saved to .eurika/pending_plan.json
 eurika fix . --apply-approved # apply only ops with team_decision=approve
 eurika fix . --approve-ops 1,3,5
@@ -103,7 +111,7 @@ eurika fix . --no-clean-imports
 
 Полный ритуал одной командой: **scan → doctor (report + architect) → fix**. Сначала scan, затем вывод полной диагностики (summary, evolution, architect), затем fix (patch-apply --apply --verify). Fix по умолчанию включает remove_unused_import; architect при cycle получает recent_events (последние patch/learn) в контексте.
 
-**Опции:** `--window N`, `--dry-run` (doctor + plan, без apply), `--quiet` / `-q`, `--runtime-mode {assist,hybrid,auto}`, `--non-interactive`, `--session-id ID`, `--approve-ops IDX[,IDX...]`, `--reject-ops IDX[,IDX...]`, `--no-llm` (architect по шаблону, без API-ключа), `--no-clean-imports` (исключить clean-imports из fix), `--no-code-smells` (исключить refactor_code_smell из fix), `--verify-cmd CMD` (переопределить команду верификации для fix), `--interval SEC` (авто-повтор каждые SEC секунд; Ctrl+C для остановки).
+**Опции:** `--window N`, `--dry-run` (doctor + plan, без apply), `--apply-from-report` (применить план из eurika_fix_report.json без повторного scan/diagnose), `--quiet` / `-q`, `--runtime-mode {assist,hybrid,auto}`, `--non-interactive`, `--session-id ID`, `--approve-ops IDX[,IDX...]`, `--reject-ops IDX[,IDX...]`, `--no-llm` (architect по шаблону, без API-ключа), `--no-clean-imports` (исключить clean-imports из fix), `--no-code-smells` (исключить refactor_code_smell из fix), `--verify-cmd CMD` (переопределить команду верификации для fix), `--interval SEC` (авто-повтор каждые SEC секунд; Ctrl+C для остановки).
 
 ### eurika watch [path] [--poll SEC] [--quiet] [--no-clean-imports]
 
@@ -422,6 +430,8 @@ HTTP-сервер JSON API (`/api/*`) для интеграций и UI-клие
 - `GET /api/graph` — dependency graph (nodes=modules, edges=imports) for UI
 - `GET /api/operational_metrics?window=10` — apply-rate, rollback-rate, median verify time (from patch events)
 - `GET /api/pending_plan` — pending plan for approve UI (team-mode)
+- `GET /api/knowledge?topic=...&online=0` — Knowledge Layer query (см. examples/knowledge/)
+- `GET /api/metrics` — MetricVector + Energy (ROADMAP §5.7 Execution Model)
 - `POST /api/approve` — save approve/reject decisions (body: `{ operations: [...] }`)
 
 ```bash

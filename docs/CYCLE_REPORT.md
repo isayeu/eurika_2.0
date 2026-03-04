@@ -1248,7 +1248,7 @@ Dependency guard стабильно ловит нарушения; EURIKA_STRICT
   - `tests/test_github_search.py`
   - `tests/test_api.py`
   - `tests/test_api_serve.py`
-  - `tests/test_cycle.py -k "doctor_runtime_reports_degraded_mode_when_llm_disabled or knowledge_topics_derived_from_summary or run_full_cycle_wrapper_delegates_to_orchestration_module or full_cycle_propagates_doctor_runtime_to_fix_report or fix_cycle_approve_ops_selects_subset or fix_cycle_approve_ops_reject_ops_conflict"`
+  - `tests/test_cycle.py -k "doctor_runtime_reports_degraded_mode_when_llm_disabled or knowledge_topics_derived_from_summary or run_full_cycle_wrapper_delegates_to_orchestration_module or full_cycle_propagates_doctor_runtime_to_fix_report or fix_cycle_approve_ops_selects_subset or fix_cycle_approve_reject_overlap_approve_wins"`
 
 ### Результат
 - `mypy`: `Success: no issues found in 16 source files`
@@ -1348,7 +1348,7 @@ Dependency guard стабильно ловит нарушения; EURIKA_STRICT
   - результат: `Success: no issues found in 7 source files`
 - regression-check:
   - `tests/test_hitl_cli.py` — green
-  - `tests/test_cycle.py -k "run_full_cycle_wrapper_delegates_to_orchestration_module or full_cycle_propagates_doctor_runtime_to_fix_report or fix_cycle_approve_ops_selects_subset or fix_cycle_approve_ops_reject_ops_conflict"` — green
+  - `tests/test_cycle.py -k "run_full_cycle_wrapper_delegates_to_orchestration_module or full_cycle_propagates_doctor_runtime_to_fix_report or fix_cycle_approve_ops_selects_subset or fix_cycle_approve_reject_overlap_approve_wins"` — green
 
 ### Итог
 - typing-contract gate расширен на полный orchestration entry path без изменения runtime-поведения.

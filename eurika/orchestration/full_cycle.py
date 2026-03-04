@@ -59,6 +59,7 @@ def run_cycle_entry(
     online: bool = False,
     team_mode: bool = False,
     apply_approved: bool = False,
+    apply_from_report: bool = False,
     approve_ops: str | None = None,
     reject_ops: str | None = None,
     run_doctor_cycle_fn: Callable[..., dict[str, Any]],
@@ -90,6 +91,7 @@ def run_cycle_entry(
                 allow_low_risk_campaign=allow_low_risk_campaign,
                 team_mode=team_mode,
                 apply_approved=apply_approved,
+                apply_from_report=apply_from_report,
                 approve_ops=approve_ops,
                 reject_ops=reject_ops,
             )
@@ -112,6 +114,7 @@ def run_cycle_entry(
                 online=online,
                 team_mode=team_mode,
                 apply_approved=apply_approved,
+                apply_from_report=apply_from_report,
                 approve_ops=approve_ops,
                 reject_ops=reject_ops,
             )
@@ -172,6 +175,7 @@ def run_full_cycle(
     online: bool = False,
     team_mode: bool = False,
     apply_approved: bool = False,
+    apply_from_report: bool = False,
     approve_ops: str | None = None,
     reject_ops: str | None = None,
     run_doctor_cycle_fn: Callable[..., dict[str, Any]],
@@ -243,6 +247,7 @@ def run_full_cycle(
         allow_low_risk_campaign=allow_low_risk_campaign,
         team_mode=team_mode,
         apply_approved=apply_approved,
+        apply_from_report=apply_from_report,
         approve_ops=approve_ops,
         reject_ops=reject_ops,
     )

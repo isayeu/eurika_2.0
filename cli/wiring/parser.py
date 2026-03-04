@@ -62,6 +62,7 @@ def _add_product_commands(subparsers: argparse._SubParsersAction) -> None:
     fix_parser.add_argument("--apply-suggested-policy", action="store_true", help="Apply suggested policy from last doctor/fix telemetry (ROADMAP 2.9.4)")
     fix_parser.add_argument("--team-mode", action="store_true", help="Propose only: save plan to .eurika/pending_plan.json and exit (ROADMAP 3.0.4)")
     fix_parser.add_argument("--apply-approved", action="store_true", help="Apply only ops with team_decision=approve from pending_plan.json (ROADMAP 3.0.4)")
+    fix_parser.add_argument("--apply-from-report", action="store_true", help="Apply patch_plan from last dry-run (eurika_fix_report.json); skips scan+diagnose")
     fix_parser.add_argument("--approve-ops", type=str, default=None, metavar="IDX[,IDX...]", help="Explicitly approve operation indexes (1-based), e.g. --approve-ops 1,3,5")
     fix_parser.add_argument("--reject-ops", type=str, default=None, metavar="IDX[,IDX...]", help="Explicitly reject operation indexes (1-based), e.g. --reject-ops 2,4")
 
@@ -86,6 +87,7 @@ def _add_product_commands(subparsers: argparse._SubParsersAction) -> None:
     cycle_parser.add_argument("--apply-suggested-policy", action="store_true", help="Apply suggested policy from last doctor/fix telemetry (ROADMAP 2.9.4)")
     cycle_parser.add_argument("--team-mode", action="store_true", help="Propose only: save plan and exit (ROADMAP 3.0.4)")
     cycle_parser.add_argument("--apply-approved", action="store_true", help="Apply only approved ops from pending_plan.json (ROADMAP 3.0.4)")
+    cycle_parser.add_argument("--apply-from-report", action="store_true", help="Apply patch_plan from last dry-run (eurika_fix_report.json); skips scan+diagnose")
     cycle_parser.add_argument("--approve-ops", type=str, default=None, metavar="IDX[,IDX...]", help="Explicitly approve operation indexes (1-based), e.g. --approve-ops 1,3,5")
     cycle_parser.add_argument("--reject-ops", type=str, default=None, metavar="IDX[,IDX...]", help="Explicitly reject operation indexes (1-based), e.g. --reject-ops 2,4")
 

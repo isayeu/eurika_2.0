@@ -123,6 +123,7 @@ class MainWindow(QMainWindow):
         self.load_pending_btn.clicked.connect(lambda: approve_handlers.load_pending_plan(self))
         self.save_approvals_btn.clicked.connect(lambda: approve_handlers.save_approvals(self))
         self.apply_approved_btn.clicked.connect(lambda: command_handlers.run_apply_approved(self))
+        self.apply_from_report_btn.clicked.connect(lambda: command_handlers.run_apply_from_report(self))
         self.approvals_table.itemSelectionChanged.connect(lambda: approve_handlers.on_approval_row_selected(self))
         self.chat_send_btn.clicked.connect(lambda: chat_handlers.send_chat_message(self))
         self.chat_clear_btn.clicked.connect(lambda: chat_handlers.clear_chat_session(self))
