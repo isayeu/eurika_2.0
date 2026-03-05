@@ -152,6 +152,8 @@ OLLAMA_VULKAN=1 HSA_OVERRIDE_GFX_VERSION=10.3.0 ollama serve
 
 **Решение:** См. `.cursor/rules/change-verify-pattern.mdc` — после правок в модуле `eurika/X/` запускайте `pytest tests/ -q -k "X"`. При F401/F811 (ruff) — удалить неиспользуемый импорт или переименовать; при mypy Incompatible return type — поправить аннотацию или return.
 
+**Qt:** Release check (Quality tab) передаёт `OLLAMA_OPENAI_MODEL` из Models tab в smoke step (fix --dry-run). Выберите модель до Run.
+
 ---
 
 ## Быстрые ссылки
