@@ -19,9 +19,16 @@ def run_apply_approved_path(path: Path, *, session_id: str | None, quiet: bool, 
         return with_cycle_state({'return_code': 1, 'report': rep, 'operations': [], 'modified': [], 'verify_success': False, 'agent_result': None}, is_error=True)
     if not approved:
         clear_pending_plan_after_apply(path)
-        rep = {'message': "No operations approved. Edit .eurika/pending_plan.json and set team_decision='approve'."}
-        attach_pipeline_trace(rep, [])
-        return with_cycle_state({'return_code': 0, 'report': rep, 'operations': [], 'modified': [], 'verify_success': True, 'agent_result': None}, is_error=False)
+        report: FixReport = {
+            'message': "No operations approved. Edit .eurika/pending_plan.json and set team_decision='approve'.",
+            'modified': [],
+            'operations': [],
+            'verify': {'success': True},
+            'safety_gates': {'verify_ran': False},
+        }
+        attach_pipeline_trace(report, [])
+        write_fix_report(path, report, quiet)
+        return with_cycle_state({'return_code': 0, 'report': report, 'operations': [], 'modified': [], 'verify_success': True, 'agent_result': None}, is_error=False)
     patch_plan = dict(payload.get('patch_plan') or {}, operations=approved)
     approved, _, skipped_reasons, skipped_files = filter_executable_operations(approved, team_override=True)
     if not approved:
