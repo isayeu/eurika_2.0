@@ -49,14 +49,14 @@ def preview_operation(project_root: Path, op: Dict[str, Any]) -> Dict[str, Any]:
     """Preview single-file operation: old/new content and unified diff (ROADMAP 3.6.7)."""
     root = Path(project_root).resolve()
     target_file = str(op.get("target_file") or "").strip()
-    kind = str(op.get("kind") or "").strip()
+    kind = str(op.get("kind") or op.get("operation_kind") or op.get("action_kind") or "").strip()
     params = op.get("params") or {}
     if not target_file or not kind:
         return {"error": "target_file and kind required"}
     path = root / target_file
     if not path.exists() or not path.is_file():
         return {"error": f"file not found: {target_file}"}
-    supported = {"remove_unused_import", "remove_cyclic_import", "extract_block_to_helper", "extract_nested_function", "fix_import"}
+    supported = {"remove_unused_import", "remove_cyclic_import", "extract_block_to_helper", "extract_nested_function", "fix_import", "llm_extract_block", "extract_class"}
     if kind not in supported:
         return {"error": f"preview not supported for kind={kind}"}
     try:
@@ -82,6 +82,21 @@ def preview_operation(project_root: Path, op: Dict[str, Any]) -> Dict[str, Any]:
             new_content = extract_nested_function(path, loc, nested, extra_params=extra if isinstance(extra, list) else None)
     elif kind == "fix_import":
         new_content = op.get("diff") or ""
+    elif kind == "llm_extract_block":
+        new_content = params.get("new_content") or op.get("diff")
+        if not new_content or not isinstance(new_content, str):
+            return {"target_file": target_file, "kind": kind, "old_content": old_content, "error": "llm_extract_block: no new_content or diff"}
+    elif kind == "extract_class":
+        from eurika.refactor.extract_class import extract_class
+        target_class = params.get("target_class")
+        methods = params.get("methods_to_extract")
+        if not target_class or not methods or not isinstance(methods, list):
+            return {"target_file": target_file, "kind": kind, "old_content": old_content, "error": "extract_class: target_class and methods_to_extract required"}
+        result = extract_class(path, target_class, methods, target_file=target_file)
+        if result is None:
+            return {"target_file": target_file, "kind": kind, "old_content": old_content, "error": "extract_class: extraction failed"}
+        _extracted_rel, _extracted_content, modified_original = result
+        new_content = modified_original
     if new_content is None or (kind == "fix_import" and not new_content):
         return {"target_file": target_file, "kind": kind, "old_content": old_content, "error": "operation would produce no change or extraction failed"}
     unified_lines = list(difflib.unified_diff(old_content.splitlines(keepends=True), new_content.splitlines(keepends=True), fromfile=f"a/{target_file}", tofile=f"b/{target_file}", lineterm=""))
