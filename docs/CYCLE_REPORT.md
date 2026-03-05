@@ -2,6 +2,7 @@
 
 ## Current state (2026-03-05)
 
+- **125. Qt release check tests + docs (2026-03):** test_qt_command_handlers — run_release_check passes ollama_model. ONBOARDING: Models tab перед Commands. TROUBLESHOOTING §7: Qt release check uses Models tab. CHANGELOG v3.0.27 дополнен.
 - **124. EnergyModel resource constraint (2026-03):** Контракт документирован в docs/BOUNDED_EVOLUTION.md §7. EnergyModel — target как energy budget (Σ|ΔE| за цикл ≤ cap), не только scoring. EXECUTION_MODEL_PLAN, Architecture.md обновлены. Реализация — по мере пробелов. ROADMAP §5.7 next step.
 - **123. 100 fix cycles batch (2026-03):** run_cycle_batch 100 циклов (БЕЗ --dry-run). CYCLE_REPORT ritual @25, @50, @75, @100. **Адаптация: Yes** — success_rate 0.83→1.14, rollback 0.2→0, most_successful_action: extract_nested_function (67%) → extract_block_to_helper (100%) → remove_unused_import (100%). top_failure_reason: incomplete_or_broken_llm_extract. BOUNDED_EVOLUTION §6.
 - **122. Enriched failure event (2026-03):** goal_id, plan_hash, confidence в learn events. get_recent_failures_enriched, get_recent_failed_plan_hashes. Planner: при failed plan_hash — reverse порядка ops. ARCHITECTURE_MEMORY_REVIEW §2.
