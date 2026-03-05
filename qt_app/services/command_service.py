@@ -130,6 +130,7 @@ class CommandService(QObject):
         no_llm: bool = False,
         no_clean_imports: bool = False,
         no_code_smells: bool = False,
+        use_llm_extract: bool = False,
         allow_low_risk_campaign: bool = False,
         team_mode: bool = False,
         runtime_mode: str = "assist",
@@ -164,9 +165,12 @@ class CommandService(QObject):
         self.command_started.emit(self._active_command)
         self._set_state(CycleState.THINKING.value)
         self._process.setWorkingDirectory(root)
-        if ollama_model.strip():
+        if ollama_model.strip() or use_llm_extract:
             env = QProcessEnvironment.systemEnvironment()
-            env.insert("OLLAMA_OPENAI_MODEL", ollama_model.strip())
+            if ollama_model.strip():
+                env.insert("OLLAMA_OPENAI_MODEL", ollama_model.strip())
+            if use_llm_extract:
+                env.insert("EURIKA_USE_LLM_EXTRACT", "1")
             self._process.setProcessEnvironment(env)
         self._process.start("bash", ["-c", script])
 
@@ -217,8 +221,8 @@ class CommandService(QObject):
         self._process.setWorkingDirectory(str(root))
         self._process.start(exe, args)
 
-    def run_release_check(self, *, project_root: str) -> None:
-        """Run scripts/release_check.sh from project root (CR-F1, CR-B2)."""
+    def run_release_check(self, *, project_root: str, ollama_model: str = "") -> None:
+        """Run scripts/release_check.sh from project root (CR-F1, CR-B2). Uses GUI model for smoke step."""
         if self._process.state() != QProcess.NotRunning:
             self.error_line.emit("A command is already running.")
             return
@@ -231,6 +235,10 @@ class CommandService(QObject):
         self.command_started.emit(self._active_command)
         self._set_state(CycleState.THINKING.value)
         self._process.setWorkingDirectory(str(root))
+        if ollama_model.strip():
+            env = QProcessEnvironment.systemEnvironment()
+            env.insert("OLLAMA_OPENAI_MODEL", ollama_model.strip())
+            self._process.setProcessEnvironment(env)
         self._process.start("bash", [str(script)])
 
     def stop(self) -> None:

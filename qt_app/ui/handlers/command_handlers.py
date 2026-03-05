@@ -77,6 +77,7 @@ def run_command(main: MainWindow) -> None:
             no_llm=main.no_llm_check.isChecked(),
             no_clean_imports=main.no_clean_imports_check.isChecked(),
             no_code_smells=main.no_code_smells_check.isChecked(),
+            use_llm_extract=main.use_llm_extract_check.isChecked(),
             allow_low_risk_campaign=main.allow_low_risk_campaign_check.isChecked(),
             team_mode=main.team_mode_check.isChecked(),
             runtime_mode=runtime_mode_val,
@@ -162,7 +163,8 @@ def run_release_check(main: MainWindow) -> None:
             f"scripts/release_check.sh not found in {Path(root).resolve()}",
         )
         return
-    main._command_service.run_release_check(project_root=root)
+    ollama_model = main._resolve_ollama_model_for_command()
+    main._command_service.run_release_check(project_root=root, ollama_model=ollama_model)
 
 
 def run_apply_approved(main: MainWindow) -> None:
