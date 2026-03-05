@@ -6,14 +6,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from eurika.api.task_executor import build_task_spec, execute_spec, has_capability, is_pending_plan_valid, make_pending_plan
 from .chat_context import build_chat_context as _build_chat_context, load_dialog_state as _load_dialog_state, load_user_context as _load_user_context, save_dialog_state as _save_dialog_state, save_user_context as _save_user_context, store_last_execution as _store_last_execution
-from .chat_direct import (
-    extract_commit_message_from_request as _extract_commit_message_from_request,  # noqa: F401
-    extract_confirmation_token as _extract_confirmation_token,
-    is_apply_confirmation as _is_apply_confirmation,
-    is_reject_confirmation as _is_reject_confirmation,
-    resolve_direct_handler as _resolve_direct_handler,
-    run_eurika_fix as _run_eurika_fix,
-)
+from .chat_direct import extract_confirmation_token as _extract_confirmation_token, is_apply_confirmation as _is_apply_confirmation, is_reject_confirmation as _is_reject_confirmation, resolve_direct_handler as _resolve_direct_handler, run_eurika_fix as _run_eurika_fix
 from .chat_prompt import build_chat_prompt as _build_chat_prompt, fetch_knowledge_for_chat as _fetch_knowledge_for_chat, intent_hints_for_prompt as _intent_hints_for_prompt, knowledge_topics_for_chat as _knowledge_topics_for_chat, load_chat_feedback_for_prompt as _load_chat_feedback_for_prompt, load_eurika_rules_for_chat as _load_eurika_rules_for_chat
 from .chat_handlers import run_direct_handlers as _run_direct_handlers
 from .chat_utils import enforce_eurika_persona as _enforce_eurika_persona, format_execution_report as _format_execution_report, grounded_ui_tabs_text as _grounded_ui_tabs_text, infer_default_save_target as _infer_default_save_target, safe_create_empty_file as _safe_create_empty_file, safe_delete_file as _safe_delete_file, safe_write_file as _safe_write_file
@@ -53,6 +46,13 @@ def save_chat_feedback(project_root: Path, user_message: str, assistant_message:
     except Exception:
         pass
 
+def _emit(cmd: str, on_system_action) -> None:
+    if on_system_action:
+        try:
+            on_system_action(cmd)
+        except Exception:
+            pass
+
 def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str, str]]]=None, on_system_action: Optional[Callable[[str], None]]=None, run_command_with_result: Optional[Callable[[str], tuple[str, int]]]=None) -> Dict[str, Any]:
     """
     Send user message through Eurika layer to LLM; return response.
@@ -63,13 +63,6 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     on_system_action: optional callback for actions (e.g. for Terminal tab: rm, touch, eurika fix).
     """
     root = Path(project_root).resolve()
-
-    def _emit(cmd: str) -> None:
-        if on_system_action:
-            try:
-                on_system_action(cmd)
-            except Exception:
-                pass
     msg = (message or '').strip()
     if not msg:
         return {'text': '', 'error': 'message is empty'}
@@ -77,8 +70,12 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     handler_id, emit_cmd = _resolve_direct_handler(root, msg)
     skip_emit = handler_id == 'release_check' and run_command_with_result is not None
     if emit_cmd and '{' not in str(emit_cmd) and (not skip_emit):
-        _emit(emit_cmd)
-    direct_result = _run_direct_handlers(handler_id, root, msg, state, emit_cmd, _emit, _append_chat_history_safe, run_command_with_result)
+        _emit(emit_cmd, on_system_action)
+
+    def _emit_one(cmd: str) -> None:
+        _emit(cmd, on_system_action)
+
+    direct_result = _run_direct_handlers(handler_id, root, msg, state, emit_cmd, _emit_one, _append_chat_history_safe, run_command_with_result)
     if direct_result is not None:
         return direct_result
     if _is_reject_confirmation(msg):
@@ -140,9 +137,9 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         if spec is not None:
             si, st = (str(spec.intent or ''), str(spec.target or ''))
             if si == 'delete' and st:
-                _emit(f'$ rm {st}')
+                _emit(f'$ rm {st}', on_system_action)
             elif si == 'create' and st:
-                _emit(f'$ touch {st}')
+                _emit(f'$ touch {st}', on_system_action)
             report_obj = execute_spec(root, spec)
             report = {'ok': report_obj.ok, 'summary': report_obj.summary, 'applied_steps': report_obj.applied_steps, 'skipped_steps': report_obj.skipped_steps, 'verification': report_obj.verification, 'artifacts_changed': report_obj.artifacts_changed, 'error': report_obj.error}
             state['pending_plan'] = {}
@@ -201,14 +198,14 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         return {'text': text, 'error': None}
     if intent == 'refactor':
         dry = 'dry-run' in msg.lower() or 'dry run' in msg.lower() or 'без применения' in msg.lower()
-        _emit(f"$ eurika fix . {('--dry-run' if dry else '')}".strip())
+        _emit(f"$ eurika fix . {('--dry-run' if dry else '')}".strip(), on_system_action)
         output = _run_eurika_fix(root, dry_run=dry)
         text = 'Запустил `eurika fix .`' + (' (dry-run)' if dry else '') + f':\n\n{output}'
         _append_chat_history_safe(root, 'user', msg, None)
         _append_chat_history_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
     if intent == 'delete' and target:
-        _emit(f'$ rm {target}')
+        _emit(f'$ rm {target}', on_system_action)
         ok, res = _safe_delete_file(root, target)
         if ok:
             full = (root / res).resolve()
@@ -219,7 +216,7 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         _append_chat_history_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
     if intent == 'create' and target:
-        _emit(f'$ touch {target}')
+        _emit(f'$ touch {target}', on_system_action)
         ok, res = _safe_create_empty_file(root, target)
         if ok:
             full = (root / res).resolve()
@@ -308,7 +305,7 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
             from eurika.api.chat_intent import extract_code_block
             code = extract_code_block(text)
             if code:
-                _emit(f'# write -> {save_target}')
+                _emit(f'# write -> {save_target}', on_system_action)
                 ok, res = _safe_write_file(root, save_target, code)
                 if ok:
                     full = (root / res).resolve()
