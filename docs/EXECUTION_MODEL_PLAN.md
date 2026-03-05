@@ -8,7 +8,7 @@
 
 **Статус:** целевой вектор зафиксирован. Адаптация доказана (CYCLE_REPORT #123, 100 циклов).
 
-**Следующий шаг:** EnergyModel как **resource constraint** (energy budget, caps), а не только scoring layer. Ограничения (MAX_EVENTS, EURIKA_MAX_OPS_PER_CYCLE) — часть execution contract. Не реализовывать новый код до необходимости; документировать контракт в Architecture.md / review.
+**Следующий шаг:** EnergyModel как **resource constraint** (energy budget, caps) — контракт документирован в docs/BOUNDED_EVOLUTION.md §7. Ограничения (MAX_EVENTS, EURIKA_MAX_OPS_PER_CYCLE) — часть execution contract. Реализация энергобюджета — по мере пробелов.
 
 ---
 

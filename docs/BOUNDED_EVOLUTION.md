@@ -103,7 +103,23 @@ Eurika склонна к усложнению — это сила и риск. B
 
 ---
 
-## 7. Существующие лимиты (справочник)
+## 7. EnergyModel как resource constraint (target, 2026-03)
+
+**Источник:** EXECUTION_MODEL_PLAN, ROADMAP §5.7, review 2026 II.
+
+EnergyModel сейчас — **scoring layer**: ранжирование ops по ΔEnergy, delta в record_outcome. Целевой вектор: также **resource constraint** (energy budget, caps).
+
+| Аспект | Текущее | Целевой контракт |
+|--------|---------|------------------|
+| Роль | Score = Delta - Risk; rank по delta | + budget: Σ\|ΔE\| за цикл ≤ cap |
+| Лимит ops | EURIKA_MAX_OPS_PER_CYCLE=12 | Сохраняется; energy cap — доп. ограничение |
+| Реализация | energy_model.energy(m); delta в learn event | Не менять код до необходимости |
+
+**Когда реализовывать:** при появлении пробелов (напр. циклы с чрезмерным delta без контроля). Документировать контракт — достаточно.
+
+---
+
+## 8. Существующие лимиты (справочник)
 
 - **File size:** 400 LOC (candidate), 600 LOC (must split) — `eurika/checks/file_size.py`
 - **Weight adaptation:** bounded [0.02..0.25], EURIKA_WEIGHT_ADAPTATION=1
@@ -111,7 +127,7 @@ Eurika склонна к усложнению — это сила и риск. B
 
 ---
 
-## Последовательность
+## Последовательность (историческая)
 
 1. Обновить BOUNDED_EVOLUTION (risks + ritual) ✓
 2. Запустить 300–500 циклов ✓ (100 выполнено, адаптация доказана; CYCLE_REPORT #123):
@@ -123,7 +139,7 @@ Eurika склонна к усложнению — это сила и риск. B
 4. Проверить: есть ли изменение поведения ✓ (Yes — success_rate, most_successful_action)
 5. §5.7 — bounded evolution как часть execution model (целевой вектор зафиксирован в ROADMAP)
 
-**Следующий фокус:** EnergyModel как resource constraint (energy budget, caps) — документировать контракт, не менять реализацию без необходимости. Decay агрегатов, high-value events — по мере появления пробелов (§5 Risks).
+**Следующий фокус:** EnergyModel как resource constraint — контракт документирован в §7. Реализация — по мере пробелов. Decay агрегатов, high-value events — §5 Risks.
 
 ---
 
