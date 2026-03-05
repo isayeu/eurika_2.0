@@ -13,7 +13,13 @@ RiskLevel = Literal["low", "medium", "high"]
 _RISK_ORDER: dict[RiskLevel, int] = {"low": 1, "medium": 2, "high": 3}
 
 # Default patterns for API-breaking guard: files often re-exporting public API
-_DEFAULT_API_PATTERNS: tuple[str, ...] = ("*api*.py", "*__init__.py", "api.py")
+_DEFAULT_API_PATTERNS: tuple[str, ...] = (
+    "*api*.py",
+    "*__init__.py",
+    "api.py",
+    "*task_executor*.py",
+    "*main_window*.py",
+)
 
 
 @dataclass(slots=True)

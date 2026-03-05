@@ -211,6 +211,13 @@ def append_fix_cycle_memory(
                     or (report.get("rollback") or {}).get("reason")
                     or "verify_failed"
                 )
+            elif not modified and any(
+                op.get("kind", "") in ("extract_block_to_helper", "extract_nested_function", "llm_extract_block")
+                or "extract_block" in str(op.get("execution_reason", ""))
+                or "extract_nested" in str(op.get("execution_reason", ""))
+                for op in learning_operations
+            ):
+                failure_reason = "extract_no_modification"
             record_outcome(
                 path,
                 modules_for_learning,

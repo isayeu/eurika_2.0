@@ -163,6 +163,8 @@ class MainWindow(QMainWindow):
         self.use_llm_extract_check.toggled.connect(self._sync_preview)
         self.allow_low_risk_campaign_check.toggled.connect(self._sync_preview)
         self.team_mode_check.toggled.connect(self._sync_preview)
+        if getattr(self, "runtime_mode_combo", None):
+            self.runtime_mode_combo.currentTextChanged.connect(self._sync_preview)
         if getattr(self, "learn_light_check", None):
             self.learn_light_check.toggled.connect(self._sync_preview)
             self.learn_scan_check.toggled.connect(self._sync_preview)
@@ -263,8 +265,23 @@ class MainWindow(QMainWindow):
 
     def _sync_preview(self) -> None:
         cmd = self.command_combo.currentText()
-        parts = [f'eurika {cmd}']
         root = self.root_edit.text().strip() or '.'
+        if cmd == 'cycle':
+            extra = []
+            if self.dry_run_check.isChecked():
+                extra.append('--dry-run')
+            if self.no_llm_check.isChecked():
+                extra.append('--no-llm')
+            rm = getattr(self, "runtime_mode_combo", None)
+            if rm and rm.currentText().lower() != "assist":
+                extra.append(f"--runtime-mode {rm.currentText().lower()}")
+            extra_str = " " + " ".join(extra) if extra else ""
+            self.preview_label.setText(
+                f"scan → doctor → report-snapshot → fix{extra_str} → learning-kpi → whitelist-draft"
+            )
+            self.module_edit.setEnabled(False)
+            return
+        parts = [f'eurika {cmd}']
         if cmd == 'explain':
             mod = self.module_edit.text().strip() or '<module>'
             parts.append(mod)
@@ -308,6 +325,9 @@ class MainWindow(QMainWindow):
             parts.append('--allow-low-risk-campaign')
         if self.team_mode_check.isChecked() and cmd in {'fix', 'cycle'}:
             parts.append('--team-mode')
+        rm = getattr(self, "runtime_mode_combo", None)
+        if rm and rm.currentText().lower() not in ("", "assist") and cmd in {"fix", "cycle"}:
+            parts.extend(["--runtime-mode", rm.currentText().lower()])
         if getattr(self, 'use_llm_extract_check', None) and self.use_llm_extract_check.isChecked() and cmd in {'fix', 'cycle'}:
             parts.append('[LLM extract]')
         self.preview_label.setText(' '.join(parts))

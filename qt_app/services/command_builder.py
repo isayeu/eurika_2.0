@@ -23,6 +23,7 @@ def build_cli_args(
     no_code_smells: bool = False,
     allow_low_risk_campaign: bool = False,
     team_mode: bool = False,
+    runtime_mode: str = "assist",
     learn_light: bool = True,
     learn_scan: bool = True,
     learn_build_patterns: bool = True,
@@ -80,5 +81,7 @@ def build_cli_args(
         args.extend(["--runtime-mode", "auto"])  # polygon drills need auto for whitelist bypass
     if command in {"fix", "cycle"} and team_mode:
         args.append("--team-mode")
+    if command in {"fix", "cycle"} and runtime_mode and runtime_mode != "assist":
+        args.extend(["--runtime-mode", runtime_mode])
     return args
 

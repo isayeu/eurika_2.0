@@ -17,6 +17,8 @@ _EXTRACT_NESTED_INTERNAL_SKIP: dict[str, set[str]] = {
 _EXTRACT_BLOCK_SKIP_PATTERNS: frozenset[str] = frozenset({
     "eurika/refactor/", "eurika/reasoning/planner_patch_ops.py",
     "eurika/reasoning/planner/llm_adapter.py", "report/", "cli/orchestration/",
+    "cli/core_handlers.py", "eurika/api/__init__.py", "eurika/api/chat.py",
+    "eurika/api/task_executor.py", "qt_app/",
 })
 
 # Campaign block: llm_extract_block broke parser/dispatch (NameError _add_other_commands); 0% verify_success.

@@ -61,6 +61,7 @@ class CommandService(QObject):
         use_llm_extract: bool = False,
         allow_low_risk_campaign: bool = False,
         team_mode: bool = False,
+        runtime_mode: str = "assist",
         ollama_model: str = "",
         learn_light: bool = True,
         learn_scan: bool = True,
@@ -83,6 +84,7 @@ class CommandService(QObject):
                 no_code_smells=no_code_smells,
                 allow_low_risk_campaign=allow_low_risk_campaign,
                 team_mode=team_mode,
+                runtime_mode=runtime_mode,
                 learn_light=learn_light,
                 learn_scan=learn_scan,
                 learn_build_patterns=learn_build_patterns,
@@ -118,6 +120,55 @@ class CommandService(QObject):
         self._set_state(CycleState.THINKING.value)
         self._process.setWorkingDirectory(root)
         self._process.start(sys.executable, args)
+
+    def run_ritual(
+        self,
+        *,
+        project_root: str,
+        window: int = 5,
+        dry_run: bool = False,
+        no_llm: bool = False,
+        no_clean_imports: bool = False,
+        no_code_smells: bool = False,
+        allow_low_risk_campaign: bool = False,
+        team_mode: bool = False,
+        runtime_mode: str = "assist",
+        ollama_model: str = "",
+    ) -> None:
+        """Run full ritual: scan → doctor → report-snapshot → fix → learning-kpi → whitelist-draft."""
+        if self._process.state() != QProcess.NotRunning:
+            self.error_line.emit("A command is already running.")
+            return
+        root = str(Path(project_root or ".").resolve())
+        py = sys.executable
+        chain = [
+            f'"{py}" -m eurika_cli scan "{root}"',
+            f'"{py}" -m eurika_cli doctor "{root}"' + (" --no-llm" if no_llm else ""),
+            f'"{py}" -m eurika_cli report-snapshot "{root}"',
+            f'"{py}" -m eurika_cli fix "{root}"' + (" --dry-run" if dry_run else ""),
+            f'"{py}" -m eurika_cli learning-kpi "{root}"',
+            f'"{py}" -m eurika_cli whitelist-draft "{root}"',
+        ]
+        if no_clean_imports:
+            chain[3] += " --no-clean-imports"
+        if no_code_smells:
+            chain[3] += " --no-code-smells"
+        if allow_low_risk_campaign:
+            chain[3] += " --allow-low-risk-campaign"
+        if team_mode:
+            chain[3] += " --team-mode"
+        if runtime_mode and runtime_mode != "assist":
+            chain[3] += f" --runtime-mode {runtime_mode}"
+        script = " && ".join(chain)
+        self._active_command = "Ritual: scan → doctor → report-snapshot → fix → learning-kpi → whitelist-draft"
+        self.command_started.emit(self._active_command)
+        self._set_state(CycleState.THINKING.value)
+        self._process.setWorkingDirectory(root)
+        if ollama_model.strip():
+            env = QProcessEnvironment.systemEnvironment()
+            env.insert("OLLAMA_OPENAI_MODEL", ollama_model.strip())
+            self._process.setProcessEnvironment(env)
+        self._process.start("bash", ["-c", script])
 
     def run_apply_from_report(self, *, project_root: str) -> None:
         """Apply patch_plan from eurika_fix_report.json (after dry-run); no re-scan/LLM."""

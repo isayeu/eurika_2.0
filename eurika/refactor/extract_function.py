@@ -315,6 +315,12 @@ def _names_assigned_in_statements(stmts: List[ast.stmt]) -> Set[str]:
         assigned.update(_names_assigned_in(s))
     return assigned
 
+def _names_assigned_in_excluding(node: ast.AST, exclude: ast.AST) -> Set[str]:
+    """Names assigned in node minus names assigned inside exclude (for scope checks)."""
+    full = _names_assigned_in(node)
+    in_exclude = _names_assigned_in(exclude)
+    return full - in_exclude
+
 def _module_level_bound_names(tree: ast.AST) -> Set[str]:
     """Collect names bound at module scope (globals accessible to extracted helper)."""
     names: Set[str] = set()
@@ -391,19 +397,23 @@ def suggest_extract_block(file_path: Path, function_name: str, *, min_lines: int
                     used = _names_used_in_statements(body)
                     assigned = _names_assigned_in_statements(body)
                     writes_to_params = assigned & parent_params
-                    free_names = used - assigned
-                    used_from_outer = free_names & parent_params
-                    block_bound = _names_bound_by_block_node(node) & free_names
-                    extra_count = len(used_from_outer | block_bound)
-                    unresolved = free_names - parent_locals - module_bound - builtin_names
-                    if (
-                        not unresolved
-                        and not writes_to_params
-                        and extra_count <= max_extra_params
-                    ):
-                        line_count = _block_line_count(body)
-                        if line_count >= min_lines:
-                            candidates.append((node, body, depth, line_count))
+                    outer_assigned = _names_assigned_in_excluding(parent_func, node)
+                    if len(assigned & outer_assigned) > 1:
+                        pass  # skip: extraction would need multiple return values
+                    else:
+                        free_names = used - assigned
+                        used_from_outer = free_names & parent_params
+                        block_bound = _names_bound_by_block_node(node) & free_names
+                        extra_count = len(used_from_outer | block_bound)
+                        unresolved = free_names - parent_locals - module_bound - builtin_names
+                        if (
+                            not unresolved
+                            and not writes_to_params
+                            and extra_count <= max_extra_params
+                        ):
+                            line_count = _block_line_count(body)
+                            if line_count >= min_lines:
+                                candidates.append((node, body, depth, line_count))
             for child in ast.iter_child_nodes(node):
                 collect_blocks(child, depth + 1)
         else:

@@ -46,7 +46,7 @@ def run_fix_cycle_impl(
     fix_cycle_deps: Callable[[], FixCycleDeps],
     prepare_fix_cycle_operations: Callable[..., tuple[dict[str, Any] | None, Any, PatchPlan | None, list[OperationRecord]]],
     select_hybrid_operations: Callable[..., tuple[list[OperationRecord], list[OperationRecord]]],
-    build_fix_dry_run_result: Callable[[Path, PatchPlan, list[OperationRecord], Any], dict[str, Any]],
+    build_fix_dry_run_result: Callable[..., dict[str, Any]],
     attach_fix_telemetry: Callable[[FixReport, list[OperationRecord]], None],
     build_fix_cycle_result: Callable[[FixReport, list[OperationRecord], list[str], bool, Any], dict[str, Any]],
     execute_fix_apply_stage: Callable[..., tuple[FixReport, list[str], bool]],

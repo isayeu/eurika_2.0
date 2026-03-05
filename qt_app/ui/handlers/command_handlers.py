@@ -62,10 +62,27 @@ def run_command(main: MainWindow) -> None:
         return
     ollama_model = main._resolve_ollama_model_for_command()
     cmd = main.command_combo.currentText()
+    runtime_mode = getattr(main, "runtime_mode_combo", None)
+    runtime_mode_val = runtime_mode.currentText().lower() if runtime_mode else "assist"
     learn_light = getattr(main, "learn_light_check", None) and main.learn_light_check.isChecked()
     learn_scan = getattr(main, "learn_scan_check", None) and main.learn_scan_check.isChecked()
     learn_build = getattr(main, "learn_build_patterns_check", None) and main.learn_build_patterns_check.isChecked()
     learn_limit = main.learn_limit_spin.value() if getattr(main, "learn_limit_spin", None) else 0
+    if cmd == "cycle":
+        main.tabs.setCurrentIndex(main.tabs.indexOf(main.commands_tab))
+        main._command_service.run_ritual(
+            project_root=root,
+            window=main.window_spin.value(),
+            dry_run=main.dry_run_check.isChecked(),
+            no_llm=main.no_llm_check.isChecked(),
+            no_clean_imports=main.no_clean_imports_check.isChecked(),
+            no_code_smells=main.no_code_smells_check.isChecked(),
+            allow_low_risk_campaign=main.allow_low_risk_campaign_check.isChecked(),
+            team_mode=main.team_mode_check.isChecked(),
+            runtime_mode=runtime_mode_val,
+            ollama_model=ollama_model,
+        )
+        return
     main._command_service.start(
         command=cmd,
         project_root=root,
@@ -78,6 +95,7 @@ def run_command(main: MainWindow) -> None:
         use_llm_extract=main.use_llm_extract_check.isChecked(),
         allow_low_risk_campaign=main.allow_low_risk_campaign_check.isChecked(),
         team_mode=main.team_mode_check.isChecked(),
+        runtime_mode=runtime_mode_val,
         ollama_model=ollama_model,
         learn_light=learn_light,
         learn_scan=learn_scan,
@@ -94,6 +112,8 @@ def run_fix_team_mode(main: MainWindow) -> None:
         return
     main.tabs.setCurrentIndex(main.tabs.indexOf(main.commands_tab))
     ollama_model = main._resolve_ollama_model_for_command()
+    runtime_mode = getattr(main, "runtime_mode_combo", None)
+    runtime_mode_val = runtime_mode.currentText().lower() if runtime_mode else "assist"
     main._command_service.start(
         command="fix",
         project_root=root,
@@ -106,6 +126,7 @@ def run_fix_team_mode(main: MainWindow) -> None:
         use_llm_extract=main.use_llm_extract_check.isChecked(),
         allow_low_risk_campaign=main.allow_low_risk_campaign_check.isChecked(),
         team_mode=True,
+        runtime_mode=runtime_mode_val,
         ollama_model=ollama_model,
     )
 
