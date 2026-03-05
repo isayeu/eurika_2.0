@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 from qt_app.ui.styles import get_secondary_hint, TAB_MARGINS
 
 from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QApplication,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -50,6 +52,7 @@ def build_approve_tab(main: MainWindow) -> None:
     top.addStretch(1)
     layout.addLayout(top)
     main.approvals_table = QTableWidget(0, 5)
+    main.approvals_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
     main.approvals_table.setHorizontalHeaderLabels(["#", "Target", "Kind", "Risk", "Decision"])
     header = main.approvals_table.horizontalHeader()
     header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
@@ -58,13 +61,28 @@ def build_approve_tab(main: MainWindow) -> None:
     header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
     header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
     layout.addWidget(main.approvals_table, 1)
-    diff_label = QLabel("Diff preview (select a row):")
+    diff_row = QHBoxLayout()
+    diff_label = QLabel("Diff preview (click row or file name):")
     main.approve_diff_label = diff_label
     diff_label.setStyleSheet(get_secondary_hint())
-    layout.addWidget(diff_label)
+    diff_row.addWidget(diff_label)
+    diff_row.addStretch(1)
+
+    def _copy_diff_to_clipboard() -> None:
+        te = main.approvals_diff_text
+        te.selectAll()
+        text = te.toPlainText()
+        if text:
+            QApplication.clipboard().setText(text)
+
+    copy_btn = QPushButton("Выделить все и скопировать")
+    copy_btn.setToolTip("Select all diff text and copy to clipboard")
+    copy_btn.clicked.connect(_copy_diff_to_clipboard)
+    diff_row.addWidget(copy_btn)
+    layout.addLayout(diff_row)
     main.approvals_diff_text = QPlainTextEdit()
     main.approvals_diff_text.setReadOnly(True)
-    main.approvals_diff_text.setPlaceholderText("Select an operation row to see the diff.")
+    main.approvals_diff_text.setPlaceholderText("Click a row or file name in the table to see the diff.")
     main.approvals_diff_text.setMinimumHeight(120)
     main.approvals_diff_text.setFont(main.approvals_diff_text.font())
     try:

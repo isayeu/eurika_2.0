@@ -186,6 +186,7 @@ class MainWindow(QMainWindow):
         self.apply_approved_btn.clicked.connect(lambda: command_handlers.run_apply_approved(self))
         self.apply_from_report_btn.clicked.connect(lambda: command_handlers.run_apply_from_report(self))
         self.approvals_table.itemSelectionChanged.connect(lambda: approve_handlers.on_approval_row_selected(self))
+        self.approvals_table.cellClicked.connect(lambda r, c: approve_handlers.on_approval_row_selected(self))
         self.chat_send_btn.clicked.connect(lambda: chat_handlers.send_chat_message(self))
         self.chat_clear_btn.clicked.connect(lambda: chat_handlers.clear_chat_session(self))
         self.chat_apply_btn.clicked.connect(lambda: chat_handlers.apply_pending_chat_plan(self))
