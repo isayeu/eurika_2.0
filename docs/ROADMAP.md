@@ -350,7 +350,7 @@ while True:
 
 **Чего не делать сейчас:** онлайн-патчинг, self-rewriting modules, автоматическое изменение архитектуры, 50 новых классов.
 
-**Bounded evolution (review §1):** EURIKA_MAX_OPS_PER_CYCLE (default 12) — cap операций за fix cycle; 0 = без лимита. **Доказательство адаптации ✓** (100 циклов, CYCLE_REPORT #123). **Следующий целевой вектор:** bounded evolution → часть execution model; EnergyModel → resource constraint (energy budget, caps), а не только scoring layer. docs/BOUNDED_EVOLUTION.md.
+**Bounded evolution (review §1):** EURIKA_MAX_OPS_PER_CYCLE (default 12) — cap операций за fix cycle; 0 = без лимита. **Доказательство адаптации ✓** (100 циклов, CYCLE_REPORT #123). **Следующий целевой вектор:** bounded evolution → часть execution model; EnergyModel → resource constraint (energy budget, caps) — контракт §7 в docs/BOUNDED_EVOLUTION.md ✓. Реализация — по мере пробелов.
 
 **Прогресс (Review III):** зрелость +40%, цели +60%, стратегия +70%, формализация +20%. Формализация отстаёт — нормально.
 

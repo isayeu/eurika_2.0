@@ -99,9 +99,19 @@ Planner читает enriched failures и меняет поведение (не 
 
 ---
 
+## Known gaps (BOUNDED_EVOLUTION §5)
+
+| Пробел | Идея | Когда |
+|--------|------|------|
+| Агрегаты без decay | age-based decay, recency weighting | при накоплении устаревших learning_stats |
+| EventLog=500 | high-value events (learn/patch) приоритетнее scan | при потере контекста |
+
+---
+
 ## Ссылки
 
 - **ARCHITECTURE_MEMORY_REVIEW.md** — честный разбор, двойная истина, план
 - **ROADMAP.md** §5.8 — STM/LTM маппинг
 - **Architecture.md** §0.9 — Execution Model
 - **EXECUTION_MODEL_PLAN.md** — аудит стабильного ядра
+- **BOUNDED_EVOLUTION.md** §5 — Risks (decay, high-value events), §7 — EnergyModel resource constraint
