@@ -123,6 +123,42 @@ def load_pending_plan(project_root: Path) -> dict[str, Any] | None:
     return data
 
 
+def clear_pending_plan_after_apply(project_root: Path) -> bool:
+    """Remove approve/reject ops from pending_plan.json after Run.
+    Keeps only pending ops; deletes file if none remain."""
+    path = _pending_path(project_root)
+    if not path.exists():
+        return False
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    if not isinstance(data, dict):
+        return False
+    ops = data.get("operations")
+    if not isinstance(ops, list):
+        return False
+    pending_only = [
+        op for op in ops
+        if isinstance(op, dict)
+        and str(op.get("team_decision", "pending")).lower() == "pending"
+    ]
+    if not pending_only:
+        try:
+            path.unlink()
+            return True
+        except OSError:
+            return False
+    data["operations"] = pending_only
+    if "patch_plan" in data and isinstance(data["patch_plan"], dict):
+        data["patch_plan"] = dict(data["patch_plan"], operations=pending_only)
+    try:
+        path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        return True
+    except OSError:
+        return False
+
+
 def reset_approvals_after_rollback(project_root: Path) -> bool:
     """Clear team_decision=approve in pending_plan after verify fail + rollback.
     Prevents re-apply of same ops on next --apply-approved without re-review."""

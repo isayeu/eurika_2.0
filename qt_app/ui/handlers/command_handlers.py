@@ -150,6 +150,10 @@ def run_apply_approved(main: MainWindow) -> None:
     if not ok:
         QMessageBox.warning(main, "Invalid project root", msg)
         return
+    if main._pending_operations:
+        main._pending_operations = []
+        from . import approve_handlers
+        approve_handlers.render_approvals_table(main)
     main.tabs.setCurrentIndex(main.tabs.indexOf(main.commands_tab))
     main._command_service.run_apply_approved(project_root=root)
 
@@ -199,6 +203,10 @@ def on_command_finished(main: MainWindow, exit_code: int) -> None:
         summary = format_fix_report_summary(main)
         if summary:
             main.terminal_emulator_output.append(summary)
+    if "apply-approved" in cmd:
+        main._pending_operations = []
+        from . import approve_handlers
+        approve_handlers.render_approvals_table(main)
     from .dashboard_handlers import refresh_dashboard
 
     refresh_dashboard(main)

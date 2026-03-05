@@ -1,6 +1,7 @@
 """Re-export from eurika.orchestration.team_mode (P0.2)."""
 
 from eurika.orchestration.team_mode import (
+    clear_pending_plan_after_apply,
     has_pending_plan,
     load_approved_operations,
     load_pending_plan,
@@ -10,6 +11,7 @@ from eurika.orchestration.team_mode import (
 )
 
 __all__ = [
+    "clear_pending_plan_after_apply",
     "has_pending_plan",
     "load_approved_operations",
     "load_pending_plan",

@@ -11,13 +11,14 @@ from .pipeline_model import PipelineStage, attach_pipeline_trace
 
 def run_apply_approved_path(path: Path, *, session_id: str | None, quiet: bool, verify_cmd: str | None, verify_timeout: int | None, deps: FixCycleDeps, execute_fix_apply_stage: Callable[..., tuple[FixReport, list[str], bool]], build_fix_cycle_result: Callable[[FixReport, list[OperationRecord], list[str], bool, Any], dict[str, Any]], attach_fix_telemetry: Callable[[FixReport, list[OperationRecord]], None]) -> dict[str, Any]:
     """Handle --apply-approved: load approved ops, filter, execute apply stage."""
-    from .team_mode import load_approved_operations, reset_approvals_after_rollback
+    from .team_mode import clear_pending_plan_after_apply, load_approved_operations, reset_approvals_after_rollback
     approved, payload = load_approved_operations(path)
     if not payload:
         rep: FixReport = {'error': 'No pending plan. Run eurika fix . --team-mode first.'}
         attach_pipeline_trace(rep, [])
         return with_cycle_state({'return_code': 1, 'report': rep, 'operations': [], 'modified': [], 'verify_success': False, 'agent_result': None}, is_error=True)
     if not approved:
+        clear_pending_plan_after_apply(path)
         rep = {'message': "No operations approved. Edit .eurika/pending_plan.json and set team_decision='approve'."}
         attach_pipeline_trace(rep, [])
         return with_cycle_state({'return_code': 0, 'report': rep, 'operations': [], 'modified': [], 'verify_success': True, 'agent_result': None}, is_error=False)
@@ -39,5 +40,7 @@ def run_apply_approved_path(path: Path, *, session_id: str | None, quiet: bool, 
     rb = report.get("rollback") if isinstance(report, dict) else None
     if not verify_success and isinstance(rb, dict) and rb.get("done"):
         reset_approvals_after_rollback(path)
+    elif verify_success:
+        clear_pending_plan_after_apply(path)
     attach_pipeline_trace(report, [PipelineStage.VALIDATE.value, PipelineStage.APPLY.value, PipelineStage.VERIFY.value])
     return build_fix_cycle_result(report, approved, modified, verify_success, result)

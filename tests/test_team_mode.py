@@ -16,6 +16,7 @@ load_pending_plan = _team.load_pending_plan
 load_approved_operations = _team.load_approved_operations
 has_pending_plan = _team.has_pending_plan
 update_team_decisions = _team.update_team_decisions
+clear_pending_plan_after_apply = _team.clear_pending_plan_after_apply
 
 
 def test_save_and_load_empty_ops(tmp_path: Path) -> None:
@@ -96,6 +97,46 @@ def test_update_team_decisions_supports_approval_state(tmp_path: Path) -> None:
     assert len(approved) == 1
     assert approved[0]["approval_state"] == "approved"
     assert approved[0]["decision_source"] == "team"
+
+
+def test_clear_pending_plan_after_apply_removes_approve_reject(tmp_path: Path) -> None:
+    """clear_pending_plan_after_apply removes approve/reject ops; keeps pending."""
+    plan = {"project_root": str(tmp_path), "operations": []}
+    ops = [
+        {"target_file": "a.py", "kind": "split"},
+        {"target_file": "b.py", "kind": "clean"},
+        {"target_file": "c.py", "kind": "refactor"},
+    ]
+    decs = [{"index": i, "decision": "allow"} for i in range(1, 4)]
+    save_pending_plan(tmp_path, plan, ops, decs)
+    path = tmp_path / ".eurika" / "pending_plan.json"
+    data = json.loads(path.read_text())
+    data["operations"][0]["team_decision"] = "approve"
+    data["operations"][1]["team_decision"] = "reject"
+    data["operations"][2]["team_decision"] = "pending"
+    path.write_text(json.dumps(data, indent=2))
+    ok = clear_pending_plan_after_apply(tmp_path)
+    assert ok
+    after = load_pending_plan(tmp_path)
+    assert after is not None
+    assert len(after["operations"]) == 1
+    assert after["operations"][0]["target_file"] == "c.py"
+
+
+def test_clear_pending_plan_after_apply_deletes_when_no_pending(tmp_path: Path) -> None:
+    """When all ops are approve/reject, file is deleted."""
+    plan = {"project_root": str(tmp_path), "operations": []}
+    ops = [{"target_file": "a.py", "kind": "split"}]
+    decs = [{"index": 1, "decision": "allow"}]
+    save_pending_plan(tmp_path, plan, ops, decs)
+    path = tmp_path / ".eurika" / "pending_plan.json"
+    data = json.loads(path.read_text())
+    data["operations"][0]["team_decision"] = "reject"
+    path.write_text(json.dumps(data, indent=2))
+    ok = clear_pending_plan_after_apply(tmp_path)
+    assert ok
+    assert not has_pending_plan(tmp_path)
+    assert load_pending_plan(tmp_path) is None
 
 
 def test_load_missing_file(tmp_path: Path) -> None:
