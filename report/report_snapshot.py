@@ -89,6 +89,12 @@ def format_report_snapshot(path: Path) -> str:
             lines.append(f'| **modified** | {len(mod)} |')
             lines.append(f'| **skipped** | {len(sk)} |')
             lines.append(f"| **verify** | {v.get('success', 'N/A')} |")
+            rp = fix.get('run_params')
+            if isinstance(rp, dict):
+                lines.append('')
+                lines.append('### run_params')
+                for k, val in sorted(rp.items()):
+                    lines.append(f'- {k}: {val}')
             if fix.get('skipped_reasons'):
                 lines.append('')
                 lines.append('### Skipped — причины')
@@ -124,6 +130,12 @@ def format_report_snapshot(path: Path) -> str:
             if points:
                 risk_score = points[-1].get('risk_score', 'N/A')
             lines.append('## 2. Doctor (`eurika_doctor_report.json`)')
+            rp = doc.get('run_params')
+            if isinstance(rp, dict):
+                lines.append('')
+                lines.append('### run_params')
+                for k, val in sorted(rp.items()):
+                    lines.append(f'- {k}: {val}')
             lines.append('')
             lines.append('| Метрика | Значение |')
             lines.append('|---------|----------|')

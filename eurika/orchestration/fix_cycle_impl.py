@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
-from .apply_stage import write_fix_report
+from .apply_stage import attach_run_params, write_fix_report
 from .contracts import FixReport, OperationRecord, PatchPlan
 from .cycle_state import with_cycle_state
 from .deps import FixCycleDeps
@@ -71,6 +71,23 @@ def run_fix_cycle_impl(
     run_scan = deps["run_scan"]
     patch_plan: PatchPlan | None = None
 
+    def _fix_run_params() -> dict[str, Any]:
+        return {
+            "allow_campaign_retry": allow_campaign_retry,
+            "allow_low_risk_campaign": allow_low_risk_campaign,
+            "apply_approved": apply_approved,
+            "apply_from_report": apply_from_report,
+            "dry_run": dry_run,
+            "no_clean_imports": no_clean_imports,
+            "no_code_smells": no_code_smells,
+            "runtime_mode": runtime_mode,
+            "skip_scan": skip_scan,
+            "team_mode": team_mode,
+            "verify_cmd": verify_cmd,
+            "verify_timeout": verify_timeout,
+            "window": window,
+        }
+
     if apply_from_report:
         from .fix_cycle_apply_from_report import run_apply_from_report_path
 
@@ -80,6 +97,7 @@ def run_fix_cycle_impl(
             quiet=quiet,
             verify_cmd=verify_cmd,
             verify_timeout=verify_timeout,
+            run_params=_fix_run_params(),
             deps=deps,
             execute_fix_apply_stage=execute_fix_apply_stage,
             build_fix_cycle_result=build_fix_cycle_result,
@@ -95,6 +113,7 @@ def run_fix_cycle_impl(
             quiet=quiet,
             verify_cmd=verify_cmd,
             verify_timeout=verify_timeout,
+            run_params=_fix_run_params(),
             deps=deps,
             execute_fix_apply_stage=execute_fix_apply_stage,
             build_fix_cycle_result=build_fix_cycle_result,
@@ -148,6 +167,7 @@ def run_fix_cycle_impl(
                 is_error=(rc != 0),
             )
         if isinstance(early, dict) and isinstance(early.get("report"), dict):
+            attach_run_params(early["report"], **_fix_run_params())
             attach_fix_telemetry(early["report"], early.get("operations", []))
             attach_pipeline_trace(early["report"], infer_early_stages(early))
             write_fix_report(path, early["report"], quiet)
@@ -193,6 +213,7 @@ def run_fix_cycle_impl(
         )
         if selection_error:
             report = {"error": selection_error}
+            attach_run_params(report, **_fix_run_params())
             attach_pipeline_trace(
                 report,
                 [PipelineStage.INPUT.value, PipelineStage.PLAN.value, PipelineStage.VALIDATE.value],
@@ -223,6 +244,7 @@ def run_fix_cycle_impl(
     operations = approved_ops
     if patch_plan is None:
         report = {"error": "Internal error: missing patch plan after prepare stage."}
+        attach_run_params(report, **_fix_run_params())
         attach_pipeline_trace(
             report,
             [PipelineStage.INPUT.value, PipelineStage.PLAN.value, PipelineStage.VALIDATE.value],
@@ -280,6 +302,7 @@ def run_fix_cycle_impl(
             "skipped_reasons": skipped_reasons,
         }
         attach_decision_summary(reject_report)
+        attach_run_params(reject_report, **_fix_run_params())
         attach_fix_telemetry(reject_report, planned_ops)
         attach_pipeline_trace(
             reject_report,
@@ -302,7 +325,7 @@ def run_fix_cycle_impl(
     if dry_run:
         if not quiet:
             _LOG.info("--- Step 3/3: plan (dry-run, no apply) ---")
-        out = build_fix_dry_run_result(path, patch_plan, operations, result)
+        out = build_fix_dry_run_result(path, patch_plan, operations, result, run_params=_fix_run_params())
         out["report"]["critic_decisions"] = result.output.get("critic_decisions", [])
         out["report"]["operation_results"] = list(out["report"].get("operation_results", [])) + gate_skipped + rejected_meta
         if gate_skipped_reasons:
@@ -330,6 +353,7 @@ def run_fix_cycle_impl(
         quiet=quiet,
         verify_cmd=verify_cmd,
         verify_timeout=verify_timeout,
+        run_params=_fix_run_params(),
         backup_dir=deps["BACKUP_DIR"],
         apply_and_verify=deps["apply_and_verify"],
         run_scan=run_scan,
@@ -348,6 +372,7 @@ def run_fix_cycle_impl(
         report["skipped"] = list(report.get("skipped", [])) + list(rejected_files)  # type: ignore[assignment]
         report["skipped_reasons"] = {**(report.get("skipped_reasons") or {}), **rejected_reasons}  # type: ignore[assignment,dict-item]
     attach_decision_summary(report)
+    attach_run_params(report, **_fix_run_params())
     attach_pipeline_trace(
         report,
         [

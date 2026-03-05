@@ -15,11 +15,18 @@ from .logging import get_logger
 _LOG = get_logger("orchestration.apply_stage")
 
 
+def attach_run_params(report: dict[str, Any], **params: Any) -> None:
+    """Add run_params to report for reproducibility (CLI flags, options)."""
+    report["run_params"] = dict(sorted(params.items()))
+
+
 def build_fix_dry_run_result(
     path: Path,
     patch_plan: PatchPlan,
     operations: list[OperationRecord],
     result: Any,
+    *,
+    run_params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build and persist dry-run report/result payload."""
     expls = [dict(op.get("explainability") or {}, verify_outcome=None) for op in operations]
@@ -48,6 +55,8 @@ def build_fix_dry_run_result(
         "context_sources": result.output.get("context_sources"),
         "llm_hint_runtime": result.output.get("llm_hint_runtime"),
     }
+    if run_params:
+        report["run_params"] = run_params
     try:
         (path / "eurika_fix_report.json").write_text(
             json.dumps(report, indent=2, ensure_ascii=False),
@@ -349,6 +358,7 @@ def execute_fix_apply_stage(
     quiet: bool,
     verify_cmd: str | None,
     verify_timeout: int | None,
+    run_params: dict[str, Any] | None = None,
     backup_dir: str,
     apply_and_verify: Any,
     run_scan: Any,
@@ -411,6 +421,8 @@ def execute_fix_apply_stage(
         report["context_sources"] = result.output.get("context_sources")
         report["llm_hint_runtime"] = result.output.get("llm_hint_runtime")
         attach_fix_telemetry(report, operations, path)
+        if run_params:
+            attach_run_params(report, **run_params)
         write_fix_report(path, report, quiet)
         return report, [], False
     checkpoint = None
@@ -484,6 +496,8 @@ def execute_fix_apply_stage(
     _update_execution_context_after_rescan(
         result, report, path, build_snapshot_from_self_map,
     )
+    if run_params:
+        attach_run_params(report, **run_params)
     modified = report.get("modified", [])
     verify_success = report["verify"]["success"]
     if checkpoint_id:

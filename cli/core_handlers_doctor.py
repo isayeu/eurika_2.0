@@ -103,7 +103,14 @@ def handle_doctor(args: Any) -> int:
                 learning_kpi = {'by_smell_action': by_smell}
         except Exception:
             pass
-        report = {'summary': summary, 'history': history, 'architect': architect_text, 'patch_plan': patch_plan}
+        report: dict[str, Any] = {'summary': summary, 'history': history, 'architect': architect_text, 'patch_plan': patch_plan}
+        report['run_params'] = {
+            'no_llm': no_llm,
+            'online': getattr(args, 'online', False),
+            'quiet': quiet_doc,
+            'runtime_mode': getattr(args, 'runtime_mode', 'assist'),
+            'window': getattr(args, 'window', 5),
+        }
         if context_sources:
             report['context_sources'] = context_sources
         if suggested_policy:

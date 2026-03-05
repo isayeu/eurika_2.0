@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
-from .apply_stage import write_fix_report
+from .apply_stage import attach_run_params, write_fix_report
 from .contracts import FixReport, OperationRecord
 from .cycle_state import with_cycle_state
 from .deps import FixCycleDeps
@@ -52,6 +52,7 @@ def run_apply_from_report_path(
     quiet: bool,
     verify_cmd: str | None,
     verify_timeout: int | None,
+    run_params: dict[str, Any] | None = None,
     deps: FixCycleDeps,
     execute_fix_apply_stage: Callable[..., tuple[FixReport, list[str], bool]],
     build_fix_cycle_result: Callable[[FixReport, list[OperationRecord], list[str], bool, Any], dict[str, Any]],
@@ -96,6 +97,8 @@ def run_apply_from_report_path(
             "skipped_reasons": skipped_reasons,
             "operation_results": op_results,
         }
+        if run_params:
+            attach_run_params(report, **run_params)
         attach_decision_summary(report)
         attach_fix_telemetry(report, [])
         attach_pipeline_trace(report, [PipelineStage.VALIDATE.value])
@@ -120,6 +123,7 @@ def run_apply_from_report_path(
         quiet=quiet,
         verify_cmd=verify_cmd,
         verify_timeout=verify_timeout,
+        run_params=run_params,
         backup_dir=deps["BACKUP_DIR"],
         apply_and_verify=deps["apply_and_verify"],
         run_scan=deps["run_scan"],
