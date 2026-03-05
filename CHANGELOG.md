@@ -27,6 +27,9 @@ All notable changes to this project will be documented in this file.
 - **CYCLE_REPORT #124** — EnergyModel resource constraint.
 - **MEMORY.md** — Known gaps (decay, high-value events), BOUNDED_EVOLUTION link.
 - **verify_gate.sh** — ruff + mypy + pytest subset для patch verify.
+- **test_qt_command_handlers** — run_release_check passes ollama_model.
+- **ONBOARDING** — Models tab перед Commands (Qt-path).
+- **TROUBLESHOOTING §7** — Qt release check uses Models tab.
 
 ---
 
