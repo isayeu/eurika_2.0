@@ -149,7 +149,19 @@ def apply_smell_action_filters(
     return filtered
 
 
-_DEPRIORITIZE_REASONS = frozenset(("metrics_worsened", "simulation_errors", "verify_failed"))
+_DEPRIORITIZE_REASONS = frozenset((
+    "metrics_worsened",
+    "simulation_errors",
+    "verify_failed",
+    # Extraction review reject 2026-03 — planner deprioritize (extraction-lessons.mdc)
+    "extract_scope_error",
+    "extract_block_broken_scope",
+    "extract_operator_precedence_bug",
+    "extract_qt_slot_signature_mismatch",
+    "extract_missing_return",
+    "extract_delegation_broken",
+    "human_rejected",
+))
 
 
 def _is_recent_failure(
