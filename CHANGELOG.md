@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## v3.0.27 — Extraction learning, API POST, release check model, docs (2026-03-05)
+
+### Planner / Learning
+- **Extraction failure deprioritization:** _DEPRIORITIZE_REASONS (filter_policy) — extract_scope_error, extract_block_broken_scope, extract_operator_precedence_bug, extract_qt_slot_signature_mismatch, extract_missing_return, extract_delegation_broken, human_rejected.
+- **record_extraction_review_outcomes.py** — фиксация неудачных extractions в EventLog для planner deprioritize.
+- **EXTRACT_BLOCK_SKIP_PATTERNS** — code_awareness.py в ops.
+
+### API
+- **POST /api/chat** — message/history validation; chat_send.
+- **POST /api/ask_architect** — no_llm → run_doctor_cycle.
+- **POST /api/exec** — timeout: invalid payload vs invalid range; null = unlimited.
+
+### Qt
+- **Release check** — ollama_model из Models tab передаётся в OLLAMA_OPENAI_MODEL для smoke step (fix --dry-run).
+- **Approve tab** — copy diff, cellClick для row selection.
+
+### Fixes
+- Chat: emit signature для run_direct_handlers (Callable[[str], None]); удалён unused extract_commit_message.
+- fix_cycle_apply_approved: rep → report (mypy no-redef).
+
+### Docs
+- **BOUNDED_EVOLUTION §7** — EnergyModel как resource constraint (energy budget contract).
+- **CYCLE_REPORT #124** — EnergyModel resource constraint.
+- **MEMORY.md** — Known gaps (decay, high-value events), BOUNDED_EVOLUTION link.
+- **verify_gate.sh** — ruff + mypy + pytest subset для patch verify.
+
+---
+
 ## v3.0.26 — Multi-repo aggregation, prioritized_smell_actions, CI coverage (2026-03-01)
 
 ### 3.0.1 Multi-repo
