@@ -49,25 +49,27 @@ def dispatch_command(parser: argparse.ArgumentParser, args: Any) -> int:
         return dispatch[args.command]()
 
     if args.command == "agent":
-        agent_dispatch: dict[str, Callable[[Any], int]] = {
-            "arch-review": handlers.handle_agent_arch_review,
-            "arch-evolution": handlers.handle_agent_arch_evolution,
-            "prioritize-modules": handlers.handle_agent_prioritize_modules,
-            "feedback-summary": handlers.handle_agent_feedback_summary,
-            "action-dry-run": handlers.handle_agent_action_dry_run,
-            "action-simulate": handlers.handle_agent_action_simulate,
-            "action-apply": handlers.handle_agent_action_apply,
-            "patch-plan": handlers.handle_agent_patch_plan,
-            "patch-apply": handlers.handle_agent_patch_apply,
-            "patch-rollback": handlers.handle_agent_patch_rollback,
-            "cycle": handlers.handle_agent_cycle,
-            "learning-summary": handlers.handle_agent_learning_summary,
-        }
-        handler = agent_dispatch.get(args.agent_command)
+        handler = _get_agent_handler(args)
         if handler:
             return handler(args)
 
     return 0
 
 
-# TODO (eurika): refactor long_function 'dispatch_command' — consider extracting helper
+def _get_agent_handler(args: Any) -> Callable[[Any], int] | None:
+    """Resolve agent subcommand handler for args.agent_command."""
+    agent_dispatch: dict[str, Callable[[Any], int]] = {
+        "arch-review": handlers.handle_agent_arch_review,
+        "arch-evolution": handlers.handle_agent_arch_evolution,
+        "prioritize-modules": handlers.handle_agent_prioritize_modules,
+        "feedback-summary": handlers.handle_agent_feedback_summary,
+        "action-dry-run": handlers.handle_agent_action_dry_run,
+        "action-simulate": handlers.handle_agent_action_simulate,
+        "action-apply": handlers.handle_agent_action_apply,
+        "patch-plan": handlers.handle_agent_patch_plan,
+        "patch-apply": handlers.handle_agent_patch_apply,
+        "patch-rollback": handlers.handle_agent_patch_rollback,
+        "cycle": handlers.handle_agent_cycle,
+        "learning-summary": handlers.handle_agent_learning_summary,
+    }
+    return agent_dispatch.get(args.agent_command)

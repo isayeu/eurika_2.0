@@ -22,7 +22,7 @@
 | 5a | Coverage (optional) | `pytest tests/ -q --cov=eurika.agent --cov=cli.orchestration --cov-report=term-missing` (требует `pip install pytest-cov`) |
 | 6 | File size limits | `eurika self-check .` (блок FILE SIZE LIMITS) |
 | 7 | Layer discipline | `eurika self-check .` (блок LAYER DISCIPLINE) |
-| 8 | TODO/FIXME audit | `rg "TODO|FIXME|XXX" --type py -g '!*test*'` (informational) |
+| 8 | TODO/FIXME audit | `rg "TODO|FIXME|XXX" --type py -g '!*test*'` (informational); см. docs/TODO_AUDIT.md |
 | 9 | Smoke | `pip install -e . && eurika scan . && eurika doctor . --no-llm` |
 | 10 | CHANGELOG updated | Проверить, что версия и изменения описаны в CHANGELOG.md |
 

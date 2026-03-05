@@ -100,7 +100,7 @@
 | 3.2.1 | Создать `scripts/release_check.sh` или `make release-check` | Один скрипт, который прогоняет пункты 1–9 |
 | 3.2.2 | Добавить в `docs/RELEASE_CHECKLIST.md` | Документированный чеклист с командами |
 | 3.2.3 | Опционально: pre-commit или CI job `release-hygiene` | ✅ Job `release-hygiene` в `.github/workflows/ci.yml` |
-| 3.2.4 | TODO hygiene: собрать `TODO`/`FIXME` по критичным пакетам | Список для постепенного закрытия |
+| 3.2.4 | TODO hygiene: собрать `TODO`/`FIXME` по критичным пакетам | ✅ docs/TODO_AUDIT.md (2026-03) |
 | 3.2.5 | Dead code: `ruff` / `vulture` / ручной обзор | Удалить неиспользуемый код в core |
 
 ### 3.3 Приоритет скриптов
