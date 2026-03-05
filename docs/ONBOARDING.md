@@ -65,9 +65,10 @@ eurika-qt .
 ```
 
 1. Выбрать project root (Browse)
-2. Commands → scan → Run
-3. Commands → doctor → Run
-4. Commands → fix (--dry-run) → Run
+2. Models → при необходимости выбрать Ollama model (для fix, release check)
+3. Commands → scan → Run
+4. Commands → doctor → Run
+5. Commands → fix (--dry-run) → Run
 
 ## Критерий B.9
 
