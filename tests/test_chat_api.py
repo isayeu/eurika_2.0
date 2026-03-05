@@ -6,12 +6,12 @@ from pathlib import Path
 
 def test_extract_commit_message_from_request_regex() -> None:
     """Regex extraction for explicit commit message patterns (ROADMAP 3.6.8)."""
-    from eurika.api.chat import _extract_commit_message_from_request
+    from eurika.api.chat_direct import extract_commit_message_from_request
 
     msg = "Собери коммит. В сообщении напиши: ROADMAP 3.6.8 Phase 1–4"
-    assert _extract_commit_message_from_request(msg) == "ROADMAP 3.6.8 Phase 1–4"
-    assert _extract_commit_message_from_request("собери коммит с сообщением fix docs") == "fix docs"
-    assert _extract_commit_message_from_request("собери коммит") is None
+    assert extract_commit_message_from_request(msg) == "ROADMAP 3.6.8 Phase 1–4"
+    assert extract_commit_message_from_request("собери коммит с сообщением fix docs") == "fix docs"
+    assert extract_commit_message_from_request("собери коммит") is None
 
 
 def test_chat_send_git_commit_uses_llm_when_user_gives_context(tmp_path: Path, monkeypatch) -> None:

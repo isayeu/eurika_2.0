@@ -198,6 +198,40 @@ def test_preview_operation_remove_unused_import(tmp_path: Path) -> None:
     assert "-import json" in result["unified_diff"] or "-import os" in result["unified_diff"]
 
 
+def test_preview_operation_llm_extract_block(tmp_path: Path) -> None:
+    """preview_operation returns unified_diff for llm_extract_block when params.new_content present."""
+    (tmp_path / "mod.py").write_text("def f(): return 1\ndef g(): return 2\n")
+    op = {
+        "target_file": "mod.py",
+        "kind": "llm_extract_block",
+        "params": {"new_content": "def helper(): return 1\ndef f(): return helper()\ndef g(): return 2\n"},
+    }
+    result = preview_operation(tmp_path, op)
+    assert "error" not in result
+    assert "unified_diff" in result
+    assert "helper" in result.get("new_content", "")
+
+
+def test_preview_operation_extract_class(tmp_path: Path) -> None:
+    """preview_operation returns unified_diff for extract_class when params present."""
+    (tmp_path / "big.py").write_text(
+        '"""Big class."""\n'
+        "class Big:\n"
+        "    def pure(self, x, y):\n"
+        "        return x + y\n"
+    )
+    op = {
+        "target_file": "big.py",
+        "kind": "extract_class",
+        "params": {"target_class": "Big", "methods_to_extract": ["pure"]},
+    }
+    result = preview_operation(tmp_path, op)
+    assert "error" not in result
+    assert "unified_diff" in result
+    assert "BigExtracted.pure" in result.get("new_content", "")
+    assert "from big_bigextracted import BigExtracted" in result.get("new_content", "")
+
+
 def test_preview_operation_unsupported_kind(tmp_path: Path) -> None:
     """preview_operation returns error for unsupported kind."""
     (tmp_path / "a.py").write_text("x = 1\n")
