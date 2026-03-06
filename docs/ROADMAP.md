@@ -125,7 +125,7 @@ UI.md ✓; README ✓; критерии **B.7–B.14** выполнены. Оц�
 | 1 | TODO_AUDIT: prepare, doctor, chat_intent, parser | ✅ all |
 | 2 | Dead code: vulture → ruff F401/F841 → ручной обзор | ✅ |
 | 3 | 4 теста: CandidateGenerator, Scorer, planner, pipeline | ✅ |
-| 4 | 200 циклов, CYCLE_REPORT | — |
+| 4 | 200 циклов, CYCLE_REPORT | ✅ |
 | 5 | TODO_AUDIT: full_cycle, operational_metrics, global_memory, graph_ops, remove_unused_import, introduce_facade, diff | ✅ all extracted |
 
 **Выполнено:** TODO_AUDIT все 14 пунктов; extraction helpers в full_cycle, operational_metrics, global_memory, graph_ops, remove_unused_import, introduce_facade, evolution/diff; last_ts в learning_stats (decay prep).

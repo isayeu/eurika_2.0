@@ -2,6 +2,7 @@
 
 ## Current state (2026-03-05)
 
+- **127. 200 fix cycles batch (2026-03):** run_cycle_batch 200 циклов. CYCLE_REPORT @50, @100, @150, @200. success_rate 1.0, rollback 0 (50–150); top_failure: human_rejected; most_successful: extract_nested_function (100%); most_deprioritized: extract_block_to_helper. BOUNDED_EVOLUTION §6. ROADMAP §4.5 п.4 выполнен.
 - **126. TODO_AUDIT завершён (2026-03):** Все 14 пунктов рефакторинга. Извлечены хелперы: full_cycle (_run_full_cycle_scan, _run_full_cycle_doctor, _log_doctor_summary, _merge_doctor_runtime_into_report); operational_metrics (_aggregate_patch_event_counts, _median_int); global_memory (_process_learn_event); graph_ops (_apply_degree_bonus_to_scores, _sort_and_format_priorities); remove_unused_import (_names_from_type_checking_block); introduce_facade (_compute_facade_path_and_module, _build_facade_content); evolution/diff (_build_shift_index, _collect_action_candidates, _format_action_line). Mypy fix: assert data is not None в full_cycle. planner/core: TODO обновлён — thin facade, split отложен до CYCLE_REPORT (BOUNDED_EVOLUTION §4). run_cycle_batch: progress file, cycle_batch_report.md для фона.
 - **125. Qt release check tests + docs (2026-03):** test_qt_command_handlers — run_release_check passes ollama_model. ONBOARDING: Models tab перед Commands. TROUBLESHOOTING §7: Qt release check uses Models tab. CHANGELOG v3.0.27 дополнен.
 - **124. EnergyModel resource constraint (2026-03):** Контракт документирован в docs/BOUNDED_EVOLUTION.md §7. EnergyModel — target как energy budget (Σ|ΔE| за цикл ≤ cap), не только scoring. EXECUTION_MODEL_PLAN, Architecture.md обновлены. Реализация — по мере пробелов. ROADMAP §5.7 next step.
@@ -47,6 +48,21 @@
 | 100 | 1.14 | 0.0 | remove_unused_import (100%) | 231 KB |
 
 top_failure_reason: incomplete_or_broken_llm_extract (constant). most_deprioritized_goal: N/A.
+
+---
+
+## 127. Snapshot (2026-03-05) — 200 cycles batch
+
+Циклы 50, 100, 150, 200. **Был ли сдвиг поведения? No.** Метрики стабильны 50–150; @200 — N/A (пустое окно patch events).
+
+| Цикл | success_rate | apply_rate | rollback_rate | most_successful | top_failure | events.json |
+|------|--------------|------------|---------------|-----------------|------------|-------------|
+| 50 | 1.0 | 1.0 | 0.0 | extract_nested_function (100%) | human_rejected | 215 KB |
+| 100 | 1.0 | 1.0 | 0.0 | extract_nested_function (100%) | human_rejected | 215 KB |
+| 150 | 1.0 | 1.0 | 0.0 | extract_nested_function (100%) | human_rejected | 215 KB |
+| 200 | N/A | N/A | N/A | N/A | human_rejected | 196 KB |
+
+most_deprioritized_goal: extract_block_to_helper (hash менялся 112d... → 9379...).
 
 ---
 
