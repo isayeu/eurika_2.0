@@ -62,6 +62,13 @@ def _risk_for_kind(kind: str) -> float:
     return RISK_BY_KIND.get(kind, 0.20)
 
 
+def estimated_delta_for_op(op: Any, project_root: Optional[Path] = None) -> float:
+    """|ΔE| for op (BOUNDED_EVOLUTION §7 energy cap). Uses heuristic until full simulation."""
+    st = getattr(op, "smell_type", None) or (op.get("smell_type") if isinstance(op, dict) else None)
+    k = getattr(op, "kind", None) or (op.get("kind") if isinstance(op, dict) else "")
+    return abs(_estimated_delta(st or "", k, project_root))
+
+
 def _score_for_op(
     smell_type: Optional[str],
     kind: str,

@@ -372,6 +372,7 @@ eurika explain action_plan.py . --window 10
 - `EURIKA_DEEP_NESTING_MODE` — режим для deep_nesting: `heuristic` (только эвристика), `hybrid` (эвристика → TODO при неудаче), `llm` (будущее: LLM-hints), `skip` (не обрабатывать); default `hybrid`
 - `EURIKA_CAMPAIGN_ALLOW_LOW_RISK` — при `1` низкорисковые ops (remove_unused_import) обходят campaign skip; можно задать флаг `--allow-low-risk-campaign`
 - `EURIKA_MAX_OPS_PER_CYCLE` — максимальное число операций за один fix cycle (bounded evolution, review §1); default `12`; `0` — без лимита
+- `EURIKA_ENERGY_CAP` — max Σ|ΔE| за цикл (BOUNDED_EVOLUTION §7); default `0` (disabled); при >0 план обрезается по энергобюджету
 - `.eurika/operation_whitelist.json` — target-aware whitelist для controlled rollout risky ops. Формат:
   - `kind`, `target_file`, опционально `smell_type`
   - `allow_in_hybrid` (default `true`)

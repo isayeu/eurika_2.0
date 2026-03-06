@@ -144,7 +144,7 @@ UI.md ✓; README ✓; критерии **B.7–B.14** выполнены. Оц�
 | **P2** | Очистка `.eurika_backups` | 1 мин | `rm -rf .eurika_backups` перед release |
 | **P3** | Ритуал dogfooding после сессии | 5 мин | `eurika fix . --dry-run`; при изменениях — CYCLE_REPORT |
 | **P4** | File size >600 LOC (по необходимости) | varies | ✅ chat_intent 515, prepare 544, extract_function 529, architect 528; extract helpers (chat_intent_detectors, prepare_critic, extract_function_ast, architect_helpers) |
-| **P5** | EnergyModel как resource constraint | — | Контракт в BOUNDED_EVOLUTION §7; реализация — по мере пробелов |
+| **P5** | EnergyModel как resource constraint | ✅ | EURIKA_ENERGY_CAP; planner_patch_ops truncates по Σ|ΔE|; BOUNDED_EVOLUTION §7 |
 | **—** | planner/core split | — | Отложено: thin facade; требует CYCLE_REPORT (BOUNDED_EVOLUTION §4) |
 
 **Чего избегать:** новые фичи, новые smell, self-rewriting, онлайн-патчинг (review III).

@@ -36,6 +36,7 @@ Eurika склонна к усложнению — это сила и риск. B
 | Параметр | Лимит | Env / источник |
 |----------|-------|----------------|
 | ops per fix cycle | 12 | EURIKA_MAX_OPS_PER_CYCLE (default 12, 0=unlimited) |
+| Σ\|ΔE\| per cycle | 0 (off) | EURIKA_ENERGY_CAP (default 0, 0=disabled) |
 | OSS hints per op | 3 | build_hints_and_params max_oss |
 | DIFF_HINTS entries | фиксированный словарь | heuristics.py |
 | fallback_kind mapping | явный словарь | heuristics.fallback_kind_for_low_success |
@@ -105,19 +106,18 @@ Eurika склонна к усложнению — это сила и риск. B
 
 ---
 
-## 7. EnergyModel как resource constraint (target, 2026-03)
+## 7. EnergyModel как resource constraint (2026-03)
 
 **Источник:** EXECUTION_MODEL_PLAN, ROADMAP §5.7, review 2026 II.
 
-EnergyModel сейчас — **scoring layer**: ранжирование ops по ΔEnergy, delta в record_outcome. Целевой вектор: также **resource constraint** (energy budget, caps).
+| Аспект | Реализация |
+|--------|------------|
+| Scoring | Score = estimated_delta - risk; rank по delta (energy_ranking) |
+| Ops cap | EURIKA_MAX_OPS_PER_CYCLE=12 |
+| **Energy cap** | EURIKA_ENERGY_CAP: Σ\|ΔE\| за цикл ≤ cap. 0 = disabled. planner_patch_ops truncates по heuristic estimated_delta. |
+| Delta в event | record_outcome(delta_energy=...); learn event |
 
-| Аспект | Текущее | Целевой контракт |
-|--------|---------|------------------|
-| Роль | Score = Delta - Risk; rank по delta | + budget: Σ\|ΔE\| за цикл ≤ cap |
-| Лимит ops | EURIKA_MAX_OPS_PER_CYCLE=12 | Сохраняется; energy cap — доп. ограничение |
-| Реализация | energy_model.energy(m); delta в learn event | Не менять код до необходимости |
-
-**Когда реализовывать:** при появлении пробелов (напр. циклы с чрезмерным delta без контроля). Документировать контракт — достаточно.
+**EURIKA_ENERGY_CAP:** при >0 план обрезается по накопленному |ΔE| (heuristic per smell|action). Пример: `EURIKA_ENERGY_CAP=0.3` — ~2–3 ops типа split_module (0.15 each).
 
 ---
 

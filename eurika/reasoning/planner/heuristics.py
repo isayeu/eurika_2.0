@@ -16,6 +16,15 @@ def max_ops_per_cycle() -> int:
     except (ValueError, TypeError):
         return 12
 
+
+def energy_cap_per_cycle() -> float:
+    """EURIKA_ENERGY_CAP: max Σ|ΔE| per fix cycle (BOUNDED_EVOLUTION §7). 0 = disabled."""
+    try:
+        val = float(os.environ.get("EURIKA_ENERGY_CAP", "0"))
+        return max(0.0, val)
+    except (ValueError, TypeError):
+        return 0.0
+
 STEP_KIND_TO_ACTION: Dict[str, str] = {
     "split_module": "split_module",
     "introduce_facade": "introduce_facade",

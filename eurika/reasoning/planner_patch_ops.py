@@ -17,10 +17,12 @@ from eurika.storage import (
     get_recent_failed_plan_hashes,
     plan_hash_from_ops,
 )
+from eurika.reasoning.planner.energy_ranking import estimated_delta_for_op
 from eurika.reasoning.planner.heuristics import (
     EXTRACT_CLASS_SKIP_PATTERNS,
     FACADE_MODULES,
     STEP_KIND_TO_ACTION,
+    energy_cap_per_cycle,
     max_ops_per_cycle,
 )
 from eurika.reasoning.planner.hints_provider import (
@@ -140,9 +142,23 @@ def build_patch_operations(project_root: str, summary: Dict[str, Any], smells: L
         plan_hash=plan_sig,
         kind_plan_counts=kind_plan_counts,
     )
-    cap = max_ops_per_cycle()
-    if cap > 0 and len(operations) > cap:
-        operations = operations[:cap]
+    ops_cap = max_ops_per_cycle()
+    energy_cap = energy_cap_per_cycle()
+    root = Path(project_root) if project_root else None
+    if energy_cap > 0:
+        kept: List[PatchOperation] = []
+        total_energy = 0.0
+        for op in operations:
+            if ops_cap > 0 and len(kept) >= ops_cap:
+                break
+            delta = estimated_delta_for_op(op, root)
+            if total_energy + delta > energy_cap:
+                break
+            kept.append(op)
+            total_energy += delta
+        operations = kept
+    elif ops_cap > 0 and len(operations) > ops_cap:
+        operations = operations[:ops_cap]
     return operations
 
 def _build_plan_targets(priorities: List[Dict[str, Any]], smells: List[ArchSmell], smells_by_node: Dict[str, List[ArchSmell]], summary: Dict[str, Any], *, graph: Optional['ProjectGraph'], learning_stats: Optional[Dict[str, Dict[str, Any]]] = None, project_root: Optional[str] = None) -> List[Dict[str, Any]]:
