@@ -11,93 +11,15 @@ import builtins
 from pathlib import Path
 from typing import List, Optional, Set, Tuple
 
-def _names_used_in_node(node: ast.AST) -> Set[str]:
-    """Collect names that are read (loaded) in node, excluding assigned names."""
-    loaded: Set[str] = set()
-    for n in ast.walk(node):
-        if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load):
-            loaded.add(n.id)
-        elif isinstance(n, ast.Attribute):
-            if isinstance(n.value, ast.Name):
-                loaded.add(n.value.id)
-    return loaded
+from .extract_function_ast import (
+    names_assigned_in,
+    names_used_in_node,
+    nested_uses_parent_locals,
+    parent_locals,
+    parent_param_names,
+    validate_and_unparse_module,
+)
 
-def _extracted_block_29(assigned, n):
-    for a in n.args.args:
-        assigned.add(a.arg)
-    if n.args.vararg:
-        assigned.add(n.args.vararg.arg or '')
-    if n.args.kwarg:
-        assigned.add(n.args.kwarg.arg or '')
-
-def _names_assigned_in(node: ast.AST) -> Set[str]:
-    """Collect names assigned in node (params, assignments)."""
-    assigned: Set[str] = set()
-    for n in ast.walk(node):
-        if isinstance(n, ast.FunctionDef):
-            _extracted_block_29(assigned, n)
-        elif isinstance(n, ast.Assign):
-            for t in n.targets:
-                if isinstance(t, ast.Name):
-                    assigned.add(t.id)
-        elif isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name):
-            assigned.add(n.target.id)
-        elif isinstance(n, (ast.For, ast.With)):
-            for inner in ast.iter_child_nodes(n):
-                if isinstance(inner, ast.Name) and isinstance(getattr(inner, 'ctx', None), ast.Store):
-                    assigned.add(inner.id)
-    return assigned
-
-def _parent_locals(parent: ast.FunctionDef) -> Set[str]:
-    """Names in parent scope (params + assigned in body, excluding nested defs)."""
-    result: Set[str] = set()
-    for a in parent.args.args:
-        result.add(a.arg)
-    if parent.args.vararg:
-        result.add(parent.args.vararg.arg or '')
-    if parent.args.kwarg:
-        result.add(parent.args.kwarg.arg or '')
-    for stmt in parent.body:
-        if isinstance(stmt, ast.FunctionDef):
-            continue
-        result.update(_names_assigned_in(stmt))
-    return result
-
-def _nested_uses_parent_locals(nested: ast.FunctionDef, parent: ast.FunctionDef) -> bool:
-    """True if nested function reads any name from parent's scope."""
-    used = _names_used_in_node(nested)
-    nested_own = _names_assigned_in(nested)
-    used -= nested_own
-    parent_locals = _parent_locals(parent)
-    return bool(used & parent_locals)
-
-def _parent_param_names(parent: ast.FunctionDef) -> Set[str]:
-    """Names of parent function's parameters."""
-    names: Set[str] = set()
-    for a in parent.args.args:
-        names.add(a.arg)
-    if parent.args.vararg:
-        names.add(parent.args.vararg.arg or '')
-    if parent.args.kwarg:
-        names.add(parent.args.kwarg.arg or '')
-    return names
-
-def _used_from_parent(nested: ast.FunctionDef, parent: ast.FunctionDef) -> Set[str]:
-    """Names from parent scope that nested reads (excluding nested's own)."""
-    used = _names_used_in_node(nested)
-    used -= _names_assigned_in(nested)
-    return used & _parent_locals(parent)
-
-def _validate_and_unparse_module(tree: ast.Module) -> Optional[str]:
-    """Return source only when resulting AST is syntactically valid."""
-    try:
-        ast.fix_missing_locations(tree)
-        rendered = ast.unparse(tree)
-        reparsed = ast.parse(rendered)
-        compile(reparsed, '<eurika-extract-validate>', 'exec')
-        return rendered
-    except Exception:
-        return None
 
 def _find_parent_with_nested(tree: ast.Module, parent_function_name: str, nested_function_name: str) -> Optional[Tuple[ast.FunctionDef, ast.AST]]:
     """
@@ -157,7 +79,7 @@ def suggest_extract_nested_function(file_path: Path, function_name: str) -> Opti
             break
     if not parent_func:
         return None
-    parent_locals = _parent_locals(parent_func)
+    plocals = parent_locals(parent_func)
     module_bound = _module_level_bound_names(tree)
     builtin_names = set(dir(builtins))
     candidates: List[Tuple[ast.FunctionDef, int, List[str]]] = []
@@ -165,10 +87,10 @@ def suggest_extract_nested_function(file_path: Path, function_name: str) -> Opti
         if isinstance(stmt, ast.FunctionDef):
             if _has_nonlocal_or_global(stmt):
                 continue
-            free_names = _names_used_in_node(stmt) - _names_assigned_in(stmt)
+            free_names = names_used_in_node(stmt) - names_assigned_in(stmt)
             free_names.discard(stmt.name)
-            used_from_parent = free_names & parent_locals
-            unresolved = free_names - parent_locals - module_bound - builtin_names
+            used_from_parent = free_names & plocals
+            unresolved = free_names - plocals - module_bound - builtin_names
             if unresolved or len(used_from_parent) > 3:
                 continue
             extra_params = sorted(used_from_parent)
@@ -215,13 +137,13 @@ def extract_nested_function(file_path: Path, parent_function_name: str, nested_f
         retained_body.append(stmt)
     if nested is None:
         return None
-    free_names = _names_used_in_node(nested) - _names_assigned_in(nested)
+    free_names = names_used_in_node(nested) - names_assigned_in(nested)
     free_names.discard(nested.name)
-    parent_locals = _parent_locals(parent_node)
+    plocals = parent_locals(parent_node)
     module_bound = _module_level_bound_names(tree)
     builtin_names = set(dir(builtins))
-    unresolved = free_names - parent_locals - module_bound - builtin_names
-    used_from_parent = free_names & parent_locals
+    unresolved = free_names - plocals - module_bound - builtin_names
+    used_from_parent = free_names & plocals
     if unresolved or len(used_from_parent) > 3:
         return None
     provided = set(extra)
@@ -231,7 +153,7 @@ def extract_nested_function(file_path: Path, parent_function_name: str, nested_f
     if provided:
         if len(provided) > 3:
             return None
-        if provided - parent_locals:
+        if provided - plocals:
             return None
         if not used_from_parent <= provided:
             return None
@@ -254,7 +176,7 @@ def extract_nested_function(file_path: Path, parent_function_name: str, nested_f
     new_body = list(tree.body)
     new_body.insert(insert_idx, extracted)
     tree.body = new_body
-    return _validate_and_unparse_module(tree)
+    return validate_and_unparse_module(tree)
 
 def _block_has_control_flow_exit(block: List[ast.stmt]) -> bool:
     """True if block contains break, continue, or return (not safely extractable)."""
@@ -305,20 +227,20 @@ def _names_used_in_statements(stmts: List[ast.stmt]) -> Set[str]:
     """Collect names loaded in statements."""
     loaded: Set[str] = set()
     for s in stmts:
-        loaded.update(_names_used_in_node(s))
+        loaded.update(names_used_in_node(s))
     return loaded
 
-def _names_assigned_in_statements(stmts: List[ast.stmt]) -> Set[str]:
+def names_assigned_in_statements(stmts: List[ast.stmt]) -> Set[str]:
     """Collect names assigned in statements."""
     assigned: Set[str] = set()
     for s in stmts:
-        assigned.update(_names_assigned_in(s))
+        assigned.update(names_assigned_in(s))
     return assigned
 
-def _names_assigned_in_excluding(node: ast.AST, exclude: ast.AST) -> Set[str]:
+def names_assigned_in_excluding(node: ast.AST, exclude: ast.AST) -> Set[str]:
     """Names assigned in node minus names assigned inside exclude (for scope checks)."""
-    full = _names_assigned_in(node)
-    in_exclude = _names_assigned_in(exclude)
+    full = names_assigned_in(node)
+    in_exclude = names_assigned_in(exclude)
     return full - in_exclude
 
 def _module_level_bound_names(tree: ast.AST) -> Set[str]:
@@ -365,8 +287,8 @@ def suggest_extract_block(file_path: Path, function_name: str, *, min_lines: int
             break
     if not parent_func:
         return None
-    parent_params = _parent_param_names(parent_func)
-    parent_locals = _parent_locals(parent_func)
+    parent_params = parent_param_names(parent_func)
+    plocals = parent_locals(parent_func)
     module_bound = _module_level_bound_names(tree)
     builtin_names = set(dir(builtins))
 
@@ -395,9 +317,9 @@ def suggest_extract_block(file_path: Path, function_name: str, *, min_lines: int
                     pass  # skip block that calls already-extracted helper (avoid recursion)
                 elif not _block_has_control_flow_exit(body):
                     used = _names_used_in_statements(body)
-                    assigned = _names_assigned_in_statements(body)
+                    assigned = names_assigned_in_statements(body)
                     writes_to_params = assigned & parent_params
-                    outer_assigned = _names_assigned_in_excluding(parent_func, node)
+                    outer_assigned = names_assigned_in_excluding(parent_func, node)
                     if len(assigned & outer_assigned) > 1:
                         pass  # skip: extraction would need multiple return values
                     else:
@@ -405,7 +327,7 @@ def suggest_extract_block(file_path: Path, function_name: str, *, min_lines: int
                         used_from_outer = free_names & parent_params
                         block_bound = _names_bound_by_block_node(node) & free_names
                         extra_count = len(used_from_outer | block_bound)
-                        unresolved = free_names - parent_locals - module_bound - builtin_names
+                        unresolved = free_names - plocals - module_bound - builtin_names
                         if (
                             not unresolved
                             and not writes_to_params
@@ -425,7 +347,7 @@ def suggest_extract_block(file_path: Path, function_name: str, *, min_lines: int
     best = max(candidates, key=lambda x: (x[2], x[3]))
     block_node, body, _, line_count = best
     used = _names_used_in_statements(body)
-    assigned = _names_assigned_in_statements(body)
+    assigned = names_assigned_in_statements(body)
     used_from_outer = (used - assigned) & parent_params
     block_bound = _names_bound_by_block_node(block_node) & (used - assigned)
     all_extra = used_from_outer | block_bound
@@ -485,18 +407,18 @@ def extract_block_to_helper(file_path: Path, parent_function_name: str, block_st
         return None
     block_node, body, _, _ = sorted(candidates, key=lambda item: (item[2], -item[3], getattr(item[0], 'lineno', 10 ** 9)))[0]
     block_bound = _names_bound_by_block_node(block_node)
-    body_used = _names_used_in_statements(body) - _names_assigned_in_statements(body)
+    body_used = _names_used_in_statements(body) - names_assigned_in_statements(body)
     for name in sorted(block_bound & body_used):
         if name not in extra:
             extra.append(name)
 
-    parent_locals = _parent_locals(parent_func)
+    plocals = parent_locals(parent_func)
     return_var: Optional[str] = None
     if body and isinstance(body[-1], ast.Assign):
         last = body[-1]
         if len(last.targets) == 1 and isinstance(last.targets[0], ast.Name):
             out_name = last.targets[0].id
-            if out_name in parent_locals and out_name not in block_bound:
+            if out_name in plocals and out_name not in block_bound:
                 return_var = out_name
 
     def replace_body_with_call(node: ast.AST) -> bool:
@@ -543,7 +465,7 @@ def extract_block_to_helper(file_path: Path, parent_function_name: str, block_st
     new_body = list(tree.body)
     new_body.insert(insert_idx, extracted)
     tree.body = new_body
-    return _validate_and_unparse_module(tree)
+    return validate_and_unparse_module(tree)
 
 def diagnose_extract_nested_failure(file_path: Path, parent_function_name: str, nested_function_name: str) -> str:
     """Return a stable, human-readable reason when nested extraction returns None."""
@@ -566,18 +488,18 @@ def diagnose_extract_nested_failure(file_path: Path, parent_function_name: str, 
             break
     if nested_node is None:
         return 'extract_nested_function: nested function not found in parent body'
-    free_names = _names_used_in_node(nested_node) - _names_assigned_in(nested_node)
+    free_names = names_used_in_node(nested_node) - names_assigned_in(nested_node)
     free_names.discard(nested_node.name)
-    parent_locals = _parent_locals(parent_node)
-    used_from_parent = free_names & parent_locals
+    plocals = parent_locals(parent_node)
+    used_from_parent = free_names & plocals
     module_bound = _module_level_bound_names(tree)
     builtin_names = set(dir(builtins))
-    unresolved = free_names - parent_locals - module_bound - builtin_names
+    unresolved = free_names - plocals - module_bound - builtin_names
     if unresolved:
         return 'extract_nested_function: nested has unresolved free names'
     if len(used_from_parent) > 3:
         return 'extract_nested_function: nested needs more than 3 parent vars'
-    if _nested_uses_parent_locals(nested_node, parent_node):
+    if nested_uses_parent_locals(nested_node, parent_node):
         return 'extract_nested_function: nested uses parent locals but params were not provided'
     return 'extract_nested_function: AST transform validation failed'
 

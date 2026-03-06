@@ -10,13 +10,15 @@ if str(ROOT) not in sys.path:
 
 from report.architect_format import format_architect_template
 
+from eurika.reasoning.architect_helpers import (
+    build_recommendation_how_block,
+    format_recent_events,
+    parse_smell_from_risk,
+)
 from eurika.reasoning.architect import (
-    _build_recommendation_how_block,
     _call_ollama_cli,
-    _format_recent_events,
     _init_ollama_fallback_client,
     _llm_interpret,
-    _parse_smell_from_risk,
     _template_interpret,
     interpret_architecture,
     interpret_architecture_with_meta,
@@ -26,12 +28,12 @@ from eurika.storage.events import Event
 
 def test_recommendation_how_block_and_parse_smell():
     """ROADMAP 2.9.1: Recommendation block for god_module, bottleneck, hub; parse_smell_from_risk."""
-    assert _parse_smell_from_risk("god_module @ main.py") == "god_module"
-    assert _parse_smell_from_risk("bottleneck @ api.py (severity=7)") == "bottleneck"
-    assert _parse_smell_from_risk("hub @ core.py") == "hub"
-    assert _parse_smell_from_risk("unknown @ x.py") is None
+    assert parse_smell_from_risk("god_module @ main.py") == "god_module"
+    assert parse_smell_from_risk("bottleneck @ api.py (severity=7)") == "bottleneck"
+    assert parse_smell_from_risk("hub @ core.py") == "hub"
+    assert parse_smell_from_risk("unknown @ x.py") is None
 
-    block = _build_recommendation_how_block(
+    block = build_recommendation_how_block(
         ["god_module @ main.py", "bottleneck @ api.py"],
         knowledge_snippet="",
     )
@@ -40,7 +42,7 @@ def test_recommendation_how_block_and_parse_smell():
     assert "bottleneck" in block and "facade" in block
     assert "Reference block" not in block
 
-    block_with_ref = _build_recommendation_how_block(
+    block_with_ref = build_recommendation_how_block(
         ["god_module @ main.py"],
         knowledge_snippet="architecture_refactor: Split god module...",
     )
@@ -144,7 +146,7 @@ def test_format_recent_events():
         Event(type="patch", input={}, output={"modified": ["a.py", "b.py"]}, result=True),
         Event(type="learn", input={"modules": ["a.py"]}, output={}, result=False),
     ]
-    s = _format_recent_events(events)
+    s = format_recent_events(events)
     assert "patch" in s
     assert "2 file" in s or "modified" in s
     assert "learn" in s
@@ -161,7 +163,7 @@ def test_format_recent_events_includes_failure_reason():
             result=False,
         ),
     ]
-    s = _format_recent_events(events)
+    s = format_recent_events(events)
     assert "failure=metrics_worsened" in s
 
 
@@ -305,7 +307,7 @@ def test_interpret_architecture_with_meta_knowledge_throws_uses_empty_snippet() 
     """R2 Fallback: when knowledge resolution throws, architect uses empty snippet and completes."""
     summary = {"system": {"modules": 2, "dependencies": 1, "cycles": 0}, "maturity": "low"}
     history = {"trends": {}, "regressions": []}
-    with patch("eurika.reasoning.architect._resolve_knowledge_snippet", side_effect=OSError("fetch failed")):
+    with patch("eurika.reasoning.architect.resolve_knowledge_snippet", side_effect=OSError("fetch failed")):
         text, meta = interpret_architecture_with_meta(
             summary, history, use_llm=False, knowledge_provider=object(), knowledge_topic="python"
         )
