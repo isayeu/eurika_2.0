@@ -1,6 +1,6 @@
 # Release Checklist (R4 Release Hygiene)
 
-Обязательный gate перед тегом релиза. См. [R4_MODULAR_PLATFORM_PLAN.md](R4_MODULAR_PLATFORM_PLAN.md) §3.
+Обязательный gate перед тегом релиза. R4 Modular Platform — [archive/R4_MODULAR_PLATFORM_PLAN.md](archive/R4_MODULAR_PLATFORM_PLAN.md).
 
 ## Автоматический прогон
 

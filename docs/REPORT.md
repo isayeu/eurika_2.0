@@ -75,6 +75,6 @@ _Обновлено: актуально для ветки v3.0.x (runtime policy
 | `CYCLE_REPORT.md` | Фактические снапшоты ритуалов и выводы по метрикам |
 | `CLI.md` | Актуальные команды/флаги, включая `whitelist-draft` |
 | `UI.md` | Legacy reference по архивному Web UI |
-| `MIGRATION_WEB_TO_QT.md` | Текущий статус миграции интерфейса (API-only + Qt-first) |
+| `archive/MIGRATION_WEB_TO_QT.md` | Статус миграции интерфейса (API-only + Qt-first) |
 | `DOGFOODING.md` | Практика запусков и верификации в локальном окружении |
 | `CHANGELOG.md` | История релизных изменений |

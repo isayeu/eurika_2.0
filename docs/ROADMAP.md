@@ -103,13 +103,51 @@ UI.md ✓; README ✓; критерии **B.7–B.14** выполнены. Оц�
 
 **План:** B.11 ✅; B.12 ✅; B.13 ✅. B.14 выполнен.
 
-### 4.3 Направление C — Ритуал 2.1
+### 4.3 Направление C — Ритуалы
 
-Регулярно: scan, doctor, report-snapshot; обновлять CYCLE_REPORT. **Постоянно.**
+| Ритуал | Частота |
+|--------|---------|
+| fix --dry-run | после каждого изменения |
+| doctor | раз в день |
+| CYCLE_REPORT | раз в 200 циклов |
+| scan, report-snapshot | по необходимости |
 
 ### 4.4 Qt MVP (eurika_2.0.Qt)
 
 Цели: запуск Qt, folder picker, Commands tab (scan/doctor/fix), live output, Stop, hybrid approvals, dashboard. Стартовый промпт — см. §6.
+
+### 4.5 Текущий фокус (март 2026)
+
+**Принцип:** доказать, что текущий интеллект работает — не добавлять новый.
+
+| Приоритет | Задача | Статус |
+|-----------|--------|--------|
+| 1 | TODO_AUDIT: prepare, doctor, chat_intent, parser | ✅ all |
+| 2 | Dead code: vulture → ruff F401/F841 → ручной обзор | ✅ |
+| 3 | 4 теста: CandidateGenerator, Scorer, planner, pipeline | ✅ |
+| 4 | 200 циклов, CYCLE_REPORT | — |
+| 5 | TODO_AUDIT: full_cycle, operational_metrics, global_memory, graph_ops, remove_unused_import, introduce_facade, diff | ✅ all extracted |
+
+**Выполнено:** TODO_AUDIT все 14 пунктов; extraction helpers в full_cycle, operational_metrics, global_memory, graph_ops, remove_unused_import, introduce_facade, evolution/diff; last_ts в learning_stats (decay prep).
+
+**Минимальный MVP тестов:** 1 unit CandidateGenerator, 1 unit Scorer, 1 integration planner, 1 pipeline mini repo.
+
+**Отложено:** refactor_code_smell 0% — честная метрика; EnergyModel — контракт есть, реализация позже; production 4/10.
+
+### 4.6 Следующие шаги (приоритизировано)
+
+**Принцип (review III):** упростить ядро, один автономный цикл идеальным, freeze фичей.
+
+| Приоритет | Шаг | Оценка | Зависимости |
+|-----------|-----|--------|-------------|
+| **P1** | 200 циклов, CYCLE_REPORT | ~6–8 ч | run_cycle_batch с `tail -f .eurika/cycle_batch_report.md`; nohup при фоне |
+| **P2** | Очистка `.eurika_backups` | 1 мин | `rm -rf .eurika_backups` перед release |
+| **P3** | Ритуал dogfooding после сессии | 5 мин | `eurika fix . --dry-run`; при изменениях — CYCLE_REPORT |
+| **P4** | File size >600 LOC (по необходимости) | varies | chat_intent 633, prepare 614, extract_function 607, architect 677 — candidates; BOUNDED_EVOLUTION §4 при split |
+| **P5** | EnergyModel как resource constraint | — | Контракт в BOUNDED_EVOLUTION §7; реализация — по мере пробелов |
+| **—** | planner/core split | — | Отложено: thin facade; требует CYCLE_REPORT (BOUNDED_EVOLUTION §4) |
+
+**Чего избегать:** новые фичи, новые smell, self-rewriting, онлайн-патчинг (review III).
 
 ---
 
@@ -400,7 +438,7 @@ while True:
 ### 6.3 Операционность
 
 - KPI: `verify_success_rate` по smell|action|target (prioritized_smell_actions ✅)
-- refactor_code_smell — план: docs/REFACTOR_CODE_SMELL_PLAN.md (Phase 1–4 ✅; Phase E: policy adjust при rate≥25% ✅ — deny→review в auto)
+- refactor_code_smell — archive/REFACTOR_CODE_SMELL_PLAN.md (Phase 1–4 ✅; Phase E: policy adjust при rate≥25% ✅)
 
 ### 6.4 Архитектура (L3↛L5)
 
