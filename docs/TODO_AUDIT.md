@@ -33,7 +33,7 @@
 
 | Файл | Строка | Описание |
 |------|--------|----------|
-| eurika/reasoning/planner/core.py | 55 | god_module → split_module — отложено: core уже thin facade (~65 LOC); дальнейший split требует CYCLE_REPORT (BOUNDED_EVOLUTION §4) |
+| eurika/reasoning/planner/core.py | — | ~~god_module → split_module~~ ✅ CYCLE_REPORT #129: graph_analysis.py (analyze), actions_proposal.py (propose_actions); core — thin facade |
 
 ---
 
@@ -61,6 +61,6 @@ Intent layer — интерфейс Execution Model. Parser должен быт�
 
 1. prepare ✅, doctor ✅, chat_intent ✅, parser ✅
 2. Остальные — по мере необходимости
-3. planner/core.py split_module — BOUNDED_EVOLUTION §4
+3. planner/core.py split_module — ✅ CYCLE_REPORT #129
 
 **Ссылки:** RELEASE_CHECKLIST §8, API_BOUNDARIES.md.

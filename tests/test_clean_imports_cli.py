@@ -45,6 +45,35 @@ def test_polygon_refactor_code_smell_drill_semantics() -> None:
     assert polygon_refactor_code_smell_drill(1) == 2 + 4 + 5 + 10 + 12 + 24 + 28 + 56 + 61 + 122 + 1
 
 
+def test_polygon_refactor_code_smell_variants_semantics() -> None:
+    """DRILL_REFACTOR_CODE_SMELL variants — long_function без extractable; целевые для LLM extract."""
+    from eurika.polygon import (
+        polygon_refactor_code_smell_if_chain,
+        polygon_refactor_code_smell_dict_builder,
+        polygon_refactor_code_smell_try_except,
+        polygon_refactor_code_smell_format_chain,
+    )
+
+    assert polygon_refactor_code_smell_if_chain(0) == "zero"
+    assert polygon_refactor_code_smell_if_chain(5) == "five"
+    assert polygon_refactor_code_smell_if_chain(99) == "nineties"
+    assert polygon_refactor_code_smell_if_chain(150) == "hundred_plus"
+
+    cfg = polygon_refactor_code_smell_dict_builder("test")
+    assert cfg["env"] == "test"
+    assert cfg["port"] == 8080
+    assert cfg["template_path"] == "/templates"
+
+    assert polygon_refactor_code_smell_try_except([]) == 0
+    assert polygon_refactor_code_smell_try_except([1, 2, 3]) == 6
+    assert polygon_refactor_code_smell_try_except(["a"] * 15) == -1  # TypeError in sum
+
+    out = polygon_refactor_code_smell_format_chain("alice", 2, [10, 20])
+    assert "alice" in out
+    assert "2" in out
+    assert "10" in out or "20" in out
+
+
 def test_polygon_split_demo_semantics() -> None:
     """DRILL_SPLIT (CR-E3) — split_demo validators + formatters preserve semantics."""
     from eurika.polygon import polygon_split_demo

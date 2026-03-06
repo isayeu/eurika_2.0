@@ -622,6 +622,28 @@ def test_get_learning_insights_policy_adjustment_hints_for_weak_pairs(tmp_path: 
     assert float(weak_hint.get("verify_success_rate", 0)) >= 0.25
 
 
+def test_get_learning_insights_policy_adjustment_merges_llm_extract_block(tmp_path: Path) -> None:
+    """llm_extract_block success counts toward long_function|refactor_code_smell for Phase E (REFACTOR_CODE_SMELL_PLAN)."""
+    from eurika.storage import ProjectMemory
+
+    memory = ProjectMemory(tmp_path)
+    op = {"kind": "llm_extract_block", "smell_type": "long_function", "target_file": "polygon/drill.py"}
+    for i in range(5):
+        memory.learning.append(
+            project_root=tmp_path,
+            modules=["polygon/drill.py"],
+            operations=[op],
+            risks=[],
+            verify_success=(i < 3),
+        )
+    out = get_learning_insights(tmp_path, top_n=5)
+    hints = (out.get("recommendations") or {}).get("policy_adjustment_hints") or []
+    weak = next((h for h in hints if h.get("pair") == "long_function|refactor_code_smell"), None)
+    assert weak is not None, "llm_extract_block stats should merge into refactor_code_smell for Phase E"
+    assert weak["total"] == 5
+    assert float(weak["verify_success_rate"]) >= 0.25
+
+
 def test_get_learning_insights_includes_chat_learning_hints(tmp_path: Path) -> None:
     """Chat history should contribute review-only hints for policy/whitelist."""
     chat_dir = tmp_path / ".eurika" / "chat_history"

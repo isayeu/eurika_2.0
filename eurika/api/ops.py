@@ -367,11 +367,19 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
     deep_mode = _deep_nesting_mode()
     fixed_locations: set[tuple[str, str]] = set()
 
-    # Phase 3: prioritize polygon drill when LLM extract enabled (budget limited to 3 calls)
-    _LLM_EXTRACT_DRILL = "eurika/polygon/refactor_code_smell_drill.py"
+    # Phase 3: prioritize polygon drills when LLM extract enabled (REFACTOR_CODE_SMELL_PLAN)
+    _LLM_EXTRACT_DRILLS = (
+        "eurika/polygon/refactor_code_smell_drill.py",
+        "eurika/polygon/refactor_code_smell_if_chain.py",
+        "eurika/polygon/refactor_code_smell_dict_builder.py",
+        "eurika/polygon/refactor_code_smell_try_except.py",
+        "eurika/polygon/refactor_code_smell_format_chain.py",
+    )
     if _use_llm_extract():
-        drill_path = root / _LLM_EXTRACT_DRILL
-        if drill_path.exists() and drill_path.is_file():
+        for _LLM_EXTRACT_DRILL in _LLM_EXTRACT_DRILLS:
+            drill_path = root / _LLM_EXTRACT_DRILL
+            if not drill_path.exists() or not drill_path.is_file():
+                continue
             for smell in analyzer.find_smells(drill_path):
                 if smell.kind != "long_function":
                     continue
@@ -400,6 +408,9 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
                 except Exception:
                     pass
                 break
+            else:
+                continue
+            break  # One polygon drill op per cycle
 
     for file_path in analyzer.scan_python_files():
         rel = str(file_path.relative_to(root)).replace("\\", "/")

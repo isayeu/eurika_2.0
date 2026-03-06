@@ -283,21 +283,29 @@ def get_learning_insights(
     )
 
     # REFACTOR_CODE_SMELL_PLAN Phase 4: hint when WEAK pair reaches rate≥25%, total≥5
+    # Merge llm_extract_block into refactor_code_smell for long_function/deep_nesting (same intent)
     from eurika.agent.policy import WEAK_SMELL_ACTION_PAIRS
 
+    def _merged_stats_for_weak_pair(smell: str, action: str) -> tuple[int, int]:
+        """Total and verify_success for (smell, action), merging llm_extract_block into refactor_code_smell."""
+        sa = by_smell_action or {}
+        total = int(sa.get(f"{smell}|{action}", {}).get("total") or 0)
+        success = int(sa.get(f"{smell}|{action}", {}).get("verify_success") or 0)
+        if action == "refactor_code_smell" and smell in ("long_function", "deep_nesting"):
+            llm_key = f"{smell}|llm_extract_block"
+            total += int(sa.get(llm_key, {}).get("total") or 0)
+            success += int(sa.get(llm_key, {}).get("verify_success") or 0)
+        return total, success
+
     policy_adjustment_hints: list[Dict[str, Any]] = []
-    for k, v in (by_smell_action or {}).items():
-        parts = k.split("|", 2)
-        smell, action = (parts[0] if len(parts) > 0 else "", parts[1] if len(parts) > 1 else "")
-        if (smell, action) not in WEAK_SMELL_ACTION_PAIRS:
-            continue
-        total = int(v.get("total") or 0)
+    for (smell, action) in WEAK_SMELL_ACTION_PAIRS:
+        total, success = _merged_stats_for_weak_pair(smell, action)
         if total < 5:
             continue
-        rate = float(v.get("verify_success", 0) or 0) / max(total, 1)
+        rate = success / max(total, 1)
         if rate >= 0.25:
             policy_adjustment_hints.append({
-                "pair": k,
+                "pair": f"{smell}|{action}",
                 "verify_success_rate": round(rate, 4),
                 "total": total,
                 "hint": "Consider moving deny→review in auto mode (REFACTOR_CODE_SMELL_PLAN Phase 4)",

@@ -16,6 +16,10 @@ Drills:
   - deep_nesting: DRILL_DEEP_NESTING (polygon_deep_nesting_extractable — extractable)
   - split_demo: DRILL_SPLIT (CR-E3 Composer practice — split модуля)
   - refactor_code_smell_drill: DRILL_REFACTOR_CODE_SMELL (long_function без extractable; REFACTOR_CODE_SMELL_PLAN Phase 2)
+  - refactor_code_smell_if_chain: if/elif с return — блоки не extractable
+  - refactor_code_smell_dict_builder: dict construction
+  - refactor_code_smell_try_except: try/except с return
+  - refactor_code_smell_format_chain: f-string chain
 """
 from eurika.polygon.imports_ok import polygon_imports_ok
 from eurika.polygon.extractable_block import polygon_extractable_block
@@ -23,6 +27,10 @@ from eurika.polygon.long_function import polygon_long_function
 from eurika.polygon.long_function_extractable_block import polygon_long_function_extractable_block
 from eurika.polygon.deep_nesting import polygon_deep_nesting, polygon_deep_nesting_extractable
 from eurika.polygon.refactor_code_smell_drill import polygon_refactor_code_smell_drill
+from eurika.polygon.refactor_code_smell_if_chain import polygon_refactor_code_smell_if_chain
+from eurika.polygon.refactor_code_smell_dict_builder import polygon_refactor_code_smell_dict_builder
+from eurika.polygon.refactor_code_smell_try_except import polygon_refactor_code_smell_try_except
+from eurika.polygon.refactor_code_smell_format_chain import polygon_refactor_code_smell_format_chain
 from eurika.polygon.split_demo import polygon_split_demo
 
 __all__ = [
@@ -33,5 +41,9 @@ __all__ = [
     "polygon_deep_nesting",
     "polygon_deep_nesting_extractable",
     "polygon_refactor_code_smell_drill",
+    "polygon_refactor_code_smell_if_chain",
+    "polygon_refactor_code_smell_dict_builder",
+    "polygon_refactor_code_smell_try_except",
+    "polygon_refactor_code_smell_format_chain",
     "polygon_split_demo",
 ]

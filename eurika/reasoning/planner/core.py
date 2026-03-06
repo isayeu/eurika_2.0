@@ -2,55 +2,13 @@
 Planner core facade (ROADMAP v3.0 §5.6).
 
 Single entry point: analyze, detect_smells, propose_actions.
-Delegates to planner submodules and architecture_planner.
+Delegates to planner submodules (analysis, actions_proposal, core_extracted)
+and architecture_planner.
 """
 from __future__ import annotations
 
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
-
+from eurika.reasoning.planner.actions_proposal import propose_actions
 from eurika.reasoning.planner.core_extracted import detect_smells
-if TYPE_CHECKING:
-    from eurika.analysis.graph import ProjectGraph
+from eurika.reasoning.planner.graph_analysis import analyze
 
-def analyze(
-    graph: 'ProjectGraph',
-    *,
-    summary_risks: Optional[List[str]] = None,
-    trends: Optional[Dict[str, str]] = None,
-    learning_stats: Optional[Dict[str, Dict[str, Any]]] = None,
-    top_n: int = 8,
-    project_root: Optional[str] = None,
-) -> Dict[str, Any]:
-    """
-    Run planning analysis: smells + priorities from graph.
-
-    Returns dict with: smells, priorities, targets.
-    When project_root is provided, decay (failure_penalty, freshness_bonus) is applied.
-    """
-    from eurika.reasoning.graph_ops import priority_from_graph, targets_from_graph
-    smells = detect_smells(graph)
-    root = Path(project_root) if project_root else None
-    priorities = priority_from_graph(
-        graph, smells, summary_risks, top_n,
-        learning_stats=learning_stats,
-        project_root=root,
-    )
-    targets = targets_from_graph(
-        graph, smells, summary_risks, top_n,
-        learning_stats=learning_stats,
-        project_root=root,
-    )
-    return {'smells': smells, 'priorities': priorities, 'targets': targets}
-
-def propose_actions(project_root: str, summary: Dict[str, Any], smells: List[Any], history_info: Dict[str, Any], priorities: List[Dict[str, Any]], *, learning_stats: Optional[Dict[str, Dict[str, Any]]]=None) -> Any:
-    """
-    Propose action plan from architecture analysis.
-
-    Delegates to architecture_planner.build_action_plan.
-    """
-    from architecture_planner import build_action_plan
-    return build_action_plan(project_root=str(project_root), summary=summary, smells=smells, history_info=history_info, priorities=priorities, learning_stats=learning_stats)
-
-# planner/core — thin facade (analyze → graph_ops + core_extracted; propose_actions → architecture_planner).
-# Further split (architecture_planner_core, etc.) — BOUNDED_EVOLUTION §4: requires CYCLE_REPORT/FEATURE doc first.
+__all__ = ["analyze", "detect_smells", "propose_actions"]

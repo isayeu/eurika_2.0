@@ -53,11 +53,19 @@
 - **Сложность:** высокая — парсинг git log, сопоставление smell→fix
 - **Долгосрочно**
 
-### D. Polygon drill для refactor_code_smell
+### D. Polygon drill для refactor_code_smell (✅ расширено)
 
-Добавить в `eurika/polygon/` файл с long_function без extractable nested/block — целевой кейс для LLM-powered extract. Whitelist для накопления learning.
+Варианты в `eurika/polygon/` — long_function без extractable nested/block, целевые для LLM-powered extract:
 
-- **Быстро:** даёт воспроизводимый сценарий для тестов
+| Файл | Паттерн | Почему не extractable |
+|------|---------|----------------------|
+| refactor_code_smell_drill | sequential assignments | нет блоков 3+ строк |
+| refactor_code_smell_if_chain | if/elif с return | _block_has_control_flow_exit |
+| refactor_code_smell_dict_builder | config["k"] = v | нет if/for/while |
+| refactor_code_smell_try_except | try/except с return | return в ветках |
+| refactor_code_smell_format_chain | parts.append(f"...") | последовательные вызовы |
+
+- **Быстро:** воспроизводимые сценарии, whitelist для learning
 
 ### E. Поэтапный выход из WEAK (✅ реализовано)
 
@@ -73,7 +81,7 @@
 | 1 | B: min_lines=3 для long_function (✅ сделано) | — |
 | 2 | D: polygon drill refactor_code_smell (без extract) | ✅ refactor_code_smell_drill.py |
 | 3 | A: EURIKA_USE_LLM_EXTRACT + ask_llm_extract_patch (✅ реализовано) | — |
-| 4 | E: мониторинг learning-kpi, policy adjust при rate ≥ 25% | ✅ policy_adjustment_hints + policy: deny→review в auto при rate≥25%, total≥5. report-snapshot выводит policy_adjustment (Phase E) |
+| 4 | E: мониторинг learning-kpi, policy adjust при rate ≥ 25% | ✅ policy_adjustment_hints + policy: deny→review в auto при rate≥25%, total≥5. llm_extract_block success merge в refactor_code_smell для Phase E (CYCLE_REPORT #130). report-snapshot выводит policy_adjustment |
 | 5 | C: OSS before/after (при наличии ресурсов) | ✅ git_refactors + pattern_library |
 
 ---
