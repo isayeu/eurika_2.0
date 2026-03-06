@@ -23,6 +23,8 @@ alwaysApply: true
 
 **Конфиг проекта:** правила, skills, конфиг — только в `.eurika/`. `.cursor/` — каталог IDE, не использовать для файлов проекта.
 
+**Языковой приоритет:** русский. Chat intent, сообщения пользователю, документация — русский первым.
+
 ## Рекомендованные @-ссылки (CR-D1)
 
 - Общий план: @docs/ROADMAP.md, @docs/Architecture.md, @docs/review.md (target v3.x)
@@ -33,7 +35,7 @@ alwaysApply: true
 
 | Тип задачи | Ссылаться |
 | ---------- | --------- |
-| Рефакторинг, planner, patch | @eurika/agent/, @eurika/orchestration/ |
+| Рефакторинг, planner, patch | @eurika/agent/, @eurika/orchestration/, @docs/TODO_AUDIT.md |
 | API, serve, Chat | @eurika/api/ |
 | CLI, команды | @cli/, @docs/CLI.md |
 | Execution Model, MetricVector, EnergyModel | @docs/review.md, @docs/ROADMAP.md §5.7 |
