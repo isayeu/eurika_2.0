@@ -156,6 +156,94 @@ def run_cycle_entry(
     return out
 
 
+def _run_full_cycle_scan(path: Path, quiet: bool) -> dict[str, Any] | None:
+    """Run scan step. Returns error result if failed, None if ok."""
+    from runtime_scan import run_scan
+
+    if not quiet:
+        _LOG.info("eurika cycle: scan -> doctor -> fix")
+    if run_scan(path) != 0:
+        return with_cycle_state(
+            {
+                "return_code": 1,
+                "report": {
+                    "runtime": {
+                        "degraded_mode": True,
+                        "degraded_reasons": ["scan_failed"],
+                    },
+                },
+                "operations": [],
+                "modified": [],
+                "verify_success": False,
+                "agent_result": None,
+            },
+            is_error=True,
+        )
+    return None
+
+
+def _run_full_cycle_doctor(
+    path: Path,
+    window: int,
+    no_llm: bool,
+    online: bool,
+    run_doctor_cycle_fn: Callable[..., dict[str, Any]],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Run doctor step. Returns (data, None) if ok, (None, error_result) if failed."""
+    data = run_doctor_cycle_fn(path, window=window, no_llm=no_llm, online=online)
+    if data.get("error"):
+        report = dict(data)
+        if not report.get("runtime"):
+            report["runtime"] = {
+                "degraded_mode": True,
+                "degraded_reasons": ["doctor_error"],
+            }
+        return None, with_cycle_state(
+            {
+                "return_code": 1,
+                "report": report,
+                "operations": [],
+                "modified": [],
+                "verify_success": False,
+                "agent_result": None,
+            },
+            is_error=True,
+        )
+    return data, None
+
+
+def _log_doctor_summary(data: dict[str, Any], quiet: bool) -> None:
+    """Log doctor summary, history, architect to _LOG."""
+    if quiet:
+        return
+    from eurika.smells.rules import summary_to_text
+
+    _LOG.info(summary_to_text(data["summary"]))
+    _LOG.info("")
+    _LOG.info(data.get("history", {}).get("evolution_report", ""))
+    _LOG.info("")
+    _LOG.info(data.get("architect_text", ""))
+    _LOG.info("")
+
+
+def _merge_doctor_runtime_into_report(out: dict[str, Any], data: dict[str, Any]) -> None:
+    """Attach doctor_report and merge doctor runtime into fix output report."""
+    out["doctor_report"] = data
+    report = out.get("report")
+    doctor_runtime = data.get("runtime")
+    if isinstance(report, dict) and isinstance(doctor_runtime, dict):
+        report.setdefault(
+            "runtime",
+            {
+                "degraded_mode": bool(doctor_runtime.get("degraded_mode")),
+                "degraded_reasons": list(doctor_runtime.get("degraded_reasons", [])),
+                "llm_used": doctor_runtime.get("llm_used"),
+                "use_llm": doctor_runtime.get("use_llm"),
+                "source": "doctor",
+            },
+        )
+
+
 def run_full_cycle(
     path: Path,
     *,
@@ -182,54 +270,17 @@ def run_full_cycle(
     run_fix_cycle_fn: Callable[..., dict[str, Any]],
 ) -> dict[str, Any]:
     """Run scan → doctor (full report) → fix. Single command for the full ritual (ROADMAP 3.0.3: --online)."""
-    from eurika.smells.rules import summary_to_text
-    from runtime_scan import run_scan
+    scan_err = _run_full_cycle_scan(path, quiet)
+    if scan_err is not None:
+        return scan_err
 
-    if not quiet:
-        _LOG.info("eurika cycle: scan -> doctor -> fix")
-    if run_scan(path) != 0:
-        return with_cycle_state(
-            {
-                "return_code": 1,
-                "report": {
-                    "runtime": {
-                        "degraded_mode": True,
-                        "degraded_reasons": ["scan_failed"],
-                    },
-                },
-                "operations": [],
-                "modified": [],
-                "verify_success": False,
-                "agent_result": None,
-            },
-            is_error=True,
-        )
-    data = run_doctor_cycle_fn(path, window=window, no_llm=no_llm, online=online)
-    if data.get("error"):
-        report = dict(data)
-        if not report.get("runtime"):
-            report["runtime"] = {
-                "degraded_mode": True,
-                "degraded_reasons": ["doctor_error"],
-            }
-        return with_cycle_state(
-            {
-                "return_code": 1,
-                "report": report,
-                "operations": [],
-                "modified": [],
-                "verify_success": False,
-                "agent_result": None,
-            },
-            is_error=True,
-        )
-    if not quiet:
-        _LOG.info(summary_to_text(data["summary"]))
-        _LOG.info("")
-        _LOG.info(data["history"].get("evolution_report", ""))
-        _LOG.info("")
-        _LOG.info(data["architect_text"])
-        _LOG.info("")
+    data, doctor_err = _run_full_cycle_doctor(path, window, no_llm, online, run_doctor_cycle_fn)
+    if doctor_err is not None:
+        return doctor_err
+    assert data is not None  # doctor_err is None => data is not None
+
+    _log_doctor_summary(data, quiet)
+
     out = run_fix_cycle_fn(
         path,
         runtime_mode=runtime_mode,
@@ -251,21 +302,5 @@ def run_full_cycle(
         approve_ops=approve_ops,
         reject_ops=reject_ops,
     )
-    out["doctor_report"] = data
-    report = out.get("report")  # type: ignore[assignment]
-    doctor_runtime = data.get("runtime")
-    if isinstance(report, dict) and isinstance(doctor_runtime, dict):
-        report.setdefault(
-            "runtime",
-            {
-                "degraded_mode": bool(doctor_runtime.get("degraded_mode")),
-                "degraded_reasons": list(doctor_runtime.get("degraded_reasons", [])),
-                "llm_used": doctor_runtime.get("llm_used"),
-                "use_llm": doctor_runtime.get("use_llm"),
-                "source": "doctor",
-            },
-        )
+    _merge_doctor_runtime_into_report(out, data)
     return out
-
-
-# TODO (eurika): refactor long_function 'run_full_cycle' — consider extracting helper

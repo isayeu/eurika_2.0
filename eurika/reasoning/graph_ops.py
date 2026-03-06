@@ -182,6 +182,31 @@ def _add_learning_bonus(
             break
 
 
+def _apply_degree_bonus_to_scores(
+    scores: Dict[str, float],
+    reasons: Dict[str, List[str]],
+    fan: Dict[str, Tuple[int, int]],
+) -> None:
+    """Add degree-based bonus to each node's score."""
+    for node in list(scores.keys()):
+        fi, fo = fan.get(node, (0, 0))
+        smell_types = reasons.get(node, [])
+        scores[node] = scores[node] + _degree_bonus(fi, fo, smell_types)
+
+
+def _sort_and_format_priorities(
+    scores: Dict[str, float],
+    reasons: Dict[str, List[str]],
+    top_n: int,
+) -> List[Dict[str, Any]]:
+    """Sort by score desc and format as priority list."""
+    ordered = sorted(scores.items(), key=lambda x: -x[1])[:top_n]
+    return [
+        {"name": name, "score": round(score, 3), "reasons": reasons.get(name, [])}
+        for name, score in ordered
+    ]
+
+
 def priority_from_graph(
     graph: ProjectGraph,
     smells: List[Any],
@@ -200,22 +225,14 @@ def priority_from_graph(
     scores, reasons = _init_scores_from_smells(smells)
     _add_summary_risk_bonus(scores, reasons, summary_risks)
     _add_learning_bonus(scores, reasons, learning_stats)
-
-    for node in list(scores.keys()):
-        fi, fo = fan.get(node, (0, 0))
-        smell_types = reasons.get(node, [])
-        degree_bonus = _degree_bonus(fi, fo, smell_types)
-        scores[node] = scores[node] + degree_bonus
+    _apply_degree_bonus_to_scores(scores, reasons, fan)
 
     if project_root:
         from eurika.reasoning.priority_decay import apply_decay
+
         apply_decay(scores, reasons, lambda n: refactor_kind_for_smells(reasons.get(n, [])), project_root)
 
-    ordered = sorted(scores.items(), key=lambda x: -x[1])[:top_n]
-    return [
-        {"name": name, "score": round(score, 3), "reasons": reasons.get(name, [])}
-        for name, score in ordered
-    ]
+    return _sort_and_format_priorities(scores, reasons, top_n)
 
 
 def resolve_module_for_edge(self_map: Dict[str, Any], src_path: str, dst_path: str) -> Optional[str]:
@@ -369,6 +386,3 @@ def graph_hints_for_smell(
                 f"Consider grouping callers: {', '.join(info['imported_by'][:3])}."
             )
     return hints
-
-
-# TODO (eurika): refactor long_function 'priority_from_graph' — consider extracting helper

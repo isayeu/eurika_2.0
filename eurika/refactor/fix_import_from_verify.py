@@ -90,30 +90,44 @@ def parse_verify_import_error(verify_stdout: str, verify_stderr: str) -> Optiona
     return None
 
 
+def _extract_file_from_traceback(lines: List[str], error_idx: int) -> Optional[str]:
+    """Look backwards from error line for .py file in traceback."""
+    for j in range(error_idx - 1, -1, -1):
+        mm = re.search(r"^(\S+\.py):\d+:\s+in\s+", lines[j])
+        if mm:
+            return mm.group(1).strip()
+        mm = _TRACEBACK_LINE.match(lines[j])
+        if mm:
+            path = mm.group(1)
+            if path.endswith(".py"):
+                return Path(path).name
+    return None
+
+
+def _extract_file_from_context(lines: List[str], error_idx: int) -> Optional[str]:
+    """Fallback: scan lines before error for any .py filename."""
+    for j in range(max(0, error_idx - 8), error_idx):
+        m = re.search(r"(\S+\.py)", lines[j])
+        if m:
+            return m.group(1)
+    return None
+
+
 def _find_failing_file(text: str) -> Optional[str]:
     """Extract the .py file that failed (closest to the error line)."""
     lines = text.split("\n")
     for i, line in enumerate(lines):
         if "ModuleNotFoundError" in line or "ImportError" in line or "NameError" in line:
-            # For ImportError/ModuleNotFoundError: ERROR collecting or first .py in traceback
             if "ModuleNotFoundError" in line or "ImportError" in line:
                 m = re.search(r"ERROR collecting (\S+\.py)", text)
                 if m:
                     return m.group(1).strip()
-            # Last .py before error is where it occurred (e.g. goals_goalsystemextracted.py:10)
-            for j in range(i - 1, -1, -1):
-                mm = re.search(r"^(\S+\.py):\d+:\s+in\s+", lines[j])
-                if mm:
-                    return mm.group(1).strip()
-                mm = _TRACEBACK_LINE.match(lines[j])
-                if mm:
-                    path = mm.group(1)
-                    if path.endswith(".py"):
-                        return Path(path).name
-            for j in range(max(0, i - 8), i):
-                m = re.search(r"(\S+\.py)", lines[j])
-                if m:
-                    return m.group(1)
+            result = _extract_file_from_traceback(lines, i)
+            if result:
+                return result
+            result = _extract_file_from_context(lines, i)
+            if result:
+                return result
             break
     return None
 
@@ -214,6 +228,18 @@ def _create_stub_module(
     return "\n".join(lines).strip() + "\n" if lines else None
 
 
+def _find_name_in_ast_tree(tree: ast.AST, name: str) -> Optional[str]:
+    """Find Assign/AnnAssign defining name in AST. Return unparsed line."""
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name) and t.id == name:
+                    return ast.unparse(node)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == name:
+            return ast.unparse(node)
+    return None
+
+
 def _find_constant_definition(root: Path, name: str, exclude_file: str) -> Optional[str]:
     """Search for Assign/AnnAssign defining name in .py files. Return unparsed line."""
     skip_dirs = {"venv", ".venv", "node_modules", "__pycache__", ".git", ".eurika_backups"}
@@ -226,14 +252,99 @@ def _find_constant_definition(root: Path, name: str, exclude_file: str) -> Optio
             tree = ast.parse(py_path.read_text(encoding="utf-8"))
         except (SyntaxError, OSError):
             continue
-        for node in ast.iter_child_nodes(tree):
-            if isinstance(node, ast.Assign):
-                for t in node.targets:
-                    if isinstance(t, ast.Name) and t.id == name:
-                        return ast.unparse(node)
-            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == name:
-                return ast.unparse(node)
+        result = _find_name_in_ast_tree(tree, name)
+        if result:
+            return result
     return None
+
+
+def _handle_name_error_ops(
+    root: Path,
+    failing_file: str,
+    failing_path: Path,
+    missing_name: str,
+) -> List[Dict[str, Any]]:
+    """Build ops to add missing constant to failing file (NameError)."""
+    const_line = _find_constant_definition(root, missing_name, failing_file)
+    if not const_line:
+        return []
+    content = failing_path.read_text(encoding="utf-8")
+    extra_imports: List[str] = []
+    if "Path(" in const_line and "from pathlib import Path" not in content and "import Path" not in content:
+        extra_imports.append("from pathlib import Path")
+    lines = content.split("\n")
+    insert_idx = 0
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith(("import ", "from ")):
+            insert_idx = i + 1
+        elif stripped and not stripped.startswith("#"):
+            break
+    to_insert = extra_imports + [const_line, ""]
+    new_lines = lines[:insert_idx] + to_insert + lines[insert_idx:]
+    new_content = "\n".join(new_lines)
+    return [{
+        "kind": "fix_import",
+        "target_file": failing_file,
+        "params": {"add_constant": missing_name},
+        "diff": new_content,
+    }]
+
+
+def _try_redirect_import_ops(
+    root: Path,
+    missing: str,
+    requested: List[str],
+    failing_file: str,
+    failing_path: Path,
+) -> List[Dict[str, Any]]:
+    """Try redirecting import to another module that has the symbols."""
+    found_module: Optional[str] = None
+    for sym in requested:
+        if sym.startswith("_"):
+            continue
+        other = _search_symbol_in_project(root, sym, missing)
+        if other:
+            found_module = other
+            break
+    if not found_module:
+        return []
+    imports = _read_imports_from_file(failing_path)
+    for mod, syms in imports:
+        if mod == missing and syms:
+            old_line = f"from {missing} import {', '.join(syms)}"
+            new_line = f"from {found_module} import {', '.join(syms)}"
+            content = failing_path.read_text(encoding="utf-8")
+            if old_line in content:
+                new_content = content.replace(old_line, new_line, 1)
+                return [{
+                    "kind": "fix_import",
+                    "target_file": failing_file,
+                    "params": {"old_line": old_line, "new_line": new_line},
+                    "diff": new_content,
+                }]
+    return []
+
+
+def _try_create_stub_op(
+    root: Path,
+    missing: str,
+    requested: List[str],
+) -> Optional[Dict[str, Any]]:
+    """Create stub module if it doesn't exist."""
+    stub_path = missing.replace(".", "/") + ".py"
+    full_path = root / stub_path if "/" in stub_path else root / (missing + ".py")
+    if full_path.exists():
+        return None
+    stub_content = _create_stub_module(missing, requested)
+    if not stub_content:
+        return None
+    return {
+        "kind": "create_module_stub",
+        "target_file": full_path.relative_to(root).as_posix(),
+        "params": {"module": missing, "symbols": requested},
+        "content": stub_content,
+    }
 
 
 def suggest_fix_import_operations(
@@ -254,108 +365,24 @@ def suggest_fix_import_operations(
     failing_file = parsed.get("failing_file")
     error_type = parsed.get("error_type", "")
 
-    # NameError: add missing constant to failing file
     if error_type == "NameError" and failing_file:
         missing_name = parsed.get("missing_name", "")
-        if not missing_name:
-            return []
-        failing_path = root / failing_file
-        if not failing_path.exists():
-            return []
-        const_line = _find_constant_definition(root, missing_name, failing_file)
-        if const_line:
-            content = failing_path.read_text(encoding="utf-8")
-            # Add import for Path if const uses it and not already imported
-            extra_imports: List[str] = []
-            if "Path(" in const_line and "from pathlib import Path" not in content and "import Path" not in content:
-                extra_imports.append("from pathlib import Path")
-            lines = content.split("\n")
-            insert_idx = 0
-            for i, line in enumerate(lines):
-                stripped = line.strip()
-                if stripped.startswith(("import ", "from ")):
-                    insert_idx = i + 1
-                elif stripped and not stripped.startswith("#"):
-                    break
-            to_insert = extra_imports + [const_line, ""]
-            new_lines = lines[:insert_idx] + to_insert + lines[insert_idx:]
-            new_content = "\n".join(new_lines)
-            return [{
-                "kind": "fix_import",
-                "target_file": failing_file,
-                "params": {"add_constant": missing_name},
-                "diff": new_content,
-            }]
-        return []
-
+        if missing_name:
+            failing_path = root / failing_file
+            if failing_path.exists():
+                ops = _handle_name_error_ops(root, failing_file, failing_path, missing_name)
+                if ops:
+                    return ops
 
     if not missing or not failing_file:
         return []
-
     failing_path = root / failing_file
     if not failing_path.exists():
         return []
 
-    ops: List[Dict[str, Any]] = []
+    ops = _try_redirect_import_ops(root, missing, requested, failing_file, failing_path)
+    if ops:
+        return ops
 
-    # Strategy 1: redirect import - search for symbols elsewhere
-    found_module: Optional[str] = None
-    for sym in requested:
-        if sym.startswith("_"):
-            continue
-        other = _search_symbol_in_project(root, sym, missing)
-        if other:
-            found_module = other
-            break
-
-    if found_module:
-        # Fix import: from X import Y -> from found_module import Y
-        imports = _read_imports_from_file(failing_path)
-        for mod, syms in imports:
-            if mod == missing and syms:
-                old_line = f"from {missing} import {', '.join(syms)}"
-                new_line = f"from {found_module} import {', '.join(syms)}"
-                content = failing_path.read_text(encoding="utf-8")
-                if old_line in content:
-                    new_content = content.replace(old_line, new_line, 1)
-                    ops.append({
-                        "kind": "fix_import",
-                        "target_file": failing_file,
-                        "params": {"old_line": old_line, "new_line": new_line},
-                        "diff": new_content,
-                    })
-                break
-        if ops:
-            return ops
-
-    # Strategy 2: create stub module
-    stub_path = missing.replace(".", "/") + ".py"
-    if "/" in stub_path:
-        full_path = root / stub_path
-    else:
-        full_path = root / (missing + ".py")
-
-    if full_path.exists():
-        return []
-
-    stub_content = _create_stub_module(missing, requested)
-    if stub_content:
-        ops.append({
-            "kind": "create_module_stub",
-            "target_file": full_path.relative_to(root).as_posix(),
-            "params": {"module": missing, "symbols": requested},
-            "content": stub_content,
-        })
-    return ops
-
-
-# TODO (eurika): refactor deep_nesting '_find_failing_file' — consider extracting nested block
-
-
-# TODO (eurika): refactor deep_nesting '_find_constant_definition' — consider extracting nested block
-
-
-# TODO (eurika): refactor long_function 'suggest_fix_import_operations' — consider extracting helper
-
-
-# TODO (eurika): refactor deep_nesting 'suggest_fix_import_operations' — consider extracting nested block
+    stub_op = _try_create_stub_op(root, missing, requested)
+    return [stub_op] if stub_op else []

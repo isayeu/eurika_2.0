@@ -202,9 +202,11 @@ class LearningView:
                         "verify_success": 0,
                         "verify_fail": 0,
                         "not_applied": 0,
+                        "last_ts": 0.0,
                     },
                 )
                 by_kind["total"] += 1
+                by_kind["last_ts"] = max(by_kind.get("last_ts", 0.0), r.timestamp)
                 outcome = _resolve_learning_outcome(op, r.verify_success)
                 if outcome == "verify_success":
                     by_kind["verify_success"] += 1
@@ -235,9 +237,11 @@ class LearningView:
                         "verify_success": 0,
                         "verify_fail": 0,
                         "not_applied": 0,
+                        "last_ts": 0.0,
                     },
                 )
                 by_key["total"] += 1
+                by_key["last_ts"] = max(by_key.get("last_ts", 0.0), r.timestamp)
                 outcome = _resolve_learning_outcome(op, r.verify_success)
                 if outcome == "verify_success":
                     by_key["verify_success"] += 1

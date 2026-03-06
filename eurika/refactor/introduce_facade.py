@@ -12,6 +12,34 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 
+def _compute_facade_path_and_module(target_file: str) -> Optional[Tuple[str, str, str]]:
+    """Return (new_rel_path, stem, mod_path) or None if already a facade."""
+    t = Path(target_file)
+    if t.stem.endswith("_api"):
+        return None  # Already a facade
+    stem = t.stem
+    parent = t.parent
+    new_name = stem + "_api.py"
+    new_rel_path = str(parent / new_name) if str(parent) != "." else new_name
+    parent_str = str(parent).replace("/", ".").replace("\\", ".").strip(". ")
+    mod_path = f"{parent_str}.{stem}" if parent_str else stem
+    return (new_rel_path, stem, mod_path)
+
+
+def _build_facade_content(stem: str, names: List[str], mod_path: str, callers: Optional[List[str]]) -> str:
+    """Build facade module content."""
+    import_stmt = f"from {mod_path} import " + ", ".join(names)
+    callers_note = ""
+    if callers:
+        callers_note = f"\n\nCallers (candidates to switch): {', '.join(callers[:5])}{'...' if len(callers) > 5 else ''}."
+    return f'''"""Facade for {stem} — stable API boundary.{callers_note}"""
+
+{import_stmt}
+
+__all__ = {repr(names)}
+'''
+
+
 def introduce_facade(
     bottleneck_path: Path,
     target_file: str,
@@ -41,33 +69,11 @@ def introduce_facade(
     if not names:
         return None
 
-    t = Path(target_file)
-    if t.stem.endswith("_api"):
-        return None  # Already a facade
-    stem = t.stem
-    parent = t.parent
-    new_name = stem + "_api.py"
-    new_rel_path = str(parent / new_name) if str(parent) != "." else new_name
-
-    # Import path: eurika/reasoning/graph_ops -> from eurika.reasoning.graph_ops; patch_apply -> from patch_apply
-    parent_str = str(parent).replace("/", ".").replace("\\", ".").strip(". ")
-    if parent_str:
-        mod_path = f"{parent_str}.{stem}"
-    else:
-        mod_path = stem
-    import_stmt = f"from {mod_path} import " + ", ".join(names)
-
-    callers_note = ""
-    if callers:
-        callers_note = f"\n\nCallers (candidates to switch): {', '.join(callers[:5])}{'...' if len(callers) > 5 else ''}."
-
-    new_content = f'''"""Facade for {stem} — stable API boundary.{callers_note}"""
-
-{import_stmt}
-
-__all__ = {repr(names)}
-'''
-
+    path_info = _compute_facade_path_and_module(target_file)
+    if path_info is None:
+        return None
+    new_rel_path, stem, mod_path = path_info
+    new_content = _build_facade_content(stem, names, mod_path, callers)
     return (new_rel_path, new_content)
 
 
@@ -95,6 +101,3 @@ def _names_from_all(node: ast.AST) -> List[str]:
             if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
         ]
     return []
-
-
-# TODO (eurika): refactor long_function 'introduce_facade' — consider extracting helper

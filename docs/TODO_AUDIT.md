@@ -12,19 +12,19 @@
 
 | Файл | Строка | Тип | Функция/блок |
 |------|--------|-----|--------------|
-| eurika/orchestration/doctor.py | 217 | long_function | run_doctor_cycle |
-| eurika/orchestration/prepare.py | 594 | long_function | prepare_fix_cycle_operations |
-| eurika/orchestration/full_cycle.py | 271 | long_function | run_full_cycle |
-| eurika/api/chat_intent.py | 584 | long_function | detect_intent |
-| eurika/api/chat_rag.py | 112 | deep_nesting | _load_chat_pairs |
-| eurika/refactor/fix_import_from_verify.py | 352,355,358,361 | deep_nesting, long_function | _find_failing_file, _find_constant_definition, suggest_fix_import_operations |
-| eurika/storage/operational_metrics.py | 69 | long_function | aggregate_operational_metrics |
-| eurika/storage/global_memory.py | 139 | deep_nesting | aggregate_global_by_smell_action |
-| eurika/reasoning/graph_ops.py | 374 | long_function | priority_from_graph |
-| eurika/refactor/remove_unused_import.py | 211 | deep_nesting | _names_imported_under_type_checking |
-| eurika/refactor/introduce_facade.py | 100 | long_function | introduce_facade |
-| eurika/evolution/diff.py | 473 | long_function | _build_recommended_actions |
-| cli/wiring/parser.py | 321 | long_function | _add_product_commands |
+| eurika/orchestration/doctor.py | ~~217~~ | ~~long_function~~ | ~~run_doctor_cycle~~ ✅ _load_doctor_inputs, _build_doctor_knowledge_provider, _enrich_doctor_output |
+| eurika/orchestration/prepare.py | ~~594~~ | ~~long_function~~ | ~~prepare_fix_cycle_operations~~ ✅ _filter_and_policy_operations extracted |
+| eurika/orchestration/full_cycle.py | ~~271~~ | ~~long_function~~ | ~~run_full_cycle~~ ✅ _run_full_cycle_scan, _run_full_cycle_doctor, _log_doctor_summary, _merge_doctor_runtime_into_report |
+| eurika/api/chat_intent.py | ~~584~~ | ~~long_function~~ | ~~detect_intent~~ ✅ _detect_remember_recall, _detect_create_intent, _detect_delete_intent, _detect_save_intent, _detect_refactor_intent, _detect_run_intent |
+| eurika/api/chat_rag.py | ~~112~~ | ~~deep_nesting~~ | ~~_load_chat_pairs~~ ✅ _parse_chat_line, _is_valid_assistant_response |
+| eurika/refactor/fix_import_from_verify.py | ~~352,355,358,361~~ | ~~deep_nesting, long_function~~ | ~~_find_failing_file, _find_constant_definition, suggest_fix_import_operations~~ ✅ _extract_file_from_traceback, _extract_file_from_context, _find_name_in_ast_tree, _handle_name_error_ops, _try_redirect_import_ops, _try_create_stub_op |
+| eurika/storage/operational_metrics.py | ~~69~~ | ~~long_function~~ | ~~aggregate_operational_metrics~~ ✅ _aggregate_patch_event_counts, _median_int |
+| eurika/storage/global_memory.py | ~~139~~ | ~~deep_nesting~~ | ~~aggregate_global_by_smell_action~~ ✅ _process_learn_event |
+| eurika/reasoning/graph_ops.py | ~~374~~ | ~~long_function~~ | ~~priority_from_graph~~ ✅ _apply_degree_bonus_to_scores, _sort_and_format_priorities |
+| eurika/refactor/remove_unused_import.py | ~~211~~ | ~~deep_nesting~~ | ~~_names_imported_under_type_checking~~ ✅ _names_from_type_checking_block |
+| eurika/refactor/introduce_facade.py | ~~100~~ | ~~long_function~~ | ~~introduce_facade~~ ✅ _compute_facade_path_and_module, _build_facade_content |
+| eurika/evolution/diff.py | ~~473~~ | ~~long_function~~ | ~~_build_recommended_actions~~ ✅ _build_shift_index, _collect_action_candidates, _format_action_line |
+| cli/wiring/parser.py | ~~321~~ | ~~long_function~~ | ~~_add_product_commands~~ ✅ _add_fix_cycle_common_args extracted |
 | cli/wiring/dispatch.py | ~~73~~ | long_function | ~~dispatch_command~~ ✅ _get_agent_handler extracted |
 
 ---
@@ -33,7 +33,7 @@
 
 | Файл | Строка | Описание |
 |------|--------|----------|
-| eurika/reasoning/planner/core.py | 55 | god_module → split_module |
+| eurika/reasoning/planner/core.py | 55 | god_module → split_module — отложено: core уже thin facade (~65 LOC); дальнейший split требует CYCLE_REPORT (BOUNDED_EVOLUTION §4) |
 
 ---
 
@@ -48,11 +48,19 @@
 
 ---
 
-## 4. Рекомендации
+## 4. Приоритеты (ROADMAP §4.5)
 
-1. **Высокий приоритет:** doctor.run_doctor_cycle, prepare.prepare_fix_cycle_operations — часто вызываются.
-2. **Средний:** chat_intent.detect_intent, fix_import_from_verify — критичный путь.
-3. **Низкий:** introduce_facade, diff._build_recommended_actions — реже используются.
-4. **planner/core.py** — split_module требует отдельного плана (BOUNDED_EVOLUTION §4).
+**Порядок (архитектурная логика):**
 
-**Ссылки:** R4_MODULAR_PLATFORM_PLAN.md 3.2.4, RELEASE_CHECKLIST §8, REFACTOR_CODE_SMELL_PLAN.md.
+```
+User Input → Intent Detection → Command Parsing → Planner/Executor
+```
+
+Intent layer — интерфейс Execution Model. Parser должен быть тонким: intent → handler.
+Следовательно: **сначала chat_intent, потом parser.**
+
+1. prepare ✅, doctor ✅, chat_intent ✅, parser ✅
+2. Остальные — по мере необходимости
+3. planner/core.py split_module — BOUNDED_EVOLUTION §4
+
+**Ссылки:** RELEASE_CHECKLIST §8, API_BOUNDARIES.md.

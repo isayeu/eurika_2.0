@@ -69,6 +69,31 @@ def append_learn_to_global(
         pass
 
 
+def _process_learn_event(
+    stats: Dict[str, Dict[str, Any]],
+    event: Any,
+    sep: str = "|",
+) -> None:
+    """Update stats from one learn event's operations."""
+    ops = (getattr(event, "input", None) or {}).get("operations", [])
+    ts = getattr(event, "timestamp", 0.0) or 0.0
+    result = getattr(event, "result", None)
+    for op in ops:
+        kind = op.get("kind", "unknown")
+        smell = op.get("smell_type") or "unknown"
+        key = f"{smell}{sep}{kind}"
+        by_key = stats.setdefault(
+            key, {"total": 0, "success": 0, "fail": 0, "last_ts": 0.0}
+        )
+        by_key["total"] += 1
+        by_key["last_ts"] = max(by_key.get("last_ts", 0.0), ts)
+        if result is True:
+            if _is_strong_refactor_code_smell_success(op):
+                by_key["success"] += 1
+        elif result is False:
+            by_key["fail"] += 1
+
+
 def aggregate_global_by_smell_action() -> Dict[str, Dict[str, Any]]:
     """Aggregate learning from global store by smell|action. Returns {} if disabled or empty."""
     path = _global_events_path()
@@ -76,22 +101,11 @@ def aggregate_global_by_smell_action() -> Dict[str, Dict[str, Any]]:
         return {}
     try:
         from .events import EventStore
+
         store = EventStore(storage_path=path)
         stats: Dict[str, Dict[str, Any]] = {}
-        sep = "|"
         for e in store.by_type("learn"):
-            ops = (e.input or {}).get("operations", [])
-            for op in ops:
-                kind = op.get("kind", "unknown")
-                smell = op.get("smell_type") or "unknown"
-                key = f"{smell}{sep}{kind}"
-                by_key = stats.setdefault(key, {"total": 0, "success": 0, "fail": 0})
-                by_key["total"] += 1
-                if e.result is True:
-                    if _is_strong_refactor_code_smell_success(op):
-                        by_key["success"] += 1
-                elif e.result is False:
-                    by_key["fail"] += 1
+            _process_learn_event(stats, e)
         return stats
     except Exception:
         return {}
@@ -126,14 +140,15 @@ def merge_learning_stats(
             "total": int(rec.get("total", 0) or 0),
             "success": int(rec.get("success", 0) or 0),
             "fail": int(rec.get("fail", 0) or 0),
+            "last_ts": max(rec.get("last_ts") or 0.0, 0.0),
         }
     for key, rec in (global_stats or {}).items():
         if key not in result:
-            result[key] = {"total": 0, "success": 0, "fail": 0}
+            result[key] = {"total": 0, "success": 0, "fail": 0, "last_ts": 0.0}
         result[key]["total"] += int(rec.get("total", 0) or 0)
         result[key]["success"] += int(rec.get("success", 0) or 0)
         result[key]["fail"] += int(rec.get("fail", 0) or 0)
+        result[key]["last_ts"] = max(
+            result[key].get("last_ts", 0.0), rec.get("last_ts") or 0.0
+        )
     return result
-
-
-# TODO (eurika): refactor deep_nesting 'aggregate_global_by_smell_action' — consider extracting nested block

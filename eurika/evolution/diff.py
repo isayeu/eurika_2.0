@@ -220,6 +220,77 @@ def _modules_became_bottlenecks(
     return sorted(modules)
 
 
+ACTION_LABELS: Dict[str, str] = {
+    "god_module": "refactor/split module",
+    "bottleneck": "reduce bottleneck (add facade or redistribute calls)",
+    "hub": "split hub into smaller dispatchers",
+    "cyclic_dependency": "break dependency cycle",
+}
+
+
+def _build_shift_index(shifts: List[Dict[str, object]]) -> Dict[str, Tuple[int, int, int, int]]:
+    """Parse centrality shifts into module -> (ofi, nfi, ofo, nfo)."""
+    out: Dict[str, Tuple[int, int, int, int]] = {}
+    for s in shifts:
+        parsed = _parse_centrality_shift(s)
+        if not parsed:
+            continue
+        m, (ofi, nfi), (ofo, nfo) = parsed
+        out[m] = (ofi, nfi, ofo, nfo)
+    return out
+
+
+def _collect_action_candidates(
+    old_index: Dict,
+    new_index: Dict,
+    shift_index: Dict[str, Tuple[int, int, int, int]],
+) -> List[Tuple[float, str, str, float, Tuple[int, int, int, int]]]:
+    """Score modules and return (score, module, smell_type, severity, fan_tuple) sorted desc."""
+    candidates: List[Tuple[float, str, str, float, Tuple[int, int, int, int]]] = []
+    modules = set(new_index.keys()) | set(shift_index.keys())
+    for m in modules:
+        new_types = new_index.get(m, {})
+        if not new_types:
+            continue
+        old_types = old_index.get(m, {})
+        t_best = max(new_types.items(), key=lambda kv: kv[1])[0]
+        new_sev = new_types[t_best]
+        old_sev = old_types.get(t_best, 0.0)
+        delta_sev = max(0.0, new_sev - old_sev)
+
+        ofi, nfi, ofo, nfo = shift_index.get(m, (0, 0, 0, 0))
+        delta_in = max(0, nfi - ofi)
+        delta_out = max(0, nfo - ofo)
+        central_boost = max(delta_in, delta_out)
+
+        score = new_sev + delta_sev + central_boost
+        if score <= 0:
+            continue
+        candidates.append((score, m, t_best, new_sev, (ofi, nfi, ofo, nfo)))
+
+    candidates.sort(reverse=True, key=lambda x: x[0])
+    return candidates
+
+
+def _format_action_line(
+    module: str,
+    smell_type: str,
+    severity: float,
+    fan: Tuple[int, int, int, int],
+) -> str:
+    """Format one recommended action line."""
+    label = ACTION_LABELS.get(smell_type, "address structural risk")
+    level = severity_to_level(severity)
+    hint = get_remediation_hint(smell_type)
+    ofi, nfi, ofo, nfo = fan
+    if (ofi, ofo) == (0, 0) and (nfi, nfo) == (0, 0):
+        return f"- {module}: {label} ({smell_type}, {level}, severity={severity:.2f}). Hint: {hint}"
+    return (
+        f"- {module}: {label} ({smell_type}, {level}, severity={severity:.2f}; "
+        f"fan-in {ofi} → {nfi}, fan-out {ofo} → {nfo}). Hint: {hint}"
+    )
+
+
 def _build_recommended_actions(
     old_smells: List[ArchSmell],
     new_smells: List[ArchSmell],
@@ -238,66 +309,16 @@ def _build_recommended_actions(
 
     old_index = _index_smells_by_module(old_smells)
     new_index = _index_smells_by_module(new_smells)
-    shift_index: Dict[str, Tuple[int, int, int, int]] = {}
-    for s in shifts:
-        parsed = _parse_centrality_shift(s)
-        if not parsed:
-            continue
-        m, (ofi, nfi), (ofo, nfo) = parsed
-        shift_index[m] = (ofi, nfi, ofo, nfo)
-
-    ACTION_LABELS: Dict[str, str] = {
-        "god_module": "refactor/split module",
-        "bottleneck": "reduce bottleneck (add facade or redistribute calls)",
-        "hub": "split hub into smaller dispatchers",
-        "cyclic_dependency": "break dependency cycle",
-    }
-
-    candidates: List[Tuple[float, str, str, float, Tuple[int, int, int, int]]] = []
-
-    modules = set(new_index.keys()) | set(shift_index.keys())
-    for m in modules:
-        new_types = new_index.get(m, {})
-        if not new_types:
-            continue
-        old_types = old_index.get(m, {})
-        # Choose strongest smell type by new severity
-        t_best = max(new_types.items(), key=lambda kv: kv[1])[0]
-        new_sev = new_types[t_best]
-        old_sev = old_types.get(t_best, 0.0)
-        delta_sev = max(0.0, new_sev - old_sev)
-
-        ofi, nfi, ofo, nfo = shift_index.get(m, (0, 0, 0, 0))
-        delta_in = max(0, nfi - ofi)
-        delta_out = max(0, nfo - ofo)
-        central_boost = max(delta_in, delta_out)
-
-        # Score: new severity + growth in severity + centrality growth
-        score = new_sev + delta_sev + central_boost
-        if score <= 0:
-            continue
-
-        candidates.append((score, m, t_best, new_sev, (ofi, nfi, ofo, nfo)))
+    shift_index = _build_shift_index(shifts)
+    candidates = _collect_action_candidates(old_index, new_index, shift_index)
 
     if not candidates:
         return []
 
-    candidates.sort(reverse=True, key=lambda x: x[0])
-    actions: List[str] = []
-    for _, module, smell_type, severity, (ofi, nfi, ofo, nfo) in candidates[:max_actions]:
-        label = ACTION_LABELS.get(smell_type, "address structural risk")
-        level = severity_to_level(severity)
-        hint = get_remediation_hint(smell_type)
-        if (ofi, ofo) == (0, 0) and (nfi, nfo) == (0, 0):
-            actions.append(
-                f"- {module}: {label} ({smell_type}, {level}, severity={severity:.2f}). Hint: {hint}"
-            )
-        else:
-            actions.append(
-                f"- {module}: {label} ({smell_type}, {level}, severity={severity:.2f}; "
-                f"fan-in {ofi} → {nfi}, fan-out {ofo} → {nfo}). Hint: {hint}"
-            )
-    return actions
+    return [
+        _format_action_line(m, t, sev, fan)
+        for _, m, t, sev, fan in candidates[:max_actions]
+    ]
 
 
 def diff_to_text(diff: Dict) -> str:
@@ -468,6 +489,3 @@ def main_cli(old_path: str, new_path: str) -> None:
     new = build_snapshot(Path(new_path))
     diff = diff_snapshots(old, new)
     print(diff_to_text(diff))
-
-
-# TODO (eurika): refactor long_function '_build_recommended_actions' — consider extracting helper

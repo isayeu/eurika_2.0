@@ -34,6 +34,26 @@ def _tfidf_similarity(query_tokens: List[str], doc_tokens: List[str], idf: Dict[
         return 0.0
     return dot / (nq * nd)
 
+def _parse_chat_line(line: str) -> Optional[Tuple[str, str, str]]:
+    """Parse JSONL line into (role, content, ts). Returns None if invalid."""
+    line = line.strip()
+    if not line:
+        return None
+    try:
+        rec = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    role = (rec.get('role') or '').strip().lower()
+    content = (rec.get('content') or '').strip()
+    ts = rec.get('ts') or ''
+    return (role, content, ts)
+
+
+def _is_valid_assistant_response(content: str) -> bool:
+    """Exclude error/failure responses from RAG."""
+    return bool(content) and not content.startswith('[Error') and not content.startswith('[Request failed')
+
+
 def _load_chat_pairs(path: Path) -> List[Tuple[str, str, str]]:
     """Load (user_query, assistant_response, ts) from chat.jsonl. Skip error responses."""
     pairs: List[Tuple[str, str, str]] = []
@@ -42,20 +62,14 @@ def _load_chat_pairs(path: Path) -> List[Tuple[str, str, str]]:
     buf: Optional[str] = None
     try:
         for line in path.read_text(encoding='utf-8').splitlines():
-            line = line.strip()
-            if not line:
+            parsed = _parse_chat_line(line)
+            if parsed is None:
                 continue
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            role = (rec.get('role') or '').strip().lower()
-            content = (rec.get('content') or '').strip()
-            ts = rec.get('ts') or ''
+            role, content, ts = parsed
             if role == 'user':
                 buf = content
             elif role == 'assistant' and buf is not None:
-                if content and (not content.startswith('[Error')) and (not content.startswith('[Request failed')):
+                if _is_valid_assistant_response(content):
                     pairs.append((buf, content, ts))
                 buf = None
     except Exception:
@@ -107,6 +121,3 @@ def format_rag_examples(examples: List[Dict[str, str]]) -> str:
             lines.append(f'{i}. User: {u}')
             lines.append(f'   Assistant: {a}')
     return '\n'.join(lines) + '\n\n'
-
-
-# TODO (eurika): refactor deep_nesting '_load_chat_pairs' — consider extracting nested block

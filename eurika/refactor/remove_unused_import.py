@@ -140,19 +140,26 @@ def _string_elts(node: ast.AST) -> Set[str]:
     return out
 
 
+def _names_from_type_checking_block(if_node: ast.If) -> Set[str]:
+    """Extract import names from one `if TYPE_CHECKING:` block."""
+    names: Set[str] = set()
+    for child in ast.walk(if_node):
+        if isinstance(child, ast.Import):
+            for a in child.names:
+                names.add(a.asname or a.name.split(".")[0])
+        elif isinstance(child, ast.ImportFrom) and child.module != "__future__":
+            for a in child.names:
+                if a.name != "*":
+                    names.add(a.asname or a.name)
+    return names
+
+
 def _names_imported_under_type_checking(tree: ast.AST) -> Set[str]:
     """Return names bound by imports inside `if TYPE_CHECKING:` blocks."""
     names: Set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.If) and _is_type_checking_cond(node.test):
-            for child in ast.walk(node):
-                if isinstance(child, ast.Import):
-                    for a in child.names:
-                        names.add(a.asname or a.name.split(".")[0])
-                elif isinstance(child, ast.ImportFrom) and child.module != "__future__":
-                    for a in child.names:
-                        if a.name != "*":
-                            names.add(a.asname or a.name)
+            names.update(_names_from_type_checking_block(node))
     return names
 
 
@@ -206,6 +213,3 @@ class _UnusedImportRemover(ast.NodeTransformer):
             return None
         node.names = new_names
         return node
-
-
-# TODO (eurika): refactor deep_nesting '_names_imported_under_type_checking' — consider extracting nested block

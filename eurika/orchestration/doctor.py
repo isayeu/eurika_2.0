@@ -108,47 +108,12 @@ def _operational_metrics_from_events(path: Path, window: int = 10) -> dict[str, 
         return None
 
 
-def run_doctor_cycle(
-    path: Path,
-    *,
-    window: int = 5,
-    no_llm: bool = False,
-    online: bool = False,
-    quiet: bool = False,
-) -> dict[str, Any]:
-    """Run diagnostics cycle: summary + history + patch_plan + architect. ROADMAP 2.9.4, 3.0.3."""
+def _load_doctor_inputs(path: Path, window: int, no_llm: bool) -> tuple[Any, Any, Any, Any]:
+    """Load summary, history, patch_plan, recent_events for doctor cycle. LLM hints disabled for speed."""
     from eurika.api import get_summary, get_history, get_patch_plan, get_recent_events
 
-    from .logging import get_logger
-
-    _log = get_logger("orchestration.doctor")
-
-    _log.info("eurika: doctor — loading summary...")
-    from eurika.knowledge import (
-        CompositeKnowledgeProvider,
-        LocalKnowledgeProvider,
-        OfficialDocsProvider,
-        OSSPatternProvider,
-        PEPProvider,
-        ReleaseNotesProvider,
-    )
-    from eurika.reasoning.architect import interpret_architecture_with_meta
-
     summary = get_summary(path)
-    if summary.get("error"):
-        from .cycle_state import with_cycle_state
-
-        err = {"error": summary.get("error", "unknown")}
-        err["runtime"] = {
-            "degraded_mode": True,
-            "degraded_reasons": ["summary_unavailable"],
-            "llm_used": False,
-            "use_llm": not no_llm,
-        }
-        return with_cycle_state(err, is_error=True)
-    _log.info("eurika: doctor — loading history...")
     history = get_history(path, window=window)
-    _log.info("eurika: doctor — loading patch plan (LLM hints disabled for speed)...")
     prev = os.environ.pop("EURIKA_USE_LLM_HINTS", None)
     try:
         os.environ["EURIKA_USE_LLM_HINTS"] = "0"
@@ -158,25 +123,86 @@ def run_doctor_cycle(
             os.environ["EURIKA_USE_LLM_HINTS"] = prev
         else:
             os.environ.pop("EURIKA_USE_LLM_HINTS", None)
-    _log.info("eurika: doctor — loading recent events...")
     recent_events = get_recent_events(path, limit=5, types=("patch", "learn"))
-    _log.info("eurika: doctor — building knowledge provider...")
-    use_llm = not no_llm
+    return summary, history, patch_plan, recent_events
+
+
+def _build_doctor_knowledge_provider(path: Path, online: bool = False) -> Any:
+    """Build CompositeKnowledgeProvider for doctor (ROADMAP 2.9.3)."""
+    from eurika.knowledge import (
+        CompositeKnowledgeProvider,
+        LocalKnowledgeProvider,
+        OfficialDocsProvider,
+        OSSPatternProvider,
+        PEPProvider,
+        ReleaseNotesProvider,
+    )
+
     cache_dir = path / ".eurika" / "knowledge_cache"
     ttl = float(os.environ.get("EURIKA_KNOWLEDGE_TTL", "86400"))
     rate_limit = float(os.environ.get("EURIKA_KNOWLEDGE_RATE_LIMIT", "1.0" if online else "0"))
     oss_path = path / ".eurika" / "pattern_library.json"
-    knowledge_provider = CompositeKnowledgeProvider([
+    return CompositeKnowledgeProvider([
         LocalKnowledgeProvider(path / "eurika_knowledge.json"),
         OSSPatternProvider(oss_path),
         PEPProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=online, rate_limit_seconds=rate_limit),
         OfficialDocsProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=online, rate_limit_seconds=rate_limit),
         ReleaseNotesProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=online, rate_limit_seconds=rate_limit),
     ])
-    _log.info("eurika: doctor — resolving knowledge topics...")
+
+
+def _enrich_doctor_output(out: dict[str, Any], path: Path) -> None:
+    """Add suggested_policy, operational_metrics, campaign_checkpoint to doctor output."""
+    suggested_info = _suggested_policy_from_last_fix(path)
+    if suggested_info.get("suggested"):
+        out["suggested_policy"] = suggested_info
+    ops_metrics = _operational_metrics_from_events(path, window=10)
+    if ops_metrics:
+        out["operational_metrics"] = ops_metrics
+    try:
+        from eurika.storage.campaign_checkpoint import latest_campaign_checkpoint
+
+        checkpoint = latest_campaign_checkpoint(path)
+        if checkpoint:
+            out["campaign_checkpoint"] = checkpoint
+    except Exception:
+        pass
+
+
+def run_doctor_cycle(
+    path: Path,
+    *,
+    window: int = 5,
+    no_llm: bool = False,
+    online: bool = False,
+    quiet: bool = False,
+) -> dict[str, Any]:
+    """Run diagnostics cycle: summary + history + patch_plan + architect. ROADMAP 2.9.4, 3.0.3."""
+    from .cycle_state import with_cycle_state
+    from .logging import get_logger
+    from eurika.reasoning.architect import interpret_architecture_with_meta
+
+    _log = get_logger("orchestration.doctor")
+    use_llm = not no_llm
+
+    _log.info("eurika: doctor — loading data (summary, history, patch plan, events)...")
+    summary, history, patch_plan, recent_events = _load_doctor_inputs(path, window, no_llm)
+    if summary.get("error"):
+        err = {"error": summary.get("error", "unknown")}
+        err["runtime"] = {
+            "degraded_mode": True,
+            "degraded_reasons": ["summary_unavailable"],
+            "llm_used": False,
+            "use_llm": use_llm,
+        }
+        return with_cycle_state(err, is_error=True)
+
+    _log.info("eurika: doctor — building knowledge provider...")
+    knowledge_provider = _build_doctor_knowledge_provider(path, online)
     knowledge_topic = knowledge_topics_from_env_or_summary(summary)
     _log.info("eurika: doctor — step 3/4: calling architect (LLM)" if use_llm else "eurika: doctor — step 3/4: calling architect (template)")
     from report.architect_format import format_architect_template
+
     architect_text, architect_meta = interpret_architecture_with_meta(
         summary, history, use_llm=use_llm, patch_plan=patch_plan,
         knowledge_provider=knowledge_provider, knowledge_topic=knowledge_topic,
@@ -196,22 +222,5 @@ def run_doctor_cycle(
             "use_llm": bool(use_llm),
         },
     }
-    suggested_info = _suggested_policy_from_last_fix(path)
-    if suggested_info.get("suggested"):
-        out["suggested_policy"] = suggested_info
-    ops_metrics = _operational_metrics_from_events(path, window=10)
-    if ops_metrics:
-        out["operational_metrics"] = ops_metrics
-    try:
-        from eurika.storage.campaign_checkpoint import latest_campaign_checkpoint
-
-        checkpoint = latest_campaign_checkpoint(path)
-        if checkpoint:
-            out["campaign_checkpoint"] = checkpoint
-    except Exception:
-        pass
-    from .cycle_state import with_cycle_state
+    _enrich_doctor_output(out, path)
     return with_cycle_state(out, is_error=False)
-
-
-# TODO (eurika): refactor long_function 'run_doctor_cycle' — consider extracting helper

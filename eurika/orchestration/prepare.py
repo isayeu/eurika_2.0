@@ -481,6 +481,42 @@ def _early_exit(
     )
 
 
+def _filter_and_policy_operations(
+    path: Path,
+    patch_plan: PatchPlan,
+    operations: list[OperationRecord],
+    *,
+    runtime_mode: str,
+    session_id: str | None,
+    no_clean_imports: bool,
+    no_code_smells: bool,
+    allow_campaign_retry: bool,
+    allow_low_risk_campaign: bool,
+) -> tuple[PatchPlan, list[OperationRecord], list[dict[str, Any]], list[OperationRecord], list[OperationRecord]]:
+    """Apply prepend, drop-noop, deprioritize, policy, campaign, session.
+    Returns (plan, ops, policy_decisions, campaign_skipped, session_skipped)."""
+    patch_plan, operations = prepend_fix_operations(
+        path, patch_plan, operations, no_clean_imports, no_code_smells
+    )
+    operations = _drop_noop_append_ops(operations, path)
+    operations = _deprioritize_weak_pairs(operations)
+    patch_plan = dict(patch_plan, operations=operations)
+    patch_plan, operations, policy_decisions = apply_runtime_policy(
+        patch_plan, operations, path=path, runtime_mode=runtime_mode
+    )
+    patch_plan, operations, campaign_skipped = apply_campaign_memory(
+        path,
+        patch_plan,
+        operations,
+        allow_retry=allow_campaign_retry,
+        allow_low_risk=allow_low_risk_campaign,
+    )
+    patch_plan, operations, session_skipped = apply_session_rejections(
+        path, patch_plan, operations, session_id=session_id
+    )
+    return patch_plan, operations, policy_decisions, campaign_skipped, session_skipped
+
+
 def prepare_fix_cycle_operations(
     path: Path,
     *,
@@ -523,27 +559,16 @@ def prepare_fix_cycle_operations(
             ctx.risk_report = risk_report_from_plan(patch_plan)
         except Exception:
             pass
-    patch_plan, operations = prepend_fix_operations(
-        path, patch_plan, operations, no_clean_imports, no_code_smells
-    )
-    operations = _drop_noop_append_ops(operations, path)
-    operations = _deprioritize_weak_pairs(operations)
-    patch_plan = dict(patch_plan, operations=operations)  # type: ignore[arg-type]
-    patch_plan, operations, policy_decisions = apply_runtime_policy(
-        patch_plan,
-        operations,
-        path=path,
-        runtime_mode=runtime_mode,
-    )
-    patch_plan, operations, campaign_skipped = apply_campaign_memory(
+    patch_plan, operations, policy_decisions, campaign_skipped, session_skipped = _filter_and_policy_operations(
         path,
         patch_plan,
         operations,
-        allow_retry=allow_campaign_retry,
-        allow_low_risk=allow_low_risk_campaign,
-    )
-    patch_plan, operations, session_skipped = apply_session_rejections(
-        path, patch_plan, operations, session_id=session_id
+        runtime_mode=runtime_mode,
+        session_id=session_id,
+        no_clean_imports=no_clean_imports,
+        no_code_smells=no_code_smells,
+        allow_campaign_retry=allow_campaign_retry,
+        allow_low_risk_campaign=allow_low_risk_campaign,
     )
     context_sources: dict[str, Any] = {}
     try:
@@ -587,8 +612,3 @@ def prepare_fix_cycle_operations(
     if ctx is not None:
         result.output["execution_context"] = ctx
     return None, result, patch_plan, operations
-
-
-
-
-# TODO (eurika): refactor long_function 'prepare_fix_cycle_operations' — consider extracting helper
