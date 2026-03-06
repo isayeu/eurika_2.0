@@ -174,6 +174,25 @@ def test_multi_repo_fix_aggregated_report(tmp_path: Path) -> None:
     assert len(data.get("projects", [])) == 2
 
 
+def test_pipeline_mini_repo_scan_fix_dry_run(tmp_path: Path) -> None:
+    """Pipeline MVP (ROADMAP §4.5): mini repo → scan → fix (dry-run) completes with report."""
+    from cli.orchestrator import run_cycle
+
+    proj = tmp_path / "mini"
+    proj.mkdir()
+    (proj / "foo.py").write_text("import os\nx = 1\n", encoding="utf-8")
+    (proj / "tests").mkdir()
+    (proj / "tests" / "__init__.py").write_text("", encoding="utf-8")
+    (proj / "tests" / "test_foo.py").write_text("def test_foo(): assert True\n", encoding="utf-8")
+    (proj / "pyproject.toml").write_text("[tool.pytest.ini_options]\ntestpaths=['tests']\n", encoding="utf-8")
+    subprocess.run([sys.executable, "-m", "eurika_cli", "scan", str(proj)], cwd=ROOT, capture_output=True, timeout=30)
+    out = run_cycle(proj, mode="fix", dry_run=True, quiet=True, no_llm=True)
+    assert "error" not in out or out.get("return_code", 0) == 0
+    assert (proj / "self_map.json").exists()
+    report = out.get("report", {})
+    assert "telemetry" in report or "operations" in out or "message" in report
+
+
 def test_cycle_dry_run_on_minimal_project(tmp_path: Path) -> None:
     """
     Cycle --dry-run on minimal project may return empty operations (no smells).

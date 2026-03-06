@@ -25,6 +25,34 @@ def build_parser(*, version: str) -> argparse.ArgumentParser:
     return parser
 
 
+def _add_fix_cycle_common_args(parser: argparse.ArgumentParser, *, include_no_llm: bool = False) -> None:
+    """Add arguments shared by fix and cycle commands."""
+    parser.add_argument("path", nargs="*", type=Path, default=[Path(".")], metavar="PATH", help="Project root(s); default: .")
+    parser.add_argument("--window", type=int, default=5, help="History window (default: 5)")
+    parser.add_argument("--dry-run", action="store_true", help="Only build patch plan, do not apply")
+    parser.add_argument("--quiet", "-q", action="store_true", help="Minimal output; final JSON only")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose progress (DEBUG)")
+    if include_no_llm:
+        parser.add_argument("--no-llm", action="store_true", help="Architect: use template only (no API key)")
+    parser.add_argument("--no-clean-imports", action="store_true", help="Skip remove-unused-imports step (default: included)")
+    parser.add_argument("--no-code-smells", action="store_true", help="Skip refactor_code_smell (long_function, deep_nesting) ops (default: included)")
+    parser.add_argument("--verify-cmd", type=str, default=None, metavar="CMD", help="Override verify command (e.g. 'python manage.py test'); else [tool.eurika] verify_cmd or pytest")
+    parser.add_argument("--verify-timeout", type=int, default=None, metavar="SEC", help="Verify step timeout in seconds (default: 300 or EURIKA_VERIFY_TIMEOUT or [tool.eurika] verify_timeout)")
+    parser.add_argument("--interval", type=int, default=0, metavar="SEC", help="Auto-run: repeat every SEC seconds (0=once, Ctrl+C to stop)")
+    parser.add_argument("--runtime-mode", choices=["assist", "hybrid", "auto"], default="assist", help="Agent runtime mode (default: assist)")
+    parser.add_argument("--non-interactive", action="store_true", help="Do not prompt for approvals in hybrid mode")
+    parser.add_argument("--session-id", type=str, default=None, help="Session key for reusing approval/rejection memory")
+    parser.add_argument("--allow-campaign-retry", action="store_true", help="Allow retry of operations skipped by campaign memory for this run only")
+    parser.add_argument("--allow-low-risk-campaign", action="store_true", help="Allow low-risk ops (e.g. remove_unused_import) through campaign skip")
+    parser.add_argument("--online", action="store_true", help="Force fresh Knowledge fetch in doctor stage (ROADMAP 3.0.3)")
+    parser.add_argument("--apply-suggested-policy", action="store_true", help="Apply suggested policy from last doctor/fix telemetry (ROADMAP 2.9.4)")
+    parser.add_argument("--team-mode", action="store_true", help="Propose only: save plan to .eurika/pending_plan.json and exit (ROADMAP 3.0.4)")
+    parser.add_argument("--apply-approved", action="store_true", help="Apply only ops with team_decision=approve from pending_plan.json (ROADMAP 3.0.4)")
+    parser.add_argument("--apply-from-report", action="store_true", help="Apply patch_plan from last dry-run (eurika_fix_report.json); skips scan+diagnose")
+    parser.add_argument("--approve-ops", type=str, default=None, metavar="IDX[,IDX...]", help="Explicitly approve operation indexes (1-based), e.g. --approve-ops 1,3,5")
+    parser.add_argument("--reject-ops", type=str, default=None, metavar="IDX[,IDX...]", help="Explicitly reject operation indexes (1-based), e.g. --reject-ops 2,4")
+
+
 def _add_product_commands(subparsers: argparse._SubParsersAction) -> None:
     """Register product commands first (ROADMAP этап 5)."""
     scan_parser = subparsers.add_parser("scan", help="Scan project(s), update artifacts, report (ROADMAP 3.0.1: multi-repo)")
@@ -43,53 +71,10 @@ def _add_product_commands(subparsers: argparse._SubParsersAction) -> None:
     doctor_parser.add_argument("--runtime-mode", choices=["assist", "hybrid", "auto"], default="assist", help="Agent runtime mode (default: assist)")
 
     fix_parser = subparsers.add_parser("fix", help="Full cycle: scan → plan → patch → verify (3.0.1: multi-repo)")
-    fix_parser.add_argument("path", nargs="*", type=Path, default=[Path(".")], metavar="PATH", help="Project root(s); default: .")
-    fix_parser.add_argument("--window", type=int, default=5, help="History window (default: 5)")
-    fix_parser.add_argument("--dry-run", action="store_true", help="Only build patch plan, do not apply")
-    fix_parser.add_argument("--quiet", "-q", action="store_true", help="Minimal output; final JSON only")
-    fix_parser.add_argument("--verbose", "-v", action="store_true", help="Verbose progress (DEBUG)")
-    fix_parser.add_argument("--no-clean-imports", action="store_true", help="Skip remove-unused-imports step (default: included)")
-    fix_parser.add_argument("--no-code-smells", action="store_true", help="Skip refactor_code_smell (long_function, deep_nesting) ops (default: included)")
-    fix_parser.add_argument("--verify-cmd", type=str, default=None, metavar="CMD", help="Override verify command (e.g. 'python manage.py test'); else [tool.eurika] verify_cmd or pytest")
-    fix_parser.add_argument("--verify-timeout", type=int, default=None, metavar="SEC", help="Verify step timeout in seconds (default: 300 or EURIKA_VERIFY_TIMEOUT or [tool.eurika] verify_timeout)")
-    fix_parser.add_argument("--interval", type=int, default=0, metavar="SEC", help="Auto-run: repeat every SEC seconds (0=once, Ctrl+C to stop)")
-    fix_parser.add_argument("--runtime-mode", choices=["assist", "hybrid", "auto"], default="assist", help="Agent runtime mode (default: assist)")
-    fix_parser.add_argument("--non-interactive", action="store_true", help="Do not prompt for approvals in hybrid mode")
-    fix_parser.add_argument("--session-id", type=str, default=None, help="Session key for reusing approval/rejection memory")
-    fix_parser.add_argument("--allow-campaign-retry", action="store_true", help="Allow retry of operations skipped by campaign memory for this run only")
-    fix_parser.add_argument("--allow-low-risk-campaign", action="store_true", help="Allow low-risk ops (e.g. remove_unused_import) through campaign skip")
-    fix_parser.add_argument("--online", action="store_true", help="Force fresh Knowledge fetch in doctor stage (ROADMAP 3.0.3)")
-    fix_parser.add_argument("--apply-suggested-policy", action="store_true", help="Apply suggested policy from last doctor/fix telemetry (ROADMAP 2.9.4)")
-    fix_parser.add_argument("--team-mode", action="store_true", help="Propose only: save plan to .eurika/pending_plan.json and exit (ROADMAP 3.0.4)")
-    fix_parser.add_argument("--apply-approved", action="store_true", help="Apply only ops with team_decision=approve from pending_plan.json (ROADMAP 3.0.4)")
-    fix_parser.add_argument("--apply-from-report", action="store_true", help="Apply patch_plan from last dry-run (eurika_fix_report.json); skips scan+diagnose")
-    fix_parser.add_argument("--approve-ops", type=str, default=None, metavar="IDX[,IDX...]", help="Explicitly approve operation indexes (1-based), e.g. --approve-ops 1,3,5")
-    fix_parser.add_argument("--reject-ops", type=str, default=None, metavar="IDX[,IDX...]", help="Explicitly reject operation indexes (1-based), e.g. --reject-ops 2,4")
+    _add_fix_cycle_common_args(fix_parser, include_no_llm=False)
 
     cycle_parser = subparsers.add_parser("cycle", help="Full ritual: scan → doctor → fix (3.0.1: multi-repo)")
-    cycle_parser.add_argument("path", nargs="*", type=Path, default=[Path(".")], metavar="PATH", help="Project root(s); default: .")
-    cycle_parser.add_argument("--window", type=int, default=5, help="History window (default: 5)")
-    cycle_parser.add_argument("--dry-run", action="store_true", help="Doctor + plan only; do not apply patches")
-    cycle_parser.add_argument("--quiet", "-q", action="store_true", help="Minimal output; final JSON only")
-    cycle_parser.add_argument("--verbose", "-v", action="store_true", help="Verbose progress (DEBUG)")
-    cycle_parser.add_argument("--no-llm", action="store_true", help="Architect: use template only (no API key)")
-    cycle_parser.add_argument("--no-clean-imports", action="store_true", help="Skip remove-unused-imports in fix (default: included)")
-    cycle_parser.add_argument("--no-code-smells", action="store_true", help="Skip refactor_code_smell ops in fix (default: included)")
-    cycle_parser.add_argument("--verify-cmd", type=str, default=None, metavar="CMD", help="Override verify command (e.g. 'python manage.py test'); else [tool.eurika] verify_cmd or pytest")
-    cycle_parser.add_argument("--verify-timeout", type=int, default=None, metavar="SEC", help="Verify step timeout in seconds (default: 300 or EURIKA_VERIFY_TIMEOUT or [tool.eurika] verify_timeout)")
-    cycle_parser.add_argument("--interval", type=int, default=0, metavar="SEC", help="Auto-run: repeat every SEC seconds (0=once, Ctrl+C to stop)")
-    cycle_parser.add_argument("--runtime-mode", choices=["assist", "hybrid", "auto"], default="assist", help="Agent runtime mode (default: assist)")
-    cycle_parser.add_argument("--non-interactive", action="store_true", help="Do not prompt for approvals in hybrid mode")
-    cycle_parser.add_argument("--session-id", type=str, default=None, help="Session key for reusing approval/rejection memory")
-    cycle_parser.add_argument("--allow-campaign-retry", action="store_true", help="Allow retry of operations skipped by campaign memory for this run only")
-    cycle_parser.add_argument("--allow-low-risk-campaign", action="store_true", help="Allow low-risk ops (e.g. remove_unused_import) through campaign skip")
-    cycle_parser.add_argument("--online", action="store_true", help="Force fresh Knowledge fetch in doctor stage (ROADMAP 3.0.3)")
-    cycle_parser.add_argument("--apply-suggested-policy", action="store_true", help="Apply suggested policy from last doctor/fix telemetry (ROADMAP 2.9.4)")
-    cycle_parser.add_argument("--team-mode", action="store_true", help="Propose only: save plan and exit (ROADMAP 3.0.4)")
-    cycle_parser.add_argument("--apply-approved", action="store_true", help="Apply only approved ops from pending_plan.json (ROADMAP 3.0.4)")
-    cycle_parser.add_argument("--apply-from-report", action="store_true", help="Apply patch_plan from last dry-run (eurika_fix_report.json); skips scan+diagnose")
-    cycle_parser.add_argument("--approve-ops", type=str, default=None, metavar="IDX[,IDX...]", help="Explicitly approve operation indexes (1-based), e.g. --approve-ops 1,3,5")
-    cycle_parser.add_argument("--reject-ops", type=str, default=None, metavar="IDX[,IDX...]", help="Explicitly reject operation indexes (1-based), e.g. --reject-ops 2,4")
+    _add_fix_cycle_common_args(cycle_parser, include_no_llm=True)
 
     explain_parser = subparsers.add_parser("explain", help="Explain role and risks of a module")
     explain_parser.add_argument("module", type=str, help="Module path or name (e.g. architecture_diff.py or cli/handlers.py)")
@@ -318,4 +303,3 @@ def _add_agent_learning_summary_command(agent_subparsers: argparse._SubParsersAc
     p.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
 
 
-# TODO (eurika): refactor long_function '_add_product_commands' — consider extracting helper

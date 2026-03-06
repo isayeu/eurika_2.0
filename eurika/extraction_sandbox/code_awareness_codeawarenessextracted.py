@@ -23,7 +23,7 @@ class CodeAwarenessExtracted:
         return [{'module': module, 'name': alias.name, 'alias': alias.asname} for alias in node.names]
 
     @staticmethod
-    def _function_lines(node: ast.FunctionDef, source_lines: List[str]):
+    def _function_lines(node: ast.FunctionDef, _source_lines: List[str]):
         """Count logical lines of function body."""
         if not node.end_lineno or not node.lineno:
             return 0

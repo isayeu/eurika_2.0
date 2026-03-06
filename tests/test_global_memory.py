@@ -28,13 +28,21 @@ def test_get_global_memory_root_disabled() -> None:
         del os.environ['EURIKA_DISABLE_GLOBAL_MEMORY']
 
 def test_merge_learning_stats() -> None:
-    """Merge sums total/success/fail per key."""
+    """Merge sums total/success/fail per key; last_ts is max of both (decay prep)."""
     from eurika.storage.global_memory import merge_learning_stats
-    local = {'a|b': {'total': 5, 'success': 2, 'fail': 3}}
-    global_s = {'a|b': {'total': 3, 'success': 1, 'fail': 2}, 'c|d': {'total': 1, 'success': 0, 'fail': 1}}
+    local = {"a|b": {"total": 5, "success": 2, "fail": 3}}
+    global_s = {
+        "a|b": {"total": 3, "success": 1, "fail": 2, "last_ts": 1000.0},
+        "c|d": {"total": 1, "success": 0, "fail": 1},
+    }
     merged = merge_learning_stats(local, global_s)
-    assert merged['a|b'] == {'total': 8, 'success': 3, 'fail': 5}
-    assert merged['c|d'] == {'total': 1, 'success': 0, 'fail': 1}
+    assert merged["a|b"]["total"] == 8
+    assert merged["a|b"]["success"] == 3
+    assert merged["a|b"]["fail"] == 5
+    assert merged["a|b"]["last_ts"] == 1000.0
+    assert merged["c|d"]["total"] == 1
+    assert merged["c|d"]["success"] == 0
+    assert merged["c|d"]["fail"] == 1
 
 def test_append_and_aggregate_global(tmp_path: Path) -> None:
     """Append learn to global store and aggregate (with custom dir)."""

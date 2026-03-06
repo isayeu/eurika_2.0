@@ -17,6 +17,5 @@ def polygon_extractable_block(x: int) -> int:
         if x < 10:
             if x > 1:
                 if x < 9:
-                    if True:
-                        result = _extracted_block_14(x)
+                    result = _extracted_block_14(x)
     return result

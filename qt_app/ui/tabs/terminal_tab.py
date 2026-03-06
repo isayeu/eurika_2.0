@@ -110,7 +110,7 @@ def _on_terminal_stderr(main: MainWindow) -> None:
         _append_stream(main, f"[stderr] {strip_ansi(data)}")
 
 
-def _on_terminal_finished(main: MainWindow, exit_code: int, exit_status: QProcess.ExitStatus) -> None:
+def _on_terminal_finished(main: MainWindow, exit_code: int, _exit_status: QProcess.ExitStatus) -> None:
     main._terminal_process = None
     main.terminal_emulator_output.append(f"[done] exit_code={exit_code}\n")
     main.terminal_emulator_input.setEnabled(True)

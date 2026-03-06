@@ -156,7 +156,7 @@ Fallback-модель для локального OpenAI-compatible endpoint Oll
 Все документы — в каталоге **docs/** ([docs/README.md](docs/README.md) — навигация).
 
 - **docs/UI.md** — legacy reference по архивному Web UI (история, не текущий интерфейс)
-- **docs/MIGRATION_WEB_TO_QT.md** — практический статус миграции интерфейса: что удалено, что осталось, как запускать сейчас
+- **docs/archive/MIGRATION_WEB_TO_QT.md** — статус миграции интерфейса (API-only + Qt)
 - **docs/review.md** — разбор, диагноз зрелости, план прорыва (5 этапов)
 - **docs/ROADMAP.md** — план задач, оценка зрелости, «что не хватает», план прорыва, этапы до продуктовой 1.0
 - **docs/REPORT.md** — текущий статус, оценка по review, следующий шаг
