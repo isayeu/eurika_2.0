@@ -8,12 +8,14 @@ Usage:
   python scripts/run_cycle_batch.py . --max-cycles 500 --report-every 100
   python scripts/run_cycle_batch.py /path/to/project --dry-run  # dry-run only
 
-Output: metrics block per report interval → paste into docs/CYCLE_REPORT.md.
+Output: metrics block per report interval → stdout + append to .eurika/cycle_batch_report.md
+(for background runs: tail -f .eurika/cycle_batch_report.md)
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -81,19 +83,30 @@ def _print_report_snippet(project_root: Path, cycle: int) -> None:
     pl_path = root / ".eurika" / "pattern_library.json"
     pl_size = pl_path.stat().st_size / 1024 if pl_path.exists() else 0
 
-    print(f"\n## CYCLE_REPORT @ cycle {cycle}")
-    print("| Метрика | Значение |")
-    print("|---------|---------|")
-    print(f"| success_rate (overall) | {success_rate if success_rate is not None else 'N/A'} |")
-    print(f"| apply_rate (window) | {apply_rate} |")
-    print(f"| rollback_rate | {rollback_rate} |")
-    print(f"| top_failure_reason | {top_failure} |")
-    print(f"| most_deprioritized_goal | {most_deprior} |")
-    print(f"| most_successful_action_kind | {best_action} |")
-    print(f"| events.json (KB) | {events_size:.1f} |")
-    print(f"| pattern_library.json (KB) | {pl_size:.1f} |")
-    print("| **Был ли сдвиг поведения?** | (Yes/No + комментарий) |")
-    print()
+    lines = [
+        "",
+        f"## CYCLE_REPORT @ cycle {cycle}",
+        "| Метрика | Значение |",
+        "|---------|---------|",
+        f"| success_rate (overall) | {success_rate if success_rate is not None else 'N/A'} |",
+        f"| apply_rate (window) | {apply_rate} |",
+        f"| rollback_rate | {rollback_rate} |",
+        f"| top_failure_reason | {top_failure} |",
+        f"| most_deprioritized_goal | {most_deprior} |",
+        f"| most_successful_action_kind | {best_action} |",
+        f"| events.json (KB) | {events_size:.1f} |",
+        f"| pattern_library.json (KB) | {pl_size:.1f} |",
+        "| **Был ли сдвиг поведения?** | (Yes/No + комментарий) |",
+        "",
+    ]
+    text = "\n".join(lines)
+    print(text)
+    # Append to file for background runs (file created at script start)
+    try:
+        with (root / ".eurika" / "cycle_batch_report.md").open("a", encoding="utf-8") as f:
+            f.write(text)
+    except OSError:
+        pass
 
 
 def main() -> int:
@@ -112,7 +125,27 @@ def main() -> int:
 
     from eurika.orchestration.entry import run_cycle
 
+    progress_file = project / ".eurika" / "cycle_batch_progress.json"
+    report_file = project / ".eurika" / "cycle_batch_report.md"
+    try:
+        report_file.parent.mkdir(parents=True, exist_ok=True)
+        if not report_file.exists():
+            report_file.write_text("# Cycle batch report\n\n", encoding="utf-8")
+    except OSError:
+        pass
+
     for i in range(1, args.max_cycles + 1):
+        # Progress file for `cat .eurika/cycle_batch_progress.json` to check current cycle
+        try:
+            progress_file.write_text(
+                json.dumps(
+                    {"current_cycle": i, "max_cycles": args.max_cycles, "report_every": args.report_every},
+                    indent=0,
+                )
+            )
+        except OSError:
+            pass
+
         out = run_cycle(
             project,
             mode="fix",
