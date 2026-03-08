@@ -1,7 +1,8 @@
 # Отчёт цикла Eurika
 
-## Current state (2026-03-05)
+## Current state (2026-03-08)
 
+- **131. LLM extract: teach via prompt + validation (2026-03):** Вместо skip — обучение. _build_extract_patch_prompt: path-aware constraints (metric_vector: preserve formulas; polygon: function >50 lines). _validate_llm_extract_no_placeholders, _validate_llm_extract_function_length. llm-extract-lessons.mdc (локально). Commit e379759.
 - **130. refactor_code_smell Phase E: llm_extract_block merge (2026-03):** REFACTOR_CODE_SMELL_PLAN. policy_adjustment_hints при rate≥25%, total≥5 объединяют long_function|refactor_code_smell + long_function|llm_extract_block (и deep_nesting аналогично). LLM extract success теперь учитывается для Phase E deny→review. eurika/api/learning_api.py _merged_stats_for_weak_pair; тест test_get_learning_insights_policy_adjustment_merges_llm_extract_block.
 - **129. planner/core split (2026-03):** BOUNDED_EVOLUTION §4. Цель: разделить анализ (graph→smells, priorities, targets) и предложение действий (summary→action_plan). Области: eurika/reasoning/planner/ (graph_analysis.py, actions_proposal.py, core.py). analysis.py оставлен (index_smells_by_node, build_steps_from_priorities). Лимиты: без новых LOC в логике. Откат: вернуть analyze/propose_actions в core.py, удалить graph_analysis/actions_proposal. ROADMAP §4.6, TODO_AUDIT §2 выполнены.
 - **128. EnergyModel resource constraint (2026-03):** EURIKA_ENERGY_CAP — max Σ|ΔE| per fix cycle. energy_cap_per_cycle() в heuristics; planner_patch_ops обрезает план по энергобюджету (heuristic estimated_delta). 0 = disabled. BOUNDED_EVOLUTION §7, ROADMAP P5 ✅.
