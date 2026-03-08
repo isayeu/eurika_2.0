@@ -149,7 +149,9 @@ UI.md ✓; README ✓; критерии **B.7–B.14** выполнены. Оц�
 | **P5** | EnergyModel как resource constraint | ✅ | EURIKA_ENERGY_CAP; planner_patch_ops truncates по Σ|ΔE|; BOUNDED_EVOLUTION §7 |
 | **—** | planner/core split | ✅ | CYCLE_REPORT #129: graph_analysis, actions_proposal; core — thin facade |
 | **P6** | R9 W-=lr×ΔE в adapt_weights | ✅ | EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY=1; get_learn_events_with_delta_energy; test_adapt_weights_delta_energy_mode |
-| **P7** | world_model alias (TARGET_V3 §4) | ~1 ч | eurika/world_model/ re-exports metric_vector, energy_model; без перемещения файлов |
+| **P7** | world_model alias (TARGET_V3 §4) | ✅ | eurika/world_model/ — MetricVector, EnergyModel, WeightVector; firewall L2 |
+| **P8** | memory alias (TARGET_V3 §4) | ✅ | eurika/memory/ — re-exports storage; ProjectMemory, record_outcome, checkpoint |
+| **P9** | execution alias (TARGET_V3 §4) | ✅ | eurika/execution/ — re-exports patch_engine; apply_and_verify, simulate_patch, verify_patch |
 
 **Чего избегать:** новые фичи, новые smell, self-rewriting, онлайн-патчинг (review III).
 

@@ -2,6 +2,8 @@
 
 ## Current state (2026-03-08)
 
+- **148. P8 memory alias (2026-03):** eurika/memory/ — re-exports ProjectMemory, record_outcome, get_statistics, checkpoint, EventStore, ExperienceStore из eurika.storage. TARGET_V3_STRUCTURE §4. dependency_firewall L0.
+- **147. P7 world_model alias (2026-03):** eurika/world_model/ — re-exports MetricVector, EnergyModel, WeightVector из eurika.analysis. TARGET_V3_STRUCTURE §4. dependency_firewall: L2 path/import rules. Без перемещения файлов. ROADMAP P7 ✅.
 - **146. P6 R9 W-=lr×ΔE (2026-03):** adapt_weights_from_experience при EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY=1 использует delta_energy из learn events. LearningView.get_experience_with_delta_energy, get_learn_events_with_delta_energy. Формула W -= lr*delta (negative=improvement→W↑). Обрабатывается только последнее событие. MEMORY.md, CLI.md, test_adapt_weights_delta_energy_mode. ROADMAP P6 ✅.
 - **145. Post-Review IV документация (2026-03):** REVIEW_2026_IV_ANALYSIS §5 «Следующий шаг» — миграция world_model или R9 W+=lr×ΔE. TARGET_V3_STRUCTURE: R2/R3 выполнены, миграция может начинаться. docs.mdc: REVIEW_2026_IV_ANALYSIS, R10_EXTENSIBILITY_AND_KNOWLEDGE. ROADMAP §4.6: P6 R9 W+=lr×ΔE, P7 world_model alias.
 - **144. R10 Plugin system и Knowledge Graph (2026-03):** docs/R10_EXTENSIBILITY_AND_KNOWLEDGE.md. Plugin: analyzer ✓ (R5_PLUGIN_INTERFACE, eurika/plugins/, API); refactor plugins — в плане. Knowledge Graph: целевая модель (code/arch/knowledge), до v3.x стабилизации не начинать. REVIEW_2026_IV_ANALYSIS R10 📄.

@@ -46,12 +46,12 @@ eurika/
 
 ## 4. Порядок миграции
 
-1. **world_model** — выделить metric_vector, energy_model из analysis (если нужен явный слой).
-2. **execution** — переименовать/переместить patch_engine → execution (опционально).
-3. **memory** — alias над storage или реорганизация.
+1. **world_model** — ✅ P7 eurika/world_model/
+2. **execution** — ✅ P9 eurika/execution/ alias над patch_engine.
+3. **memory** — ✅ eurika/memory/ alias над storage.
 4. **reasoning** — уже консолидирован; analyzer/generator/simulator — как функции, не обязательно отдельные модули.
 
-**Приоритет:** R2, R3 выполнены. Миграция может начинаться инкрементально (world_model — alias/re-exports без перемещения файлов).
+**Приоритет:** R2, R3 выполнены. P7 ✅ eurika/world_model/ — re-exports MetricVector, EnergyModel, WeightVector из analysis.
 
 ---
 
