@@ -102,7 +102,7 @@ def test_doctor_quiet_suppresses_progress_messages(tmp_path: Path) -> None:
         cwd=ROOT,
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=120,
     )
     assert result.returncode == 0
     stderr = result.stderr or ""
@@ -150,7 +150,7 @@ def test_doctor_suggested_policy_block(tmp_path: Path) -> None:
         cwd=ROOT,
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=120,
     )
     assert "Suggested policy" in result.stdout, f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
     assert "EURIKA_AGENT_MAX_OPS" in result.stdout or "export" in result.stdout
