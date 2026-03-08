@@ -277,7 +277,12 @@ def _llm_extract_allowed() -> bool:
     return max_calls < 0 or _EXTRACT_PATCH_CALLS < max_calls
 
 
-def _build_extract_patch_prompt(function_name: str, full_source: str, oss_snippets: list[str] | None) -> str:
+def _build_extract_patch_prompt(
+    function_name: str,
+    full_source: str,
+    oss_snippets: list[str] | None,
+    file_path: str = "",
+) -> str:
     """Prompt for LLM to generate refactored file (extract helper from long function)."""
     preview = full_source[:2500] + ("..." if len(full_source) > 2500 else "")
     base = (
@@ -287,6 +292,21 @@ def _build_extract_patch_prompt(function_name: str, full_source: str, oss_snippe
         "Preserve ALL functions and classes in the file; do not remove any. Preserve semantics and imports.\n\n"
         f"```python\n{preview}\n```\n\n"
     )
+    # File-specific constraints (teach, not skip — llm-extract-lessons.mdc)
+    path = str(file_path).replace("\\", "/")
+    if "metric_vector" in path:
+        base += (
+            "CRITICAL: This file computes architecture metrics (cohesion, instability, coupling, entropy). "
+            "Do NOT replace formulas with placeholder values (0.5, 0.0). Preserve exact domain logic: "
+            "god_count, bottleneck_count, Martin's I (fan_out/(fan_in+fan_out)), layering_violations from cycles, "
+            "total_edges = sum(len(graph.edges.get(node, []))). Never use 'Placeholder for actual logic'.\n\n"
+        )
+    elif "polygon/refactor_code_smell" in path:
+        base += (
+            "CRITICAL: This is a training drill — the refactored function MUST remain >50 lines. "
+            "Do NOT extract the if/elif chain or dict-building logic into a helper — that shortens the function "
+            "below the long_function threshold and breaks the drill. Only extract if the main function stays long.\n\n"
+        )
     if oss_snippets:
         ref_label = "OSS before/after (Phase 5):" if any("Before:" in s for s in oss_snippets) else "OSS Reference (extract-style examples):"
         base += f"\n{ref_label}\n" + "\n".join(oss_snippets[:3]) + "\n\n"
@@ -317,6 +337,35 @@ def _validate_llm_extract_preserves_names(original: str, refactored: str) -> boo
     new_names = _top_level_names(refactored)
     missing = orig_names - new_names
     return len(missing) == 0
+
+
+def _validate_llm_extract_no_placeholders(refactored: str) -> bool:
+    """Reject LLM output that replaces logic with placeholders (teach, not skip)."""
+    lower = refactored.lower()
+    return "placeholder" not in lower and "placeholder for" not in lower
+
+
+def _validate_llm_extract_function_length(
+    refactored: str, function_name: str, min_lines: int = 50
+) -> bool:
+    """Reject if target function is shortened below min_lines (polygon drills)."""
+    try:
+        import ast
+        tree = ast.parse(refactored)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == function_name:
+                body = getattr(node, "body", [])
+                if not body:
+                    return False
+                first = body[0]
+                last = body[-1]
+                lines = (getattr(last, "end_lineno", last.lineno) or last.lineno) - (
+                    getattr(first, "lineno", 0) or 0
+                ) + 1
+                return lines >= min_lines
+        return True  # Function not found — caller may have renamed; allow
+    except SyntaxError:
+        return False
 
 
 def ask_llm_extract_patch(
@@ -359,7 +408,8 @@ def ask_llm_extract_patch(
             oss = before_after or _load_oss_snippets_for_smell(root, "long_function", max_count=4)
         except Exception:
             pass
-    prompt = _build_extract_patch_prompt(function_name, content, oss or None)
+    path_str = str(file_path).replace("\\", "/")
+    prompt = _build_extract_patch_prompt(function_name, content, oss or None, file_path=path_str)
     _EXTRACT_PATCH_CALLS += 1
     try:
         from eurika.reasoning.architect import _call_ollama_cli
@@ -379,6 +429,13 @@ def ask_llm_extract_patch(
         if not _validate_llm_extract_preserves_names(content, raw):
             _HINT_CACHE[cache_key] = []
             return None
+        if not _validate_llm_extract_no_placeholders(raw):
+            _HINT_CACHE[cache_key] = []
+            return None
+        if "polygon/refactor_code_smell" in path_str:
+            if not _validate_llm_extract_function_length(raw, function_name, min_lines=50):
+                _HINT_CACHE[cache_key] = []
+                return None
         _HINT_CACHE[cache_key] = [raw]
         return raw
     except Exception:
