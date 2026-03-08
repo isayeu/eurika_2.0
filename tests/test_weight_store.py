@@ -3,8 +3,6 @@
 import os
 from pathlib import Path
 
-import pytest
-
 from eurika.analysis.weight_store import (
     DEFAULT_DELTA,
     MAX_DELTA,
@@ -99,6 +97,49 @@ def test_adapt_weights_bounded(tmp_path: Path) -> None:
         val = w[("long_function", "extract_block_to_helper")]
         assert val >= MIN_DELTA
         assert val <= MAX_DELTA
+    finally:
+        if "EURIKA_DISABLE_GLOBAL_MEMORY" in os.environ:
+            del os.environ["EURIKA_DISABLE_GLOBAL_MEMORY"]
+
+
+def test_adapt_weights_delta_energy_mode(tmp_path: Path) -> None:
+    """P6/R9: use_delta_energy=True uses W -= lr*delta from learn events."""
+    os.environ["EURIKA_DISABLE_GLOBAL_MEMORY"] = "1"
+    try:
+        from eurika.storage import record_outcome
+
+        # Improvement: delta_energy negative -> W should increase
+        record_outcome(
+            tmp_path,
+            ["m.py"],
+            [{"kind": "split_module", "smell_type": "god_module"}],
+            [],
+            True,
+            delta_energy=-0.1,  # improvement (after < before)
+        )
+        changed = adapt_weights_from_experience(
+            tmp_path, learning_rate=0.05, use_delta_energy=True
+        )
+        assert changed
+        w = load_weights(tmp_path)
+        # Negative delta -> W increases (0.15 + 0.05*0.1 = 0.155)
+        assert w[("god_module", "split_module")] > 0.15
+
+        # Regression: delta_energy positive -> W should decrease
+        save_weights(tmp_path, {("hub", "split_module"): 0.20})
+        record_outcome(
+            tmp_path,
+            ["h.py"],
+            [{"kind": "split_module", "smell_type": "hub"}],
+            [],
+            False,
+            delta_energy=0.05,  # regression
+        )
+        adapt_weights_from_experience(
+            tmp_path, learning_rate=0.05, use_delta_energy=True
+        )
+        w2 = load_weights(tmp_path)
+        assert w2[("hub", "split_module")] < 0.20
     finally:
         if "EURIKA_DISABLE_GLOBAL_MEMORY" in os.environ:
             del os.environ["EURIKA_DISABLE_GLOBAL_MEMORY"]

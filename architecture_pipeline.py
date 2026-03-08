@@ -15,15 +15,17 @@ Used by:
 from __future__ import annotations
 from pathlib import Path
 from typing import Dict, List
-from eurika.smells.rules import build_recommendations
-from eurika.smells.detector import ArchSmell, detect_architecture_smells
-from eurika.smells.rules import compute_health, health_summary
-from eurika.storage import ProjectMemory
-from eurika.smells.rules import build_summary, summary_to_text
-from eurika.analysis.graph import ProjectGraph
+from eurika.analysis.build_graph_summary import build_graph_and_summary
 from eurika.analysis.scanner import semantic_summary
-from eurika.analysis.self_map import build_graph_from_self_map, load_self_map
 from eurika.analysis.topology import central_modules_for_topology, topology_summary
+from eurika.smells.detector import ArchSmell
+from eurika.smells.rules import (
+    build_recommendations,
+    compute_health,
+    health_summary,
+    summary_to_text,
+)
+from eurika.storage import ProjectMemory
 
 def run_architecture_pipeline(path: Path) -> None:
     """
@@ -35,7 +37,7 @@ def run_architecture_pipeline(path: Path) -> None:
     - Architecture Recommendations (top 10)
     - Architecture Evolution Analysis (history.evolution_report)
     """
-    graph, smells, summary = _build_graph_and_summary(path)
+    graph, smells, summary = build_graph_and_summary(path)
     _print_smells(smells)
     print('\n' + summary_to_text(summary))
     print('\n' + semantic_summary(graph))
@@ -77,19 +79,6 @@ def print_arch_diff(old_self_map: Path, new_self_map: Path) -> int:
     diff = diff_architecture_snapshots(old, new)
     print(diff_to_text(diff))
     return 0
-
-def _build_graph_and_summary(path: Path) -> tuple[ProjectGraph, List[ArchSmell], Dict]:
-    """Load self_map, build graph, detect smells and compute summary."""
-    self_map_path = path / 'self_map.json'
-    return _build_graph_and_summary_from_self_map(self_map_path)
-
-def _build_graph_and_summary_from_self_map(self_map_path: Path) -> tuple[ProjectGraph, List[ArchSmell], Dict]:
-    """Build graph, smells, summary from a self_map.json file (exact path)."""
-    _ = load_self_map(self_map_path)
-    graph = build_graph_from_self_map(self_map_path)
-    smells = detect_architecture_smells(graph)
-    summary = build_summary(graph, smells)
-    return (graph, smells, summary)
 
 def _print_smells(smells: List[ArchSmell]) -> None:
     from eurika.smells.detector import get_remediation_hint, severity_to_level

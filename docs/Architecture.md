@@ -147,6 +147,9 @@ Input → Plan → Validate → Apply → Verify
 | **Validate** | Decision gate: approval + critic verdict | fix_cycle_helpers.filter_executable_operations, select_hybrid_operations |
 | **Apply** | Запись патчей на диск | apply_stage.execute_fix_apply_stage |
 | **Verify** | pytest / verification | apply_stage (apply_and_verify) |
+| **Learn** | record_outcome → EventLog; opt-in adapt_weights | apply_stage (после verify) |
+
+**Learning Loop (R5):** Plan читает `get_merged_learning_stats`; Apply пишет `record_outcome`. См. docs/MEMORY.md §Learning Loop.
 
 Состояния: `eurika.orchestration.pipeline_model.PipelineStage`. Отчёт fix-цикла содержит `pipeline_stages` и `pipeline_model` для наблюдаемости. См. `eurika/orchestration/pipeline_model.py`.
 
@@ -222,6 +225,8 @@ snapshot_before, candidates, selected_action, simulated_snapshot, snapshot_after
 | **Storage** | Тонкие фасады (record_outcome, get_recent_failures). event_views — read-side агрегация, без планирования. |
 | **Snapshot** | prepare строит ctx.snapshot_before из self_map → agent при ctx использует _structure_from_snapshot. Fallback _load_structure только при ctx=None. |
 
+**EnergyModel в центр (R3):** Scoring = Score(ΔEnergy) − Risk. Planner зависит от ΔEnergy через energy_ranking.rank_operations_by_energy; heuristic estimated_delta до full SimulationEngine. delta_score в ExecutionContext → record_outcome(delta_energy). Центр: eurika/analysis/energy_model, energy_ranking.
+
 **MetricVector + EnergyModel (порядок по ROADMAP §5.7):**
 1. MetricVector — фиксированная размерность (complexity, coupling, cohesion, instability, layering_violations, entropy)
 2. EnergyModel: Energy = W · MetricVector
@@ -245,6 +250,23 @@ User/CLI → ExecutionOrchestrator
 ```
 
 План миграции: **docs/EXECUTION_MODEL_PLAN.md** (этапы A–E). Детали: **ROADMAP.md** §5.7, **docs/review.md**.
+
+**Cognitive Loop (R8, target из review.md):**
+```
+Analyze → Build State → Generate → Simulate → Evaluate → Select → Execute → Learn
+```
+| Этап | Текущий маппинг |
+|------|-----------------|
+| Analyze | run_fix_scan_stage, run_fix_diagnose_stage (summary, smells) |
+| Build State | snapshot_before (ArchitectureSnapshot.from_core_snapshot) |
+| Generate | PlannerEngine (candidates, patch_plan) |
+| Simulate | simulate_patch (dry-run) |
+| Evaluate | DeltaEvaluator.compute_delta; ΔEnergy = E_after - E_before |
+| Select | rank_operations_by_energy, filter_executable, select_hybrid_operations |
+| Execute | apply_and_verify (PatchExecutor) |
+| Learn | record_outcome → EventLog, opt-in adapt_weights |
+
+Формализация полного цикла — в плане R8 (docs/REVIEW_2026_IV_ANALYSIS.md).
 
 ---
 

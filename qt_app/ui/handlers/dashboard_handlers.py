@@ -11,9 +11,10 @@ if TYPE_CHECKING:
 
 def run_scan_from_dashboard(main: MainWindow) -> None:
     """Switch to Commands tab and select scan (user can click Run)."""
-    idx = main.command_combo.findText("scan")
-    if idx >= 0:
-        main.command_combo.setCurrentIndex(idx)
+    for i in range(main.command_combo.count()):
+        if main.command_combo.itemData(i) == "scan":
+            main.command_combo.setCurrentIndex(i)
+            break
     main.tabs.setCurrentWidget(main.commands_tab)
 
 

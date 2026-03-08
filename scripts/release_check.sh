@@ -78,6 +78,16 @@ else
   echo "  (rg not installed, skip)"
 fi
 
+_step "8b. sdist hygiene (R1 — no __pycache__/.pyc in archive)"
+$PIP install build -q 2>/dev/null || true
+$PY -m build --sdist -q || _fail "build --sdist"
+SDIST=$(ls -t dist/*.tar.gz 2>/dev/null | head -1)
+[[ -z "$SDIST" ]] && _fail "no sdist produced"
+if tar -tzf "$SDIST" | grep -qE '__pycache__|\.pyc'; then
+  _fail "garbage in sdist: __pycache__ or .pyc found"
+fi
+echo "  OK: no __pycache__/.pyc in sdist"
+
 _step "9. Smoke (install + scan + doctor --no-llm + fix --dry-run) [B.13]"
 $PIP install -e . -q
 $PY -m eurika_cli scan . -q || echo "  (scan warning, continue)"

@@ -35,6 +35,8 @@
 |------|--------|----------|
 | eurika/reasoning/planner/core.py | — | ~~god_module → split_module~~ ✅ CYCLE_REPORT #129: graph_analysis.py (analyze), actions_proposal.py (propose_actions); core — thin facade |
 
+**Review IV:** R2 reasoning, R4 Chat, R5 Learning, R6 структура — docs/TARGET_V3_STRUCTURE.md, docs/RISKS.md.
+
 ---
 
 ## 3. Не рефакторить (логика/паттерны)

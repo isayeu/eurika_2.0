@@ -61,9 +61,8 @@ def run_command(main: MainWindow) -> None:
         QMessageBox.warning(main, "Invalid project root", msg)
         return
     ollama_model = main._resolve_ollama_model_for_command()
-    cmd = main.command_combo.currentText()
-    runtime_mode = getattr(main, "runtime_mode_combo", None)
-    runtime_mode_val = runtime_mode.currentText().lower() if runtime_mode else "assist"
+    cmd = main._get_current_command()
+    runtime_mode_val = main._get_runtime_mode()
     learn_light = getattr(main, "learn_light_check", None) and main.learn_light_check.isChecked()
     learn_scan = getattr(main, "learn_scan_check", None) and main.learn_scan_check.isChecked()
     learn_build = getattr(main, "learn_build_patterns_check", None) and main.learn_build_patterns_check.isChecked()
@@ -78,6 +77,8 @@ def run_command(main: MainWindow) -> None:
             no_clean_imports=main.no_clean_imports_check.isChecked(),
             no_code_smells=main.no_code_smells_check.isChecked(),
             use_llm_extract=main.use_llm_extract_check.isChecked(),
+            weight_adaptation=main.weight_adaptation_check.isChecked(),
+            weight_adaptation_delta_energy=main.weight_adaptation_delta_energy_check.isChecked(),
             allow_low_risk_campaign=main.allow_low_risk_campaign_check.isChecked(),
             team_mode=main.team_mode_check.isChecked(),
             runtime_mode=runtime_mode_val,
@@ -94,6 +95,8 @@ def run_command(main: MainWindow) -> None:
         no_clean_imports=main.no_clean_imports_check.isChecked(),
         no_code_smells=main.no_code_smells_check.isChecked(),
         use_llm_extract=main.use_llm_extract_check.isChecked(),
+        weight_adaptation=main.weight_adaptation_check.isChecked(),
+        weight_adaptation_delta_energy=main.weight_adaptation_delta_energy_check.isChecked(),
         allow_low_risk_campaign=main.allow_low_risk_campaign_check.isChecked(),
         team_mode=main.team_mode_check.isChecked(),
         runtime_mode=runtime_mode_val,
@@ -113,8 +116,7 @@ def run_fix_team_mode(main: MainWindow) -> None:
         return
     main.tabs.setCurrentIndex(main.tabs.indexOf(main.commands_tab))
     ollama_model = main._resolve_ollama_model_for_command()
-    runtime_mode = getattr(main, "runtime_mode_combo", None)
-    runtime_mode_val = runtime_mode.currentText().lower() if runtime_mode else "assist"
+    runtime_mode_val = main._get_runtime_mode()
     main._command_service.start(
         command="fix",
         project_root=root,
@@ -125,6 +127,8 @@ def run_fix_team_mode(main: MainWindow) -> None:
         no_clean_imports=main.no_clean_imports_check.isChecked(),
         no_code_smells=main.no_code_smells_check.isChecked(),
         use_llm_extract=main.use_llm_extract_check.isChecked(),
+        weight_adaptation=main.weight_adaptation_check.isChecked(),
+        weight_adaptation_delta_energy=main.weight_adaptation_delta_energy_check.isChecked(),
         allow_low_risk_campaign=main.allow_low_risk_campaign_check.isChecked(),
         team_mode=True,
         runtime_mode=runtime_mode_val,
@@ -178,7 +182,11 @@ def run_apply_approved(main: MainWindow) -> None:
         from . import approve_handlers
         approve_handlers.render_approvals_table(main)
     main.tabs.setCurrentIndex(main.tabs.indexOf(main.commands_tab))
-    main._command_service.run_apply_approved(project_root=root)
+    main._command_service.run_apply_approved(
+        project_root=root,
+        weight_adaptation=main.weight_adaptation_check.isChecked(),
+        weight_adaptation_delta_energy=main.weight_adaptation_delta_energy_check.isChecked(),
+    )
 
 
 def run_apply_from_report(main: MainWindow) -> None:
@@ -196,7 +204,11 @@ def run_apply_from_report(main: MainWindow) -> None:
         )
         return
     main.tabs.setCurrentIndex(main.tabs.indexOf(main.commands_tab))
-    main._command_service.run_apply_from_report(project_root=root)
+    main._command_service.run_apply_from_report(
+        project_root=root,
+        weight_adaptation=main.weight_adaptation_check.isChecked(),
+        weight_adaptation_delta_energy=main.weight_adaptation_delta_energy_check.isChecked(),
+    )
 
 
 def on_command_started(main: MainWindow, command_line: str) -> None:

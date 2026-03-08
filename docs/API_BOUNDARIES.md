@@ -32,11 +32,11 @@
 | `cli/` | `eurika.agent.policy`, `eurika.agent.runtime`, `eurika.agent.tools` | `eurika.agent` |
 | `cli/`, `eurika.api/` | `eurika.reasoning.context_sources` | `eurika.reasoning.architect` (build_context_sources) |
 | `eurika.reasoning/` | `eurika.knowledge.base` | `eurika.knowledge` |
-| `architecture_planner*` | `eurika.reasoning.planner_patch_ops` | *Exception: circular import; см. dependency_firewall* |
+| `eurika.api/chat` | `patch_engine`, `patch_apply`, `eurika.orchestration` | subprocess eurika_cli |
 
-## Исключения
+## Chat API boundary (R4)
 
-`architecture_planner_build_patch_plan` импортирует `eurika.reasoning.planner_patch_ops` напрямую из‑за циклического импорта (planner → architecture_planner → build_patch_plan → planner). Исключение задокументировано в `DEFAULT_SUBSYSTEM_BYPASS_EXCEPTIONS`.
+Модули `eurika/api/chat*.py` не импортируют `patch_engine`, `patch_apply`, `eurika.orchestration`. Fix/doctor — только subprocess. Task executor: файловые операции + code_edit_patch; refactor → subprocess.
 
 ## Target v3.x (review 2026 II)
 

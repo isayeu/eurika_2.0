@@ -10,9 +10,12 @@ wiring runtime_scan / architecture_* modules manually.
 from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict
-from eurika.storage import ProjectMemory
-from architecture_pipeline import _build_graph_and_summary, _build_graph_and_summary_from_self_map
+from eurika.analysis.build_graph_summary import (
+    build_graph_and_summary,
+    build_graph_and_summary_from_self_map,
+)
 from eurika.core.snapshot import ArchitectureSnapshot
+from eurika.storage import ProjectMemory
 
 def run_full_analysis(path: Path, *, history_window: int=5, update_artifacts: bool=True) -> ArchitectureSnapshot:
     """Run the full architecture-awareness pipeline and return a snapshot.
@@ -28,7 +31,7 @@ def run_full_analysis(path: Path, *, history_window: int=5, update_artifacts: bo
         raise FileNotFoundError(
             "self_map.json not found. Run scan first (or call run_full_analysis(..., update_artifacts=False))."
         )
-    graph, smells, summary = _build_graph_and_summary(root)
+    graph, smells, summary = build_graph_and_summary(root)
     memory = ProjectMemory(root)
     history = memory.history
     if update_artifacts:
@@ -49,5 +52,5 @@ def build_snapshot_from_self_map(self_map_path: Path) -> ArchitectureSnapshot:
     if not path.exists():
         raise FileNotFoundError(f'self_map not found: {path}')
     root = path.parent
-    graph, smells, summary = _build_graph_and_summary_from_self_map(path)
+    graph, smells, summary = build_graph_and_summary_from_self_map(path)
     return ArchitectureSnapshot(root=root, graph=graph, smells=smells, summary=summary, history=None, diff=None)

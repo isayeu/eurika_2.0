@@ -157,7 +157,14 @@ DEFAULT_LAYER_IMPORT_RULES: tuple[LayerImportRule, ...] = (
 )
 
 
-DEFAULT_LAYER_EXCEPTIONS: tuple[LayerException, ...] = ()
+# R2: core.pipeline needs build_graph_summary; L1→L2 exception to break architecture_pipeline cycle.
+DEFAULT_LAYER_EXCEPTIONS: tuple[LayerException, ...] = (
+    LayerException(
+        path_pattern="core/pipeline.py",
+        allowed_import_prefixes=("eurika.analysis.build_graph_summary",),
+        reason="R2: shared analysis logic; break core↔architecture_pipeline cycle",
+    ),
+)
 
 
 DEFAULT_SUBSYSTEM_BYPASS_RULES: tuple[SubsystemBypassRule, ...] = (
@@ -169,17 +176,14 @@ DEFAULT_SUBSYSTEM_BYPASS_RULES: tuple[SubsystemBypassRule, ...] = (
     SubsystemBypassRule(path_pattern="eurika/api/", forbidden_import_prefix="eurika.reasoning.context_sources"),
     SubsystemBypassRule(path_pattern="cli/", forbidden_import_prefix="eurika.reasoning.context_sources"),
     SubsystemBypassRule(path_pattern="architecture_planner", forbidden_import_prefix="eurika.reasoning.planner_patch_ops"),
+    # R4: Chat must not import patch/orchestration directly; use subprocess.
+    SubsystemBypassRule(path_pattern="eurika/api/chat", forbidden_import_prefix="patch_engine"),
+    SubsystemBypassRule(path_pattern="eurika/api/chat", forbidden_import_prefix="patch_apply"),
+    SubsystemBypassRule(path_pattern="eurika/api/chat", forbidden_import_prefix="eurika.orchestration"),
 )
 
-DEFAULT_SUBSYSTEM_BYPASS_EXCEPTIONS: tuple[SubsystemBypassException, ...] = (
-    # Circular import: planner -> architecture_planner -> build_patch_plan -> planner.
-    # build_patch_plan must import planner_patch_ops directly until planner/architecture_planner refactor.
-    SubsystemBypassException(
-        path_pattern="architecture_planner",
-        allowed_import_prefix="eurika.reasoning.planner_patch_ops",
-        reason="Circular import; migrate when planner/architecture_planner restructured",
-    ),
-)
+# R2: architecture_planner is now a thin re-export of eurika.reasoning.planner.facade; no planner_patch_ops.
+DEFAULT_SUBSYSTEM_BYPASS_EXCEPTIONS: tuple[SubsystemBypassException, ...] = ()
 
 
 def _path_matches(rel_path: str, pattern: str) -> bool:

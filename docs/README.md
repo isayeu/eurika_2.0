@@ -30,3 +30,6 @@
 | [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) | Чеклист перед релизом |
 | [KNOWLEDGE_LAYER.md](KNOWLEDGE_LAYER.md) | Knowledge Provider Layer |
 | [DEPENDENCIES.md](DEPENDENCIES.md) | Зависимости и расширения |
+| [TARGET_V3_STRUCTURE.md](TARGET_V3_STRUCTURE.md) | Целевая структура v3.x (R6) |
+| [REVIEW_2026_IV_ANALYSIS.md](REVIEW_2026_IV_ANALYSIS.md) | Анализ Review IV, задачи R1–R10 |
+| [R10_EXTENSIBILITY_AND_KNOWLEDGE.md](R10_EXTENSIBILITY_AND_KNOWLEDGE.md) | Plugin system, Knowledge Graph (R10) |

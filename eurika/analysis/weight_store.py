@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 from typing import Dict, Optional
 
+
 # Defaults from energy_ranking (canonical source)
 _DEFAULT_DELTAS: Dict[tuple[str, str], float] = {
     ("god_module", "split_module"): 0.15,
@@ -78,20 +79,75 @@ def get_estimated_delta(
     return weights.get((smell_type or "", action_kind or ""), DEFAULT_DELTA)
 
 
+def _adapt_weights_from_delta_energy(
+    project_root: Path,
+    *,
+    learning_rate: float,
+    min_delta: float,
+    max_delta: float,
+) -> bool:
+    """
+    R9/P6: W -= lr * delta_energy. delta_energy = after - before; negative = improvement.
+    Обрабатываем только последнее событие с delta_energy (избегаем двойного применения).
+    """
+    from eurika.storage.experience_store import get_learn_events_with_delta_energy
+
+    events_data = get_learn_events_with_delta_energy(project_root, limit=10)
+    if not events_data:
+        return False
+    # Только последнее событие — иначе при каждом вызове adapt переобрабатывались бы одни и те же
+    ops, delta_energy = events_data[-1]
+
+    weights = load_weights(project_root)
+    changed = False
+    for op in ops:
+        smell = str(op.get("smell_type") or "unknown")
+        kind = str(op.get("kind") or "unknown")
+        if not kind:
+            continue
+        tup = (smell, kind)
+        current = weights.get(tup, _DEFAULT_DELTAS.get(tup, DEFAULT_DELTA))
+        # W -= lr * delta: negative delta (improvement) -> W increases
+        new_val = current - learning_rate * delta_energy
+        new_val = max(min_delta, min(max_delta, new_val))
+        if abs(new_val - current) > 0.001:
+            weights[tup] = round(new_val, 4)
+            changed = True
+
+    if changed:
+        save_weights(project_root, weights)
+    return changed
+
+
 def adapt_weights_from_experience(
     project_root: Path,
     *,
     learning_rate: float = 0.02,
     min_delta: float = MIN_DELTA,
     max_delta: float = MAX_DELTA,
+    use_delta_energy: Optional[bool] = None,
 ) -> bool:
     """
-    Медленно обновить веса на основе success/fail статистики (ROADMAP §5.7 этап 7).
+    Медленно обновить веса (ROADMAP §5.7 этап 7, R9/P6).
 
-    Success rate > 0.5 → небольшое повышение estimated_delta.
-    Success rate < 0.5 → небольшое понижение.
+    use_delta_energy: если True или EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY=1 —
+        W -= lr * delta_energy из learn events (R9). Иначе success_rate heuristic.
     Bounded by [min_delta, max_delta]. Возвращает True если были изменения.
     """
+    import os
+
+    if use_delta_energy is None:
+        use_delta_energy = os.environ.get("EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+
+    if use_delta_energy:
+        return _adapt_weights_from_delta_energy(
+            project_root, learning_rate=learning_rate, min_delta=min_delta, max_delta=max_delta
+        )
+
     from eurika.storage import get_statistics
 
     stats = get_statistics(project_root)

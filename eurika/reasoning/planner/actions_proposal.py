@@ -22,7 +22,7 @@ def propose_actions(
 
     Delegates to architecture_planner.build_action_plan.
     """
-    from architecture_planner import build_action_plan
+    from eurika.reasoning.planner.facade import build_action_plan
 
     return build_action_plan(
         project_root=str(project_root),

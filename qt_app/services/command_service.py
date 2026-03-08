@@ -59,6 +59,8 @@ class CommandService(QObject):
         no_clean_imports: bool = False,
         no_code_smells: bool = False,
         use_llm_extract: bool = False,
+        weight_adaptation: bool = False,
+        weight_adaptation_delta_energy: bool = False,
         allow_low_risk_campaign: bool = False,
         team_mode: bool = False,
         runtime_mode: str = "assist",
@@ -100,16 +102,26 @@ class CommandService(QObject):
         self.command_started.emit(self._active_command)
         self._set_state(CycleState.THINKING.value)
         self._process.setWorkingDirectory(root)
-        if ollama_model.strip() or use_llm_extract:
+        if ollama_model.strip() or use_llm_extract or weight_adaptation or weight_adaptation_delta_energy:
             env = QProcessEnvironment.systemEnvironment()
             if ollama_model.strip():
                 env.insert("OLLAMA_OPENAI_MODEL", ollama_model.strip())
             if use_llm_extract:
                 env.insert("EURIKA_USE_LLM_EXTRACT", "1")
+            if weight_adaptation:
+                env.insert("EURIKA_WEIGHT_ADAPTATION", "1")
+            if weight_adaptation_delta_energy:
+                env.insert("EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY", "1")
             self._process.setProcessEnvironment(env)
         self._process.start(sys.executable, full_args)
 
-    def run_apply_approved(self, *, project_root: str) -> None:
+    def run_apply_approved(
+        self,
+        *,
+        project_root: str,
+        weight_adaptation: bool = False,
+        weight_adaptation_delta_energy: bool = False,
+    ) -> None:
         if self._process.state() != QProcess.NotRunning:
             self.error_line.emit("A command is already running.")
             return
@@ -119,6 +131,13 @@ class CommandService(QObject):
         self.command_started.emit(self._active_command)
         self._set_state(CycleState.THINKING.value)
         self._process.setWorkingDirectory(root)
+        if weight_adaptation or weight_adaptation_delta_energy:
+            env = QProcessEnvironment.systemEnvironment()
+            if weight_adaptation:
+                env.insert("EURIKA_WEIGHT_ADAPTATION", "1")
+            if weight_adaptation_delta_energy:
+                env.insert("EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY", "1")
+            self._process.setProcessEnvironment(env)
         self._process.start(sys.executable, args)
 
     def run_ritual(
@@ -131,6 +150,8 @@ class CommandService(QObject):
         no_clean_imports: bool = False,
         no_code_smells: bool = False,
         use_llm_extract: bool = False,
+        weight_adaptation: bool = False,
+        weight_adaptation_delta_energy: bool = False,
         allow_low_risk_campaign: bool = False,
         team_mode: bool = False,
         runtime_mode: str = "assist",
@@ -165,16 +186,26 @@ class CommandService(QObject):
         self.command_started.emit(self._active_command)
         self._set_state(CycleState.THINKING.value)
         self._process.setWorkingDirectory(root)
-        if ollama_model.strip() or use_llm_extract:
+        if ollama_model.strip() or use_llm_extract or weight_adaptation or weight_adaptation_delta_energy:
             env = QProcessEnvironment.systemEnvironment()
             if ollama_model.strip():
                 env.insert("OLLAMA_OPENAI_MODEL", ollama_model.strip())
             if use_llm_extract:
                 env.insert("EURIKA_USE_LLM_EXTRACT", "1")
+            if weight_adaptation:
+                env.insert("EURIKA_WEIGHT_ADAPTATION", "1")
+            if weight_adaptation_delta_energy:
+                env.insert("EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY", "1")
             self._process.setProcessEnvironment(env)
         self._process.start("bash", ["-c", script])
 
-    def run_apply_from_report(self, *, project_root: str) -> None:
+    def run_apply_from_report(
+        self,
+        *,
+        project_root: str,
+        weight_adaptation: bool = False,
+        weight_adaptation_delta_energy: bool = False,
+    ) -> None:
         """Apply patch_plan from eurika_fix_report.json (after dry-run); no re-scan/LLM."""
         if self._process.state() != QProcess.NotRunning:
             self.error_line.emit("A command is already running.")
@@ -185,6 +216,13 @@ class CommandService(QObject):
         self.command_started.emit(self._active_command)
         self._set_state(CycleState.THINKING.value)
         self._process.setWorkingDirectory(root)
+        if weight_adaptation or weight_adaptation_delta_energy:
+            env = QProcessEnvironment.systemEnvironment()
+            if weight_adaptation:
+                env.insert("EURIKA_WEIGHT_ADAPTATION", "1")
+            if weight_adaptation_delta_energy:
+                env.insert("EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY", "1")
+            self._process.setProcessEnvironment(env)
         self._process.start(sys.executable, args)
 
     def run_ruff(self, *, project_root: str) -> None:

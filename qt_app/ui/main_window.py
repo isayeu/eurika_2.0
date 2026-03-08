@@ -153,7 +153,7 @@ class MainWindow(QMainWindow):
         self.root_edit.editingFinished.connect(self._on_root_edited)
         if getattr(self, "module_browse_btn", None):
             self.module_browse_btn.clicked.connect(lambda: command_handlers.select_module(self))
-        self.command_combo.currentTextChanged.connect(self._sync_preview)
+        self.command_combo.currentIndexChanged.connect(self._sync_preview)
         self.module_edit.textChanged.connect(self._sync_preview)
         self.window_spin.valueChanged.connect(self._sync_preview)
         self.dry_run_check.toggled.connect(self._sync_preview)
@@ -161,10 +161,14 @@ class MainWindow(QMainWindow):
         self.no_clean_imports_check.toggled.connect(self._sync_preview)
         self.no_code_smells_check.toggled.connect(self._sync_preview)
         self.use_llm_extract_check.toggled.connect(self._sync_preview)
+        self.weight_adaptation_check.toggled.connect(self._on_weight_adaptation_toggled)
+        self.weight_adaptation_check.toggled.connect(self._sync_preview)
+        self.weight_adaptation_delta_energy_check.toggled.connect(self._sync_preview)
+        self._on_weight_adaptation_toggled(self.weight_adaptation_check.isChecked())
         self.allow_low_risk_campaign_check.toggled.connect(self._sync_preview)
         self.team_mode_check.toggled.connect(self._sync_preview)
         if getattr(self, "runtime_mode_combo", None):
-            self.runtime_mode_combo.currentTextChanged.connect(self._sync_preview)
+            self.runtime_mode_combo.currentIndexChanged.connect(self._sync_preview)
         if getattr(self, "learn_light_check", None):
             self.learn_light_check.toggled.connect(self._sync_preview)
             self.learn_scan_check.toggled.connect(self._sync_preview)
@@ -204,6 +208,7 @@ class MainWindow(QMainWindow):
         self._command_service.error_line.connect(lambda line: command_handlers.append_stderr(self, line))
         self._command_service.command_finished.connect(lambda c: command_handlers.on_command_finished(self, c))
         self._command_service.state_changed.connect(lambda s: command_handlers.on_state_changed(self, s))
+        self._sync_preview()
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
         if self._first_run_prompt_pending:
@@ -264,8 +269,18 @@ class MainWindow(QMainWindow):
     def _on_root_edited(self) -> None:
         self._set_project_root(self.root_edit.text().strip())
 
+    def _get_current_command(self) -> str:
+        """CLI command (not display text)."""
+        data = getattr(self.command_combo, "currentData", lambda: None)()
+        return data if data else self.command_combo.currentText()
+
+    def _get_runtime_mode(self) -> str:
+        """Runtime mode value (assist/hybrid/auto)."""
+        data = getattr(self.runtime_mode_combo, "currentData", lambda: None)()
+        return data if data else (self.runtime_mode_combo.currentText() or "assist").lower()
+
     def _sync_preview(self) -> None:
-        cmd = self.command_combo.currentText()
+        cmd = self._get_current_command()
         root = self.root_edit.text().strip() or '.'
         if cmd == 'cycle':
             extra = []
@@ -273,9 +288,9 @@ class MainWindow(QMainWindow):
                 extra.append('--dry-run')
             if self.no_llm_check.isChecked():
                 extra.append('--no-llm')
-            rm = getattr(self, "runtime_mode_combo", None)
-            if rm and rm.currentText().lower() != "assist":
-                extra.append(f"--runtime-mode {rm.currentText().lower()}")
+            rm_val = self._get_runtime_mode() if getattr(self, "runtime_mode_combo", None) else "assist"
+            if rm_val and rm_val != "assist":
+                extra.append(f"--runtime-mode {rm_val}")
             extra_str = " " + " ".join(extra) if extra else ""
             self.preview_label.setText(
                 f"scan → doctor → report-snapshot → fix{extra_str} → learning-kpi → whitelist-draft"
@@ -326,19 +341,32 @@ class MainWindow(QMainWindow):
             parts.append('--allow-low-risk-campaign')
         if self.team_mode_check.isChecked() and cmd in {'fix', 'cycle'}:
             parts.append('--team-mode')
-        rm = getattr(self, "runtime_mode_combo", None)
-        if rm and rm.currentText().lower() not in ("", "assist") and cmd in {"fix", "cycle"}:
-            parts.extend(["--runtime-mode", rm.currentText().lower()])
+        rm_val = self._get_runtime_mode() if getattr(self, "runtime_mode_combo", None) else "assist"
+        if rm_val and rm_val not in ("", "assist") and cmd in {"fix", "cycle"}:
+            parts.extend(["--runtime-mode", rm_val])
         if getattr(self, 'use_llm_extract_check', None) and self.use_llm_extract_check.isChecked() and cmd in {'fix', 'cycle'}:
             parts.append('[LLM extract]')
+        if getattr(self, 'weight_adaptation_check', None) and self.weight_adaptation_check.isChecked() and cmd in {'fix', 'cycle'}:
+            suffix = ' ΔE' if getattr(self, 'weight_adaptation_delta_energy_check', None) and self.weight_adaptation_delta_energy_check.isChecked() else ''
+            parts.append(f'[Weight adapt{suffix}]')
         self.preview_label.setText(' '.join(parts))
         self.module_edit.setEnabled(cmd == 'explain')
-        show_learn = cmd == 'learn-github'
-        for attr in ('learn_label', 'learn_light_check', 'learn_scan_check', 'learn_build_patterns_check',
-                     'learn_limit_label', 'learn_limit_spin'):
-            w = getattr(self, attr, None)
-            if w:
-                w.setVisible(show_learn)
+        self._sync_learn_visibility()
+
+    def _on_weight_adaptation_toggled(self, checked: bool) -> None:
+        """Delta energy mode requires Weight adaptation; disable when off."""
+        if getattr(self, 'weight_adaptation_delta_energy_check', None):
+            self.weight_adaptation_delta_energy_check.setEnabled(checked)
+            if not checked:
+                self.weight_adaptation_delta_energy_check.setChecked(False)
+
+    def _sync_learn_visibility(self) -> None:
+        """Show/hide learn-github options based on command."""
+        cmd = self._get_current_command()
+        show_learn = cmd == "learn-github"
+        learn_grp = getattr(self, "learn_group", None)
+        if learn_grp is not None:
+            learn_grp.setVisible(show_learn)
 
     def _resolve_ollama_model_for_command(self) -> str:
         """Model for doctor/fix/cycle: prefer Installed combo (Models tab), else Chat model settings."""

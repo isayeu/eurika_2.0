@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from architecture_pipeline import _build_graph_and_summary_from_self_map  # noqa: PLC0415
+from eurika.analysis.build_graph_summary import build_graph_and_summary_from_self_map
 from eurika.smells.detector import get_remediation_hint
 
 SNIPPET_MAX_LINES = 12
@@ -109,7 +109,7 @@ def extract_patterns_from_repos(cache_dir: Path) -> dict[str, Any]:
         self_map = subdir / "self_map.json"
         if self_map.exists():
             try:
-                graph, smells, _ = _build_graph_and_summary_from_self_map(self_map)
+                graph, smells, _ = build_graph_and_summary_from_self_map(self_map)
                 del graph
             except Exception:
                 pass

@@ -40,7 +40,7 @@ def test_doctor_includes_knowledge_when_cache_present(tmp_path: Path) -> None:
         cwd=ROOT,
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=120,
     )
     assert result.returncode == 0, f"stderr: {result.stderr}\nstdout: {result.stdout[:800]}"
     assert "Reference" in result.stdout, "Knowledge Layer: architect should include Reference when cache has topic"

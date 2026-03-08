@@ -8,7 +8,6 @@ learning.all(), feedback.all() and aggregate_* derive from events.by_type(...).
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -16,30 +15,8 @@ if TYPE_CHECKING:
     from .event_engine import EventStore
 
 
-try:
-    from architecture_learning import LearningRecord
-except Exception:
-    @dataclass
-    class LearningRecord:  # type: ignore[no-redef]
-        timestamp: float
-        project_root: str
-        modules: List[str]
-        operations: List[Dict[str, Any]]
-        risks: List[str]
-        verify_success: Optional[bool]
-
-
-try:
-    from architecture_feedback import FeedbackRecord
-except Exception:
-    @dataclass
-    class FeedbackRecord:  # type: ignore[no-redef]
-        timestamp: float
-        project_root: str
-        action: str
-        outcome: str
-        target: Optional[str] = None
-        comment: Optional[str] = None
+from eurika.storage.learning_store import LearningRecord
+from eurika.storage.feedback_store import FeedbackRecord
 
 
 def _learning_record_from_event(e: Any) -> "LearningRecord":
@@ -253,6 +230,24 @@ class LearningView:
                 else:
                     by_key["not_applied"] += 1
         return stats
+
+    def get_experience_with_delta_energy(self, limit: int = 50) -> List[tuple[List[Dict[str, Any]], float]]:
+        """
+        Return (operations, delta_energy) for recent learn events that have delta_energy.
+        R9/P6: для adapt_weights W -= lr * delta_energy (delta = after - before; negative = improvement).
+        """
+        self._ensure_migrated()
+        events = self._events.by_type("learn")[-limit:]
+        out: List[tuple[List[Dict[str, Any]], float]] = []
+        for e in events:
+            output = getattr(e, "output", None) or {}
+            delta = output.get("delta_energy")
+            if delta is not None and isinstance(delta, (int, float)):
+                inp = getattr(e, "input", None) or {}
+                ops = list(inp.get("operations", []))
+                if ops:
+                    out.append((ops, float(delta)))
+        return out
 
 
 class FeedbackView:

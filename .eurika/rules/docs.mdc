@@ -18,6 +18,10 @@ alwaysApply: true
 | **@docs/ONBOARDING.md** | Onboarding ≤ 10 мин — clone → scan/doctor/fix (B.9) |
 | **@docs/MEMORY.md** | EventLog, FailureLog, LearningStore — минимальная формализация памяти |
 | **@docs/BOUNDED_EVOLUTION.md** | Дисциплина роста: лимиты логов, памяти, planner; крупные фичи — только с отчётом |
+| **@docs/RISKS.md** | 10 архитектурных рисков (Review IV), статус митигации |
+| **@docs/TARGET_V3_STRUCTURE.md** | Целевая структура v3.x: world_model/reasoning/execution/memory |
+| **@docs/REVIEW_2026_IV_ANALYSIS.md** | Анализ Review IV, R1–R10, связь с ROADMAP |
+| **@docs/R10_EXTENSIBILITY_AND_KNOWLEDGE.md** | Plugin system, Knowledge Graph (R10) |
 
 Импорты — только через публичный API из API_BOUNDARIES. Нарушения слоёв проверяет dependency firewall.
 

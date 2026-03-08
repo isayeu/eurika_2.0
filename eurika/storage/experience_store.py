@@ -203,6 +203,20 @@ def get_kind_plan_failure_counts(project_root: Path, limit: int = 20) -> dict[tu
     return dict(Counter(pairs))
 
 
+def get_learn_events_with_delta_energy(
+    project_root: Path,
+    limit: int = 50,
+) -> List[tuple[List[Dict[str, Any]], float]]:
+    """
+    Return (operations, delta_energy) for recent learn events that have delta_energy.
+    R9/P6: для adapt_weights delta_energy-based update.
+    """
+    from .memory import ProjectMemory
+
+    memory = ProjectMemory(project_root)
+    return memory.learning.get_experience_with_delta_energy(limit=limit)
+
+
 def get_statistics(
     project_root: Path,
     action_type: Optional[str] = None,

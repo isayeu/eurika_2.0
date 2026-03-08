@@ -10,11 +10,13 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -23,118 +25,174 @@ from PySide6.QtWidgets import (
 if TYPE_CHECKING:
     from ..main_window import MainWindow
 
+# Русские названия команд → CLI
+CMD_ITEMS = [
+    ("Сканирование", "scan"),
+    ("Диагностика", "doctor"),
+    ("Исправление", "fix"),
+    ("Полный цикл", "cycle"),
+    ("Объяснение", "explain"),
+    ("Снимок отчёта", "report-snapshot"),
+    ("Метрики обучения", "learning-kpi"),
+    ("Обучение из GitHub", "learn-github"),
+    ("Очистка импортов", "clean-imports"),
+    ("Самопроверка", "self-check"),
+    ("Черновик whitelist", "whitelist-draft"),
+    ("Отмена кампании", "campaign-undo"),
+]
+
+RUNTIME_MODES = [
+    ("Ассистент", "assist"),
+    ("Гибрид", "hybrid"),
+    ("Авто", "auto"),
+]
+
 
 def build_commands_tab(main: MainWindow) -> None:
     """Build Commands tab: scan, doctor, fix, cycle, explain, options, run/stop."""
     main.commands_tab = tab = QWidget()
-    layout = QVBoxLayout(tab)
-    layout.setContentsMargins(*TAB_MARGINS)
-    layout.setSpacing(10)
-    controls = QGroupBox("Core Command Panel")
-    controls_layout = QFormLayout(controls)
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    content = QWidget()
+    layout = QVBoxLayout(content)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(12)
+    scroll.setWidget(content)
+
+    # === Команда ===
+    cmd_group = QGroupBox("Команда")
+    cmd_layout = QFormLayout(cmd_group)
     main.command_combo = QComboBox()
-    main.command_combo.addItems([
-        "scan", "doctor", "fix", "cycle", "explain", "report-snapshot", "learning-kpi",
-        "learn-github", "clean-imports", "self-check", "whitelist-draft", "campaign-undo",
-    ])
-    main.command_combo.setMaximumWidth(COMBO_MAX_WIDTH)
-    controls_layout.addRow("Command", main.command_combo)
+    for display, cli in CMD_ITEMS:
+        main.command_combo.addItem(display, cli)
+    main.command_combo.setMaximumWidth(COMBO_MAX_WIDTH + 80)
+    cmd_layout.addRow("Действие", main.command_combo)
+
     module_row = QHBoxLayout()
     main.module_edit = QLineEdit()
-    main.module_edit.setPlaceholderText("Required for explain: eurika/api/serve.py")
+    main.module_edit.setPlaceholderText("Только для «Объяснение»: eurika/api/serve.py")
     main.module_edit.setMaximumWidth(320)
     main.module_browse_btn = QPushButton("…")
     main.module_browse_btn.setFixedWidth(32)
-    main.module_browse_btn.setToolTip("Select module file from project")
+    main.module_browse_btn.setToolTip("Выбрать модуль из проекта")
     module_row.addWidget(main.module_edit)
     module_row.addWidget(main.module_browse_btn)
     module_row.addStretch(1)
-    controls_layout.addRow("Module", module_row)
+    cmd_layout.addRow("Модуль", module_row)
+    layout.addWidget(cmd_group)
+
+    # === Опции для fix/cycle/explain ===
+    fix_group = QGroupBox("Опции исправления и диагностики")
+    fix_layout = QFormLayout(fix_group)
+
     main.window_spin = QSpinBox()
     main.window_spin.setRange(1, 100)
     main.window_spin.setValue(5)
     main.window_spin.setMaximumWidth(SPIN_MAX_WIDTH)
-    main.window_spin.setToolTip("--window N: history size for doctor/fix/cycle/explain (default 5)")
-    controls_layout.addRow("Window", main.window_spin)
+    main.window_spin.setToolTip("Размер окна истории для doctor/fix/explain")
+    fix_layout.addRow("Окно истории", main.window_spin)
+
     main.runtime_mode_combo = QComboBox()
-    main.runtime_mode_combo.addItems(["assist", "hybrid", "auto"])
-    main.runtime_mode_combo.setMaximumWidth(SPIN_MAX_WIDTH)
-    main.runtime_mode_combo.setToolTip("--runtime-mode: assist (default), hybrid (approve high-risk), auto (whitelist bypass)")
-    controls_layout.addRow("Runtime mode", main.runtime_mode_combo)
-    options_row = QHBoxLayout()
-    main.dry_run_check = QCheckBox("--dry-run")
-    main.no_llm_check = QCheckBox("--no-llm")
-    main.no_clean_imports_check = QCheckBox("--no-clean-imports")
-    main.no_code_smells_check = QCheckBox("--no-code-smells")
-    main.no_code_smells_check.setToolTip(
-        "Exclude refactor_code_smell (long_function, deep_nesting) from plan"
+    for display, val in RUNTIME_MODES:
+        main.runtime_mode_combo.addItem(display, val)
+    main.runtime_mode_combo.setMaximumWidth(COMBO_MAX_WIDTH)
+    main.runtime_mode_combo.setToolTip(
+        "Ассистент — подтверждать вручную; Гибрид — одобрять высокорисковые; Авто — whitelist bypass"
     )
-    main.use_llm_extract_check = QCheckBox("Use LLM extract")
-    main.use_llm_extract_check.setChecked(False)
-    main.use_llm_extract_check.setToolTip(
-        "EURIKA_USE_LLM_EXTRACT=1: when long_function has no extract block, ask Ollama for refactored code (Phase 3)"
-    )
-    main.allow_low_risk_campaign_check = QCheckBox("--allow-low-risk-campaign")
-    main.allow_low_risk_campaign_check.setToolTip(
-        "Allow low-risk ops (e.g. remove_unused_import) through campaign skip (OPERABILITY D)"
-    )
-    main.team_mode_check = QCheckBox("--team-mode")
-    main.team_mode_check.setToolTip(
-        "Propose only: save plan to .eurika/pending_plan.json, then use Approvals tab"
-    )
-    main.learn_light_check = QCheckBox("--light (learn-github)")
+    fix_layout.addRow("Режим исполнения", main.runtime_mode_combo)
+
+    opts_label = QLabel("Дополнительно:")
+    fix_layout.addRow(opts_label)
+    opts_grid = QGridLayout()
+    row, col = 0, 0
+    opts = [
+        ("dry_run_check", "Только план (без применения)", "Показать план, не применять изменения"),
+        ("no_llm_check", "Без LLM", "Не вызывать Ollama/LLM для doctor/cycle"),
+        ("no_clean_imports_check", "Без очистки импортов", "Исключить remove_unused_import"),
+        ("no_code_smells_check", "Без code smells", "Исключить long_function, deep_nesting из плана"),
+        ("use_llm_extract_check", "LLM-извлечение", "При long_function без блока — запросить код у Ollama"),
+        ("weight_adaptation_check", "Адаптация весов", "Учиться на успехах/провалах после fix"),
+        ("weight_adaptation_delta_energy_check", "Режим ΔEnergy", "Обновлять веса по delta_energy (требует «Адаптация весов»)"),
+        ("allow_low_risk_campaign_check", "Низкий риск", "Разрешить низкорисковые операции через campaign skip"),
+        ("team_mode_check", "Только предложить", "Сохранить план в Approvals, не применять"),
+    ]
+    for attr, label, tooltip in opts:
+        cb = QCheckBox(label)
+        cb.setToolTip(tooltip)
+        setattr(main, attr, cb)
+        opts_grid.addWidget(cb, row, col)
+        col += 1
+        if col > 2:
+            col, row = 0, row + 1
+    fix_layout.addRow(opts_grid)
+    layout.addWidget(fix_group)
+
+    # === Опции learn-github ===
+    main.learn_group = QGroupBox("Опции обучения из GitHub")
+    learn_group = main.learn_group
+    learn_layout = QFormLayout(learn_group)
+    main.learn_light_check = QCheckBox("Лёгкий список (starlette, httpx)")
     main.learn_light_check.setChecked(True)
-    main.learn_light_check.setToolTip("Light curated list: starlette, httpx — faster")
-    main.learn_scan_check = QCheckBox("--scan (learn-github)")
+    main.learn_light_check.setToolTip("Быстрый набор репозиториев")
+    main.learn_scan_check = QCheckBox("Сканировать каждое репо")
     main.learn_scan_check.setChecked(True)
-    main.learn_scan_check.setToolTip("Run eurika scan on each cloned repo")
-    main.learn_build_patterns_check = QCheckBox("--build-patterns")
+    main.learn_scan_check.setToolTip("Запускать eurika scan на каждом клоне")
+    main.learn_build_patterns_check = QCheckBox("Собрать паттерны")
     main.learn_build_patterns_check.setChecked(True)
-    main.learn_build_patterns_check.setToolTip("Build pattern library → .eurika/pattern_library.json (Phase 5 OSS)")
+    main.learn_build_patterns_check.setToolTip("Создать .eurika/pattern_library.json")
+    learn_row1 = QHBoxLayout()
+    learn_row1.addWidget(main.learn_light_check)
+    learn_row1.addWidget(main.learn_scan_check)
+    learn_row1.addWidget(main.learn_build_patterns_check)
+    learn_layout.addRow(learn_row1)
+    main.learn_limit_label = QLabel("Лимит репозиториев:")
     main.learn_limit_spin = QSpinBox()
     main.learn_limit_spin.setRange(0, 20)
     main.learn_limit_spin.setValue(2)
-    main.learn_limit_spin.setSpecialValueText("all")
-    main.learn_limit_spin.setToolTip("--limit-repos: use first N repos (0=all)")
-    options_row.addWidget(main.dry_run_check)
-    options_row.addWidget(main.no_llm_check)
-    options_row.addWidget(main.no_clean_imports_check)
-    options_row.addWidget(main.no_code_smells_check)
-    options_row.addWidget(main.use_llm_extract_check)
-    options_row.addWidget(main.allow_low_risk_campaign_check)
-    options_row.addWidget(main.team_mode_check)
-    main.learn_label = QLabel("| Learn:")
-    main.learn_limit_label = QLabel("limit-repos:")
-    options_row.addWidget(main.learn_label)
-    options_row.addWidget(main.learn_light_check)
-    options_row.addWidget(main.learn_scan_check)
-    options_row.addWidget(main.learn_build_patterns_check)
-    options_row.addWidget(main.learn_limit_label)
-    options_row.addWidget(main.learn_limit_spin)
-    options_row.addStretch(1)
-    controls_layout.addRow("Options", options_row)
+    main.learn_limit_spin.setSpecialValueText("все")
+    main.learn_limit_spin.setMaximumWidth(SPIN_MAX_WIDTH)
+    main.learn_limit_spin.setToolTip("Использовать первые N репо (0 = все)")
+    learn_limit_row = QHBoxLayout()
+    learn_limit_row.addWidget(main.learn_limit_label)
+    learn_limit_row.addWidget(main.learn_limit_spin)
+    learn_limit_row.addStretch(1)
+    learn_layout.addRow(learn_limit_row)
+    main.learn_group.setVisible(False)  # показывается только для learn-github
+    layout.addWidget(learn_group)
+
+    # === Запуск ===
+    run_group = QGroupBox("Запуск")
+    run_layout = QFormLayout(run_group)
     action_row = QHBoxLayout()
     main.preview_label = QLabel("eurika scan .")
     main.preview_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
     main.preview_label.setWordWrap(True)
+    main.preview_label.setStyleSheet("padding: 6px 8px;")
     action_row.addWidget(main.preview_label, 1)
-    main.run_btn = QPushButton("Run")
-    main.stop_btn = QPushButton("Stop")
+    main.run_btn = QPushButton("Запустить")
+    main.stop_btn = QPushButton("Остановить")
     main.stop_btn.setEnabled(False)
     action_row.addWidget(main.run_btn)
     action_row.addWidget(main.stop_btn)
-    controls_layout.addRow("Execute", action_row)
+    run_layout.addRow("Команда", action_row)
     quality_row = QHBoxLayout()
     main.ruff_btn = QPushButton("Ruff")
-    main.ruff_btn.setToolTip("ruff check eurika cli")
+    main.ruff_btn.setToolTip("Проверка ruff check eurika cli")
     main.mypy_btn = QPushButton("Mypy")
-    main.mypy_btn.setToolTip("mypy eurika cli")
+    main.mypy_btn.setToolTip("Проверка типов mypy")
     main.release_check_btn = QPushButton("Release check")
-    main.release_check_btn.setToolTip("./scripts/release_check.sh — tests, ruff, mypy, self-check")
+    main.release_check_btn.setToolTip("Полная проверка: тесты, ruff, mypy, self-check")
     quality_row.addWidget(main.ruff_btn)
     quality_row.addWidget(main.mypy_btn)
     quality_row.addWidget(main.release_check_btn)
     quality_row.addStretch(1)
-    controls_layout.addRow("Quality", quality_row)
-    layout.addWidget(controls)
-    main.tabs.addTab(tab, "Commands")
+    run_layout.addRow("Проверки", quality_row)
+    layout.addWidget(run_group)
+
+    layout.addStretch(1)
+    outer = QVBoxLayout(tab)
+    outer.setContentsMargins(*TAB_MARGINS)
+    outer.addWidget(scroll)
+    main.tabs.addTab(tab, "Команды")

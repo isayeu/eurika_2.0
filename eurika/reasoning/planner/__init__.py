@@ -68,6 +68,6 @@ def __getattr__(name: str):
                 "SmellReport": SmellReport,
                 "risk_report_from_plan": risk_report_from_plan,
             }[name]
-        from architecture_planner import build_action_plan, build_patch_plan, build_plan
+        from eurika.reasoning.planner.facade import build_action_plan, build_patch_plan, build_plan
         return {"build_plan": build_plan, "build_action_plan": build_action_plan, "build_patch_plan": build_patch_plan}[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

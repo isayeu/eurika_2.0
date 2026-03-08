@@ -29,6 +29,8 @@
 
 **Review III (2026):** Идея 9/10, Амбиция 10/10, Структурность 7/10, **Стабильность ядра 5/10**, Фокус 6/10. Позиция: Tool ✔ Smart refactor ✔ → переход к Energy-based optimizer. Ключевой совет: **упростить ядро, один автономный цикл идеальным, потом наращивать**. Чего избегать: новые фичи, новые smell, self-rewriting, онлайн-патчинг. docs/review.md §2.
 
+**Review IV (2026):** Амбиция 9/10, модульность 7/10, AI 6/10. Главный риск: либо полноценный AI-архитектор (EnergyModel + WorldState в центре), либо «огромный набор инструментов». Задачи: единый reasoning engine (не 7 architecture_*), EnergyModel в центр, Chat API изолировать, learning центральный. Подробно: **docs/REVIEW_2026_IV_ANALYSIS.md**.
+
 **Обновление (февраль 2026):** Split тяжёлых модулей (task_executor, serve, fix_cycle_impl, core_handlers, chat) — P0.4 выполнен; pipeline_model; test_cycle → test_cycle_report; CR rules (docs, pre-commit, test-api) в .eurika/rules; Qt MVP: hybrid approvals, dashboard, Stop. **Рост:** чистота структуры 4→5.5, контроль сложности 5→6, тестируемость ?→6, продуктовая 6→6.5. **Остаётся:** refactor_code_smell 0%, test_graph_ops/test_api крупные при необходимости, продакшн 4/10.
 
 ---
@@ -146,6 +148,8 @@ UI.md ✓; README ✓; критерии **B.7–B.14** выполнены. Оц�
 | **P4** | File size >600 LOC (по необходимости) | varies | ✅ chat_intent 515, prepare 544, extract_function 529, architect 528; extract helpers (chat_intent_detectors, prepare_critic, extract_function_ast, architect_helpers) |
 | **P5** | EnergyModel как resource constraint | ✅ | EURIKA_ENERGY_CAP; planner_patch_ops truncates по Σ|ΔE|; BOUNDED_EVOLUTION §7 |
 | **—** | planner/core split | ✅ | CYCLE_REPORT #129: graph_analysis, actions_proposal; core — thin facade |
+| **P6** | R9 W-=lr×ΔE в adapt_weights | ✅ | EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY=1; get_learn_events_with_delta_energy; test_adapt_weights_delta_energy_mode |
+| **P7** | world_model alias (TARGET_V3 §4) | ~1 ч | eurika/world_model/ re-exports metric_vector, energy_model; без перемещения файлов |
 
 **Чего избегать:** новые фичи, новые smell, self-rewriting, онлайн-патчинг (review III).
 
@@ -393,6 +397,27 @@ while True:
 **Прогресс (Review III):** зрелость +40%, цели +60%, стратегия +70%, формализация +20%. Формализация отстаёт — нормально.
 
 **Рекомендация:** долгая игра (вариант 3) — эволюция от простого ядра. Только с самоограничением.
+
+---
+
+### 5.10 Review IV — анализ и задачи (2026)
+
+**Источник:** docs/review.md (новый ревью), **docs/REVIEW_2026_IV_ANALYSIS.md**.
+
+| Приоритет | Задача | Статус |
+|-----------|--------|--------|
+| R1 | __pycache__/мусор в sdist — pre-release check | ✅ release_check шаг 8b |
+| R2 | Единый reasoning engine — консолидация architecture_* | ✅ build_graph_summary; цикл разорван |
+| R3 | EnergyModel в центр системы | ✅ Architecture §0.9, energy_ranking |
+| R4 | Chat API изолировать (core vs api) | ✅ API_BOUNDARIES + firewall |
+| R5 | Learning центральный (ExperienceStore, weight adaptation) | ✅ Learning Loop документирован |
+| R6 | Целевая структура: world_model/, reasoning/, execution/, memory/ | docs/TARGET_V3_STRUCTURE.md |
+| R7 | Риски (Fragmented Intelligence и др.) | ✅ docs/RISKS.md |
+| R8 | Cognitive Loop — маппинг этапов | 📄 Architecture §0.9 |
+| R9 | Experience Memory с delta_energy | 📄 MEMORY.md; W+=lr×ΔE в плане |
+| R10 | Plugin system, Knowledge Graph | 📄 R10_EXTENSIBILITY_AND_KNOWLEDGE.md; plugins analyzer ✓; KG в плане |
+
+**Риски:** docs/RISKS.md — 10 рисков, статус митигации.
 
 ---
 

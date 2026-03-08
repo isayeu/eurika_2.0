@@ -38,12 +38,35 @@
 | Атрибут | Значение |
 |--------|----------|
 | **Реализация** | `LearningView` (event_views) — view над EventStore type=learn |
-| **Запись** | `record_outcome(project_root, modules, operations, risks, verify_success)` → memory.learning.append |
+| **Запись** | `record_outcome(..., delta_energy=...)` → memory.learning.append; learn event output: delta_energy, failure_reason, goal_id, plan_hash |
 | **Чтение** | `aggregate_by_action_kind()`, `aggregate_by_smell_action()`, `get_merged_learning_stats(root)` |
 | **Роль** | Агрегаты success/fail по (smell_type, action_kind); planner сортирует ops по learning_stats |
 | **last_ts** | В каждом stats entry — timestamp последнего события (подготовка к age-based decay, ROADMAP §4.5) |
 
 **Точка входа:** `ProjectMemory(project_root).learning`; `eurika.storage.record_outcome`; `get_merged_learning_stats` (global_memory).
+
+---
+
+## Learning Loop (R5 — центральность)
+
+Замкнутый цикл: Apply → Learn → Plan (читает) → Apply...
+
+```
+[Fix Cycle N]
+  Apply  → patch_engine.apply_and_verify
+  Verify → success/fail
+  Learn  → record_outcome(modules, ops, risks, verify_success, delta_energy)
+         → [opt-in] adapt_weights_from_experience (EURIKA_WEIGHT_ADAPTATION=1)
+
+[Fix Cycle N+1]
+  Plan   → get_merged_learning_stats(root) → learning_stats
+         → planner: filter_policy, sort_by_learning, deprioritize failures
+         → graph_ops: priority_from_graph(learning_stats=...)
+  Input  → scan, diagnose (summary, smells)
+  ...
+```
+
+**Точки входа:** `record_outcome`, `get_merged_learning_stats`, `adapt_weights_from_experience` (opt-in).
 
 ---
 
@@ -97,6 +120,21 @@ Planner читает enriched failures и меняет поведение (не 
 | `plan_hash` failed | Reverse ops order (стратегическая вариация) |
 
 **Функции:** `get_recent_failed_kind_plan_pairs`, `get_kind_plan_failure_counts`, `apply_failure_based_fallback`, `sort_and_reindex_by_learning(failed_kind_plan_pairs=..., kind_plan_counts=...)`.
+
+---
+
+## Experience Memory с delta_energy (R9)
+
+**Источник:** docs/review.md §Experience Memory. Цель — опыт как `(action, delta_energy, risk, success)`.
+
+| Атрибут | Текущее | Целевое (review) |
+|---------|---------|------------------|
+| **Запись** | `record_outcome(..., delta_energy=...)` → learn event output.delta_energy | ✅ apply_stage передаёт ctx.delta_score |
+| **Хранение** | EventLog, type=learn, output.delta_energy | ✅ |
+| **Weight update** | success_rate (default) или delta_energy (opt-in) | W -= lr × delta_energy (P6) |
+| **Опция** | `EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY=1` | Использовать delta_energy из learn events вместо success_rate |
+
+**Текущий adapt:** `weight_store.adapt_weights_from_experience`. По умолчанию success_rate heuristic. При `EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY=1` и `EURIKA_WEIGHT_ADAPTATION=1` — формула W -= lr × delta_energy (negative delta = improvement → W increases). Обрабатывается только последнее событие с delta_energy.
 
 ---
 
