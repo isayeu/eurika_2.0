@@ -2,6 +2,12 @@
 
 ## Current state (2026-03-08)
 
+- **150. R8 Cognitive Loop полная формализация (2026-03):** docs/COGNITIVE_LOOP.md — контракты 8 этапов (Analyze → Learn), входы/выходы, ExecutionContext flow, маппинг на prepare/apply_stage. Architecture §0.9 ссылка. REVIEW_2026_IV_ANALYSIS R8 ✅. CYCLE_REPORT #150.
+- **155. R10 get_knowledge_graph facade (2026-03):** get_knowledge_graph(project_root) → {code, test_links}. GET /api/knowledge_graph. KNOWLEDGE_GRAPH_DESIGN §5. CYCLE_REPORT #155.
+- **154. R10 GET /api/test_links (2026-03):** get_test_links в knowledge_api; маршрут в serve_routes_get; tests/test_api_serve test_dispatch_api_get_test_links_*. CYCLE_REPORT #154.
+- **153. R10 build_test_links (2026-03):** eurika/knowledge/knowledge_graph.py — build_test_links(project_root, code_graph). Пары (test_file, tested_module) по импортам. tests/test_knowledge_graph.py. KNOWLEDGE_GRAPH_DESIGN §4. CYCLE_REPORT #153.
+- **152. R10 code_graph facade (2026-03):** eurika/knowledge/code_graph.py — CodeGraph, build_code_graph(self_map). Обёртка над ProjectGraph.from_self_map. tests/test_code_graph.py. v3.x стабилизация пройдена — docs обновлены. KNOWLEDGE_GRAPH_DESIGN §2.3. CYCLE_REPORT #152.
+- **151. R10 Knowledge Graph design doc (2026-03):** docs/KNOWLEDGE_GRAPH_DESIGN.md — целевая схема code/arch/knowledge графов; текущее vs gap; интерфейсы.
 - **149. 200 fix cycles batch #2 (2026-03):** run_cycle_batch 200 циклов. EURIKA_WEIGHT_ADAPTATION=1, EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY=1; quiet=False; --- Cycle N/200 в консоли. CYCLE_REPORT @50, @100, @150, @200. success_rate 1.0, apply_rate 1.0, rollback 0; top_failure N/A; most_deprioritized N/A; events.json ~190 KB. run_cycle_batch: weight adaptation по умолчанию. Qt Terminal Stop: setsid + killpg для завершения всей цепочки (bash→python→pytest). CYCLE_REPORT #149.
 - **148. P8 memory alias (2026-03):** eurika/memory/ — re-exports ProjectMemory, record_outcome, get_statistics, checkpoint, EventStore, ExperienceStore из eurika.storage. TARGET_V3_STRUCTURE §4. dependency_firewall L0.
 - **147. P7 world_model alias (2026-03):** eurika/world_model/ — re-exports MetricVector, EnergyModel, WeightVector из eurika.analysis. TARGET_V3_STRUCTURE §4. dependency_firewall: L2 path/import rules. Без перемещения файлов. ROADMAP P7 ✅.

@@ -266,7 +266,7 @@ Analyze → Build State → Generate → Simulate → Evaluate → Select → Ex
 | Execute | apply_and_verify (PatchExecutor) |
 | Learn | record_outcome → EventLog, opt-in adapt_weights |
 
-Формализация полного цикла — в плане R8 (docs/REVIEW_2026_IV_ANALYSIS.md).
+Полная формализация: **docs/COGNITIVE_LOOP.md** — контракты этапов, потоки данных, маппинг на код.
 
 ---
 

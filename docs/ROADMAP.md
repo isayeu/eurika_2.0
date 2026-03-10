@@ -415,9 +415,9 @@ while True:
 | R5 | Learning центральный (ExperienceStore, weight adaptation) | ✅ Learning Loop документирован |
 | R6 | Целевая структура: world_model/, reasoning/, execution/, memory/ | docs/TARGET_V3_STRUCTURE.md |
 | R7 | Риски (Fragmented Intelligence и др.) | ✅ docs/RISKS.md |
-| R8 | Cognitive Loop — маппинг этапов | 📄 Architecture §0.9 |
+| R8 | Cognitive Loop — полная формализация | ✅ docs/COGNITIVE_LOOP.md |
 | R9 | Experience Memory с delta_energy | 📄 MEMORY.md; W+=lr×ΔE в плане |
-| R10 | Plugin system, Knowledge Graph | 📄 R10_EXTENSIBILITY_AND_KNOWLEDGE.md; plugins analyzer ✓; KG в плане |
+| R10 | Plugin system, Knowledge Graph | ✅ plugins ✓; code_graph, build_test_links, get_knowledge_graph, /api/test_links, /api/knowledge_graph |
 
 **Риски:** docs/RISKS.md — 10 рисков, статус митигации.
 

@@ -32,9 +32,11 @@ knowledge graph    — tests, связи code↔tests, семантика
 |---------|---------|-----|
 | **Code** | project_graph, self_map (imports, modules) | functions, calls — частично (code_awareness) |
 | **Architecture** | DependencyGraph, smells, metrics | ✅ основной фокус |
-| **Knowledge** | — | tests, code↔test связи, семантические роли |
+| **Knowledge** | build_test_links, get_knowledge_graph, GET /api/test_links, /api/knowledge_graph | семантические роли — по приоритету |
 
-**Принцип:** не начинать до стабилизации ядра (R2, R3). Knowledge Graph — этап после v3.x target structure.
+**Статус:** v3.x стабилизация пройдена. KG реализован: code_graph, build_test_links, get_knowledge_graph; GET /api/test_links, /api/knowledge_graph.
+
+**Design doc:** docs/KNOWLEDGE_GRAPH_DESIGN.md — целевая схема (code/arch/knowledge), реализация §2–5.
 
 ---
 

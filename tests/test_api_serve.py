@@ -216,6 +216,82 @@ def test_dispatch_api_get_knowledge_returns_structured(tmp_path: Path, monkeypat
     assert len(data.get("fragments") or []) >= 1
 
 
+def test_dispatch_api_get_test_links_no_self_map(tmp_path: Path, monkeypatch) -> None:
+    """GET /api/test_links returns error when self_map.json missing (R10)."""
+    captured: dict[str, object] = {}
+
+    def _fake_json_response(_handler, data: dict, status: int = 200) -> None:
+        captured["status"] = status
+        captured["data"] = data
+
+    monkeypatch.setattr(api_serve, "_json_response", _fake_json_response)
+    handled = api_serve._dispatch_api_get(_DummyHandler(), tmp_path, "/api/test_links", {})
+    assert handled is True
+    assert captured.get("status") == 200
+    data = captured.get("data") or {}
+    assert data.get("links") == []
+    assert "error" in data
+    assert "self_map" in (data.get("hint") or "").lower() or "scan" in (data.get("hint") or "").lower()
+
+
+def test_dispatch_api_get_knowledge_graph_with_self_map(tmp_path: Path, monkeypatch) -> None:
+    """GET /api/knowledge_graph returns code + test_links (R10 facade)."""
+    import json
+
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_bar.py").write_text("from foo import x")
+    (tmp_path / "foo.py").write_text("x = 1")
+    sm = {"modules": [{"path": "foo.py", "name": "foo"}], "dependencies": {}}
+    (tmp_path / "self_map.json").write_text(json.dumps(sm), encoding="utf-8")
+
+    captured: dict[str, object] = {}
+
+    def _fake_json_response(_handler, data: dict, status: int = 200) -> None:
+        captured["status"] = status
+        captured["data"] = data
+
+    monkeypatch.setattr(api_serve, "_json_response", _fake_json_response)
+    handled = api_serve._dispatch_api_get(_DummyHandler(), tmp_path, "/api/knowledge_graph", {})
+    assert handled is True
+    assert captured.get("status") == 200
+    data = captured.get("data") or {}
+    assert "code" in data
+    assert data["code"].get("nodes") == ["foo.py"]
+    assert "test_links" in data
+    assert any("test_bar.py" in str(link[0]) for link in (data.get("test_links") or []))
+
+
+def test_dispatch_api_get_test_links_with_self_map(tmp_path: Path, monkeypatch) -> None:
+    """GET /api/test_links returns links when self_map + tests exist (R10)."""
+    import json
+
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_foo.py").write_text("from myapp.bar import x\ndef test_x(): pass")
+    (tmp_path / "myapp").mkdir()
+    (tmp_path / "myapp" / "__init__.py").write_text("")
+    (tmp_path / "myapp" / "bar.py").write_text("x = 1")
+    sm = {
+        "modules": [{"path": "myapp/__init__.py", "name": "myapp"}, {"path": "myapp/bar.py", "name": "bar"}],
+        "dependencies": {},
+    }
+    (tmp_path / "self_map.json").write_text(json.dumps(sm), encoding="utf-8")
+
+    captured: dict[str, object] = {}
+
+    def _fake_json_response(_handler, data: dict, status: int = 200) -> None:
+        captured["status"] = status
+        captured["data"] = data
+
+    monkeypatch.setattr(api_serve, "_json_response", _fake_json_response)
+    handled = api_serve._dispatch_api_get(_DummyHandler(), tmp_path, "/api/test_links", {})
+    assert handled is True
+    assert captured.get("status") == 200
+    data = captured.get("data") or {}
+    links = data.get("links") or []
+    assert any(link[1] == "myapp/bar.py" for link in links)
+    assert any("test_foo.py" in str(link[0]) for link in links)
+
+
 def test_dispatch_api_get_history_returns_dict(tmp_path: Path, monkeypatch) -> None:
     """GET /api/history should return dict (CR-B1)."""
     captured: dict[str, object] = {}

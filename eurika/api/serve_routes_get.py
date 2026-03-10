@@ -11,7 +11,9 @@ from eurika.api import (
     get_graph,
     get_history,
     get_knowledge,
+    get_knowledge_graph,
     get_metrics,
+    get_test_links,
     get_operational_metrics,
     get_patch_plan,
     get_pattern_library,
@@ -71,7 +73,9 @@ def dispatch_api_get(
                 "GET /api/graph — dependency graph (nodes=modules, edges=imports)",
                 "GET /api/operational_metrics?window=10 — apply-rate, rollback-rate, median verify time",
                 "GET /api/pattern_library?with_samples=1 — OSS pattern library (Learning from GitHub 3.0.5)",
-                "GET /api/knowledge?topic=...&online=0 — Knowledge Layer query (KNOWLEDGE_LAYER.md)",
+                "GET /api/test_links — R10: test_file→module links",
+                "GET /api/knowledge_graph — R10: code + test_links facade",
+                "GET /api/knowledge?topic=...&online=0 — Knowledge Layer query",
                 "GET /api/pending_plan — team-mode plan for approve UI (ROADMAP 3.5.6)",
                 "GET /api/file?path=... — read file content (for diff preview)",
                 "POST /api/operation_preview — preview single-file op diff (ROADMAP 3.6.7)",
@@ -112,6 +116,12 @@ def dispatch_api_get(
     if path == "/api/pattern_library":
         samples = query.get("with_samples", ["1"])[0].lower() not in ("0", "false", "no")
         _serve._json_response(handler, get_pattern_library(project_root, with_samples=samples))
+        return True
+    if path == "/api/test_links":
+        _serve._json_response(handler, get_test_links(project_root))
+        return True
+    if path == "/api/knowledge_graph":
+        _serve._json_response(handler, get_knowledge_graph(project_root))
         return True
     if path == "/api/knowledge":
         topic_q = query.get("topic", [])

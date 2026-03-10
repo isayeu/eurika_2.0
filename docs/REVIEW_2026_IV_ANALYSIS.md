@@ -62,9 +62,9 @@
 
 | #   | Задача                                                                                            | Статус |
 | --- | ------------------------------------------------------------------------------------------------- | ------ |
-| R8  | Cognitive Loop: Analyze → Build State → Generate → Simulate → Evaluate → Select → Execute → Learn | 📄 Architecture §0.9 — маппинг этапов; полная формализация — в плане |
+| R8  | Cognitive Loop: Analyze → Build State → Generate → Simulate → Evaluate → Select → Execute → Learn | ✅ docs/COGNITIVE_LOOP.md — полная формализация, контракты этапов |
 | R9  | Experience Memory с delta_energy                                                                  | ✅ P6: W-=lr×ΔE при EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY=1 |
-| R10 | Plugin system, Knowledge Graph                                                                    | 📄 R10_EXTENSIBILITY_AND_KNOWLEDGE.md — plugins (analyzer) ✓; KG (code/arch/knowledge) — в плане |
+| R10 | Plugin system, Knowledge Graph                                                                    | ✅ plugins ✓; code_graph, build_test_links, get_knowledge_graph, GET /api/test_links, /api/knowledge_graph |
 
 
 ---

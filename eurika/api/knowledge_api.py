@@ -6,6 +6,7 @@ API endpoint GET /api/knowledge даёт доступ для UI без дубл�
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import asdict
 from pathlib import Path
@@ -51,3 +52,57 @@ def get_knowledge(
     provider = _build_knowledge_provider(project_root, online=online)
     result = provider.query(topic)
     return asdict(result)
+
+
+def get_test_links(project_root: Path) -> Dict[str, Any]:
+    """
+    R10 Knowledge Graph: связи test_file → tested_module.
+
+    Returns {"links": [[test_path, module_path], ...]}. Requires self_map.json.
+    """
+    from eurika.knowledge import build_code_graph, build_test_links
+
+    root = Path(project_root).resolve()
+    self_map_path = root / "self_map.json"
+    if not self_map_path.exists():
+        return {"links": [], "error": "self_map.json not found", "hint": "run eurika scan first"}
+    try:
+        self_map = json.loads(self_map_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        return {"links": [], "error": str(e)}
+    cg = build_code_graph(self_map)
+    links = build_test_links(root, cg)
+    return {"links": [[a, b] for a, b in links]}
+
+
+def get_knowledge_graph(project_root: Path) -> Dict[str, Any]:
+    """
+    R10 Knowledge Graph — объединённый фасад (KNOWLEDGE_GRAPH_DESIGN §5).
+
+    Returns: code (nodes, edges_count), test_links. Architecture graph — отдельно (get_graph, get_summary).
+    """
+    from eurika.knowledge import build_code_graph, build_test_links
+
+    root = Path(project_root).resolve()
+    self_map_path = root / "self_map.json"
+    if not self_map_path.exists():
+        return {
+            "code": {"nodes": [], "edges_count": 0},
+            "test_links": [],
+            "error": "self_map.json not found",
+            "hint": "run eurika scan first",
+        }
+    try:
+        self_map = json.loads(self_map_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        return {"code": {"nodes": [], "edges_count": 0}, "test_links": [], "error": str(e)}
+
+    cg = build_code_graph(self_map)
+    links = build_test_links(root, cg)
+    return {
+        "code": {
+            "nodes": sorted(cg.nodes),
+            "edges_count": sum(len(dsts) for dsts in cg.edges.values()),
+        },
+        "test_links": [[a, b] for a, b in links],
+    }

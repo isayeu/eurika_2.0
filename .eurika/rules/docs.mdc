@@ -22,6 +22,8 @@ alwaysApply: true
 | **@docs/TARGET_V3_STRUCTURE.md** | Целевая структура v3.x: world_model/reasoning/execution/memory |
 | **@docs/REVIEW_2026_IV_ANALYSIS.md** | Анализ Review IV, R1–R10, связь с ROADMAP |
 | **@docs/R10_EXTENSIBILITY_AND_KNOWLEDGE.md** | Plugin system, Knowledge Graph (R10) |
+| **@docs/COGNITIVE_LOOP.md** | R8: Cognitive Loop — контракты 8 этапов, ExecutionContext |
+| **@docs/KNOWLEDGE_GRAPH_DESIGN.md** | R10: Knowledge Graph — схема code/arch/knowledge |
 
 Импорты — только через публичный API из API_BOUNDARIES. Нарушения слоёв проверяет dependency firewall.
 
