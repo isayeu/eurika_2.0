@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -115,8 +116,11 @@ def main() -> int:
     parser.add_argument("--max-cycles", type=int, default=500, help="Max cycles (default 500)")
     parser.add_argument("--report-every", type=int, default=100, help="Report interval (default 100)")
     parser.add_argument("--dry-run", action="store_true", help="Only dry-run (no apply)")
-    parser.add_argument("-q", "--quiet", action="store_true", default=True, help="Quiet mode")
     args = parser.parse_args()
+
+    # Weight adaptation for learning (P6/R9)
+    os.environ["EURIKA_WEIGHT_ADAPTATION"] = "1"
+    os.environ["EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY"] = "1"
 
     project = args.project.resolve()
     if not (project / ".eurika").exists() and not (project / "eurika").exists():
@@ -135,6 +139,7 @@ def main() -> int:
         pass
 
     for i in range(1, args.max_cycles + 1):
+        print(f"\n--- Cycle {i}/{args.max_cycles} ---", flush=True)
         # Progress file for `cat .eurika/cycle_batch_progress.json` to check current cycle
         try:
             progress_file.write_text(
@@ -149,7 +154,7 @@ def main() -> int:
         out = run_cycle(
             project,
             mode="fix",
-            quiet=args.quiet,
+            quiet=False,
             non_interactive=True,
             dry_run=args.dry_run,
             allow_low_risk_campaign=True,

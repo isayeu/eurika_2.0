@@ -142,7 +142,7 @@ UI.md ✓; README ✓; критерии **B.7–B.14** выполнены. Оц�
 
 | Приоритет | Шаг | Оценка | Зависимости |
 |-----------|-----|--------|-------------|
-| **P1** | 200 циклов, CYCLE_REPORT | ~6–8 ч | run_cycle_batch с `tail -f .eurika/cycle_batch_report.md`; nohup при фоне |
+| **P1** | 200 циклов, CYCLE_REPORT | ~6–8 ч | ✅ CYCLE_REPORT #127, #149; run_cycle_batch weight adaptation + quiet=False |
 | **P2** | Очистка `.eurika_backups` | 1 мин | `rm -rf .eurika_backups` перед release |
 | **P3** | Ритуал dogfooding после сессии | 5 мин | `eurika fix . --dry-run`; при изменениях — CYCLE_REPORT |
 | **P4** | File size >600 LOC (по необходимости) | varies | ✅ chat_intent 515, prepare 544, extract_function 529, architect 528; extract helpers (chat_intent_detectors, prepare_critic, extract_function_ast, architect_helpers) |

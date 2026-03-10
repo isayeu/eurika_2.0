@@ -2,6 +2,7 @@
 
 ## Current state (2026-03-08)
 
+- **149. 200 fix cycles batch #2 (2026-03):** run_cycle_batch 200 циклов. EURIKA_WEIGHT_ADAPTATION=1, EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY=1; quiet=False; --- Cycle N/200 в консоли. CYCLE_REPORT @50, @100, @150, @200. success_rate 1.0, apply_rate 1.0, rollback 0; top_failure N/A; most_deprioritized N/A; events.json ~190 KB. run_cycle_batch: weight adaptation по умолчанию. Qt Terminal Stop: setsid + killpg для завершения всей цепочки (bash→python→pytest). CYCLE_REPORT #149.
 - **148. P8 memory alias (2026-03):** eurika/memory/ — re-exports ProjectMemory, record_outcome, get_statistics, checkpoint, EventStore, ExperienceStore из eurika.storage. TARGET_V3_STRUCTURE §4. dependency_firewall L0.
 - **147. P7 world_model alias (2026-03):** eurika/world_model/ — re-exports MetricVector, EnergyModel, WeightVector из eurika.analysis. TARGET_V3_STRUCTURE §4. dependency_firewall: L2 path/import rules. Без перемещения файлов. ROADMAP P7 ✅.
 - **146. P6 R9 W-=lr×ΔE (2026-03):** adapt_weights_from_experience при EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY=1 использует delta_energy из learn events. LearningView.get_experience_with_delta_energy, get_learn_events_with_delta_energy. Формула W -= lr*delta (negative=improvement→W↑). Обрабатывается только последнее событие. MEMORY.md, CLI.md, test_adapt_weights_delta_energy_mode. ROADMAP P6 ✅.
@@ -84,6 +85,21 @@ top_failure_reason: incomplete_or_broken_llm_extract (constant). most_deprioriti
 | 200 | N/A | N/A | N/A | N/A | human_rejected | 196 KB |
 
 most_deprioritized_goal: extract_block_to_helper (hash менялся 112d... → 9379...).
+
+---
+
+## 149. Snapshot (2026-03-08) — 200 cycles batch #2
+
+Циклы 50, 100, 150, 200. **Был ли сдвиг поведения? No.** Метрики стабильны; провалов не зафиксировано.
+
+| Цикл | success_rate | apply_rate | rollback_rate | top_failure | most_deprioritized | events.json |
+|------|--------------|------------|---------------|-------------|-------------------|-------------|
+| 50 | 1.0 | 1.0 | 0.0 | N/A | N/A | 190 KB |
+| 100 | 1.0 | 1.0 | 0.0 | N/A | N/A | 190 KB |
+| 150 | 1.0 | 1.0 | 0.0 | N/A | N/A | 190 KB |
+| 200 | 1.0 | 1.0 | 0.0 | N/A | N/A | 190 KB |
+
+**Изменения run_cycle_batch (сессия):** EURIKA_WEIGHT_ADAPTATION=1, EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY=1 по умолчанию; quiet=False; вывод `--- Cycle N/200 ---` перед каждым циклом. **Terminal Stop:** setsid + os.killpg для корректного завершения bash→python→children из GUI.
 
 ---
 

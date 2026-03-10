@@ -14,7 +14,7 @@ Used by:
 """
 from __future__ import annotations
 from pathlib import Path
-from typing import Dict, List
+from typing import List
 from eurika.analysis.build_graph_summary import build_graph_and_summary
 from eurika.analysis.scanner import semantic_summary
 from eurika.analysis.topology import central_modules_for_topology, topology_summary

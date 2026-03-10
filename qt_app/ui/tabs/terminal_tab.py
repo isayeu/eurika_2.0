@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -88,6 +89,21 @@ def handle_cd_command(main: MainWindow, cmd: str, cwd: str) -> str | None:
         return None
 
 
+def _start_terminal_process(proc: QProcess, cwd: str, cmd: str) -> None:
+    """Start command in new session so Stop can kill whole process tree (killpg)."""
+    proc.setWorkingDirectory(cwd)
+    if os.name == "posix":
+        # Wrapper: new session so child is in own process group; then killpg won't hit Qt
+        wrapper = (
+            "import os,sys;"
+            "os.setsid();"
+            "os.execvp('bash',['bash','-c',sys.argv[1]])"
+        )
+        proc.start("python3", ["-c", wrapper, cmd])
+    else:
+        proc.start("bash", ["-c", f"trap 'kill 0' TERM; {cmd}"])
+
+
 def _append_stream(main: MainWindow, text: str) -> None:
     """Append text as a stream (preserves horizontal flow: dots on one line, etc.)."""
     te = main.terminal_emulator_output
@@ -149,13 +165,12 @@ def run_terminal_emulator_command(main: MainWindow) -> None:
     main.terminal_emulator_btn.setEnabled(False)
     main.terminal_emulator_stop_btn.setEnabled(True)
     main._terminal_process = QProcess(main)
-    main._terminal_process.setWorkingDirectory(cwd)
     main._terminal_process.readyReadStandardOutput.connect(lambda: _on_terminal_stdout(main))
     main._terminal_process.readyReadStandardError.connect(lambda: _on_terminal_stderr(main))
     main._terminal_process.finished.connect(
         lambda code, status: _on_terminal_finished(main, code, status)
     )
-    main._terminal_process.start("bash", ["-c", cmd])
+    _start_terminal_process(main._terminal_process, cwd, cmd)
 
 
 def stop_terminal_or_command(main: MainWindow) -> None:
@@ -167,10 +182,19 @@ def stop_terminal_or_command(main: MainWindow) -> None:
 
 
 def stop_terminal_emulator(main: MainWindow) -> None:
-    """Terminate running terminal process."""
+    """Terminate running terminal process and its children (bash -c spawns python etc.)."""
     proc = main._terminal_process
     if proc is None or proc.state() == QProcess.NotRunning:
         return
+    pid = proc.processId()
+    if os.name == "posix" and pid > 0:
+        try:
+            pgid = os.getpgid(pid)
+            os.killpg(pgid, signal.SIGTERM)
+            if proc.waitForFinished(3000):
+                return
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
     proc.terminate()
     if not proc.waitForFinished(3000):
         proc.kill()
@@ -287,7 +311,7 @@ def _run_command_in_terminal(
     process.readyReadStandardOutput.connect(_on_stdout)
     process.readyReadStandardError.connect(_on_stderr)
     process.finished.connect(_on_finished)
-    process.start("bash", ["-c", cmd])
+    _start_terminal_process(process, cwd, cmd)
     if result_holder is not None:
         from PySide6.QtCore import QEventLoop
         loop = QEventLoop(main)
