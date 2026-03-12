@@ -408,6 +408,115 @@ while True:
 
 **Риски:** docs/RISKS.md — 10 рисков, статус митигации.
 
+### 5.11 Review V — выводы из нового ревью (docs/review.md ~6000 строк)
+
+**Источник:** docs/review.md ~6000 строк. Диапазоны: ~1–100 структура, ~1540–1720 десять рисков, ~3050–3700 опасные места и freeze, ~3515–3690 двадцать опасных мест, ~4510–5750 Architecture Intelligence / Time Machine / Genome / Gravity.
+
+#### Краткая сводка
+
+| Тема | Вывод | Статус / Действие |
+|------|-------|-------------------|
+| EnergyModel | «Не увидела явного EnergyModel» — устаревшая оценка | ✅ eurika/analysis/energy_model.py; delta через metrics_from_graph |
+| Runtime-мусор | __pycache__, .pyc искажают граф и метрики | ✅ .gitignore, MANIFEST.in; release_check шаг 8b |
+| architecture_* proliferation | advisor, pipeline, learning, feedback, diff, summary → один reasoning engine | Частично: planner (§5.6); полная миграция — TARGET_V3_STRUCTURE |
+| API рост | chat_rag, chat_intent, chat_tools… — граница core vs api | ✅ API_BOUNDARIES; дальнейшая изоляция — backlog |
+| 5 практичных метрик | dependency_density, cycle_count, god_module_score, blast_radius, layer_violations | Частично в MetricVector; blast_radius — RV1 |
+| Fragility / Blast Radius | Радиус влияния, «опасные зоны» (core/, utils/, config/) | Backlog: risk_prediction расширение |
+
+**Оценки:** амбиция 9/10, модульность 7/10, AI-модель 6/10, инженерная дисциплина 6/10. **Интерпретация:** 70% мощной архитектуры, 30% потенциального хаоса — нормально для AI-систем; критический момент стабилизации.
+
+**Позитив (из ревью):** MetricVector+EnergyModel, ExperienceStore, DeltaEvaluator, extraction_sandbox — «очень сильные решения»; graph как главный актив; simulation-first apply; correct delta approach (before/after/energy).
+
+**Позиционирование Eurika:** Architecture Intelligence Engine — код → граф → reasoning → трансформация, а не text→text. Уникальная ниша: AI Architecture Engineer, не просто AI coder. Граф, а не LLM — основа решений.
+
+#### 10 архитектурных рисков (из ревью) и митигация
+
+| # | Риск | Решение | Статус |
+|---|------|---------|--------|
+| 1 | Fragmented Intelligence — много модулей, нет центра решений | Decision Engine (planner + critic) | Частично: planner 4 шага |
+| 2 | Patch Explosion — 1 проблема → 5 патчей → каскад | Patch Simulation Layer, evaluate_metrics до apply | ✅ simulate_patch, rollback |
+| 3 | Memory Without Learning — хранит, не извлекает | pattern_miner, pattern memory | Частично: ExperienceStore, weight_store |
+| 4 | Graph Only Sees Dependencies | call_graph, data_flow, test_coverage | Backlog |
+| 5 | No Architectural Scoring | Architecture Score, Energy | ✅ MetricVector, EnergyModel |
+| 6 | No Strategy Layer — реактивно | strategy_engine, prioritize by severity | Частично: energy_ranking, priority_from_graph |
+| 7 | Analyzer Lock — один анализатор | plugins/analyzers, multi-analyzer | Backlog |
+| 8 | No Safety Layer | patch_guard: syntax, tests, coverage | Частично: verify, simulation |
+| 9 | No Long-Term Evolution | strategy_learning, evolve algorithms | Backlog |
+| 10 | No Multi-Agent | architect, analyzer, refactor, critic agents | Backlog |
+
+#### 20 опасных мест (ключевые, из ревью)
+
+| Файл/зона | Риск | Митигация |
+|-----------|------|-----------|
+| metric_vector.py | Метрики не в [0,1] → энергия бессмысленна | ✅ compute_metric_vector нормализует |
+| energy_model.py | Learning меняет веса во время цикла | ✅ weights_snapshot = freeze(); RV8 |
+| weight_store.py | Schema mismatch через релизы | weights_version, metrics_schema_hash ✅ RV6 |
+| planner/engine | Exponential actions | MAX_ACTIONS, energy_cap_per_cycle, EURIKA_MAX_OPS_PER_CYCLE |
+| actions_proposal | split_module для 50 строк | Фильтр file_lines; heuristics |
+| energy_ranking | Одна метрика — trade-off | multi-objective: stability_penalty — backlog |
+| llm_adapter | LLM → прямой patch | LLM → proposal, не прямой patch ✅ |
+| extract_function | closures, decorators, async | extraction-lessons, suggest_extract_block scope |
+| 13 подсистем | На грани управляемости | TARGET_V3_STRUCTURE, freeze |
+| 5 storage слоёв | Рассинхрон, race | Цель: 3 слоя (session, experience, state) |
+| patch_engine | file.write без AST validation | verify, simulation; при необходимости AST |
+| checks/ | before/after/delta | delta_evaluator на уровне проекта |
+| experience_store | свалка без контекста | project size, module size, context в record |
+| strategy_selector | переобучение на малой статистике | bounded learning, decay |
+| state_store | сохранение без transaction | atomic write; corrupted state при crash |
+| session_memory | без ограничения → leak | bounded retention |
+| agent/ | God Object: analysis+plan+exec+learn | чёткое разделение ролей |
+| orchestration/ | монолитный координатор | только eurika/orchestration; CLI вызывает |
+| plugins/ | ломает внутренний API | version contract |
+| split_module | relative/circular imports | осторожность при move imports |
+| introduce_facade | может увеличить coupling | эвристики |
+
+#### Конкретные шаги «следующий релиз» (из ревью)
+
+| # | Шаг | Описание |
+|---|-----|----------|
+| S1 | Очистка | *_extracted → sandbox ✅; polygon → /internal или dev_tools — по решению |
+| S2 | Убрать дубли core | core/* vs eurika/core/* — консолидировать ✅ |
+| S3 | Orchestration | Только eurika/orchestration; CLI вызывает ✅ |
+| S4 | Упростить planner | engine, actions, heuristics, models; analysis, filter_policy, hints_provider — вынос/объединение. ✅ core_extracted → graph_analysis; planner_patch_ops → planner/patch_ops |
+| S5 | Память 3 слоя | session_memory, experience_store, state_store |
+| **S0** | **Architecture Freeze** | 3 релиза: не добавлять фичи, только упрощать |
+
+#### Концептуальные модели (long-term, после 5 метрик)
+
+| Модель | Описание | Ссылка review |
+|--------|----------|---------------|
+| Architecture Time Machine | Snapshots по времени, health trend, collapse prediction; project_t0..tN; архитектурная деградация | ~4628–4740 |
+| Architecture Genome | Fitness, genetic ops, evolution engine; modules_count, dependency_density, layering_score | ~4749+ |
+| Architecture Gravity | gravity_score = incoming_edges × log(size) × change_rate; «архитектурные чёрные дыры» | ~4850+ |
+| Fragile Zones | impact_score, propagation_depth, blast_radius; heatmap green/yellow/red | §5.11 RV10 |
+| 5 метрик сначала | dependency_density, cycle_count, god_module, blast_radius, layer_violations — genome/gravity потом | практический совет |
+
+#### Шаги RV1–RV15 (приоритет: низкий)
+
+| # | Шаг | Описание |
+|---|-----|----------|
+| RV1 | Blast Radius | `blast_radius(module)` = direct + transitive dependents; Top N по влиянию |
+| RV2 | Dependency Density | `edges / (nodes*(nodes-1))` |
+| RV3 | Reasoning consolidation | analyzer, generator, simulator, evaluator |
+| RV4 | Release hygiene | sdist без __pycache__ ✅ |
+| RV5 | Low fragility | coupling, blast_radius в рекомендациях |
+| RV6 | weight_store versioning | weights_version, metrics_schema_hash ✅ |
+| RV7 | planner caps | MAX_ACTIONS=20, MAX_PLAN_DEPTH=3, BEAM_WIDTH=5 |
+| RV8 | Weights freeze | weight_store.freeze() на время цикла; adaptation после |
+| RV9 | Multi-objective ranking | stability_penalty в energy_ranking |
+| RV10 | Fragility heatmap | green/yellow/red по модулям |
+| RV11 | Call graph / data flow | Расширить project_graph (сейчас только imports) |
+| RV12 | Architecture Time Machine | snapshots по времени, health trend (long-term) |
+| RV13 | Architecture Gravity | gravity_score, black holes (long-term, после 5 метрик) |
+| RV14 | Patch safety layer | patch_guard: syntax, tests, coverage |
+| RV15 | Plugin version contract | явный контракт для plugins |
+
+**Чего избегать:** новые фичи до стабилизации; genome/gravity/evolution до базовых 5 метрик. **Главный совет:** Architecture Freeze — 3 релиза только упрощение.
+
+**Multi-agent vision (риск №10):** architect, analyzer, refactor, critic как отдельные агенты — backlog; пока один planner.
+
+**Скрытая опасность (review ~3690):** analysis, reasoning, learning, refactor, evaluation, agent, orchestration — dependency web через 10–20 релизов; core должен быть чистым.
+
 ---
 
 ## 6. Открытый бэклог (следующие шаги)
@@ -474,6 +583,25 @@ while True:
 - §5.7 этапы 1–7: MetricVector, EnergyModel, ΔEnergy, ExecutionContext, ArchitectureSnapshot, ExperienceStore, Weight adaptation — ✅
 - **v4.0 meta-controller:** переключение стратегий при деградации — ✅ `eurika/cognition/meta_controller.py`; `EURIKA_META_CONTROLLER=1` при `EURIKA_WEIGHT_ADAPTATION=1`.
 - **GET /api/metrics:** MetricVector + Energy для текущего состояния — ✅ `eurika.api.get_metrics`; для dashboard, delta tracking.
+- **DeltaEvaluator на EnergyModel:** verify/rollback по E = W·M; delta_score → record_outcome; weight adaptation по delta_energy (ROADMAP §5.11, март 2026) ✅
+
+### 6.8 Review V — бэклог (приоритет низкий)
+
+- [ ] **RV1** Blast Radius — `blast_radius(module)` = direct + transitive dependents; отчёт «Top N по влиянию»
+- [ ] **RV2** Dependency Density — `edges / (nodes*(nodes-1))` в отчёт или MetricVector
+- [ ] **RV3** Reasoning consolidation — целевая структура reasoning/: analyzer, generator, simulator, evaluator (TARGET_V3_STRUCTURE)
+- [x] **RV4** Release hygiene — sdist без __pycache__/.pyc; release_check шаг 8b; MANIFEST.in; scripts/clean_before_release.sh ✅
+- [ ] **RV5** Low fragility goal — coupling/blast radius в рекомендациях, не только size
+- [x] **RV6** weight_store versioning — `weights_version`, `metrics_schema_hash` для миграций между релизами ✅
+- [x] **RV7** planner caps — MAX_ACTIONS=20 (EURIKA_MAX_ACTIONS), MAX_PLAN_DEPTH=3, BEAM_WIDTH=5 в heuristics; effective_cap = min(max_actions, max_ops_per_cycle); BOUNDED_EVOLUTION §3 ✅
+- [x] **RV8** Weights freeze — `weights_snapshot = weight_store.freeze()` на время planner-цикла; EURIKA_WEIGHT_ADAPTATION только после цикла ✅
+- [ ] **RV9** Multi-objective ranking — stability_penalty в energy_ranking; не одна метрика
+- [ ] **RV10** Fragility heatmap — green/yellow/red по модулям; impact_score, propagation_depth
+- [ ] **RV11** Call graph / data flow — расширить project_graph (сейчас только imports)
+- [ ] **RV12** Architecture Time Machine — snapshots по времени, health trend, collapse prediction (long-term)
+- [ ] **RV13** Architecture Gravity — gravity_score, black holes (long-term, после 5 метрик)
+- [ ] **RV14** Patch safety layer — patch_guard: syntax, tests, coverage; усилить verify
+- [ ] **RV15** Plugin version contract — явный контракт для plugins, чтобы не ломать внутренний API
 
 ---
 
