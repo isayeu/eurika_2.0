@@ -1,12 +1,14 @@
 """
-StateStore — dumb persistence for architecture snapshots (ROADMAP §5.8, review Storage 3 layers).
+StateStore — dumb persistence for architecture snapshots (ROADMAP §5.8, S5).
 
 Save/load snapshot checkpoints. Uses self_map format as storage format; no business logic.
+S5: atomic write to avoid corrupted state on crash.
 """
 
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +33,7 @@ def save_checkpoint(project_root: Path, label: str = DEFAULT_LABEL) -> bool:
     Save current self_map as a named checkpoint.
 
     Copies project_root/self_map.json to .eurika/state/{label}.json.
+    S5: atomic write (temp + rename) — no corrupted state on crash.
     Returns True if saved, False if self_map.json missing.
     """
     root = Path(project_root).resolve()
@@ -41,7 +44,18 @@ def save_checkpoint(project_root: Path, label: str = DEFAULT_LABEL) -> bool:
     ensure_storage_dir(root)
     state_dir.mkdir(exist_ok=True)
     target = _checkpoint_path(root, label)
-    target.write_text(self_map_path.read_text(encoding="utf-8"), encoding="utf-8")
+    content = self_map_path.read_text(encoding="utf-8")
+    tmp = target.with_suffix(".json.tmp")
+    try:
+        tmp.write_text(content, encoding="utf-8")
+        os.replace(tmp, target)
+    except OSError:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+        raise
     return True
 
 

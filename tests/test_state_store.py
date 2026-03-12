@@ -40,6 +40,22 @@ def test_snapshot_from_checkpoint_missing(tmp_path: Path) -> None:
     assert snapshot_from_checkpoint(tmp_path, "nonexistent") is None
 
 
+def test_load_checkpoint_s5_corrupted_returns_none(tmp_path: Path) -> None:
+    """S5: corrupted checkpoint file returns None (no crash)."""
+    state_dir = tmp_path / ".eurika" / "state"
+    state_dir.mkdir(parents=True)
+    (state_dir / "latest.json").write_text("not valid json {{{")
+    assert load_checkpoint(tmp_path, "latest") is None
+
+
+def test_save_checkpoint_s5_atomic_write(tmp_path: Path) -> None:
+    """S5: save uses temp+replace; no .tmp leftover on success."""
+    (tmp_path / "self_map.json").write_text('{"modules":[],"dependencies":{}}')
+    assert save_checkpoint(tmp_path, "atomic_test") is True
+    assert (tmp_path / ".eurika" / "state" / "atomic_test.json").exists()
+    assert not (tmp_path / ".eurika" / "state" / "atomic_test.json.tmp").exists()
+
+
 def test_snapshot_from_checkpoint_builds_unified(tmp_path: Path) -> None:
     """snapshot_from_checkpoint returns planner.models.ArchitectureSnapshot."""
     from eurika.reasoning.planner.models import ArchitectureSnapshot
@@ -52,3 +68,5 @@ def test_snapshot_from_checkpoint_builds_unified(tmp_path: Path) -> None:
     assert isinstance(snap, ArchitectureSnapshot)
     assert snap.graph is not None
     assert snap.metrics is not None
+
+

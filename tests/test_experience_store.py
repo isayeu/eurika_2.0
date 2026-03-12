@@ -77,6 +77,32 @@ def test_record_outcome_verify_fail(tmp_path: Path) -> None:
         _restore_global_store()
 
 
+def test_record_outcome_s5_context(tmp_path: Path) -> None:
+    """S5: project_size, module_size, context stored in learn event."""
+    _disable_global_store()
+    try:
+        record_outcome(
+            tmp_path,
+            ["a.py"],
+            [{"kind": "refactor_module", "target_file": "a.py"}],
+            [],
+            True,
+            project_size=1000,
+            module_size=150,
+            context="god_module refactor",
+        )
+        from eurika.storage.memory import ProjectMemory
+        memory = ProjectMemory(tmp_path)
+        events = memory.events.recent_events(limit=5, types=("learn",))
+        assert len(events) >= 1
+        inp = events[0].input or {}
+        assert inp.get("project_size") == 1000
+        assert inp.get("module_size") == 150
+        assert inp.get("context") == "god_module refactor"
+    finally:
+        _restore_global_store()
+
+
 def test_experience_store_class(tmp_path: Path) -> None:
     """ExperienceStore.record_outcome and get_statistics work."""
     _disable_global_store()

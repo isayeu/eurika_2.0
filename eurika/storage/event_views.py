@@ -135,7 +135,11 @@ class LearningView:
         goal_id: Optional[str] = None,
         plan_hash: Optional[str] = None,
         confidence: Optional[float] = None,
+        project_size: Optional[int] = None,
+        module_size: Optional[int] = None,
+        context: Optional[str] = None,
     ) -> None:
+        """S5: project_size, module_size, context — avoid 'свалка без контекста'."""
         self._ensure_migrated()
         output: Dict[str, Any] = {}
         if delta_energy is not None:
@@ -148,14 +152,21 @@ class LearningView:
             output["plan_hash"] = plan_hash
         if confidence is not None:
             output["confidence"] = confidence
+        inp: Dict[str, Any] = {
+            "project_root": str(project_root),
+            "modules": list(modules),
+            "operations": list(operations),
+            "risks": list(risks),
+        }
+        if project_size is not None:
+            inp["project_size"] = project_size
+        if module_size is not None:
+            inp["module_size"] = module_size
+        if context is not None:
+            inp["context"] = context
         self._events.append_event(
             type="learn",
-            input={
-                "project_root": str(project_root),
-                "modules": list(modules),
-                "operations": list(operations),
-                "risks": list(risks),
-            },
+            input=inp,
             output=output,
             result=verify_success,
         )

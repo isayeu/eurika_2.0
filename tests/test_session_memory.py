@@ -67,3 +67,13 @@ def test_campaign_whitelist_candidates_excludes_repeated_fail(tmp_path: Path) ->
     mem.record_verify_failure([op])
     mem.record_verify_failure([op])
     assert operation_key(op) not in mem.campaign_whitelist_candidates()
+
+
+def test_s5_bounded_sessions_retention(tmp_path: Path) -> None:
+    """S5: sessions beyond _SESSIONS_MAX are trimmed; campaign kept."""
+    mem = SessionMemory(tmp_path)
+    for i in range(25):
+        mem.record(f"s{i}", approved=[], rejected=[{"target_file": f"f{i}.py", "kind": "split", "params": {}}])
+    data = mem._load()
+    sessions = data.get("sessions") or {}
+    assert len(sessions) <= 20

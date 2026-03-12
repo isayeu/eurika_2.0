@@ -121,7 +121,15 @@ def append_fix_cycle_memory(path: Path, result: Any, operations: list[OperationR
                 failure_reason = _extracted_block_208(report)
             elif not modified and any((op.get('kind', '') in ('extract_block_to_helper', 'extract_nested_function', 'llm_extract_block') or 'extract_block' in str(op.get('execution_reason', '')) or 'extract_nested' in str(op.get('execution_reason', '')) for op in learning_operations)):
                 failure_reason = 'extract_no_modification'
-            record_outcome(path, modules_for_learning, learning_operations, risks, verify_success, delta_energy=delta_energy, failure_reason=failure_reason)
+            # S5: project_size, module_size from summary for experience_store context
+            sub = summary.get("summary") or summary
+            project_size = sub.get("total_lines") or sub.get("files")
+            module_size = None  # optional: from first op target lines
+            record_outcome(
+                path, modules_for_learning, learning_operations, risks, verify_success,
+                delta_energy=delta_energy, failure_reason=failure_reason,
+                project_size=project_size, module_size=module_size,
+            )
             import os
             # Energy-based loop (ROADMAP §5.7–5.9): default on for fix cycle. Set EURIKA_WEIGHT_ADAPTATION=0 to disable.
             adapt_env = os.environ.get('EURIKA_WEIGHT_ADAPTATION', '1').strip().lower()

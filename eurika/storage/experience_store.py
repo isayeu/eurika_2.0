@@ -56,6 +56,9 @@ def record_outcome(
     goal_id: Optional[str] = None,
     plan_hash: Optional[str] = None,
     confidence: Optional[float] = None,
+    project_size: Optional[int] = None,
+    module_size: Optional[int] = None,
+    context: Optional[str] = None,
 ) -> None:
     """
     Записать outcome patch-apply + verify в локальный и глобальный store.
@@ -63,6 +66,7 @@ def record_outcome(
     Не меняет веса EnergyModel. delta_energy — для этапа 7 (weight adaptation).
     failure_reason — при verify_success=False для самокоррекции (Review III).
     goal_id, plan_hash, confidence — привязка к стратегии (ARCHITECTURE_MEMORY_REVIEW §2).
+    S5: project_size, module_size, context — контекст для outcome (avoid свалка без контекста).
     """
     if not operations:
         return
@@ -86,6 +90,9 @@ def record_outcome(
         goal_id=goal_id,
         plan_hash=plan_hash,
         confidence=confidence,
+        project_size=project_size,
+        module_size=module_size,
+        context=context,
     )
     append_learn_to_global(
         project_root,
@@ -257,6 +264,9 @@ class ExperienceStore:
         goal_id: Optional[str] = None,
         plan_hash: Optional[str] = None,
         confidence: Optional[float] = None,
+        project_size: Optional[int] = None,
+        module_size: Optional[int] = None,
+        context: Optional[str] = None,
     ) -> None:
         record_outcome(
             self.project_root,
@@ -269,6 +279,9 @@ class ExperienceStore:
             goal_id=goal_id,
             plan_hash=plan_hash,
             confidence=confidence,
+            project_size=project_size,
+            module_size=module_size,
+            context=context,
         )
 
     def get_statistics(

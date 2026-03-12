@@ -1,8 +1,9 @@
-"""Session memory for hybrid approval decisions (ROADMAP 2.7.5)."""
+"""Session memory for hybrid approval decisions (ROADMAP 2.7.5, S5)."""
 
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,7 @@ from typing import Any
 _CAMPAIGN_VERIFY_FAIL_MAX = 20
 _CAMPAIGN_VERIFY_SUCCESS_MAX = 50
 _CAMPAIGN_REJECTED_MAX = 100
+_SESSIONS_MAX = 20  # S5: bounded retention — avoid leak
 
 
 def operation_key(op: dict[str, Any]) -> str:
@@ -40,7 +42,18 @@ class SessionMemory:
         except Exception:
             return {"sessions": {}}
 
+    def _trim_sessions(self, data: dict[str, Any]) -> None:
+        """S5: bounded retention — keep only last _SESSIONS_MAX sessions by _ts."""
+        sessions = data.get("sessions") or {}
+        if len(sessions) <= _SESSIONS_MAX:
+            return
+        with_ts = [(sid, s.get("_ts") or 0.0) for sid, s in sessions.items()]
+        with_ts.sort(key=lambda x: -x[1])
+        keep = {sid for sid, _ in with_ts[:_SESSIONS_MAX]}
+        data["sessions"] = {k: v for k, v in sessions.items() if k in keep}
+
     def _save(self, data: dict[str, Any]) -> None:
+        self._trim_sessions(data)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
@@ -60,6 +73,7 @@ class SessionMemory:
         data = self._load()
         sessions = data.setdefault("sessions", {})
         session = sessions.setdefault(session_id, {"approved_keys": [], "rejected_keys": []})
+        session["_ts"] = time.time()
         approved_keys = set(str(x) for x in session.get("approved_keys", []))
         rejected_keys = set(str(x) for x in session.get("rejected_keys", []))
         approved_keys |= {operation_key(op) for op in approved}

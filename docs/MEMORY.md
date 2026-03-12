@@ -42,6 +42,7 @@
 | **Чтение** | `aggregate_by_action_kind()`, `aggregate_by_smell_action()`, `get_merged_learning_stats(root)` |
 | **Роль** | Агрегаты success/fail по (smell_type, action_kind); planner сортирует ops по learning_stats |
 | **last_ts** | В каждом stats entry — timestamp последнего события (подготовка к age-based decay, ROADMAP §4.5) |
+| **S5 context** | `record_outcome(..., project_size=, module_size=, context=)` — контекст для outcome, avoid «свалка без контекста» |
 
 **Точка входа:** `ProjectMemory(project_root).learning`; `eurika.storage.record_outcome`; `get_merged_learning_stats` (global_memory).
 

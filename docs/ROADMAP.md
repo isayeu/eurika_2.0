@@ -478,7 +478,7 @@ while True:
 | S2 | Убрать дубли core | core/* vs eurika/core/* — консолидировать ✅ |
 | S3 | Orchestration | Только eurika/orchestration; CLI вызывает ✅ |
 | S4 | Упростить planner | engine, actions, heuristics, models; analysis, filter_policy, hints_provider — вынос/объединение. ✅ core_extracted → graph_analysis; planner_patch_ops → planner/patch_ops |
-| S5 | Память 3 слоя | session_memory, experience_store, state_store |
+| S5 | Память 3 слоя | session_memory (bounded), experience_store (context), state_store (atomic) ✅ |
 | **S0** | **Architecture Freeze** | 3 релиза: не добавлять фичи, только упрощать |
 
 #### Концептуальные модели (long-term, после 5 метрик)
