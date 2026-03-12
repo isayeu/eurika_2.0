@@ -35,7 +35,11 @@ Eurika склонна к усложнению — это сила и риск. B
 
 | Параметр | Лимит | Env / источник |
 |----------|-------|----------------|
+| max actions (planner output) | 20 | EURIKA_MAX_ACTIONS (default 20, 0=unlimited); RV7 |
 | ops per fix cycle | 12 | EURIKA_MAX_OPS_PER_CYCLE (default 12, 0=unlimited) |
+| effective cap | min(actions, ops) | planner caps at stricter of the two when both > 0 |
+| MAX_PLAN_DEPTH | 3 | Reserved (future beam/multi-step planning) |
+| BEAM_WIDTH | 5 | Reserved (future beam search) |
 | Σ\|ΔE\| per cycle | 0 (off) | EURIKA_ENERGY_CAP (default 0, 0=disabled) |
 | OSS hints per op | 3 | build_hints_and_params max_oss |
 | DIFF_HINTS entries | фиксированный словарь | heuristics.py |
