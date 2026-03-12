@@ -132,6 +132,30 @@ def test_rollback_patch_same_as_rollback(tmp_path: Path) -> None:
     assert r1.get('restored') == r2.get('restored')
 
 
+def test_apply_and_verify_syntax_guard_rv14(tmp_path: Path) -> None:
+    """RV14: syntax guard catches invalid Python before verify; rollback on syntax error."""
+    (tmp_path / "bad.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "test_ok.py").write_text("def test_ok(): pass\n", encoding="utf-8")
+    # Diff that produces invalid Python (unclosed parenthesis)
+    plan = {
+        "operations": [
+            {
+                "target_file": "bad.py",
+                "diff": "\ndef broken(  # unclosed\n",
+                "kind": "refactor_module",
+                "smell_type": "god_module",
+            }
+        ]
+    }
+    report = apply_and_verify(tmp_path, plan, backup=True, verify=True, auto_rollback=True)
+    assert report["patch_guard"]["success"] is False
+    assert report["verify"]["success"] is False
+    assert "trigger" in report["patch_guard"] and report["patch_guard"]["trigger"] == "syntax"
+    assert report["rollback"]["done"] is True
+    assert report["rollback"]["trigger"] == "syntax_guard"
+    assert (tmp_path / "bad.py").read_text(encoding="utf-8") == "x = 1\n"
+
+
 def test_apply_and_verify_py_compile_fallback_when_no_tests(tmp_path: Path) -> None:
     """When pytest returns 5 (no tests) and verify_cmd=None, fallback to py_compile on modified files."""
     (tmp_path / 'foo.py').write_text('x = 1\n', encoding='utf-8')

@@ -5,7 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from project_graph_api import ProjectGraph
+from eurika.analysis.graph import ProjectGraph
 from eurika.analysis.metrics import summarize_graph
 
 
@@ -24,6 +24,8 @@ def test_summarize_graph_metrics_and_cycles():
     assert summary["nodes"] == 3
     assert summary["edges"] == 2
     assert summary["cycles_count"] >= 1
+    assert "dependency_density" in summary
+    assert 0 <= summary["dependency_density"] <= 1
 
     metrics = summary["metrics"]
     # a.py and b.py should both have non-zero fan_in and fan_out

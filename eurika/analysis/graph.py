@@ -140,5 +140,34 @@ class ProjectGraph:
             for node in self.nodes
         }
 
+    def _reverse_edges(self) -> Dict[str, List[str]]:
+        """Dependents: rev[dst] = [src for each src that imports dst]."""
+        rev: Dict[str, List[str]] = {n: [] for n in self.nodes}
+        for src, dsts in self.edges.items():
+            for dst in dsts:
+                rev.setdefault(dst, []).append(src)
+        return rev
+
+    def blast_radius(self, module: str) -> int:
+        """
+        RV1: direct + transitive dependents count.
+
+        Dependents = modules that import this module (directly or indirectly).
+        Blast radius = how many modules are affected if this module changes.
+        """
+        module_norm = Path(module).as_posix()
+        if module_norm not in self.nodes:
+            return 0
+        rev = self._reverse_edges()
+        dependents: Set[str] = set()
+        queue: List[str] = [module_norm]
+        while queue:
+            n = queue.pop()
+            for src in rev.get(n, []):
+                if src not in dependents:
+                    dependents.add(src)
+                    queue.append(src)
+        return len(dependents)
+
 
 __all__ = ["ProjectGraph", "NodeMetrics"]

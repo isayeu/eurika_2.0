@@ -145,6 +145,22 @@ def test_priority_from_graph_with_decay(tmp_path):
     assert names.index("b.py") < names.index("a.py")
 
 
+def test_priority_from_graph_rv5_blast_radius_bonus():
+    """RV5: high blast_radius modules with smells get high_blast_radius in reasons."""
+    from eurika.smells.models import ArchSmell
+
+    # x has 12 dependents (a,b,c,d,e,f,g,h,i,j,k,l) -> blast_radius(x)=12
+    nodes = ["x"] + [f"n{i}.py" for i in range(12)]
+    edges = {f"n{i}.py": ["x"] for i in range(12)}
+    edges["x"] = []
+    g = ProjectGraph(nodes, edges)
+    smells = [ArchSmell(type="god_module", nodes=["x"], severity=5.0, description="")]
+    prio = priority_from_graph(g, smells, summary_risks=None, top_n=5)
+    assert len(prio) >= 1
+    top = prio[0]
+    assert "high_blast_radius" in (top.get("reasons") or [])
+
+
 def test_priority_from_graph_includes_summary_risks():
     """priority_from_graph adds weight for nodes mentioned in summary_risks."""
     from eurika.smells.models import ArchSmell

@@ -145,7 +145,39 @@ class ProjectGraph:
             layer.setdefault(n, default_layer)
         return layer
 
+    def _reverse_edges(self) -> Dict[str, List[str]]:
+        """Dependents: rev[dst] = [src for each src that imports dst]. RV1."""
+        rev: Dict[str, List[str]] = {n: [] for n in self.nodes}
+        for src, dsts in self.edges.items():
+            for dst in dsts:
+                rev.setdefault(dst, []).append(src)
+        return rev
+
+    def blast_radius(self, module: str) -> int:
+        """
+        RV1: direct + transitive dependents count.
+
+        Dependents = modules that import this module (directly or indirectly).
+        Blast radius = how many modules are affected if this module changes.
+        """
+        module_norm = Path(module).as_posix()
+        if module_norm not in self.nodes:
+            return 0
+        rev = self._reverse_edges()
+        dependents: Set[str] = set()
+        queue: List[str] = [module_norm]
+        while queue:
+            n = queue.pop()
+            for src in rev.get(n, []):
+                if src not in dependents:
+                    dependents.add(src)
+                    queue.append(src)
+        return len(dependents)
+
     def metrics(self) -> Dict[str, NodeMetrics]:
         fan = self.fan_in_out()
         layers = self.layers()
         return {n: NodeMetrics(name=n, fan_in=fan[n][0], fan_out=fan[n][1], layer=layers[n]) for n in self.nodes}
+
+
+__all__ = ["ProjectGraph", "NodeMetrics"]

@@ -7,6 +7,7 @@ from typing import Any
 from .core_handlers_common import (
     _check_path,
     _clog,
+    _format_blast_radius_block,
     _format_file_size_block,
     _format_layer_discipline_block,
     _paths_from_args,
@@ -44,6 +45,9 @@ def handle_self_check(args: Any) -> int:
     fmt = getattr(args, "format", "text")
     color = getattr(args, "color", None)
     code = run_scan(path, format=fmt, color=color)
+    br_report = _format_blast_radius_block(path)
+    if br_report:
+        _clog().info("%s", br_report)
     lf_report = _format_layer_discipline_block(path)
     if lf_report:
         _clog().info("%s", lf_report)

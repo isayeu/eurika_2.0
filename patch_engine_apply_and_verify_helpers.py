@@ -1,11 +1,41 @@
-"""Helper flow functions for patch_engine_apply_and_verify."""
+"""Helper flow functions for patch_engine_apply_and_verify.
+
+RV14: patch_guard syntax check — validate .py files parse before running verify.
+"""
 
 from __future__ import annotations
 
+import ast
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
+
+
+def check_syntax_guard(project_root: Path, modified: List[str]) -> Dict[str, Any]:
+    """
+    RV14: Syntax guard — ast.parse each modified .py file.
+    Returns {"success": bool, "errors": [{path, message}], "trigger": "syntax"}.
+    """
+    root = Path(project_root).resolve()
+    errors: List[Dict[str, str]] = []
+    for path in modified:
+        if not path.endswith(".py"):
+            continue
+        full = root / path
+        if not full.exists():
+            continue
+        try:
+            ast.parse(full.read_text(encoding="utf-8"))
+        except SyntaxError as e:
+            errors.append({"path": path, "message": str(e)})
+        except (OSError, UnicodeDecodeError) as e:
+            errors.append({"path": path, "message": str(e)})
+    return {
+        "success": len(errors) == 0,
+        "errors": errors,
+        "trigger": "syntax",
+    }
 
 
 def verify_py_compile(project_root: Path, modified: List[str], timeout: int = 60) -> Dict[str, Any]:

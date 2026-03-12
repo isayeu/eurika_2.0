@@ -21,36 +21,51 @@ def _fmt_nodes(nodes: List[str], max_n: int = 3) -> str:
     return ", ".join(nodes[:max_n]) + f" (and {len(nodes) - max_n} more)"
 
 
-def _recommend_for_hub(fan: Dict[str, Tuple[int, int]], nodes: List[str]) -> List[str]:
+def _blast_radius_suffix(graph: ProjectGraph, node: str) -> str:
+    """RV5: append blast_radius when >= 10 (high-impact refactoring target)."""
+    br = graph.blast_radius(node)
+    return f", blast_radius={br}" if br >= 10 else ""
+
+
+def _recommend_for_hub(
+    graph: ProjectGraph, fan: Dict[str, Tuple[int, int]], nodes: List[str]
+) -> List[str]:
     recs: List[str] = []
     for n in nodes:
         fi, fo = fan.get(n, (0, 0))
+        br = _blast_radius_suffix(graph, n)
         recs.append(
-            f"{n}: High fan-out ({fo}) with low fan-in ({fi}). "
+            f"{n}: High fan-out ({fo}) with low fan-in ({fi}){br}. "
             "Recommendation: split this module into smaller responsibilities "
             "(e.g. separate CLI wiring, core orchestration and reporting)."
         )
     return recs
 
 
-def _recommend_for_bottleneck(fan: Dict[str, Tuple[int, int]], nodes: List[str]) -> List[str]:
+def _recommend_for_bottleneck(
+    graph: ProjectGraph, fan: Dict[str, Tuple[int, int]], nodes: List[str]
+) -> List[str]:
     recs: List[str] = []
     for n in nodes:
         fi, fo = fan.get(n, (0, 0))
+        br = _blast_radius_suffix(graph, n)
         recs.append(
-            f"{n}: Bottleneck risk with fan-in {fi} and fan-out {fo}. "
+            f"{n}: Bottleneck risk with fan-in {fi} and fan-out {fo}{br}. "
             "Recommendation: introduce a facade or boundary so that other "
             "modules depend on a stable interface instead of this concrete implementation."
         )
     return recs
 
 
-def _recommend_for_god_module(fan: Dict[str, Tuple[int, int]], nodes: List[str]) -> List[str]:
+def _recommend_for_god_module(
+    graph: ProjectGraph, fan: Dict[str, Tuple[int, int]], nodes: List[str]
+) -> List[str]:
     recs: List[str] = []
     for n in nodes:
         fi, fo = fan.get(n, (0, 0))
+        br = _blast_radius_suffix(graph, n)
         recs.append(
-            f"{n}: God-module candidate (fan-in {fi}, fan-out {fo}). "
+            f"{n}: God-module candidate (fan-in {fi}, fan-out {fo}){br}. "
             "Recommendation: identify coherent sub-responsibilities and extract them "
             "into dedicated modules (e.g. core, analysis, reporting, CLI)."
         )
@@ -80,9 +95,9 @@ def build_recommendations(graph: ProjectGraph, smells: List[ArchSmell]) -> List[
     fan = graph.fan_in_out()
 
     handlers = {
-        "hub": lambda s: _recommend_for_hub(fan, s.nodes),
-        "bottleneck": lambda s: _recommend_for_bottleneck(fan, s.nodes),
-        "god_module": lambda s: _recommend_for_god_module(fan, s.nodes),
+        "hub": lambda s: _recommend_for_hub(graph, fan, s.nodes),
+        "bottleneck": lambda s: _recommend_for_bottleneck(graph, fan, s.nodes),
+        "god_module": lambda s: _recommend_for_god_module(graph, fan, s.nodes),
         "cyclic_dependency": lambda s: _recommend_for_cycle(s.nodes),
     }
 

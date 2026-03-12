@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 
 from patch_engine_apply_patch import apply_patch
 from patch_engine_apply_and_verify_helpers import (
+    check_syntax_guard,
     maybe_apply_py_compile_fallback,
     maybe_auto_rollback,
     maybe_retry_import_fix,
@@ -86,6 +87,30 @@ def apply_and_verify(
         report.setdefault("verify", {"success": None, "returncode": None, "stdout": "", "stderr": ""})
         report["verify_duration_ms"] = 0
         return report
+    # RV14: syntax guard — validate .py parse before verify
+    modified = report.get("modified", [])
+    if modified:
+        guard = check_syntax_guard(root, modified)
+        if not guard.get("success"):
+            report["patch_guard"] = guard
+            report["verify"] = {
+                "success": False,
+                "returncode": -1,
+                "stdout": "",
+                "stderr": "; ".join(e.get("message", "") for e in guard.get("errors", [])),
+                "trigger": "syntax_guard",
+            }
+            report["verify_duration_ms"] = 0
+            if auto_rollback and report.get("run_id"):
+                rb = rollback_patch(root, report["run_id"])
+                report["rollback"] = {
+                    "done": True,
+                    "run_id": report["run_id"],
+                    "restored": rb.get("restored", []),
+                    "errors": rb.get("errors", []),
+                    "trigger": "syntax_guard",
+                }
+            return report
     _run_verify_with_fallbacks(
         root=root,
         report=report,

@@ -587,20 +587,20 @@ while True:
 
 ### 6.8 Review V — бэклог (приоритет низкий)
 
-- [ ] **RV1** Blast Radius — `blast_radius(module)` = direct + transitive dependents; отчёт «Top N по влиянию»
-- [ ] **RV2** Dependency Density — `edges / (nodes*(nodes-1))` в отчёт или MetricVector
-- [ ] **RV3** Reasoning consolidation — целевая структура reasoning/: analyzer, generator, simulator, evaluator (TARGET_V3_STRUCTURE)
+- [x] **RV1** Blast Radius — `blast_radius(module)` = direct + transitive dependents; self-check блок «Top N по влиянию» ✅
+- [x] **RV2** Dependency Density — `edges/(n*(n-1))` в summarize_graph, self-check блок ARCHITECTURE METRICS ✅
+- [x] **RV3** Reasoning consolidation — целевая структура reasoning/: analyzer, generator, evaluator (TARGET_V3_STRUCTURE); simulator в execution ✅
 - [x] **RV4** Release hygiene — sdist без __pycache__/.pyc; release_check шаг 8b; MANIFEST.in; scripts/clean_before_release.sh ✅
-- [ ] **RV5** Low fragility goal — coupling/blast radius в рекомендациях, не только size
+- [x] **RV5** Low fragility — blast_radius в risk_prediction и priority_from_graph; coupling в metrics ✅
 - [x] **RV6** weight_store versioning — `weights_version`, `metrics_schema_hash` для миграций между релизами ✅
 - [x] **RV7** planner caps — MAX_ACTIONS=20 (EURIKA_MAX_ACTIONS), MAX_PLAN_DEPTH=3, BEAM_WIDTH=5 в heuristics; effective_cap = min(max_actions, max_ops_per_cycle); BOUNDED_EVOLUTION §3 ✅
 - [x] **RV8** Weights freeze — `weights_snapshot = weight_store.freeze()` на время planner-цикла; EURIKA_WEIGHT_ADAPTATION только после цикла ✅
-- [ ] **RV9** Multi-objective ranking — stability_penalty в energy_ranking; не одна метрика
+- [x] **RV9** Multi-objective ranking — stability_penalty в energy_ranking (Martin's I per target); EURIKA_STABILITY_PENALTY_LAMBDA ✅
 - [ ] **RV10** Fragility heatmap — green/yellow/red по модулям; impact_score, propagation_depth
 - [ ] **RV11** Call graph / data flow — расширить project_graph (сейчас только imports)
 - [ ] **RV12** Architecture Time Machine — snapshots по времени, health trend, collapse prediction (long-term)
 - [ ] **RV13** Architecture Gravity — gravity_score, black holes (long-term, после 5 метрик)
-- [ ] **RV14** Patch safety layer — patch_guard: syntax, tests, coverage; усилить verify
+- [x] **RV14** Patch safety layer — patch_guard: syntax (ast.parse before verify), tests (pytest), rollback on syntax ✅
 - [ ] **RV15** Plugin version contract — явный контракт для plugins, чтобы не ломать внутренний API
 
 ---

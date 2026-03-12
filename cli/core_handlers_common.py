@@ -83,6 +83,33 @@ def _format_layer_discipline_block(path: Path) -> str:
     return "\n".join(lines)
 
 
+def _format_blast_radius_block(path: Path, top_n: int = 10) -> str:
+    """RV1/RV2: Blast radius + dependency density (Top modules by impact)."""
+    self_map_path = path / "self_map.json"
+    if not self_map_path.exists():
+        return ""
+    try:
+        from eurika.analysis.graph import ProjectGraph
+        from eurika.analysis.metrics import dependency_density, top_blast_radius
+
+        raw = json.loads(self_map_path.read_text(encoding="utf-8"))
+        graph = ProjectGraph.from_self_map(raw)
+        dd = dependency_density(graph)
+        top = top_blast_radius(graph, n=top_n)
+        lines = ["", "ARCHITECTURE METRICS (RV1, RV2)"]
+        lines.append(f"  dependency_density: {dd:.4f} (edges/(n*(n-1)))")
+        lines.append("  blast_radius = direct + transitive dependents")
+        lines.append("")
+        if not top:
+            return "\n".join(lines)
+        for mod, count in top:
+            short = Path(mod).name if len(mod) > 40 else mod
+            lines.append(f"  - {short}: {count} dependents")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 def _format_file_size_block(path: Path) -> str:
     """Return file size limits report for self-check (3.1-arch.3)."""
     from eurika.checks import check_file_size_limits

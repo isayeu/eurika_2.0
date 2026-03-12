@@ -40,6 +40,12 @@ def predict_module_regression_risk(project_root: Path, top_n: int=10) -> List[Di
         scores[node] += degree * 0.5
         if degree >= 8:
             reasons.setdefault(node, []).append('high_centrality')
+    # RV5: blast_radius in recommendations — high impact = higher regression risk
+    for node in list(scores.keys()):
+        br = graph.blast_radius(node)
+        if br >= 10:
+            scores[node] += min(15, br * 0.3)
+            reasons.setdefault(node, []).append('high_blast_radius')
     for node, r in reasons.items():
         if 'god_module' in r:
             scores[node] += 8

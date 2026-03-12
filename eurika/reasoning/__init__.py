@@ -4,12 +4,15 @@ from importlib import import_module
 
 __all__ = [
     "advisor",
+    "analyzer",
     "architect",
+    "evaluator",
     "execution_context",
-    "planner",
-    "heuristics",
-    "refactor_plan",
+    "generator",
     "graph_ops",
+    "heuristics",
+    "planner",
+    "refactor_plan",
 ]
 
 

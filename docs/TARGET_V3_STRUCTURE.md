@@ -25,9 +25,11 @@ eurika/
 | **world_model/** | eurika/analysis/metric_vector, energy_model | Архитектурное состояние; EnergyModel — центр scoring (R3) |
 | **world_model/** | eurika/reasoning/planner/models (ArchitectureSnapshot) | Или в core/ |
 | **reasoning/** | eurika/reasoning/* | planner, architect, graph_ops, advisor |
-| **reasoning/analyzer** | eurika/smells, eurika/analysis | build_graph_and_summary_from_self_map (R2) |
+| **reasoning/analyzer** | eurika/smells, eurika/analysis | build_graph_and_summary, build_graph_and_summary_from_self_map (RV3 ✅) |
+| **reasoning/generator** | planner.engine, planner.patch_ops | generate_candidates, build_patch_operations (RV3 ✅) |
 | **reasoning/planner** | eurika/reasoning/planner/* | Уже есть engine, facade |
-| **reasoning/simulator** | patch_engine.simulate_patch | Или в execution |
+| **reasoning/evaluator** | eurika.evaluation | compute_delta (RV3 ✅) |
+| **reasoning/simulator** | patch_engine.simulate_patch | В execution (L3↛L4) |
 | **execution/** | patch_engine, patch_apply | patch_executor, verifier |
 | **memory/** | eurika/storage (EventLog, LearningStore, weight_store) | experience_store, weight_store |
 
@@ -49,7 +51,7 @@ eurika/
 1. **world_model** — ✅ P7 eurika/world_model/
 2. **execution** — ✅ P9 eurika/execution/ alias над patch_engine.
 3. **memory** — ✅ eurika/memory/ alias над storage.
-4. **reasoning** — уже консолидирован; analyzer/generator/simulator — как функции, не обязательно отдельные модули.
+4. **reasoning** — RV3 ✅ analyzer, generator, evaluator (фасады); simulator в execution (L3↛L4).
 
 **Приоритет:** R2, R3 выполнены. P7 ✅ eurika/world_model/ — re-exports MetricVector, EnergyModel, WeightVector из analysis.
 

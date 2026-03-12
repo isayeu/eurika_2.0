@@ -214,6 +214,20 @@ def _apply_degree_bonus_to_scores(
         scores[node] = scores[node] + _degree_bonus(fi, fo, smell_types)
 
 
+def _apply_blast_radius_bonus(
+    graph: ProjectGraph,
+    scores: Dict[str, float],
+    reasons: Dict[str, List[str]],
+) -> None:
+    """RV5: Boost modules with high blast_radius — high-impact refactoring targets."""
+    for node in list(scores.keys()):
+        br = graph.blast_radius(node)
+        if br >= 10 and reasons.get(node):
+            scores[node] = scores[node] + min(5.0, br * 0.05)
+            if "high_blast_radius" not in (reasons.get(node) or []):
+                reasons.setdefault(node, []).append("high_blast_radius")
+
+
 def _sort_and_format_priorities(
     scores: Dict[str, float],
     reasons: Dict[str, List[str]],
@@ -246,6 +260,7 @@ def priority_from_graph(
     _add_summary_risk_bonus(scores, reasons, summary_risks)
     _add_learning_bonus(scores, reasons, learning_stats)
     _apply_degree_bonus_to_scores(scores, reasons, fan)
+    _apply_blast_radius_bonus(graph, scores, reasons)
 
     if project_root:
         from eurika.reasoning.priority_decay import apply_decay
