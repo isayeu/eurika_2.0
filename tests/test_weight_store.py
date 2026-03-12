@@ -7,9 +7,12 @@ from eurika.analysis.weight_store import (
     DEFAULT_DELTA,
     MAX_DELTA,
     MIN_DELTA,
+    WEIGHTS_VERSION,
     adapt_weights_from_experience,
+    freeze_weights,
     get_estimated_delta,
     load_weights,
+    metrics_schema_hash,
     save_weights,
 )
 
@@ -41,6 +44,17 @@ def test_get_estimated_delta_with_project(tmp_path: Path) -> None:
     save_weights(tmp_path, {("god_module", "split_module"): 0.22})
     assert get_estimated_delta(tmp_path, "god_module", "split_module") == 0.22
     assert get_estimated_delta(tmp_path, "x", "y") == DEFAULT_DELTA
+
+
+def test_freeze_weights_rv8(tmp_path: Path) -> None:
+    """RV8: freeze_weights returns snapshot; adapt does not affect snapshot during cycle."""
+    save_weights(tmp_path, {("god_module", "split_module"): 0.18})
+    snap = freeze_weights(tmp_path)
+    assert isinstance(snap, dict)
+    assert snap[("god_module", "split_module")] == 0.18
+    # Snapshot is a copy: changing on-disk weights doesn't affect it
+    save_weights(tmp_path, {("god_module", "split_module"): 0.25})
+    assert snap[("god_module", "split_module")] == 0.18
 
 
 def test_adapt_weights_from_experience(tmp_path: Path) -> None:
@@ -100,6 +114,28 @@ def test_adapt_weights_bounded(tmp_path: Path) -> None:
     finally:
         if "EURIKA_DISABLE_GLOBAL_MEMORY" in os.environ:
             del os.environ["EURIKA_DISABLE_GLOBAL_MEMORY"]
+
+
+def test_rv6_versioned_format_and_legacy_migration(tmp_path: Path) -> None:
+    """RV6: new format has version/schema_hash; legacy format still loads and migrates."""
+    # Legacy format (pre-RV6)
+    legacy = {"god_module|split_module": 0.19, "hub|split_module": 0.16}
+    path = tmp_path / ".eurika" / "weights.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"god_module|split_module": 0.19, "hub|split_module": 0.16}')
+    w = load_weights(tmp_path)
+    assert w[("god_module", "split_module")] == 0.19
+    assert w[("hub", "split_module")] == 0.16
+    # Save rewrites in new format
+    save_weights(tmp_path, w)
+    raw = __import__("json").loads(path.read_text())
+    assert raw["version"] == WEIGHTS_VERSION
+    assert "schema_hash" in raw
+    assert raw["schema_hash"] == metrics_schema_hash()
+    assert "weights" in raw
+    # Reload from new format
+    w2 = load_weights(tmp_path)
+    assert w2[("god_module", "split_module")] == 0.19
 
 
 def test_adapt_weights_delta_energy_mode(tmp_path: Path) -> None:

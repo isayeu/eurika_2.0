@@ -4,13 +4,31 @@ WeightStore — persistence for heuristic estimated_delta (ROADMAP §5.7 эта�
 Медленно (learning_rate=0.02), bounded [MIN_DELTA, MAX_DELTA], с откатом:
 ручной сброс — удалить .eurika/weights.json для возврата к дефолтам.
 Веса per (smell_type, action_kind).
+
+RV6: weights_version, metrics_schema_hash для миграций между релизами.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Dict, Optional
+
+# RV6: version for file format migrations
+WEIGHTS_VERSION = 1
+
+
+def _metrics_schema_hash() -> str:
+    """Hash of default keys — changes when we add/remove (smell, kind) pairs."""
+    keys = sorted(_DEFAULT_DELTAS.keys())
+    raw = str(keys)
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def metrics_schema_hash() -> str:
+    """RV6: Public access for migrations. Same as internal hash."""
+    return _metrics_schema_hash()
 
 
 # Defaults from energy_ranking (canonical source)
@@ -42,15 +60,50 @@ def _weights_path(project_root: Path) -> Path:
     return storage_path(root, "weights")
 
 
+def _parse_weights_dict(data: Dict[str, float]) -> Dict[tuple[str, str], float]:
+    """Parse 'smell|kind' keys to (smell, kind) tuples."""
+    out: Dict[tuple[str, str], float] = {}
+    for k, v in (data or {}).items():
+        if "|" in k and isinstance(v, (int, float)):
+            parts = k.split("|", 1)
+            if len(parts) == 2:
+                out[(parts[0], parts[1])] = float(v)
+    return out
+
+
 def load_weights(project_root: Path) -> Dict[tuple[str, str], float]:
-    """Load persisted weights; merge with defaults. Missing keys use default."""
+    """
+    Load persisted weights; merge with defaults. Missing keys use default.
+    RV6: Supports legacy (plain) and versioned format. Schema migration when hash differs.
+    """
     path = _weights_path(project_root)
     if not path.exists():
         return dict(_DEFAULT_DELTAS)
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            return dict(_DEFAULT_DELTAS)
+
+        # New format: {version, schema_hash, weights}
+        if "weights" in raw and "version" in raw:
+            weights_data = raw.get("weights")
+            stored = _parse_weights_dict(weights_data if isinstance(weights_data, dict) else {})
+            current_hash = _metrics_schema_hash()
+            stored_hash = raw.get("schema_hash", "")
+            out = dict(_DEFAULT_DELTAS)
+            if stored_hash == current_hash:
+                for k, v in stored.items():
+                    out[k] = v
+            else:
+                # Schema changed: keep stored for keys still in defaults, drop obsolete
+                for k, v in stored.items():
+                    if k in _DEFAULT_DELTAS:
+                        out[k] = v
+            return out
+
+        # Legacy format: plain {"smell|kind": value}
         out = dict(_DEFAULT_DELTAS)
-        for k, v in (raw or {}).items():
+        for k, v in raw.items():
             if "|" in k and isinstance(v, (int, float)):
                 parts = k.split("|", 1)
                 if len(parts) == 2:
@@ -61,10 +114,25 @@ def load_weights(project_root: Path) -> Dict[tuple[str, str], float]:
 
 
 def save_weights(project_root: Path, weights: Dict[tuple[str, str], float]) -> None:
-    """Persist weights. Keys as 'smell|kind'."""
+    """Persist weights. RV6: versioned format with schema_hash."""
     path = _weights_path(project_root)
     serializable: Dict[str, float] = {f"{s}|{k}": v for (s, k), v in weights.items()}
-    path.write_text(json.dumps(serializable, indent=2), encoding="utf-8")
+    payload = {
+        "version": WEIGHTS_VERSION,
+        "schema_hash": _metrics_schema_hash(),
+        "weights": serializable,
+    }
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def freeze_weights(project_root: Path) -> Dict[tuple[str, str], float]:
+    """
+    Return immutable snapshot of weights for the planner cycle (ROADMAP §5.11 RV8).
+
+    Use at cycle start; planner/energy_ranking use this snapshot so learning cannot
+    change weights mid-cycle. adapt_weights_from_experience runs only after cycle.
+    """
+    return dict(load_weights(Path(project_root)))
 
 
 def get_estimated_delta(
