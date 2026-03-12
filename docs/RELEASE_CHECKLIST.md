@@ -19,10 +19,11 @@
 | 3 | Dependency firewall (strict) | `EURIKA_STRICT_LAYER_FIREWALL=1 pytest tests/test_dependency_guard.py tests/test_dependency_firewall.py -v` |
 | 4 | Lint (ruff) | `ruff check eurika cli` (требует `pip install -e ".[extras]"`) |
 | 5 | Type check (mypy) | `mypy eurika cli` (требует `pip install -e ".[typecheck]"`; при ошибках в CI — warning). См. docs/TYPING_CONTRACT.md |
-| 5a | Coverage (optional) | `pytest tests/ -q --cov=eurika.agent --cov=cli.orchestration --cov-report=term-missing` (требует `pip install pytest-cov`) |
+| 5a | Coverage (optional) | `pytest tests/ -q --cov=eurika.agent --cov=eurika.orchestration --cov-report=term-missing` (требует `pip install pytest-cov`) |
 | 6 | File size limits | `eurika self-check .` (блок FILE SIZE LIMITS) |
 | 7 | Layer discipline | `eurika self-check .` (блок LAYER DISCIPLINE) |
 | 8 | TODO/FIXME audit | `rg "TODO|FIXME|XXX" --type py -g '!*test*'` (informational); см. docs/TODO_AUDIT.md |
+| 8b | sdist hygiene (RV4) | `python -m build --sdist` + проверка: `tar -tzf dist/*.tar.gz \| grep -qE '__pycache__\|\.pyc'` → FAIL. В release_check шаг 8b |
 | 9 | Smoke | `pip install -e . && eurika scan . && eurika doctor . --no-llm` |
 | 10 | CHANGELOG updated | Проверить, что версия и изменения описаны в CHANGELOG.md |
 
@@ -46,3 +47,13 @@ GitHub Actions (`.github/workflows/ci.yml`):
 Скрипт работает и локально (venv `.venv`), и в CI (python/pip из PATH). В CI ruff/mypy при ошибках только предупреждают; локально — блокируют.
 
 См. `docs/DEPENDENCY_FIREWALL.md` для деталей по правилам и исключениям.
+
+## Clean before release (RV4, optional)
+
+Перед сборкой sdist можно очистить дерево от runtime-артефактов:
+
+```bash
+./scripts/clean_before_release.sh
+```
+
+Удаляет `__pycache__/`, `*.pyc`, `.pytest_cache/`. MANIFEST.in и release_check гарантируют, что sdist не содержит мусора.

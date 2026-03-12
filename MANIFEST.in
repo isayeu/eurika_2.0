@@ -5,3 +5,4 @@ global-exclude .pytest_cache
 global-exclude htmlcov
 global-exclude *.egg-info
 global-exclude __pycache__
+global-exclude *.pyc
