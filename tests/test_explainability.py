@@ -11,7 +11,7 @@ if str(ROOT) not in sys.path:
 
 def test_operation_explanations_include_verify_outcome(tmp_path: Path) -> None:
     """After apply, operation_explanations have verify_outcome from verify result."""
-    from cli.orchestration.apply_stage import execute_fix_apply_stage
+    from eurika.orchestration.apply_stage import execute_fix_apply_stage
 
     ops = [
         {"target_file": "foo.py", "kind": "remove_unused_import", "explainability": {"why": "cleanup", "risk": "low"}},
@@ -45,7 +45,7 @@ def test_dry_run_report_includes_operation_explanations_with_verify_outcome_none
     """Dry-run eurika_fix_report.json has operation_explanations with verify_outcome=None."""
     from unittest.mock import MagicMock, patch
 
-    from cli.orchestrator import run_cycle
+    from eurika.orchestration.entry import run_cycle
 
     with patch("eurika.orchestration.entry.load_fix_cycle_deps") as mock_deps:
         mock_deps.return_value = {"run_scan": lambda *a: 0}

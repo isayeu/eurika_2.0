@@ -83,7 +83,7 @@ def test_report_snapshot_invalid_doctor_report_still_shows_fix_and_warning(tmp_p
 def test_attach_fix_telemetry_median_verify_time(tmp_path: Path) -> None:
     """attach_fix_telemetry adds median_verify_time_ms when path has patch events (ROADMAP 2.7.8)."""
     from eurika.storage import ProjectMemory
-    from cli.orchestration.apply_stage import attach_fix_telemetry
+    from eurika.orchestration.apply_stage import attach_fix_telemetry
 
     memory = ProjectMemory(tmp_path)
     memory.events.append_event(
@@ -111,7 +111,7 @@ def test_attach_fix_telemetry_median_verify_time(tmp_path: Path) -> None:
 
 def test_attach_fix_telemetry_counts_campaign_session_skips() -> None:
     """Telemetry no-op metrics include campaign/session-filtered operations."""
-    from cli.orchestration.apply_stage import attach_fix_telemetry
+    from eurika.orchestration.apply_stage import attach_fix_telemetry
 
     report = {
         "message": "Patch plan has no operations. Cycle complete.",

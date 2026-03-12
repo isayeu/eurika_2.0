@@ -37,7 +37,7 @@ def _parse_final_json(stdout: str):
 
 def test_load_suggested_policy_for_apply(tmp_path: Path) -> None:
     """load_suggested_policy_for_apply loads from fix report when doctor report absent."""
-    from cli.orchestration.doctor import load_suggested_policy_for_apply
+    from eurika.orchestration.doctor import load_suggested_policy_for_apply
 
     (tmp_path / "eurika_fix_report.json").write_text(
         json.dumps({"telemetry": {"apply_rate": 0.15, "rollback_rate": 0.0}}),
@@ -193,7 +193,7 @@ def test_learning_not_appended_when_all_skipped(tmp_path: Path) -> None:
 
     with patch("patch_engine.apply_and_verify", side_effect=fake_apply):
         with patch("architecture_learning.LearningStore.append", MagicMock()) as mock_append:
-            from cli.orchestrator import run_cycle
+            from eurika.orchestration.entry import run_cycle
             run_cycle(proj, mode="fix", dry_run=False, quiet=True)
 
     assert mock_append.call_count == 0, "learning.append should not be called when modified=[]"
@@ -210,7 +210,7 @@ def test_fix_cycle_report_includes_telemetry_and_safety_gates(tmp_path: Path) ->
     (proj / "pyproject.toml").write_text("[tool.pytest.ini_options]\ntestpaths=['tests']\n", encoding="utf-8")
     subprocess.run([sys.executable, "-m", "eurika_cli", "scan", str(proj)], cwd=ROOT, capture_output=True, timeout=30)
 
-    from cli.orchestrator import run_cycle
+    from eurika.orchestration.entry import run_cycle
 
     out = run_cycle(proj, mode="fix", quiet=True)
     report = out.get("report", {})
@@ -228,7 +228,7 @@ def test_fix_cycle_report_includes_telemetry_and_safety_gates(tmp_path: Path) ->
 
 def test_fix_cycle_all_rejected_includes_telemetry_and_no_verify_gate() -> None:
     """If hybrid rejects all ops, report still includes telemetry and verify gate is disabled."""
-    from cli.orchestrator import run_cycle
+    from eurika.orchestration.entry import run_cycle
 
     fake_result = MagicMock()
     fake_result.output = {
@@ -265,7 +265,7 @@ def test_fix_cycle_all_rejected_includes_telemetry_and_no_verify_gate() -> None:
 
 def test_fix_cycle_decision_gate_blocks_critic_denied_op() -> None:
     """Hard gate must skip op when critic verdict is deny even if selected."""
-    from cli.orchestrator import run_cycle
+    from eurika.orchestration.entry import run_cycle
 
     fake_result = MagicMock()
     fake_result.output = {
@@ -315,7 +315,7 @@ def test_fix_cycle_decision_gate_blocks_critic_denied_op() -> None:
 
 def test_fix_cycle_approve_ops_selects_subset() -> None:
     """--approve-ops applies only selected operation indexes."""
-    from cli.orchestrator import run_cycle
+    from eurika.orchestration.entry import run_cycle
 
     fake_result = MagicMock()
     fake_result.output = {"policy_decisions": [], "critic_decisions": []}
@@ -337,7 +337,7 @@ def test_fix_cycle_approve_ops_selects_subset() -> None:
 
 def test_fix_cycle_approve_reject_overlap_approve_wins() -> None:
     """Overlapping --approve-ops/--reject-ops: approve wins (index in both → approved)."""
-    from cli.orchestrator import run_cycle
+    from eurika.orchestration.entry import run_cycle
 
     fake_result = MagicMock()
     fake_result.output = {"policy_decisions": [], "critic_decisions": []}
@@ -358,7 +358,7 @@ def test_fix_cycle_approve_reject_overlap_approve_wins() -> None:
 
 def test_fix_cycle_noop_writes_fresh_fix_report(tmp_path: Path) -> None:
     """No-op fix cycle should overwrite eurika_fix_report.json with current report."""
-    from cli.orchestrator import run_cycle
+    from eurika.orchestration.entry import run_cycle
 
     report_path = tmp_path / "eurika_fix_report.json"
     report_path.write_text(json.dumps({"verify": {"success": False}, "message": "stale"}), encoding="utf-8")
@@ -391,7 +391,7 @@ def test_append_fix_cycle_memory_tolerates_memory_write_error(tmp_path: Path) ->
     """Memory write failures must not break fix cycle flow (degraded but deterministic)."""
     from types import SimpleNamespace
 
-    from cli.orchestration.apply_stage import append_fix_cycle_memory
+    from eurika.orchestration.apply_stage import append_fix_cycle_memory
 
     result = SimpleNamespace(output={"summary": {"risks": []}})
     operations = [{"target_file": "a.py", "kind": "remove_unused_import"}]
@@ -404,7 +404,7 @@ def test_append_fix_cycle_memory_persists_failure_reason(tmp_path: Path) -> None
     """When verify fails, failure_reason is persisted in patch event (Review III самокоррекция)."""
     from types import SimpleNamespace
 
-    from cli.orchestration.apply_stage import append_fix_cycle_memory
+    from eurika.orchestration.apply_stage import append_fix_cycle_memory
     from eurika.storage import ProjectMemory
 
     result = SimpleNamespace(output={"summary": {"risks": []}})
@@ -422,7 +422,7 @@ def test_append_fix_cycle_memory_records_not_applied_outcome(tmp_path: Path) -> 
     """Learning record should preserve not_applied outcome for accurate action stats."""
     from types import SimpleNamespace
 
-    from cli.orchestration.apply_stage import append_fix_cycle_memory
+    from eurika.orchestration.apply_stage import append_fix_cycle_memory
     from eurika.storage import ProjectMemory
 
     result = SimpleNamespace(output={"summary": {"risks": []}})
@@ -442,7 +442,7 @@ def test_append_fix_cycle_memory_records_not_applied_outcome(tmp_path: Path) -> 
 
 def test_fix_apply_approved_missing_pending_plan_returns_error(tmp_path: Path) -> None:
     """--apply-approved should fail predictably when pending_plan.json is missing."""
-    from cli.orchestrator import run_cycle
+    from eurika.orchestration.entry import run_cycle
 
     out = run_cycle(tmp_path, mode="fix", apply_approved=True, quiet=True)
     assert out.get("return_code") == 1
@@ -451,7 +451,7 @@ def test_fix_apply_approved_missing_pending_plan_returns_error(tmp_path: Path) -
 
 def test_fix_apply_approved_invalid_pending_plan_returns_error(tmp_path: Path) -> None:
     """--apply-approved should fail predictably when pending_plan.json is invalid JSON."""
-    from cli.orchestrator import run_cycle
+    from eurika.orchestration.entry import run_cycle
 
     pending = tmp_path / ".eurika" / "pending_plan.json"
     pending.parent.mkdir(parents=True, exist_ok=True)
@@ -463,7 +463,7 @@ def test_fix_apply_approved_invalid_pending_plan_returns_error(tmp_path: Path) -
 
 def test_fix_apply_approved_invalid_pending_plan_schema_returns_error(tmp_path: Path) -> None:
     """--apply-approved should fail predictably when pending_plan has invalid schema."""
-    from cli.orchestrator import run_cycle
+    from eurika.orchestration.entry import run_cycle
 
     pending = tmp_path / ".eurika" / "pending_plan.json"
     pending.parent.mkdir(parents=True, exist_ok=True)
@@ -475,7 +475,7 @@ def test_fix_apply_approved_invalid_pending_plan_schema_returns_error(tmp_path: 
 
 def test_drop_noop_append_ops(tmp_path: Path) -> None:
     """_drop_noop_append_ops removes ops whose diff is already in the file."""
-    from cli.orchestration.prepare import _drop_noop_append_ops
+    from eurika.orchestration.prepare import _drop_noop_append_ops
 
     todo = "\n# TODO (eurika): refactor long_function 'foo' — consider extracting helper\n"
     (tmp_path / "a.py").write_text("def foo(): pass\n" + todo)
@@ -493,7 +493,7 @@ def test_drop_noop_append_ops(tmp_path: Path) -> None:
 
 def test_apply_campaign_memory_filters_rejected_ops(tmp_path: Path) -> None:
     """apply_campaign_memory skips ops rejected in prior sessions."""
-    from cli.orchestration.prepare import apply_campaign_memory
+    from eurika.orchestration.prepare import apply_campaign_memory
     from eurika.storage import SessionMemory, operation_key
 
     mem = SessionMemory(tmp_path)
@@ -513,7 +513,7 @@ def test_apply_campaign_memory_filters_rejected_ops(tmp_path: Path) -> None:
 
 def test_apply_campaign_memory_allow_retry_keeps_operations(tmp_path: Path) -> None:
     """allow_retry=True should bypass campaign skip for current run only."""
-    from cli.orchestration.prepare import apply_campaign_memory
+    from eurika.orchestration.prepare import apply_campaign_memory
     from eurika.storage import SessionMemory
 
     mem = SessionMemory(tmp_path)
@@ -538,7 +538,7 @@ def test_apply_campaign_memory_allow_low_risk_does_not_bypass_remove_unused_impo
     """CYCLE_REPORT §107: remove_unused_import no longer bypasses campaign skip (23% success)."""
     import os
 
-    from cli.orchestration.prepare import apply_campaign_memory
+    from eurika.orchestration.prepare import apply_campaign_memory
     from eurika.storage import SessionMemory
 
     mem = SessionMemory(tmp_path)
@@ -610,7 +610,7 @@ def test_prepare_fix_cycle_reports_campaign_skipped_in_noop(tmp_path: Path) -> N
 
 def test_deprioritize_weak_pairs_puts_weak_last(tmp_path: Path) -> None:
     """Weak-pair ops are moved to the end of the operation list."""
-    from cli.orchestration.prepare import _deprioritize_weak_pairs
+    from eurika.orchestration.prepare import _deprioritize_weak_pairs
 
     ops = [
         {"target_file": "a.py", "kind": "split_module", "smell_type": "hub"},
@@ -625,7 +625,7 @@ def test_deprioritize_weak_pairs_puts_weak_last(tmp_path: Path) -> None:
 
 def test_apply_from_report_uses_dry_run_plan(tmp_path: Path) -> None:
     """--apply-from-report loads patch_plan from eurika_fix_report.json and applies without re-scan."""
-    from cli.orchestrator import run_cycle
+    from eurika.orchestration.entry import run_cycle
 
     proj = tmp_path / "proj"
     proj.mkdir()
@@ -660,7 +660,7 @@ def test_apply_from_report_uses_dry_run_plan(tmp_path: Path) -> None:
 
 def test_apply_from_report_no_report_returns_error(tmp_path: Path) -> None:
     """--apply-from-report when no eurika_fix_report.json returns helpful error."""
-    from cli.orchestrator import run_cycle
+    from eurika.orchestration.entry import run_cycle
 
     # No eurika_fix_report.json
     out = run_cycle(tmp_path, mode="fix", apply_from_report=True, quiet=True)

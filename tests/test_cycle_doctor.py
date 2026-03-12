@@ -50,21 +50,21 @@ def test_doctor_includes_knowledge_when_cache_present(tmp_path: Path) -> None:
 def test_knowledge_topics_derived_from_summary(monkeypatch: Any) -> None:
     """_knowledge_topics_from_env_or_summary: without env, topics derived from summary (cycles, risks)."""
     monkeypatch.delenv("EURIKA_KNOWLEDGE_TOPIC", raising=False)
-    from cli.core_handlers import _knowledge_topics_from_env_or_summary
+    from cli.core_handlers import knowledge_topics_from_env_or_summary
 
-    topics = _knowledge_topics_from_env_or_summary({"system": {}, "risks": []})
+    topics = knowledge_topics_from_env_or_summary({"system": {}, "risks": []})
     assert topics == ["python", "python_3_14"]
-    topics = _knowledge_topics_from_env_or_summary({"system": {"cycles": 1}, "risks": []})
+    topics = knowledge_topics_from_env_or_summary({"system": {"cycles": 1}, "risks": []})
     assert "python" in topics and "python_3_14" in topics and "cyclic_imports" in topics
-    topics = _knowledge_topics_from_env_or_summary({"system": {}, "risks": ["god_module @ a.py"]})
+    topics = knowledge_topics_from_env_or_summary({"system": {}, "risks": ["god_module @ a.py"]})
     assert "python" in topics and "python_3_14" in topics and "architecture_refactor" in topics
-    topics = _knowledge_topics_from_env_or_summary({"system": {}, "risks": ["long_function @ foo.py"]})
+    topics = knowledge_topics_from_env_or_summary({"system": {}, "risks": ["long_function @ foo.py"]})
     assert "pep_8" in topics
 
 
 def test_doctor_runtime_reports_degraded_mode_when_llm_disabled(tmp_path: Path) -> None:
     """Doctor reports deterministic degraded mode metadata when running with --no-llm."""
-    from cli.orchestration.doctor import run_doctor_cycle
+    from eurika.orchestration.doctor import run_doctor_cycle
 
     _minimal_self_map(tmp_path / "self_map.json", ["a.py"], {})
     out = run_doctor_cycle(tmp_path, window=3, no_llm=True, online=False)
@@ -79,7 +79,7 @@ def test_doctor_handles_network_unavailable_without_crash(tmp_path: Path) -> Non
     """Doctor should degrade gracefully when online knowledge fetch is unavailable."""
     import urllib.error
 
-    from cli.orchestration.doctor import run_doctor_cycle
+    from eurika.orchestration.doctor import run_doctor_cycle
 
     _minimal_self_map(tmp_path / "self_map.json", ["a.py"], {})
     with patch(
@@ -115,7 +115,7 @@ def test_doctor_quiet_suppresses_progress_messages(tmp_path: Path) -> None:
 
 def test_doctor_llm_unavailable_falls_back_to_template(tmp_path: Path) -> None:
     """R2 Fallback: when LLM is requested but all paths fail, doctor returns template with degraded_mode."""
-    from cli.orchestration.doctor import run_doctor_cycle
+    from eurika.orchestration.doctor import run_doctor_cycle
 
     _minimal_self_map(tmp_path / "self_map.json", ["a.py"], {})
     with patch(
@@ -158,7 +158,7 @@ def test_doctor_suggested_policy_block(tmp_path: Path) -> None:
 
 def test_doctor_includes_context_sources(tmp_path: Path) -> None:
     """Doctor output should include semantic context sources (ROADMAP 3.6.3)."""
-    from cli.orchestration.doctor import run_doctor_cycle
+    from eurika.orchestration.doctor import run_doctor_cycle
 
     (tmp_path / "self_map.json").write_text(
         json.dumps(

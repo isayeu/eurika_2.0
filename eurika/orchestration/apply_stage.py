@@ -113,7 +113,9 @@ def append_fix_cycle_memory(path: Path, result: Any, operations: list[OperationR
         if operations:
             from eurika.storage import record_outcome
             ctx = (result.output or {}).get('execution_context')
-            delta_energy = getattr(ctx, 'delta_score', None) if ctx else None
+            ds = getattr(ctx, 'delta_score', None) if ctx else None
+            vm = report.get('verify_metrics') or {}
+            delta_energy = -ds if ds is not None and vm.get('energy_used') else ds
             failure_reason = None
             if verify_success is False:
                 failure_reason = _extracted_block_208(report)

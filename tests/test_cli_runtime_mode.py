@@ -9,7 +9,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import eurika_cli
-from cli.orchestrator import run_cycle
+from eurika.orchestration.entry import run_cycle
 from eurika.agent.models import AgentCycleResult, AgentRuntimeState
 
 

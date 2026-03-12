@@ -185,7 +185,7 @@ Input → Plan → Validate → Apply → Verify
 | **eurika.orchestration** (P0.2) | `run_cycle`, `run_doctor_cycle`, `run_fix_cycle`, `run_full_cycle`, `prepare_fix_cycle_operations`, `execute_fix_apply_stage` |
 | **CLI wiring** | `build_parser`, `dispatch_command` |
 
-Ключевые пакеты с `__all__`: `eurika.storage`, `eurika.agent`, `eurika.reasoning`, `eurika.refactor`, `eurika.knowledge`, `eurika.analysis`, `eurika.smells`, `eurika.evolution`, `eurika.reporting`, `eurika.core`, `patch_engine`, `cli.orchestration`, `cli.wiring`.
+Ключевые пакеты с `__all__`: `eurika.storage`, `eurika.agent`, `eurika.reasoning`, `eurika.refactor`, `eurika.knowledge`, `eurika.analysis`, `eurika.smells`, `eurika.evolution`, `eurika.reporting`, `eurika.core`, `patch_engine`, `cli.wiring`. Orchestration: `eurika.orchestration` (S3).
 
 ### 0.8 File Size Limits (ROADMAP 3.1-arch.3, P0.4)
 

@@ -29,14 +29,14 @@ def test_fix_quiet_exit_code_success(tmp_path: Path) -> None:
 
 def test_run_cycle_single_entry_point() -> None:
     """run_cycle(mode) dispatches to doctor, fix, or full; unknown mode returns error."""
-    from cli.orchestrator import run_cycle
+    from eurika.orchestration.entry import run_cycle
     err = run_cycle(ROOT, mode="unknown")
     assert "error" in err
     assert "Unknown mode" in err["error"]
 
 
 def test_run_cycle_rejects_unknown_runtime_mode() -> None:
-    from cli.orchestrator import run_cycle
+    from eurika.orchestration.entry import run_cycle
 
     err = run_cycle(ROOT, mode="doctor", runtime_mode="bad-mode")
     assert "error" in err
@@ -45,7 +45,7 @@ def test_run_cycle_rejects_unknown_runtime_mode() -> None:
 
 def test_eurika_orchestrator_run() -> None:
     """EurikaOrchestrator.run() delegates to run_cycle; doctor mode returns summary, patch_plan."""
-    from cli.orchestrator import EurikaOrchestrator
+    from eurika.orchestration.entry import EurikaOrchestrator
     orch = EurikaOrchestrator()
     out = orch.run(ROOT, mode="doctor", no_llm=True)
     assert "error" not in out
@@ -176,7 +176,7 @@ def test_multi_repo_fix_aggregated_report(tmp_path: Path) -> None:
 
 def test_pipeline_mini_repo_scan_fix_dry_run(tmp_path: Path) -> None:
     """Pipeline MVP (ROADMAP §4.5): mini repo → scan → fix (dry-run) completes with report."""
-    from cli.orchestrator import run_cycle
+    from eurika.orchestration.entry import run_cycle
 
     proj = tmp_path / "mini"
     proj.mkdir()
@@ -211,7 +211,7 @@ def test_cycle_dry_run_on_minimal_project(tmp_path: Path) -> None:
 
 def test_run_doctor_cycle_wrapper_delegates_to_orchestration_module() -> None:
     """Thin orchestrator wrapper should delegate doctor-cycle execution."""
-    from cli.orchestrator import run_doctor_cycle
+    from eurika.orchestration.entry import run_doctor_cycle
 
     expected = {"ok": True}
     with patch("eurika.orchestration.entry._run_doctor_cycle", return_value=expected) as mock_doctor:
@@ -222,7 +222,7 @@ def test_run_doctor_cycle_wrapper_delegates_to_orchestration_module() -> None:
 
 def test_run_full_cycle_wrapper_delegates_to_orchestration_module() -> None:
     """Thin orchestrator wrapper should delegate full-cycle wiring."""
-    from cli.orchestrator import run_full_cycle
+    from eurika.orchestration.entry import run_full_cycle
 
     expected = {"ok": True}
     with patch("eurika.orchestration.entry._run_full_cycle_impl", return_value=expected) as mock_full:
@@ -236,7 +236,7 @@ def test_run_full_cycle_wrapper_delegates_to_orchestration_module() -> None:
 
 def test_full_cycle_propagates_doctor_runtime_to_fix_report() -> None:
     """run_full_cycle should copy doctor runtime metadata into fix report."""
-    from cli.orchestration.full_cycle import run_full_cycle
+    from eurika.orchestration.full_cycle import run_full_cycle
 
     doctor_out = {
         "summary": {"system": {}, "risks": []},
@@ -294,7 +294,7 @@ def test_prepare_fix_cycle_operations_wrapper_delegates() -> None:
 
 def test_run_fix_cycle_impl_uses_apply_stage_facade() -> None:
     """run_cycle(fix) should wire through delegated apply-stage builders."""
-    from cli.orchestrator import run_cycle
+    from eurika.orchestration.entry import run_cycle
 
     fake_result = MagicMock()
     fake_result.output = {"policy_decisions": []}

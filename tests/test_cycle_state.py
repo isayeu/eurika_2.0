@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from cli.orchestration.cycle_state import (
+from eurika.orchestration.cycle_state import (
     CycleState,
     is_error_result,
     is_valid_state_history,
@@ -129,7 +129,7 @@ def test_pipeline_model_stages_and_validation() -> None:
 
 def test_fix_cycle_report_includes_pipeline_stages(tmp_path: Path) -> None:
     """P0.3: Fix cycle report includes pipeline_stages and pipeline_model."""
-    from cli.orchestrator import run_fix_cycle
+    from eurika.orchestration.entry import run_fix_cycle
 
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "x"\n')
     (tmp_path / "self_map.json").write_text('{"modules":[],"dependencies":{}}')
@@ -150,8 +150,8 @@ def test_fix_cycle_report_includes_pipeline_stages(tmp_path: Path) -> None:
 
 def test_fix_cycle_result_includes_state_on_success(tmp_path: Path) -> None:
     """Fix cycle success returns state=done and valid state_history."""
-    from cli.orchestrator import run_fix_cycle
-    from cli.orchestration.cycle_state import is_valid_state_history
+    from eurika.orchestration.entry import run_fix_cycle
+    from eurika.orchestration.cycle_state import is_valid_state_history
 
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "x"\n')
     out = run_fix_cycle(
@@ -172,8 +172,8 @@ def test_fix_cycle_result_includes_state_on_success(tmp_path: Path) -> None:
 
 def test_fix_cycle_result_includes_error_state_on_failure(tmp_path: Path) -> None:
     """Fix cycle error path returns state=error and valid state_history."""
-    from cli.orchestrator import run_fix_cycle
-    from cli.orchestration.cycle_state import is_valid_state_history
+    from eurika.orchestration.entry import run_fix_cycle
+    from eurika.orchestration.cycle_state import is_valid_state_history
 
     out = run_fix_cycle(
         tmp_path,
@@ -198,8 +198,8 @@ def _minimal_self_map(path: Path, modules: list[str], dependencies: dict) -> Non
 
 def test_doctor_cycle_includes_state_on_success(tmp_path: Path) -> None:
     """Doctor cycle success returns state=done."""
-    from cli.orchestration import run_doctor_cycle
-    from cli.orchestration.cycle_state import is_valid_state_history
+    from eurika.orchestration import run_doctor_cycle
+    from eurika.orchestration.cycle_state import is_valid_state_history
 
     _minimal_self_map(tmp_path / "self_map.json", ["a.py"], {})
     out = run_doctor_cycle(tmp_path, no_llm=True)
@@ -212,8 +212,8 @@ def test_doctor_cycle_includes_state_on_success(tmp_path: Path) -> None:
 
 def test_doctor_cycle_includes_error_state_on_summary_error(tmp_path: Path) -> None:
     """Doctor cycle with summary error returns state=error and degraded runtime."""
-    from cli.orchestration import run_doctor_cycle
-    from cli.orchestration.cycle_state import is_valid_state_history
+    from eurika.orchestration import run_doctor_cycle
+    from eurika.orchestration.cycle_state import is_valid_state_history
 
     # Path without pyproject/valid project causes summary error
     out = run_doctor_cycle(tmp_path, no_llm=True)
@@ -229,8 +229,8 @@ def test_doctor_cycle_includes_error_state_on_summary_error(tmp_path: Path) -> N
 
 def test_doctor_cycle_r2_state_model_on_self() -> None:
     """R2 Runtime Robustness: doctor on project returns valid state."""
-    from cli.orchestration import run_doctor_cycle
-    from cli.orchestration.cycle_state import is_valid_state_history
+    from eurika.orchestration import run_doctor_cycle
+    from eurika.orchestration.cycle_state import is_valid_state_history
 
     out = run_doctor_cycle(ROOT, no_llm=True)
     assert "state" in out
@@ -241,7 +241,7 @@ def test_doctor_cycle_r2_state_model_on_self() -> None:
 
 def test_fix_apply_approved_missing_plan_returns_error_state(tmp_path: Path) -> None:
     """apply-approved with no pending plan returns state=error."""
-    from cli.orchestrator import run_fix_cycle
+    from eurika.orchestration.entry import run_fix_cycle
 
     out = run_fix_cycle(
         tmp_path,
@@ -260,11 +260,11 @@ def test_full_cycle_doctor_error_propagates_state(tmp_path: Path) -> None:
     """Full cycle when doctor returns error propagates state=error."""
     from unittest.mock import patch
 
-    from cli.orchestrator import run_doctor_cycle, run_fix_cycle
-    from cli.orchestration.full_cycle import run_full_cycle
+    from eurika.orchestration.entry import run_doctor_cycle, run_fix_cycle
+    from eurika.orchestration.full_cycle import run_full_cycle
 
     def _doctor_error(path, **kwargs):
-        from cli.orchestration.cycle_state import with_cycle_state
+        from eurika.orchestration.cycle_state import with_cycle_state
 
         return with_cycle_state(
             {"error": "summary_unavailable", "runtime": {"degraded_mode": True}},
@@ -288,8 +288,8 @@ def test_full_cycle_scan_fail_returns_degraded_runtime(tmp_path: Path) -> None:
     """Full cycle when scan fails returns report.runtime with degraded_reasons."""
     from unittest.mock import patch
 
-    from cli.orchestrator import run_doctor_cycle, run_fix_cycle
-    from cli.orchestration.full_cycle import run_full_cycle
+    from eurika.orchestration.entry import run_doctor_cycle, run_fix_cycle
+    from eurika.orchestration.full_cycle import run_full_cycle
 
     with patch("runtime_scan.run_scan", return_value=1):
         out = run_full_cycle(

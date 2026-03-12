@@ -50,7 +50,7 @@ def test_campaign_checkpoint_create_attach_and_undo(tmp_path: Path) -> None:
 
 
 def test_execute_fix_apply_stage_attaches_campaign_checkpoint(tmp_path: Path) -> None:
-    from cli.orchestration.apply_stage import execute_fix_apply_stage
+    from eurika.orchestration.apply_stage import execute_fix_apply_stage
 
     ops = [
         {"target_file": "foo.py", "kind": "remove_unused_import", "explainability": {"why": "cleanup", "risk": "low"}},
@@ -110,7 +110,7 @@ def test_campaign_checkpoint_reuses_same_session(tmp_path: Path) -> None:
 
 
 def test_doctor_cycle_includes_latest_campaign_checkpoint(tmp_path: Path) -> None:
-    from cli.orchestration.doctor import run_doctor_cycle
+    from eurika.orchestration.doctor import run_doctor_cycle
     from eurika.storage.campaign_checkpoint import create_campaign_checkpoint
 
     (tmp_path / "self_map.json").write_text(

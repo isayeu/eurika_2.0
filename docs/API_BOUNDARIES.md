@@ -26,7 +26,7 @@
 | **eurika.checks** | `check_file_size_limits`, `collect_dependency_violations` | `from eurika.checks import check_file_size_limits` |
 | **patch_engine** | `apply_and_verify`, `apply_patch`, `verify_patch`, `rollback_patch`, `simulate_patch` | `from patch_engine import apply_and_verify, simulate_patch` |
 | **eurika.execution** | `apply_and_verify`, `apply_patch`, `verify_patch`, `rollback_patch`, `simulate_patch`, `apply_patch_dry_run`, `list_backups` (P9 alias над patch_engine) | `from eurika.execution import apply_and_verify, simulate_patch` |
-| **eurika.orchestration** | run_cycle, run_doctor_cycle, run_fix_cycle, run_full_cycle, prepare, apply_stage (P0.2) | `from eurika.orchestration import run_cycle` или `from cli.orchestrator` |
+| **eurika.orchestration** | run_cycle, run_doctor_cycle, run_fix_cycle, run_full_cycle, prepare, apply_stage (P0.2, S3) | `from eurika.orchestration import run_cycle` |
 
 ## Запрещённые импорты (SubsystemBypassRule)
 

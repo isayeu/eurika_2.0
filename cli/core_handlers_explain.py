@@ -29,7 +29,7 @@ def handle_explain(args: Any) -> int:
 
 def handle_architect(args: Any) -> int:
     """Print architect's interpretation (template or optional LLM), with patch-plan context."""
-    from cli.orchestrator import _knowledge_topics_from_env_or_summary
+    from eurika.orchestration.doctor import knowledge_topics_from_env_or_summary
     from eurika.api import get_summary, get_history, get_patch_plan, get_recent_events
     from eurika.reasoning.architect import interpret_architecture
     from eurika.knowledge import (
@@ -64,7 +64,7 @@ def handle_architect(args: Any) -> int:
         OfficialDocsProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=online, rate_limit_seconds=rate_limit),
         ReleaseNotesProvider(cache_dir=cache_dir, ttl_seconds=ttl, force_online=online, rate_limit_seconds=rate_limit),
     ])
-    knowledge_topic = _knowledge_topics_from_env_or_summary(summary)
+    knowledge_topic = knowledge_topics_from_env_or_summary(summary)
     from report.architect_format import format_architect_template
     text = interpret_architecture(
         summary, history, use_llm=use_llm, patch_plan=patch_plan,

@@ -44,7 +44,7 @@ __all__ = [
 ]
 
 # Backward compat: tests import _knowledge_topics_from_env_or_summary from core_handlers
-from cli.orchestrator import _knowledge_topics_from_env_or_summary  # noqa: F401
+from eurika.orchestration.doctor import knowledge_topics_from_env_or_summary as _knowledge_topics_from_env_or_summary  # noqa: F401
 
 
 def handle_help(parser: Any) -> int:

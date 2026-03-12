@@ -37,7 +37,15 @@ def _build_execution_context(
         planner_snap = ArchitectureSnapshot.from_core_snapshot(core_snap)
         risk_report = risk_report_from_plan(patch_plan) if patch_plan is not None else None
         save_checkpoint(path, "latest")
-        return ExecutionContext(snapshot_before=planner_snap, risk_report=risk_report)
+        # RV8: freeze weights for planner cycle; adaptation only after cycle (review ~3642)
+        from eurika.analysis.weight_store import freeze_weights
+
+        weights_snapshot = freeze_weights(path)
+        return ExecutionContext(
+            snapshot_before=planner_snap,
+            risk_report=risk_report,
+            weights_snapshot=weights_snapshot,
+        )
     except Exception:
         return None
 

@@ -15,7 +15,7 @@ def handle_doctor(args: Any) -> int:
     paths = _paths_from_args(args)
     exit_code = 0
     project_reports: list[dict[str, Any]] = []
-    from cli.orchestrator import run_cycle
+    from eurika.orchestration.entry import run_cycle
     from eurika.smells.rules import summary_to_text
     for i, path in enumerate(paths):
         if len(paths) > 1:

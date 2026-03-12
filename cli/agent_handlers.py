@@ -333,7 +333,7 @@ def _run_cycle_with_mode(args: Any, mode: str='fix') -> int:
     if not path.is_dir():
         _ALOG.error("Error: path is not a directory: %s", path)
         return 1
-    from cli.orchestrator import run_cycle
+    from eurika.orchestration.entry import run_cycle
     quiet = getattr(args, 'quiet', False)
     interval = int(getattr(args, 'interval', 0) or 0)
     run_count = 0

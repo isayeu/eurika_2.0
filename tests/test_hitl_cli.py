@@ -5,7 +5,8 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from cli.orchestrator import _select_hybrid_operations, run_fix_cycle
+from eurika.orchestration.hybrid_approval import select_hybrid_operations as _select_hybrid_operations
+from eurika.orchestration.entry import run_fix_cycle
 
 def test_hybrid_non_interactive_approves_all_without_prompting() -> None:
     """With non_interactive=True, all ops approved, input() never called."""
