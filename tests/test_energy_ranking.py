@@ -55,3 +55,20 @@ def test_rank_operations_empty() -> None:
     graph = ProjectGraph(["a.py"], {})
     ranked = rank_operations_by_energy([], graph, [])
     assert ranked == []
+
+
+def test_rank_operations_uses_weights_snapshot_rv8() -> None:
+    """RV8: when weights_snapshot provided, use it instead of live load_weights."""
+    graph = ProjectGraph(["a.py", "b.py"], {"a.py": ["b.py"]})
+    smells = []
+    op_a = SimpleNamespace(smell_type="god_module", kind="split_module")
+    op_b = SimpleNamespace(smell_type="cyclic_dependency", kind="remove_cyclic_import")
+    # Custom snapshot: swap deltas so op_a gets higher score
+    snap = {
+        ("god_module", "split_module"): 0.25,
+        ("cyclic_dependency", "remove_cyclic_import"): 0.10,
+    }
+    ranked = rank_operations_by_energy([op_a, op_b], graph, smells, weights_snapshot=snap)
+    assert len(ranked) == 2
+    # With snapshot, god_module|split_module (0.25) beats cyclic|remove_cyclic (0.10)
+    assert ranked[0].kind == "split_module"

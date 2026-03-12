@@ -24,8 +24,10 @@ def compute_delta(
     metrics_after = metrics_from_graph(new_snap.graph, new_snap.smells, trends)
     before_score = metrics_before.get("score", 0)
     after_score = metrics_after.get("score", 0)
+    energy_used = "energy" in metrics_before and "energy" in metrics_after
     return {
         "success": after_score >= before_score,
         "before_score": before_score,
         "after_score": after_score,
+        "energy_used": energy_used,
     }

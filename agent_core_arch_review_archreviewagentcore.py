@@ -67,7 +67,16 @@ class ArchReviewAgentCore:
         priority = self._build_prioritize_modules(summary, smells, history_info, graph=graph, root=root)
         plan = self._build_plan(root=root, summary=summary, smells=smells, history_info=history_info, priority_modules=priority.arguments.get('modules', []))
         action_plan = self._build_action_plan(root=root, summary=summary, smells=smells, history_info=history_info, priority_modules=priority.arguments.get('modules', []))
-        patch_plan = self._build_patch_plan(root=root, summary=summary, smells=smells, history_info=history_info, priority_modules=priority.arguments.get('modules', []), graph=graph)
+        ws = getattr(ctx, "weights_snapshot", None) if ctx else None
+        patch_plan = self._build_patch_plan(
+            root=root,
+            summary=summary,
+            smells=smells,
+            history_info=history_info,
+            priority_modules=priority.arguments.get("modules", []),
+            graph=graph,
+            weights_snapshot=ws,
+        )
         proposals = [explain, evolution, priority, plan, action_plan, patch_plan]
         return Result(success=True, output={'type': 'arch_review', 'project_root': str(root), 'summary': summary, 'history': {'trends': history_info['trends'], 'regressions': history_info['regressions'], 'evolution_report': history_info['evolution_report']}, 'observations': observations_info, 'proposals': [asdict(p) for p in proposals]}, side_effects=['ArchReviewAgentCore: read self_map.json', 'ArchReviewAgentCore: read architecture_history.json', 'ArchReviewAgentCore: read eurika_observations.json'])
 
@@ -280,7 +289,16 @@ class ArchReviewAgentCore:
             arguments['learned_signals'] = learned_signals
         return DecisionProposal(action='suggest_action_plan', arguments=arguments, confidence=0.7, rationale='Action plan derived from prioritized modules, architectural smells and history trends. Execution remains outside this AgentCore and is expected to be handled by an external sandbox.' + (' Past success rates were used to nudge expected_benefit.' if learned_signals else ''))
 
-    def _build_patch_plan(self, root: Path, summary: Dict[str, Any], smells: List[ArchSmell], history_info: Dict[str, Any], priority_modules: List[Dict[str, Any]], graph: Optional['ProjectGraph']=None) -> DecisionProposal:
+    def _build_patch_plan(
+        self,
+        root: Path,
+        summary: Dict[str, Any],
+        smells: List[ArchSmell],
+        history_info: Dict[str, Any],
+        priority_modules: List[Dict[str, Any]],
+        graph: Optional["ProjectGraph"] = None,
+        weights_snapshot: Optional[Dict[tuple[str, str], float]] = None,
+    ) -> DecisionProposal:
         """
         Build a high-level PatchPlan proposal from diagnostics.
 
@@ -303,6 +321,16 @@ class ArchReviewAgentCore:
             self_map = load_self_map(root / 'self_map.json')
         except (FileNotFoundError, OSError):
             self_map = None
-        plan = build_patch_plan(project_root=str(root), summary=summary, smells=smells, history_info=history_info, priorities=priority_modules, learning_stats=learning_stats, graph=graph, self_map=self_map)
+        plan = build_patch_plan(
+            project_root=str(root),
+            summary=summary,
+            smells=smells,
+            history_info=history_info,
+            priorities=priority_modules,
+            learning_stats=learning_stats,
+            graph=graph,
+            self_map=self_map,
+            weights_snapshot=weights_snapshot,
+        )
         arguments: Dict[str, Any] = {'patch_plan': plan.to_dict()}
         return DecisionProposal(action='suggest_patch_plan', arguments=arguments, confidence=0.6, rationale='Patch plan derived from prioritized modules and their smells. Intended as a human-reviewable set of patch suggestions before any automated refactoring is attempted.')

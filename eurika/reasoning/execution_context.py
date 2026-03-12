@@ -7,7 +7,7 @@ ExecutionContext — единый контекст pipeline (ROADMAP §5.7, revi
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
     from eurika.reasoning.planner.models import (
@@ -38,6 +38,7 @@ class ExecutionContext:
     snapshot_after: Optional["ArchitectureSnapshot"] = None
     risk_report: Optional["RiskReport"] = None
     delta_score: Optional[float] = None
+    weights_snapshot: Optional[Dict[Tuple[str, str], float]] = None  # RV8: freeze during cycle
 
     current_goal: Optional[str] = None
     attempt_count: int = 0

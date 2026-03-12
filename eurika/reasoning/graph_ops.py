@@ -50,21 +50,41 @@ def metrics_from_graph(
     trends: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     """
-    Compute health/risk and centrality from graph (ROADMAP 3.1.3).
+    Compute health/risk and centrality from graph (ROADMAP 3.1.3, §5.7).
 
     Graph is the single source; no duplication with other metric paths.
-    Returns dict with: score, risk_score, level, factors, centrality.
+    Returns dict with: score, risk_score, level, factors, centrality, energy.
+    ROADMAP §5.7: score from EnergyModel when available (lower energy = better).
     """
     from eurika.smells.rules import compute_health
 
     trends = trends or {}
     health = compute_health({}, smells, trends)
     centrality = centrality_from_graph(graph)
-    return {
+    out: Dict[str, Any] = {
         **health,
         "risk_score": health["score"],
         "centrality": centrality,
     }
+    try:
+        from eurika.analysis.energy_model import EnergyModel
+        from eurika.analysis.metric_vector import compute_metric_vector
+
+        metrics = compute_metric_vector(graph, smells)
+        energy = EnergyModel().compute(metrics)
+        out["energy"] = round(energy, 4)
+        out["metrics"] = {
+            "complexity": metrics.complexity,
+            "coupling": metrics.coupling,
+            "cohesion": metrics.cohesion,
+            "instability": metrics.instability,
+            "layering_violations": metrics.layering_violations,
+            "entropy": metrics.entropy,
+        }
+        out["score"] = -energy
+    except Exception:
+        pass
+    return out
 
 
 def refactor_kind_for_smells(smell_types: List[str]) -> str:
