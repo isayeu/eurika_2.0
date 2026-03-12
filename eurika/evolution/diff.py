@@ -25,7 +25,7 @@ from eurika.smells.rules import build_summary
 from eurika.analysis.self_map import load_self_map
 
 if TYPE_CHECKING:
-    from core.snapshot import ArchitectureSnapshot
+    from eurika.core.snapshot import ArchitectureSnapshot
 
 
 @dataclass

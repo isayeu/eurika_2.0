@@ -59,7 +59,7 @@ def run_architecture_pipeline(path: Path) -> None:
 
 def print_arch_summary(path: Path) -> int:
     """Print only architecture summary for the current project state."""
-    from core.pipeline import run_full_analysis
+    from eurika.core.pipeline import run_full_analysis
     snapshot = run_full_analysis(path, update_artifacts=False)
     print(summary_to_text(snapshot.summary))
     return 0
@@ -72,7 +72,7 @@ def print_arch_history(path: Path, window: int=5) -> int:
 
 def print_arch_diff(old_self_map: Path, new_self_map: Path) -> int:
     """Print architecture diff between two self_map snapshots."""
-    from core.pipeline import build_snapshot_from_self_map
+    from eurika.core.pipeline import build_snapshot_from_self_map
     from eurika.evolution.diff import diff_architecture_snapshots, diff_to_text
     old = build_snapshot_from_self_map(old_self_map)
     new = build_snapshot_from_self_map(new_self_map)

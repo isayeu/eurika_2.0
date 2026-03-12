@@ -1,8 +1,6 @@
-"""Core orchestration layer (facade).
+"""Core orchestration layer (L1).
 
-For now this package re-exports the existing flat-core modules
-(`core.pipeline`, `core.snapshot`) to match the target layout without
-changing behaviour.
+Pipeline and snapshot for architecture analysis. S2: consolidated from legacy core/.
 """
 
 from . import pipeline, snapshot  # noqa: F401
