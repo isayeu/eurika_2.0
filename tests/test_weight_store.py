@@ -66,8 +66,8 @@ def test_adapt_weights_from_experience(tmp_path: Path) -> None:
                 [],
                 False,
             )
-        # 80% success -> should increase estimated_delta
-        changed = adapt_weights_from_experience(tmp_path, learning_rate=0.03)
+        # 80% success -> should increase estimated_delta (success_rate heuristic, no delta_energy in events)
+        changed = adapt_weights_from_experience(tmp_path, learning_rate=0.03, use_delta_energy=False)
         assert changed
         w = load_weights(tmp_path)
         assert w[("god_module", "split_module")] > 0.15
@@ -92,7 +92,7 @@ def test_adapt_weights_bounded(tmp_path: Path) -> None:
                 [],
                 False,
             )
-        adapt_weights_from_experience(tmp_path, learning_rate=0.1)
+        adapt_weights_from_experience(tmp_path, learning_rate=0.1, use_delta_energy=False)
         w = load_weights(tmp_path)
         val = w[("long_function", "extract_block_to_helper")]
         assert val >= MIN_DELTA

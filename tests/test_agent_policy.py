@@ -155,6 +155,19 @@ def test_policy_extract_block_weak_pair_review_in_hybrid() -> None:
     assert "weak" in out.reason or "approval" in out.reason
 
 
+def test_policy_extract_block_weak_pair_allowed_in_assist() -> None:
+    """extract_block_to_helper weak pair should NOT be denied in assist (human approves every op)."""
+    cfg = load_policy_config("assist")
+    op = {
+        "kind": "extract_block_to_helper",
+        "target_file": "x.py",
+        "smell_type": "long_function",
+        "description": "extract block",
+    }
+    out = evaluate_operation(op, config=cfg, index=1, seen_files=set())
+    assert out.decision == "allow", f"assist should not block weak pair, got {out.decision}: {out.reason}"
+
+
 def test_policy_hard_blocks_extract_block_for_extract_function_target() -> None:
     """Known fragile target must be denied in all modes."""
     op = {

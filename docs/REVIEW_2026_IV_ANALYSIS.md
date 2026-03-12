@@ -13,7 +13,7 @@
 | --------------------- | ------ | ------------------------------------- |
 | Архитектурная амбиция | 9/10   | Сильная идея                          |
 | Модульная структура   | 7/10   | Доменные зоны есть, границы мягкие    |
-| AI-модель             | 6/10   | EnergyModel есть, но не центр системы |
+| AI-модель             | 7/10   | EnergyModel в центре (R3 ✅); Cognitive Loop формализован (R8) |
 | Инженерная дисциплина | 6/10   | Рост быстрее стабилизации             |
 
 
@@ -80,16 +80,20 @@
 ## 5. Связь с ROADMAP
 
 - **§5.7 Execution Model** — MetricVector, EnergyModel, ΔEnergy уже есть.
-- **§5.8 Review сводка** — дополнить выводами Review IV.
-- **Следующий шаг** — R1–R10 задокументированы; миграция world_model (TARGET_V3_STRUCTURE §4) или R9 W+=lr×ΔE — по приоритету.
+- **§5.8 Review сводка** — выводы Review IV.
+- **R1–R10** — задокументированы и реализованы. world_model, execution, memory (TARGET_V3 §4) — ✅.
 
 ---
 
-## 6. Файлы
+## 6. Связанные документы
 
-- `docs/ROADMAP.md` — секция Review IV, приоритеты
-- `docs/CYCLE_REPORT.md` — запись о фиксации анализа
-- `docs/RISKS.md` — 10 архитектурных рисков, статус митигации (R7)
-- `docs/TARGET_V3_STRUCTURE.md` — целевая структура v3.x, маппинг (R6)
-- `docs/R10_EXTENSIBILITY_AND_KNOWLEDGE.md` — Plugin system, Knowledge Graph (R10)
+| Документ | Назначение |
+|----------|-------------|
+| ROADMAP.md | §5.10 Review IV, приоритеты |
+| CYCLE_REPORT.md | Снапшоты, #150–155 |
+| RISKS.md | 10 рисков, митигация (R7) |
+| TARGET_V3_STRUCTURE.md | v3.x, маппинг (R6) |
+| R10_EXTENSIBILITY_AND_KNOWLEDGE.md | Plugin system, KG (R10) |
+| COGNITIVE_LOOP.md | R8 формализация |
+| KNOWLEDGE_GRAPH_DESIGN.md | R10 KG схема |
 

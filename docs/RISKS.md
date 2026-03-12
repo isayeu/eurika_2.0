@@ -33,7 +33,7 @@
 | Статус | Митигация |
 |--------|-----------|
 | ✅ | record_outcome; get_merged_learning_stats; Learning Loop; filter_policy, deprioritize; pattern_library |
-| Частично | adapt_weights_from_experience — opt-in (EURIKA_WEIGHT_ADAPTATION) |
+| Частично | adapt_weights_from_experience — включено по умолчанию (EURIKA_WEIGHT_ADAPTATION=0 отключает) |
 
 ---
 

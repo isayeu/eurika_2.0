@@ -4,6 +4,8 @@
 
 **Статус (2026):** интегрирован в doctor, architect, explain. API: `eurika.api.get_knowledge(project_root, topic)`; GET /api/knowledge?topic=...&online=0.
 
+**Связь:** Code/Arch/Knowledge графы (code_graph, build_test_links) — [KNOWLEDGE_GRAPH_DESIGN.md](KNOWLEDGE_GRAPH_DESIGN.md).
+
 ## Контракт
 
 Не «LLM + поиск в интернете», а **Knowledge Provider Layer**.

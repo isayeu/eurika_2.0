@@ -4,24 +4,17 @@ Hints provider: graph + OSS hints; LLM optional (review §2).
 Separates hint-building from LLM. LLM called only when llm_hints_fn provided.
 Operational pattern library: OSS hints limited by success_rate (MEMORY.md).
 """
-
 from __future__ import annotations
-
 import ast
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
-
 from eurika.reasoning.planner.heuristics import SMELL_ACTION_SEP, diff_hints_for
-
 if TYPE_CHECKING:
     from eurika.analysis.graph import ProjectGraph
 
-
-def _sanitize_split_params(
-    project_root: str, target_file: str, split_params: Dict[str, Any]
-) -> Dict[str, Any]:
+def _sanitize_split_params(project_root: str, target_file: str, split_params: Dict[str, Any]) -> Dict[str, Any]:
     """Drop stale graph-driven imports_from when they don't map to file imports."""
-    imports_from = split_params.get("imports_from") or []
+    imports_from = split_params.get('imports_from') or []
     if not imports_from:
         return split_params
     stems_in_file = _import_stems_in_file(Path(project_root) / target_file)
@@ -31,19 +24,18 @@ def _sanitize_split_params(
     file_path = Path(project_root) / target_file
     if hinted_stems and hinted_stems.isdisjoint(stems_in_file):
         adjusted = dict(split_params)
-        adjusted["imports_from"] = []
+        adjusted['imports_from'] = []
         return adjusted
-    if hinted_stems and not _has_split_candidates_for_hinted_stems(file_path, hinted_stems):
+    if hinted_stems and (not _has_split_candidates_for_hinted_stems(file_path, hinted_stems)):
         adjusted = dict(split_params)
-        adjusted["imports_from"] = []
+        adjusted['imports_from'] = []
         return adjusted
     return split_params
-
 
 def _import_stems_in_file(file_path: Path) -> set[str]:
     """Collect import stems present in a file."""
     try:
-        content = file_path.read_text(encoding="utf-8")
+        content = file_path.read_text(encoding='utf-8')
     except OSError:
         return set()
     try:
@@ -54,11 +46,16 @@ def _import_stems_in_file(file_path: Path) -> set[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                stems.add(alias.name.split(".")[0])
+                stems.add(alias.name.split('.')[0])
         elif isinstance(node, ast.ImportFrom) and node.module:
-            stems.add(node.module.split(".")[-1])
+            stems.add(node.module.split('.')[-1])
     return stems
 
+def _extracted_block_71(node, out: Dict[str, str]) -> None:
+    stem = node.module.split('.')[-1]
+    for alias in node.names:
+        if alias.name != '*':
+            out[alias.asname or alias.name] = stem
 
 def _collect_import_bindings(tree: ast.AST) -> Dict[str, str]:
     """Map bound symbol -> import stem for import usage analysis."""
@@ -66,25 +63,19 @@ def _collect_import_bindings(tree: ast.AST) -> Dict[str, str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                name = alias.asname or alias.name.split(".")[0]
-                out[name] = alias.name.split(".")[0]
+                name = alias.asname or alias.name.split('.')[0]
+                out[name] = alias.name.split('.')[0]
         elif isinstance(node, ast.ImportFrom) and node.module:
-            stem = node.module.split(".")[-1]
-            for alias in node.names:
-                if alias.name != "*":
-                    out[alias.asname or alias.name] = stem
+            _extracted_block_71(node, out)
     return out
-
 
 def _root_name(node: Any) -> Optional[str]:
     import ast
-
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Attribute):
         return _root_name(node.value)
     return None
-
 
 def _used_import_stems_in_def(node: ast.AST, bindings: Dict[str, str]) -> set[str]:
     used: set[str] = set()
@@ -99,11 +90,10 @@ def _used_import_stems_in_def(node: ast.AST, bindings: Dict[str, str]) -> set[st
                 used.add(bindings[root])
     return used
 
-
 def _has_split_candidates_for_hinted_stems(file_path: Path, hinted_stems: set[str]) -> bool:
     """Planner-side preflight: does hinted import set produce any clean split candidate?"""
     try:
-        content = file_path.read_text(encoding="utf-8")
+        content = file_path.read_text(encoding='utf-8')
     except OSError:
         return False
     try:
@@ -111,49 +101,33 @@ def _has_split_candidates_for_hinted_stems(file_path: Path, hinted_stems: set[st
     except SyntaxError:
         return False
     bindings = _collect_import_bindings(tree)
-    builtins_ = {"True", "False", "None", "bool", "int", "str", "list", "dict", "set", "self"}
+    builtins_ = {'True', 'False', 'None', 'bool', 'int', 'str', 'list', 'dict', 'set', 'self'}
     for node in ast.iter_child_nodes(tree):
         if not isinstance(node, (ast.FunctionDef, ast.ClassDef)):
             continue
         used = _used_import_stems_in_def(node, bindings)
         relevant = used & hinted_stems
         others = used - hinted_stems - builtins_
-        if relevant and not others:
+        if relevant and (not others):
             return True
     return False
 
-
-def _oss_hint_limit_for_smell_action(
-    learning_stats: Optional[Dict[str, Dict[str, Any]]],
-    smell_type: str,
-    action_kind: str,
-) -> int:
+def _oss_hint_limit_for_smell_action(learning_stats: Optional[Dict[str, Dict[str, Any]]], smell_type: str, action_kind: str) -> int:
     """Max OSS hints for (smell_type, action_kind). 0 when low success rate (operational pattern library)."""
     if not learning_stats:
         return 3
     key = f"{smell_type or 'unknown'}{SMELL_ACTION_SEP}{action_kind or ''}"
     d = learning_stats.get(key, {})
-    total = d.get("total", 0)
+    total = d.get('total', 0)
     if total < 3:
         return 3
-    rate = (d.get("success", 0) or 0) / total
+    rate = (d.get('success', 0) or 0) / total
     return 0 if rate < 0.25 else 3
 
+def _extracted_block_174(hints: List, h: Any) -> None:
+    hints.append(h)
 
-def build_hints_and_params(
-    project_root: str,
-    smell_type: str,
-    action_kind: str,
-    node_smells: List[Any],
-    name: str,
-    *,
-    graph: Optional["ProjectGraph"] = None,
-    oss_patterns: Optional[Dict[str, Any]] = None,
-    learning_stats: Optional[Dict[str, Dict[str, Any]]] = None,
-    llm_hints_fn: Optional[
-        Callable[[str, str, str, Dict[str, Any]], List[str]]
-    ] = None,
-) -> tuple[List[str], Optional[Dict[str, Any]]]:
+def build_hints_and_params(project_root: str, smell_type: str, action_kind: str, node_smells: List[Any], name: str, *, graph: Optional['ProjectGraph']=None, oss_patterns: Optional[Dict[str, Any]]=None, learning_stats: Optional[Dict[str, Dict[str, Any]]]=None, llm_hints_fn: Optional[Callable[[str, str, str, Dict[str, Any]], List[str]]]=None) -> tuple[List[str], Optional[Dict[str, Any]]]:
     """
     Build diff hints and optional params (review §2: LLM injectable).
 
@@ -168,59 +142,45 @@ def build_hints_and_params(
     if isinstance(entries, list) and max_oss > 0:
         for e in entries[:max_oss]:
             if isinstance(e, dict):
-                proj = e.get("project", "?")
-                mod = e.get("module", "?")
-                hint = e.get("hint", "")
+                proj = e.get('project', '?')
+                mod = e.get('module', '?')
+                hint = e.get('hint', '')
                 if hint:
-                    h = f"OSS ({proj}): {mod} — {hint}"
+                    h = f'OSS ({proj}): {mod} — {hint}'
                     if h not in hints:
                         hints.append(h)
     split_params: Optional[Dict[str, Any]] = None
     if not graph:
         return (hints, split_params)
-    from eurika.reasoning.graph_ops import (
-        graph_hints_for_smell,
-        suggest_facade_candidates,
-        suggest_god_module_split_hint,
-    )
-
+    from eurika.reasoning.graph_ops import graph_hints_for_smell, suggest_facade_candidates, suggest_god_module_split_hint
     for smell in node_smells:
         graph_hints = graph_hints_for_smell(graph, smell.type, smell.nodes)
         for graph_hint in graph_hints:
             if graph_hint and graph_hint not in hints:
                 hints.append(graph_hint)
-    if action_kind == "split_module":
+    if action_kind == 'split_module':
         info = suggest_god_module_split_hint(graph, name, top_n=5)
-        split_params = {
-            "imports_from": info.get("imports_from", []),
-            "imported_by": info.get("imported_by", []),
-        }
+        split_params = {'imports_from': info.get('imports_from', []), 'imported_by': info.get('imported_by', [])}
         split_params = _sanitize_split_params(project_root, name, split_params)
         if llm_hints_fn:
             llm_hints = llm_hints_fn(smell_type, name, project_root, info)
             for h in llm_hints:
                 if h and h not in hints:
                     hints.append(h)
-    elif action_kind == "introduce_facade":
+    elif action_kind == 'introduce_facade':
         callers = suggest_facade_candidates(graph, name, top_n=5)
-        split_params = {"callers": callers} if callers else None
+        split_params = {'callers': callers} if callers else None
         if llm_hints_fn:
-            llm_hints = llm_hints_fn(smell_type, name, project_root, {"callers": callers or []})
+            llm_hints = llm_hints_fn(smell_type, name, project_root, {'callers': callers or []})
             for h in llm_hints:
                 if h and h not in hints:
-                    hints.append(h)
+                    _extracted_block_174(hints, h)
     return (hints, split_params)
 
-
-def default_llm_hints_fn(
-    smell_type: str, name: str, project_root: str, graph_context: Dict[str, Any]
-) -> List[str]:
+def default_llm_hints_fn(smell_type: str, name: str, project_root: str, graph_context: Dict[str, Any]) -> List[str]:
     """Default LLM hints: calls Ollama. Returns [] on failure."""
     try:
         from eurika.reasoning.planner.llm_adapter import ask_ollama_split_hints
-
-        return ask_ollama_split_hints(
-            smell_type, name, graph_context, project_root=project_root
-        )
+        return ask_ollama_split_hints(smell_type, name, graph_context, project_root=project_root)
     except Exception:
         return []

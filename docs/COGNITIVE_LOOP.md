@@ -21,7 +21,7 @@ Analyze → Build State → Generate → Simulate → Evaluate → Select → Ex
 | 5 | **Evaluate** | Evaluate (Energy) | DeltaEvaluator.compute_delta; ΔEnergy |
 | 6 | **Select** | Select | rank_operations_by_energy, filter_executable, select_hybrid |
 | 7 | **Execute** | Execute | apply_and_verify (PatchExecutor) |
-| 8 | **Learn** | Learn | record_outcome → EventLog, opt-in adapt_weights |
+| 8 | **Learn** | Learn | record_outcome → EventLog, adapt_weights (default on) |
 
 ---
 
@@ -124,8 +124,8 @@ Analyze → Build State → Generate → Simulate → Evaluate → Select → Ex
 |---------|----------|
 | **Вход** | `path`, `result`, `operations`, `report`, `verify_success` |
 | **Выход** | — (side-effect) |
-| **Артефакты** | EventLog (record_outcome), SessionMemory, opt-in adapt_weights |
-| **Модули** | `append_fix_cycle_memory` → `record_outcome(..., delta_energy=ctx.delta_score)`; `adapt_weights_from_experience` (EURIKA_WEIGHT_ADAPTATION) |
+| **Артефакты** | EventLog (record_outcome), SessionMemory, adapt_weights (default on) |
+| **Модули** | `append_fix_cycle_memory` → `record_outcome(..., delta_energy=ctx.delta_score)`; `adapt_weights_from_experience` (default; EURIKA_WEIGHT_ADAPTATION=0 отключает) |
 
 ---
 

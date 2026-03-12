@@ -113,8 +113,6 @@ def build_commands_tab(main: MainWindow) -> None:
         ("no_clean_imports_check", "Без очистки импортов", "Исключить remove_unused_import"),
         ("no_code_smells_check", "Без code smells", "Исключить long_function, deep_nesting из плана"),
         ("use_llm_extract_check", "LLM-извлечение", "При long_function без блока — запросить код у Ollama"),
-        ("weight_adaptation_check", "Адаптация весов", "Учиться на успехах/провалах после fix"),
-        ("weight_adaptation_delta_energy_check", "Режим ΔEnergy", "Обновлять веса по delta_energy (требует «Адаптация весов»)"),
         ("allow_low_risk_campaign_check", "Низкий риск", "Разрешить низкорисковые операции через campaign skip"),
         ("team_mode_check", "Только предложить", "Сохранить план в Approvals, не применять"),
     ]

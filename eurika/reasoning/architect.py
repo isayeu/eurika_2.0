@@ -11,68 +11,28 @@ Produces a short "architect's take" on the codebase from summary + history + pat
 """
 from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
-
-from .architect_helpers import (
-    build_llm_patch_desc,
-    build_recommendation_how_block,
-    format_recent_events,
-    format_reference_block,
-    resolve_knowledge_snippet,
-)
-from .context_sources import build_context_sources  # noqa: F401
-
+from .architect_helpers import build_llm_patch_desc, build_recommendation_how_block, format_recent_events, format_reference_block, resolve_knowledge_snippet
+from .context_sources import build_context_sources
 if TYPE_CHECKING:
     from eurika.knowledge import KnowledgeProvider
     from eurika.storage.events import Event
+__all__ = ['build_context_sources', 'call_llm_with_prompt', 'get_architect_data', 'interpret_architecture', 'interpret_architecture_with_meta']
 
-__all__ = ["build_context_sources", "call_llm_with_prompt", "get_architect_data", "interpret_architecture", "interpret_architecture_with_meta"]
-
-
-def get_architect_data(
-    summary: Dict[str, Any],
-    history: Dict[str, Any],
-    patch_plan: Optional[Dict[str, Any]] = None,
-    knowledge_snippet: str = '',
-    recent_events_snippet: str = '',
-) -> Dict[str, Any]:
+def get_architect_data(summary: Dict[str, Any], history: Dict[str, Any], patch_plan: Optional[Dict[str, Any]]=None, knowledge_snippet: str='', recent_events_snippet: str='') -> Dict[str, Any]:
     """R1 Domain: return structured architect data. Presentation in report/architect_format."""
     sys = summary.get('system') or {}
-    return {
-        'structure': {
-            'modules': sys.get('modules', 0),
-            'dependencies': sys.get('dependencies', 0),
-            'cycles': sys.get('cycles', 0),
-        },
-        'maturity': summary.get('maturity', 'unknown'),
-        'risks': summary.get('risks') or [],
-        'central_modules': summary.get('central_modules') or [],
-        'trends': history.get('trends') or {},
-        'regressions': history.get('regressions') or [],
-        'patch_plan': patch_plan,
-        'knowledge_snippet': knowledge_snippet,
-        'recent_events_snippet': recent_events_snippet,
-    }
-
+    return {'structure': {'modules': sys.get('modules', 0), 'dependencies': sys.get('dependencies', 0), 'cycles': sys.get('cycles', 0)}, 'maturity': summary.get('maturity', 'unknown'), 'risks': summary.get('risks') or [], 'central_modules': summary.get('central_modules') or [], 'trends': history.get('trends') or {}, 'regressions': history.get('regressions') or [], 'patch_plan': patch_plan, 'knowledge_snippet': knowledge_snippet, 'recent_events_snippet': recent_events_snippet}
 
 def _minimal_template_format(data: Dict[str, Any]) -> str:
     """Minimal format when no formatter injected (no L5 dependency)."""
-    s = data.get("structure") or {}
-    m, d, c = s.get("modules", 0), s.get("dependencies", 0), s.get("cycles", 0)
-    mat = data.get("maturity", "unknown")
-    risks = data.get("risks") or []
-    top = "; ".join(str(r) for r in risks[:3]) if risks else "none"
-    return f"The codebase has {m} modules, {d} dependencies and {c} cycles. Maturity: {mat}. Main risks: {top}."
+    s = data.get('structure') or {}
+    m, d, c = (s.get('modules', 0), s.get('dependencies', 0), s.get('cycles', 0))
+    mat = data.get('maturity', 'unknown')
+    risks = data.get('risks') or []
+    top = '; '.join((str(r) for r in risks[:3])) if risks else 'none'
+    return f'The codebase has {m} modules, {d} dependencies and {c} cycles. Maturity: {mat}. Main risks: {top}.'
 
-
-def _template_interpret(
-    summary: Dict[str, Any],
-    history: Dict[str, Any],
-    patch_plan: Optional[Dict[str, Any]] = None,
-    knowledge_snippet: str = "",
-    recent_events_snippet: str = "",
-    *,
-    formatter: Optional[Callable[[Dict[str, Any]], str]] = None,
-) -> str:
+def _template_interpret(summary: Dict[str, Any], history: Dict[str, Any], patch_plan: Optional[Dict[str, Any]]=None, knowledge_snippet: str='', recent_events_snippet: str='', *, formatter: Optional[Callable[[Dict[str, Any]], str]]=None) -> str:
     """Format architect data. formatter from report/architect_format (injected by caller)."""
     data = get_architect_data(summary, history, patch_plan, knowledge_snippet, recent_events_snippet)
     if formatter:
@@ -140,7 +100,7 @@ def _build_ollama_cli_prompt(summary: Dict[str, Any], history: Dict[str, Any], p
     patch_desc = build_llm_patch_desc(patch_plan)
     return f"You are a software architect. Reply in exactly 2 short sentences.\nSentence 1: architecture risk level. Sentence 2: one highest-impact refactoring.\n\nMetrics: modules={modules}, dependencies={deps}, cycles={cycles}, maturity={maturity}\nTop risk: {top_risk}\nTrends: complexity={trends.get('complexity', 'unknown')}, smells={trends.get('smells', 'unknown')}, centralization={trends.get('centralization', 'unknown')}{patch_desc}"
 
-def _call_litellm(prompt: str, max_tokens: int = 350) -> tuple[str | None, str | None]:
+def _call_litellm(prompt: str, max_tokens: int=350) -> tuple[str | None, str | None]:
     """Try litellm first (unified OpenAI/Ollama/OpenRouter). Returns (text, None) or (None, reason)."""
     try:
         import litellm
@@ -152,18 +112,13 @@ def _call_litellm(prompt: str, max_tokens: int = 350) -> tuple[str | None, str |
     model = os.environ.get('OPENAI_MODEL') or os.environ.get('OLLAMA_OPENAI_MODEL', 'qwen2.5-coder:7b')
     if 'openrouter' in base.lower():
         model = f'openrouter/{model}' if not model.startswith('openrouter/') else model
-    elif api_key and not base:
+    elif api_key and (not base):
         model = model if '/' in model else f'openai/{model}'
     elif not model.startswith('ollama/'):
-        model = f'ollama/{model.split("/")[-1]}'
+        model = f"ollama/{model.split('/')[-1]}"
     timeout = float(os.environ.get('EURIKA_LLM_TIMEOUT_SEC', '60'))
     try:
-        r = litellm.completion(
-            model=model,
-            messages=[{'role': 'user', 'content': prompt}],
-            max_tokens=max_tokens,
-            timeout=timeout,
-        )
+        r = litellm.completion(model=model, messages=[{'role': 'user', 'content': prompt}], max_tokens=max_tokens, timeout=timeout)
         if r and r.choices and r.choices[0].message.content:
             return (r.choices[0].message.content.strip(), None)
         return (None, 'empty litellm response')
@@ -186,33 +141,25 @@ def _ollama_preflight_check(model: str) -> str | None:
     """Быстрая проверка: Ollama запущен и модель доступна. None если ок. При timeout пропускаем (daemon может быть занят)."""
     import subprocess
     try:
-        r = subprocess.run(
-            ['ollama', 'show', model],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-            stdin=subprocess.DEVNULL,
-        )
+        r = subprocess.run(['ollama', 'show', model], capture_output=True, text=True, timeout=5, check=False, stdin=subprocess.DEVNULL)
         if r.returncode == 0:
             return None
         err = (r.stderr or r.stdout or '').strip().lower()
         if 'not found' in err or 'no such model' in err:
             return f"модель '{model}' не найдена — выполните `ollama pull {model}`"
         if 'could not connect' in err or 'connection refused' in err:
-            return "Ollama не отвечает — запустите `ollama serve`"
+            return 'Ollama не отвечает — запустите `ollama serve`'
         if 'timed out' in err:
-            return None  # ollama run уже обработает timeout и _model_ready_reason
-        return f"ollama show: {err[:200]}"
+            return None
+        return f'ollama show: {err[:200]}'
     except FileNotFoundError:
-        return "ollama не найден в PATH"
+        return 'ollama не найден в PATH'
     except subprocess.TimeoutExpired:
-        return None  # daemon занят — продолжаем, run сам обработает
+        return None
     except Exception as e:
         return str(e)
 
-
-def _call_ollama_cli(model: str, prompt: str, timeout_override: int | None = None) -> tuple[str | None, str | None]:
+def _call_ollama_cli(model: str, prompt: str, timeout_override: int | None=None) -> tuple[str | None, str | None]:
     """Fallback path via local `ollama run` CLI when HTTP endpoints are unavailable.
     EURIKA_OLLAMA_CLI_TIMEOUT_SEC: 0=unlimited, else seconds (default 120).
     timeout_override: use instead of env (e.g. EURIKA_LLM_EXTRACT_TIMEOUT_SEC for extract)."""
@@ -229,30 +176,20 @@ def _call_ollama_cli(model: str, prompt: str, timeout_override: int | None = Non
             cli_timeout_sec = None if val <= 0 else val
         except (ValueError, TypeError):
             cli_timeout_sec = 120
-
     preflight = _ollama_preflight_check(model)
     if preflight:
-        _trace_architect(f"ollama preflight: {preflight}")
+        _trace_architect(f'ollama preflight: {preflight}')
         return (None, preflight)
-
     progress_interval = 15
     show_progress = os.environ.get('EURIKA_OLLAMA_PROGRESS', '1').strip().lower() in ('1', 'true', 'yes')
     if cli_timeout_sec:
-        _trace_architect(f"ollama CLI: ожидание до {cli_timeout_sec}s...")
-
+        _trace_architect(f'ollama CLI: ожидание до {cli_timeout_sec}s...')
     _result: list = []
 
     def _run_subprocess(timeout_sec: int | None) -> None:
         t = timeout_sec if timeout_sec is not None else cli_timeout_sec
         try:
-            r = subprocess.run(
-                ['ollama', 'run', model, prompt],
-                capture_output=True,
-                text=True,
-                timeout=t,
-                check=False,
-                stdin=subprocess.DEVNULL,
-            )
+            r = subprocess.run(['ollama', 'run', model, prompt], capture_output=True, text=True, timeout=t, check=False, stdin=subprocess.DEVNULL)
         except FileNotFoundError:
             _result.append((None, 'ollama CLI not found in PATH'))
             return
@@ -275,10 +212,10 @@ def _call_ollama_cli(model: str, prompt: str, timeout_override: int | None = Non
             return
         _result.append((text, None))
 
-    def _run_once(timeout_sec: int | None = None) -> tuple[str | None, str | None]:
+    def _run_once(timeout_sec: int | None=None) -> tuple[str | None, str | None]:
         _result.clear()
         t = timeout_sec if timeout_sec is not None else cli_timeout_sec
-        if show_progress and t and t >= progress_interval:
+        if show_progress and t and (t >= progress_interval):
             th = threading.Thread(target=_run_subprocess, args=(t,), daemon=True)
             th.start()
             start = time.monotonic()
@@ -287,7 +224,7 @@ def _call_ollama_cli(model: str, prompt: str, timeout_override: int | None = Non
                 time.sleep(5)
                 elapsed = int(time.monotonic() - start)
                 if elapsed - last_printed >= progress_interval:
-                    _trace_architect(f"  ... {elapsed}s (ollama обрабатывает)")
+                    _trace_architect(f'  ... {elapsed}s (ollama обрабатывает)')
                     last_printed = elapsed
             th.join(timeout=2)
             if _result:
@@ -298,14 +235,7 @@ def _call_ollama_cli(model: str, prompt: str, timeout_override: int | None = Non
 
     def _model_ready_reason() -> str | None:
         try:
-            r = subprocess.run(
-                ['ollama', 'show', model],
-                capture_output=True,
-                text=True,
-                timeout=20,
-                check=False,
-                stdin=subprocess.DEVNULL,
-            )
+            r = subprocess.run(['ollama', 'show', model], capture_output=True, text=True, timeout=20, check=False, stdin=subprocess.DEVNULL)
         except Exception as e:
             return str(e)
         if r.returncode == 0:
@@ -343,7 +273,7 @@ def _should_use_litellm_first() -> bool:
 
 def _trace_architect(msg: str) -> None:
     import logging
-    logging.getLogger("eurika.reasoning.architect").info(f"eurika: architect — {msg}")
+    logging.getLogger('eurika.reasoning.architect').info(f'eurika: architect — {msg}')
 
 def _llm_interpret(summary: Dict[str, Any], history: Dict[str, Any], patch_plan: Optional[Dict[str, Any]]=None, knowledge_snippet: str='', recent_events_snippet: str='') -> tuple[str | None, str | None]:
     """Call LLM for a short architect take. Returns (text, None) on success, (None, reason) on failure.
@@ -353,52 +283,52 @@ def _llm_interpret(summary: Dict[str, Any], history: Dict[str, Any], patch_plan:
     """
     prompt = _build_llm_prompt(summary=summary, history=history, patch_plan=patch_plan, knowledge_snippet=knowledge_snippet, recent_events_snippet=recent_events_snippet)
     if _should_use_litellm_first():
-        _trace_architect("trying litellm (remote API)...")
+        _trace_architect('trying litellm (remote API)...')
         litellm_text, litellm_reason = _call_litellm(prompt, max_tokens=350)
         if litellm_text:
-            _trace_architect("litellm ok")
+            _trace_architect('litellm ok')
             return (litellm_text, None)
-        _trace_architect(f"litellm failed: {litellm_reason}; trying primary OpenAI...")
+        _trace_architect(f'litellm failed: {litellm_reason}; trying primary OpenAI...')
         primary_client, primary_model, init_reason = _init_primary_openai_client()
         primary_reason = init_reason or litellm_reason
         if primary_client and primary_model:
             llm_text, primary_call_reason = _call_llm_architect(primary_client, primary_model, prompt)
             if llm_text:
-                _trace_architect("primary OpenAI ok")
+                _trace_architect('primary OpenAI ok')
                 return (llm_text, None)
-            _trace_architect(f"primary failed: {primary_call_reason}; trying ollama HTTP...")
+            _trace_architect(f'primary failed: {primary_call_reason}; trying ollama HTTP...')
             primary_reason = primary_call_reason
         fallback_client, fallback_model, fallback_init_reason = _init_ollama_fallback_client()
         fallback_reason = fallback_init_reason
         if fallback_client and fallback_model:
             fallback_text, fallback_call_reason = _call_llm_architect(fallback_client, fallback_model, prompt)
             if fallback_text:
-                _trace_architect("ollama HTTP ok")
+                _trace_architect('ollama HTTP ok')
                 return (fallback_text, None)
-            _trace_architect(f"ollama HTTP failed: {fallback_call_reason}; trying ollama CLI...")
+            _trace_architect(f'ollama HTTP failed: {fallback_call_reason}; trying ollama CLI...')
             fallback_reason = fallback_call_reason
         cli_model = fallback_model or 'qwen2.5-coder:7b'
-        _trace_architect(f"architect: ollama CLI fallback (model={cli_model}), до 120s...")
+        _trace_architect(f'architect: ollama CLI fallback (model={cli_model}), до 120s...')
         cli_prompt = _build_ollama_cli_prompt(summary, history, patch_plan)
         cli_text, cli_reason = _call_ollama_cli(cli_model, cli_prompt)
         if cli_text:
-            _trace_architect("ollama CLI ok")
+            _trace_architect('ollama CLI ok')
             return (cli_text, None)
         return (None, f"primary failed ({primary_reason or 'unknown'}); ollama HTTP failed ({fallback_reason or 'unknown'}); ollama CLI failed ({cli_reason or 'unknown'})")
     import os
     cli_model = os.environ.get('OLLAMA_OPENAI_MODEL', 'qwen2.5-coder:7b')
-    _trace_architect(f"architect: ollama CLI (model={cli_model}), до 120s...")
+    _trace_architect(f'architect: ollama CLI (model={cli_model}), до 120s...')
     cli_prompt = _build_ollama_cli_prompt(summary, history, patch_plan)
     cli_text, cli_reason = _call_ollama_cli(cli_model, cli_prompt)
     if cli_text:
-        _trace_architect("ollama CLI ok")
+        _trace_architect('ollama CLI ok')
         return (cli_text, None)
-    _trace_architect(f"ollama CLI failed: {cli_reason}; trying ollama HTTP...")
+    _trace_architect(f'ollama CLI failed: {cli_reason}; trying ollama HTTP...')
     fallback_client, fallback_model, fallback_init_reason = _init_ollama_fallback_client()
     if fallback_client and fallback_model:
         fallback_text, _ = _call_llm_architect(fallback_client, fallback_model, prompt)
         if fallback_text:
-            _trace_architect("ollama HTTP ok")
+            _trace_architect('ollama HTTP ok')
             return (fallback_text, None)
     return (None, f"ollama CLI failed ({cli_reason or 'unknown'}); ollama HTTP failed ({fallback_init_reason or 'unknown'})")
 
@@ -438,18 +368,7 @@ def call_llm_with_prompt(prompt: str, max_tokens: int=1024) -> tuple[str | None,
         return (cli_text, None)
     return (None, f"primary failed ({init_reason or 'unknown'}); ollama HTTP failed ({fallback_init_reason or 'unknown'}); ollama CLI failed ({cli_reason or 'unknown'})")
 
-def interpret_architecture(
-    summary: Dict[str, Any],
-    history: Dict[str, Any],
-    use_llm: bool = True,
-    verbose: bool = True,
-    patch_plan: Optional[Dict[str, Any]] = None,
-    knowledge_provider: Optional["KnowledgeProvider"] = None,
-    knowledge_topic: Optional[Union[str, List[str]]] = None,
-    recent_events: Optional[List["Event"]] = None,
-    *,
-    template_formatter: Optional[Callable[[Dict[str, Any]], str]] = None,
-) -> str:
+def interpret_architecture(summary: Dict[str, Any], history: Dict[str, Any], use_llm: bool=True, verbose: bool=True, patch_plan: Optional[Dict[str, Any]]=None, knowledge_provider: Optional['KnowledgeProvider']=None, knowledge_topic: Optional[Union[str, List[str]]]=None, recent_events: Optional[List['Event']]=None, *, template_formatter: Optional[Callable[[Dict[str, Any]], str]]=None) -> str:
     """
     Return a short architect's interpretation (2–4 sentences).
 
@@ -461,32 +380,19 @@ def interpret_architecture(
     a single topic (str) or a list of topics; all fragments are merged and injected.
     recent_events: optional list of Event (patch, learn) for context (ROADMAP 3.2.3).
     """
-    text, meta = interpret_architecture_with_meta(
-        summary=summary,
-        history=history,
-        use_llm=use_llm,
-        verbose=verbose,
-        patch_plan=patch_plan,
-        knowledge_provider=knowledge_provider,
-        knowledge_topic=knowledge_topic,
-        recent_events=recent_events,
-        template_formatter=template_formatter,
-    )
+    text, meta = interpret_architecture_with_meta(summary=summary, history=history, use_llm=use_llm, verbose=verbose, patch_plan=patch_plan, knowledge_provider=knowledge_provider, knowledge_topic=knowledge_topic, recent_events=recent_events, template_formatter=template_formatter)
     _ = meta
     return text
 
-def interpret_architecture_with_meta(
-    summary: Dict[str, Any],
-    history: Dict[str, Any],
-    use_llm: bool = True,
-    verbose: bool = True,
-    patch_plan: Optional[Dict[str, Any]] = None,
-    knowledge_provider: Optional["KnowledgeProvider"] = None,
-    knowledge_topic: Optional[Union[str, List[str]]] = None,
-    recent_events: Optional[List["Event"]] = None,
-    *,
-    template_formatter: Optional[Callable[[Dict[str, Any]], str]] = None,
-) -> tuple[str, Dict[str, Any]]:
+def _extracted_block_505(llm_text: str, rec_block: str, ref_block: str) -> str:
+    llm_text = llm_text.rstrip()
+    if rec_block:
+        llm_text += rec_block
+    if ref_block:
+        llm_text += ref_block
+    return llm_text
+
+def interpret_architecture_with_meta(summary: Dict[str, Any], history: Dict[str, Any], use_llm: bool=True, verbose: bool=True, patch_plan: Optional[Dict[str, Any]]=None, knowledge_provider: Optional['KnowledgeProvider']=None, knowledge_topic: Optional[Union[str, List[str]]]=None, recent_events: Optional[List['Event']]=None, *, template_formatter: Optional[Callable[[Dict[str, Any]], str]]=None) -> tuple[str, Dict[str, Any]]:
     """Return architect text with runtime metadata about degraded mode/fallbacks.
     R2 Fallback: knowledge resolution failures yield empty snippet; cycle completes deterministically."""
     meta: Dict[str, Any] = {'use_llm': bool(use_llm), 'llm_used': False, 'degraded_mode': False, 'degraded_reasons': []}
@@ -503,27 +409,13 @@ def interpret_architecture_with_meta(
             rec_block = build_recommendation_how_block(risks, knowledge_snippet)
             ref_block = format_reference_block(knowledge_snippet)
             if rec_block or ref_block:
-                llm_text = llm_text.rstrip()
-                if rec_block:
-                    llm_text += rec_block
-                if ref_block:
-                    llm_text += ref_block
+                llm_text = _extracted_block_505(llm_text, rec_block, ref_block)
             return (llm_text, meta)
         meta['degraded_mode'] = True
         _trace_architect(f"LLM failed, using template — {reason or 'unknown'}")
-        meta['degraded_reasons'].append(f'llm_unavailable:{reason or "unknown"}')
+        meta['degraded_reasons'].append(f"llm_unavailable:{reason or 'unknown'}")
     else:
-        _trace_architect("LLM disabled (--no-llm), using template")
+        _trace_architect('LLM disabled (--no-llm), using template')
         meta['degraded_mode'] = True
         meta['degraded_reasons'].append('llm_disabled')
-    return (
-        _template_interpret(
-            summary,
-            history,
-            patch_plan,
-            knowledge_snippet,
-            recent_snippet,
-            formatter=template_formatter,
-        ),
-        meta,
-    )
+    return (_template_interpret(summary, history, patch_plan, knowledge_snippet, recent_snippet, formatter=template_formatter), meta)

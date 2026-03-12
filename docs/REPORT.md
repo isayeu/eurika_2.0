@@ -1,16 +1,16 @@
 # REPORT — Текущий статус Eurika
 
-_Обновлено: актуально для ветки v3.0.x (runtime policy + whitelist rollout + Qt-first interface)._
+_Обновлено: 2026-03. Ветка v3.0.x (Qt-first, Execution Model, R8/R10)._
 
 ---
 
-## Статус
+## 1. Статус
 
-**Основная задача (сейчас):** повышать операционность (качество apply/verify), сохраняя безопасность rollout через policy/learning.
+**Основная задача:** операционность (apply/verify) + безопасность (policy/learning). R1–R10 реализованы.
 
 **Ключевое состояние:**
 
-- `extract_block_to_helper` переведён в guarded-path:
+- `extract_block_to_helper` в guarded-path:
   - weak-pair policy (`hybrid: review`, `auto: deny`);
   - target-aware demote при `verify_fail >= 2`;
   - whitelist для controlled rollout (`.eurika/operation_whitelist.json`).
@@ -26,20 +26,20 @@ _Обновлено: актуально для ветки v3.0.x (runtime policy
   - top `verify_success` по `smell|action|target`;
   - рекомендации для whitelist / policy review на основе фактических исходов.
 
-### Оценка зрелости (по review)
+### Оценка зрелости (2026-03)
 
 | Компонент               | Оценка |
 | ----------------------- | ------ |
-| Архитектурная структура | 8.5/10 |
+| Архитектурная структура | 9/10   |
 | Качество кода           | 8/10   |
 | Концепция               | 9/10   |
 | Операционность          | 5/10   |
-| Продуктовая готовность  | 6/10   |
+| Продуктовая готовность  | 7/10   |
 | Потенциал               | 9.5/10 |
 
 ---
 
-## Текущий рабочий фокус
+## 2. Текущий фокус
 
 1. Рост `verify_success_rate` по `smell|action|target` (а не только общий apply-rate).
    - `eurika learning-kpi [path]` — KPI блок, promote/deprioritize рекомендации.
@@ -49,7 +49,7 @@ _Обновлено: актуально для ветки v3.0.x (runtime policy
 
 ---
 
-## Быстрый операционный цикл
+## 3. Быстрый операционный цикл
 
 ```bash
 # из корня проекта
@@ -67,14 +67,15 @@ _Обновлено: актуально для ветки v3.0.x (runtime policy
 
 ---
 
-## Ключевые документы
+## 4. Ключевые документы
 
 | Документ | Назначение |
-| --- | --- |
-| `ROADMAP.md` | Текущий план и приоритеты (operability + guarded rollout) |
-| `CYCLE_REPORT.md` | Фактические снапшоты ритуалов и выводы по метрикам |
-| `CLI.md` | Актуальные команды/флаги, включая `whitelist-draft` |
-| `UI.md` | Legacy reference по архивному Web UI |
-| `archive/MIGRATION_WEB_TO_QT.md` | Статус миграции интерфейса (API-only + Qt-first) |
-| `DOGFOODING.md` | Практика запусков и верификации в локальном окружении |
-| `CHANGELOG.md` | История релизных изменений |
+|----------|------------|
+| ROADMAP.md | План, приоритеты, R1–R10, §4.5 фокус |
+| CYCLE_REPORT.md | Снапшоты ритуалов, #150–155 |
+| REVIEW_2026_IV_ANALYSIS.md | Анализ Review IV |
+| COGNITIVE_LOOP.md | R8: Cognitive Loop |
+| KNOWLEDGE_GRAPH_DESIGN.md | R10: Knowledge Graph |
+| CLI.md | Команды, флаги, whitelist-draft |
+| DOGFOODING.md | Ритуал запусков |
+| archive/MIGRATION_WEB_TO_QT.md | Миграция Web → Qt |

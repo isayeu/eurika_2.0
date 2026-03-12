@@ -229,7 +229,7 @@ def test_preview_operation_extract_class(tmp_path: Path) -> None:
     assert "error" not in result
     assert "unified_diff" in result
     assert "BigExtracted.pure" in result.get("new_content", "")
-    assert "from big_bigextracted import BigExtracted" in result.get("new_content", "")
+    assert "from eurika.extraction_sandbox.big_bigextracted import BigExtracted" in result.get("new_content", "")
 
 
 def test_preview_operation_unsupported_kind(tmp_path: Path) -> None:

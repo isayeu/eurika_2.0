@@ -47,3 +47,4 @@ alwaysApply: true
 | Execution Model, MetricVector, EnergyModel | @docs/review.md, @docs/ROADMAP.md §5.7 |
 | Storage, память, EventLog/LearningStore | @docs/MEMORY.md, @eurika/storage/ |
 | Bounded evolution, лимиты, крупные фичи | @docs/BOUNDED_EVOLUTION.md, @.eurika/rules/bounded-evolution.mdc |
+| Knowledge Graph, plugins (R10) | @docs/KNOWLEDGE_GRAPH_DESIGN.md, @docs/R10_EXTENSIBILITY_AND_KNOWLEDGE.md |

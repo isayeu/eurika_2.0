@@ -76,15 +76,24 @@ def extract_class(file_path: Path, target_class: str, methods_to_extract: List[s
         return None
     new_class_name = target_class + extracted_class_suffix
     new_content = _build_extracted_class_module(tree, new_class_name, to_extract)
-    if target_file:
-        t = Path(target_file)
-        new_name = t.stem + '_' + new_class_name.lower() + '.py'
-        new_rel_path = str(t.parent / new_name) if str(t.parent) != '.' else new_name
+    effective_target = target_file or str(file_path)
+    t = Path(effective_target)
+    new_name = t.stem + '_' + new_class_name.lower() + '.py'
+    use_sandbox = _is_root_level_module(t)
+    if use_sandbox:
+        new_rel_path = f'eurika/extraction_sandbox/{new_name}'
+        new_module_path = f'eurika.extraction_sandbox.{t.stem}_{new_class_name.lower()}'
     else:
-        new_name = file_path.stem + '_' + new_class_name.lower() + '.py'
-        new_rel_path = new_name
-    modified = _build_modified_original(tree, target_cls, to_extract, new_class_name, target_file, file_path)
+        new_rel_path = str(t.parent / new_name) if str(t.parent) != '.' else new_name
+        new_module_path = None
+    modified = _build_modified_original(tree, target_cls, to_extract, new_class_name, target_file, file_path, new_module_path=new_module_path if use_sandbox else None)
     return (new_rel_path, new_content, modified)
+
+def _is_root_level_module(target: Path) -> bool:
+    """True when target is at project root (e.g. code_awareness.py). Top-level modules cause ModuleNotFoundError when not in sys.path."""
+    parent = str(target.parent).replace('\\', '/')
+    return parent == '.' or parent == '' or '/' not in str(target).replace('\\', '/')
+
 
 def _uses_self_attributes(node: ast.FunctionDef) -> bool:
     """True if method body accesses self.attr (excluding self as param)."""
@@ -161,15 +170,13 @@ def _build_extracted_class_module(tree: ast.AST, new_class_name: str, methods: L
         lines.append('')
     return '\n'.join(lines).rstrip() + '\n'
 
-def _build_modified_original(tree: ast.AST, target_cls: ast.ClassDef, to_remove: List[ast.FunctionDef], new_class_name: str, target_file: Optional[str], file_path: Path) -> str:
+def _build_modified_original(tree: ast.AST, target_cls: ast.ClassDef, to_remove: List[ast.FunctionDef], new_class_name: str, target_file: Optional[str], file_path: Path, new_module_path: Optional[str] = None) -> str:
     """Remove extracted methods and add delegation + import."""
     remove_names = {m.name for m in to_remove}
     new_class_body = [n for n in target_cls.body if not (isinstance(n, ast.FunctionDef) and n.name in remove_names)]
-    if target_file:
-        base = str(Path(target_file).with_suffix('')).replace('/', '.').replace('\\', '.')
-    else:
-        base = file_path.stem
-    new_module_path = base + '_' + new_class_name.lower()
+    if not new_module_path:
+        base = str(Path(target_file or str(file_path)).with_suffix('')).replace('/', '.').replace('\\', '.')
+        new_module_path = base + '_' + new_class_name.lower()
     import_stmt = f'from {new_module_path} import {new_class_name}'
     for m in to_remove:
         args = m.args

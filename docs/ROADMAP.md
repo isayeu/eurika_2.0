@@ -29,7 +29,7 @@
 
 **Review III (2026):** Идея 9/10, Амбиция 10/10, Структурность 7/10, **Стабильность ядра 5/10**, Фокус 6/10. Позиция: Tool ✔ Smart refactor ✔ → переход к Energy-based optimizer. Ключевой совет: **упростить ядро, один автономный цикл идеальным, потом наращивать**. Чего избегать: новые фичи, новые smell, self-rewriting, онлайн-патчинг. docs/review.md §2.
 
-**Review IV (2026):** Амбиция 9/10, модульность 7/10, AI 6/10. Главный риск: либо полноценный AI-архитектор (EnergyModel + WorldState в центре), либо «огромный набор инструментов». Задачи: единый reasoning engine (не 7 architecture_*), EnergyModel в центр, Chat API изолировать, learning центральный. Подробно: **docs/REVIEW_2026_IV_ANALYSIS.md**.
+**Review IV (2026):** Амбиция 9/10, модульность 7/10, AI 7/10. EnergyModel в центре (R3 ✅); Cognitive Loop формализован (R8); KG реализован (R10). Подробно: **docs/REVIEW_2026_IV_ANALYSIS.md**.
 
 **Обновление (февраль 2026):** Split тяжёлых модулей (task_executor, serve, fix_cycle_impl, core_handlers, chat) — P0.4 выполнен; pipeline_model; test_cycle → test_cycle_report; CR rules (docs, pre-commit, test-api) в .eurika/rules; Qt MVP: hybrid approvals, dashboard, Stop. **Рост:** чистота структуры 4→5.5, контроль сложности 5→6, тестируемость ?→6, продуктовая 6→6.5. **Остаётся:** refactor_code_smell 0%, test_graph_ops/test_api крупные при необходимости, продакшн 4/10.
 
@@ -136,22 +136,9 @@ UI.md ✓; README ✓; критерии **B.7–B.14** выполнены. Оц�
 
 **Отложено:** refactor_code_smell 0% — честная метрика; EnergyModel — контракт есть, реализация позже; production 4/10.
 
-### 4.6 Следующие шаги (приоритизировано)
+### 4.6 Следующие шаги
 
-**Принцип (review III):** упростить ядро, один автономный цикл идеальным, freeze фичей.
-
-| Приоритет | Шаг | Оценка | Зависимости |
-|-----------|-----|--------|-------------|
-| **P1** | 200 циклов, CYCLE_REPORT | ~6–8 ч | ✅ CYCLE_REPORT #127, #149; run_cycle_batch weight adaptation + quiet=False |
-| **P2** | Очистка `.eurika_backups` | 1 мин | `rm -rf .eurika_backups` перед release |
-| **P3** | Ритуал dogfooding после сессии | 5 мин | `eurika fix . --dry-run`; при изменениях — CYCLE_REPORT |
-| **P4** | File size >600 LOC (по необходимости) | varies | ✅ chat_intent 515, prepare 544, extract_function 529, architect 528; extract helpers (chat_intent_detectors, prepare_critic, extract_function_ast, architect_helpers) |
-| **P5** | EnergyModel как resource constraint | ✅ | EURIKA_ENERGY_CAP; planner_patch_ops truncates по Σ|ΔE|; BOUNDED_EVOLUTION §7 |
-| **—** | planner/core split | ✅ | CYCLE_REPORT #129: graph_analysis, actions_proposal; core — thin facade |
-| **P6** | R9 W-=lr×ΔE в adapt_weights | ✅ | EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY=1; get_learn_events_with_delta_energy; test_adapt_weights_delta_energy_mode |
-| **P7** | world_model alias (TARGET_V3 §4) | ✅ | eurika/world_model/ — MetricVector, EnergyModel, WeightVector; firewall L2 |
-| **P8** | memory alias (TARGET_V3 §4) | ✅ | eurika/memory/ — re-exports storage; ProjectMemory, record_outcome, checkpoint |
-| **P9** | execution alias (TARGET_V3 §4) | ✅ | eurika/execution/ — re-exports patch_engine; apply_and_verify, simulate_patch, verify_patch |
+**P1–P9 выполнены.** Ритуалы: dogfooding после сессии (§4.3), очистка .eurika_backups перед release.
 
 **Чего избегать:** новые фичи, новые smell, self-rewriting, онлайн-патчинг (review III).
 
@@ -416,7 +403,7 @@ while True:
 | R6 | Целевая структура: world_model/, reasoning/, execution/, memory/ | docs/TARGET_V3_STRUCTURE.md |
 | R7 | Риски (Fragmented Intelligence и др.) | ✅ docs/RISKS.md |
 | R8 | Cognitive Loop — полная формализация | ✅ docs/COGNITIVE_LOOP.md |
-| R9 | Experience Memory с delta_energy | 📄 MEMORY.md; W+=lr×ΔE в плане |
+| R9 | Experience Memory с delta_energy | ✅ P6: W-=lr×ΔE, record_outcome(delta_energy) |
 | R10 | Plugin system, Knowledge Graph | ✅ plugins ✓; code_graph, build_test_links, get_knowledge_graph, /api/test_links, /api/knowledge_graph |
 
 **Риски:** docs/RISKS.md — 10 рисков, статус митигации.

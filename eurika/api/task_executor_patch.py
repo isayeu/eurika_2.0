@@ -59,6 +59,12 @@ def execute_code_edit_patch(root: Path, spec: TaskSpec) -> ExecutionReport:
     verification['rollback'] = 'done'
     return ExecutionReport(ok=False, summary='patch verify failed, rollback done', applied_steps=['replace text', 'run verify'], verification=verification, artifacts_changed=[], error='verify failed')
 
+def _extracted_block_135(path, originals):
+    try:
+        path.write_text(originals[path], encoding='utf-8')
+    except OSError:
+        pass
+
 def execute_code_edit_patch_batch(root: Path, spec: TaskSpec, operations_json: str) -> ExecutionReport:
     """Apply multiple replacements atomically with single verify and rollback."""
     is_dry_run = str(spec.entities.get('dry_run') or '').strip().lower() in {'1', 'true', 'yes'}
@@ -133,10 +139,7 @@ def execute_code_edit_patch_batch(root: Path, spec: TaskSpec, operations_json: s
             written.append(path)
     except OSError as exc:
         for path in written:
-            try:
-                path.write_text(originals[path], encoding='utf-8')
-            except OSError:
-                pass
+            _extracted_block_135(path, originals)
         return ExecutionReport(ok=False, summary='patch failed', error=f'write failed: {exc}')
     verification = run_pytest(root, verify_args, timeout=300)
     if verification.get('ok'):

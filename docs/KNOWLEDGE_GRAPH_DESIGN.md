@@ -2,7 +2,9 @@
 
 **Источник:** docs/review.md §9, R10_EXTENSIBILITY_AND_KNOWLEDGE.md, TARGET_V3_STRUCTURE §5.
 
-**Статус:** v3.x стабилизация пройдена (world_model, execution, memory ✅). Реализация может начинаться. Документ — design doc + эталонные интерфейсы.
+**Статус:** v3.x стабилизация пройдена. Реализовано: code_graph, build_test_links, get_knowledge_graph; GET /api/test_links, /api/knowledge_graph.
+
+**Связь:** Knowledge Provider (query по topic) — [KNOWLEDGE_LAYER.md](KNOWLEDGE_LAYER.md).
 
 ---
 

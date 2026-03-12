@@ -136,8 +136,9 @@ def adapt_weights_from_experience(
     """
     import os
 
+    # Default: delta_energy mode (Energy-based loop, ROADMAP §5.9). Set EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY=0 for success_rate heuristic.
     if use_delta_energy is None:
-        use_delta_energy = os.environ.get("EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY", "").strip().lower() in (
+        use_delta_energy = os.environ.get("EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY", "1").strip().lower() in (
             "1",
             "true",
             "yes",

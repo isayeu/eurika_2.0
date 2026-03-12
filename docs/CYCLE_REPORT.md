@@ -1,21 +1,22 @@
 # Отчёт цикла Eurika
 
-## Current state (2026-03-08)
+## Current state (2026-03)
 
-- **150. R8 Cognitive Loop полная формализация (2026-03):** docs/COGNITIVE_LOOP.md — контракты 8 этапов (Analyze → Learn), входы/выходы, ExecutionContext flow, маппинг на prepare/apply_stage. Architecture §0.9 ссылка. REVIEW_2026_IV_ANALYSIS R8 ✅. CYCLE_REPORT #150.
-- **155. R10 get_knowledge_graph facade (2026-03):** get_knowledge_graph(project_root) → {code, test_links}. GET /api/knowledge_graph. KNOWLEDGE_GRAPH_DESIGN §5. CYCLE_REPORT #155.
-- **154. R10 GET /api/test_links (2026-03):** get_test_links в knowledge_api; маршрут в serve_routes_get; tests/test_api_serve test_dispatch_api_get_test_links_*. CYCLE_REPORT #154.
-- **153. R10 build_test_links (2026-03):** eurika/knowledge/knowledge_graph.py — build_test_links(project_root, code_graph). Пары (test_file, tested_module) по импортам. tests/test_knowledge_graph.py. KNOWLEDGE_GRAPH_DESIGN §4. CYCLE_REPORT #153.
-- **152. R10 code_graph facade (2026-03):** eurika/knowledge/code_graph.py — CodeGraph, build_code_graph(self_map). Обёртка над ProjectGraph.from_self_map. tests/test_code_graph.py. v3.x стабилизация пройдена — docs обновлены. KNOWLEDGE_GRAPH_DESIGN §2.3. CYCLE_REPORT #152.
-- **151. R10 Knowledge Graph design doc (2026-03):** docs/KNOWLEDGE_GRAPH_DESIGN.md — целевая схема code/arch/knowledge графов; текущее vs gap; интерфейсы.
-- **149. 200 fix cycles batch #2 (2026-03):** run_cycle_batch 200 циклов. EURIKA_WEIGHT_ADAPTATION=1, EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY=1; quiet=False; --- Cycle N/200 в консоли. CYCLE_REPORT @50, @100, @150, @200. success_rate 1.0, apply_rate 1.0, rollback 0; top_failure N/A; most_deprioritized N/A; events.json ~190 KB. run_cycle_batch: weight adaptation по умолчанию. Qt Terminal Stop: setsid + killpg для завершения всей цепочки (bash→python→pytest). CYCLE_REPORT #149.
+- **156. Energy-based loop default on (2026-03):** EURIKA_WEIGHT_ADAPTATION default `1`; EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY default `1`. Fix cycle теперь замкнут по delta_energy из коробки (ROADMAP §5.9). `0` — отключить. apply_stage, weight_store. CLI.md, MEMORY.md, Architecture.md, ONBOARDING.
+- **155.** R10 get_knowledge_graph facade — get_knowledge_graph(project_root) → {code, test_links}; GET /api/knowledge_graph.
+- **154.** R10 GET /api/test_links — get_test_links в knowledge_api; tests/test_api_serve.
+- **153.** R10 build_test_links — eurika/knowledge/knowledge_graph.py; пары (test_file, tested_module) по импортам.
+- **152.** R10 code_graph facade — CodeGraph, build_code_graph(self_map); tests/test_code_graph.py.
+- **151.** R10 Knowledge Graph design — docs/KNOWLEDGE_GRAPH_DESIGN.md; целевая схема code/arch/knowledge.
+- **150.** R8 Cognitive Loop — docs/COGNITIVE_LOOP.md; контракты 8 этапов, ExecutionContext flow.
+- **149.** 200 fix cycles batch #2 — run_cycle_batch; weight adaptation по умолчанию; Qt Terminal Stop (setsid + killpg).
 - **148. P8 memory alias (2026-03):** eurika/memory/ — re-exports ProjectMemory, record_outcome, get_statistics, checkpoint, EventStore, ExperienceStore из eurika.storage. TARGET_V3_STRUCTURE §4. dependency_firewall L0.
 - **147. P7 world_model alias (2026-03):** eurika/world_model/ — re-exports MetricVector, EnergyModel, WeightVector из eurika.analysis. TARGET_V3_STRUCTURE §4. dependency_firewall: L2 path/import rules. Без перемещения файлов. ROADMAP P7 ✅.
 - **146. P6 R9 W-=lr×ΔE (2026-03):** adapt_weights_from_experience при EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY=1 использует delta_energy из learn events. LearningView.get_experience_with_delta_energy, get_learn_events_with_delta_energy. Формула W -= lr*delta (negative=improvement→W↑). Обрабатывается только последнее событие. MEMORY.md, CLI.md, test_adapt_weights_delta_energy_mode. ROADMAP P6 ✅.
 - **145. Post-Review IV документация (2026-03):** REVIEW_2026_IV_ANALYSIS §5 «Следующий шаг» — миграция world_model или R9 W+=lr×ΔE. TARGET_V3_STRUCTURE: R2/R3 выполнены, миграция может начинаться. docs.mdc: REVIEW_2026_IV_ANALYSIS, R10_EXTENSIBILITY_AND_KNOWLEDGE. ROADMAP §4.6: P6 R9 W+=lr×ΔE, P7 world_model alias.
-- **144. R10 Plugin system и Knowledge Graph (2026-03):** docs/R10_EXTENSIBILITY_AND_KNOWLEDGE.md. Plugin: analyzer ✓ (R5_PLUGIN_INTERFACE, eurika/plugins/, API); refactor plugins — в плане. Knowledge Graph: целевая модель (code/arch/knowledge), до v3.x стабилизации не начинать. REVIEW_2026_IV_ANALYSIS R10 📄.
-- **143. R9 Experience Memory (2026-03):** MEMORY.md — секция «Experience Memory с delta_energy». Запись: record_outcome(..., delta_energy=ctx.delta_score) → learn event output. Gap: adapt_weights использует success_rate; целевая формула W += lr×delta_energy — в плане. REVIEW_2026_IV_ANALYSIS R9 📄.
-- **142. R8 Cognitive Loop маппинг (2026-03):** Architecture.md §0.9 — Cognitive Loop: Analyze → Build State → Generate → Simulate → Evaluate → Select → Execute → Learn. Таблица соответствия этапов (run_fix_scan_stage, snapshot_before, PlannerEngine, simulate_patch, DeltaEvaluator, rank_operations_by_energy, apply_and_verify, record_outcome). REVIEW_2026_IV_ANALYSIS R8 — статус 📄.
+- **144.** R10 Plugin system + Knowledge Graph — docs/R10_EXTENSIBILITY_AND_KNOWLEDGE.md; plugins analyzer ✓; KG реализован (см. 150–155).
+- **143.** R9 Experience Memory — record_outcome(delta_energy); P6 adapt_weights с W-=lr×ΔE.
+- **142.** R8 Cognitive Loop — маппинг в Architecture §0.9; полная формализация в docs/COGNITIVE_LOOP.md (см. 150).
 - **141. R2 architecture_pipeline cycle broken (2026-03):** eurika/analysis/build_graph_summary.py — build_graph_and_summary_from_self_map, build_graph_and_summary. core.pipeline и architecture_pipeline импортируют оттуда; цикл core↔architecture_pipeline разорван. pattern_library → eurika.analysis. LayerException для core→eurika.analysis.
 - **140. R3 EnergyModel в центр (2026-03):** Architecture.md §0.9 — явная секция «EnergyModel в центр»; Scoring = ΔEnergy − Risk; planner→energy_ranking; delta_score→record_outcome. TARGET_V3_STRUCTURE: world_model = центр scoring.
 - **139. R6 Target v3 structure (2026-03):** docs/TARGET_V3_STRUCTURE.md — world_model/reasoning/execution/memory; маппинг текущего кода; порядок миграции; приоритет стабилизации.
@@ -466,7 +467,7 @@ Polygon готов как каталог drills; team-mode rollback-reset; KPI -
 - **84. Post-v3.0.17 ritual:** report-snapshot после релиза R2/R3/R4 gates. risk_score=46, apply_rate=0.93, rollback_rate=0.6; learning: extract_block_to_helper 5%, remove_unused_import 38%.
 - **83. R4 gate:** `test_r4_dependency_firewall_passes` — EURIKA_STRICT_LAYER_FIREWALL=1 pytest test_dependency_guard + test_dependency_firewall. DEPENDENCY_FIREWALL, API_BOUNDARIES.
 - **82. R3 gate:** `test_r3_edge_case_matrix_passes` — pytest -m edge_case должен проходить. EDGE_CASE_MATRIX.
-- **81. R2 gate:** `test_doctor_cycle_r2_state_model_on_self` — doctor на проекте возвращает state ∈ {done, error}, валидный state_history. FALLBACK_AUDIT, LOGGING_R2.
+- **81. R2 gate:** `test_doctor_cycle_r2_state_model_on_self` — doctor на проекте возвращает state ∈ {done, error}, валидный state_history. FALLBACK_AUDIT, R2_LOGGING.
 - **80. R1 gate:** `test_self_check_r1_layer_discipline_on_self` — регрессионный тест: self-check на проекте выдаёт LAYER DISCIPLINE: OK (0 forbidden, 0 layer violations). EURIKA_STRICT_LAYER_FIREWALL=1 проходит.
 - **79. Qt MVP flow зафиксирован:** smoke-сценарий: открыть → выбрать проект (Browse) → Commands → scan → Live output → Stop. First-run UX: при пустом project root при первом запуске показывается folder picker.
 - **Qt Hybrid Approvals + Dashboard готовы:** Approvals — Run fix (team-mode) из вкладки, workflow hint, корректный risk из explainability; Dashboard — Top risks, Operational metrics, автообновление при смене project root.
@@ -566,7 +567,7 @@ R3 Quality Gate: edge-case block зафиксирован как gate.
 
 ### Scope
 - **R2 gate-тест:** `test_doctor_cycle_r2_state_model_on_self` — doctor на проекте возвращает state и state_history. State ∈ {done, error}, history valid (thinking → done|error).
-- State model (cycle_state.py), fallback (FALLBACK_AUDIT), logging (LOGGING_R2) — зафиксированы.
+- State model (cycle_state.py), fallback (FALLBACK_AUDIT), logging (R2_LOGGING) — зафиксированы.
 
 ### Итог
 R2 Runtime Robustness: gate зафиксирован.

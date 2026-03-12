@@ -205,8 +205,8 @@ def test_apply_extract_class(tmp_path: Path) -> None:
     }
     report = apply_patch_plan(tmp_path, plan, dry_run=False, backup=False)
     assert "big.py" in report["modified"]
-    assert "big_bigextracted.py" in report["modified"]
-    extracted = tmp_path / "big_bigextracted.py"
+    assert "eurika/extraction_sandbox/big_bigextracted.py" in report["modified"]
+    extracted = tmp_path / "eurika" / "extraction_sandbox" / "big_bigextracted.py"
     assert extracted.exists()
     assert "def pure" in extracted.read_text()
     assert "BigExtracted.pure" in (tmp_path / "big.py").read_text()
@@ -239,7 +239,7 @@ def test_apply_extract_class_includes_type_hint_imports(tmp_path: Path) -> None:
     }
     report = apply_patch_plan(tmp_path, plan, dry_run=False, backup=False)
     assert "mod.py" in report["modified"]
-    extracted = tmp_path / "mod_bigextracted.py"
+    extracted = tmp_path / "eurika" / "extraction_sandbox" / "mod_bigextracted.py"
     assert extracted.exists()
     content = extracted.read_text()
     assert "from pathlib import Path" in content

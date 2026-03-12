@@ -3,8 +3,19 @@ import ast
 from pathlib import Path
 from typing import List
 
+from eurika.extraction_sandbox.code_awareness_extracted import FileInfo
+
+
 class CodeAwarenessExtracted:
     """Extracted methods (static)."""
+
+    @staticmethod
+    def _file_info_dict(info: FileInfo):
+        """Convert FileInfo to JSON-serializable dict."""
+        return {
+            'path': info.path, 'lines': info.lines,
+            'functions': info.functions, 'classes': info.classes,
+        }
 
     @staticmethod
     def read_file(path: Path):

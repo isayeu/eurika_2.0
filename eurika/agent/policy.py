@@ -86,6 +86,8 @@ def _weak_pair_policy(
     smell = (op.get("smell_type") or "").strip()
     if (smell, kind) not in WEAK_SMELL_ACTION_PAIRS:
         return None, None
+    if mode == "assist":
+        return None, None  # assist: human approves every op, no weak-pair block
     if mode == "hybrid":
         return "review", f"historically weak pair requires manual approval: {smell}|{kind}"
     # Phase E: if pair reached rate≥25%, total≥5 → allow review in auto (deny→review)

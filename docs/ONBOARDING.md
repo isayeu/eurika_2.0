@@ -78,6 +78,6 @@ eurika-qt .
 
 ## Опционально (продвинутое)
 
-- **EURIKA_WEIGHT_ADAPTATION=1** — включить адаптацию весов при fix (медленное обучение по success/fail). По умолчанию выключено.
+- **EURIKA_WEIGHT_ADAPTATION=0** — отключить адаптацию весов (по умолчанию включено: Energy-based loop, W -= lr×ΔE).
 - **EURIKA_META_CONTROLLER=1** — при включённой weight adaptation: meta-controller переключает стратегию при деградации (низкий success rate, серия регрессий).
 - **refactor_code_smell + LLM:** `eurika learn-github . --light --build-patterns` → `EURIKA_USE_LLM_EXTRACT=1 eurika fix .` — OSS-примеры улучшают LLM extract. См. docs/archive/REFACTOR_CODE_SMELL_PLAN.md.

@@ -56,7 +56,7 @@
   Apply  → patch_engine.apply_and_verify
   Verify → success/fail
   Learn  → record_outcome(modules, ops, risks, verify_success, delta_energy)
-         → [opt-in] adapt_weights_from_experience (EURIKA_WEIGHT_ADAPTATION=1)
+         → adapt_weights_from_experience (default on; EURIKA_WEIGHT_ADAPTATION=0 отключает)
 
 [Fix Cycle N+1]
   Plan   → get_merged_learning_stats(root) → learning_stats
@@ -66,7 +66,7 @@
   ...
 ```
 
-**Точки входа:** `record_outcome`, `get_merged_learning_stats`, `adapt_weights_from_experience` (opt-in).
+**Точки входа:** `record_outcome`, `get_merged_learning_stats`, `adapt_weights_from_experience` (включено по умолчанию).
 
 ---
 
@@ -131,10 +131,10 @@ Planner читает enriched failures и меняет поведение (не 
 |---------|---------|------------------|
 | **Запись** | `record_outcome(..., delta_energy=...)` → learn event output.delta_energy | ✅ apply_stage передаёт ctx.delta_score |
 | **Хранение** | EventLog, type=learn, output.delta_energy | ✅ |
-| **Weight update** | success_rate (default) или delta_energy (opt-in) | W -= lr × delta_energy (P6) |
-| **Опция** | `EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY=1` | Использовать delta_energy из learn events вместо success_rate |
+| **Weight update** | delta_energy (default), success_rate при `EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY=0` | W -= lr × delta_energy (P6) |
+| **Опция** | `EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY=0` | success_rate heuristic вместо delta_energy |
 
-**Текущий adapt:** `weight_store.adapt_weights_from_experience`. По умолчанию success_rate heuristic. При `EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY=1` и `EURIKA_WEIGHT_ADAPTATION=1` — формула W -= lr × delta_energy (negative delta = improvement → W increases). Обрабатывается только последнее событие с delta_energy.
+**Текущий adapt:** `weight_store.adapt_weights_from_experience`. По умолчанию W -= lr × delta_energy (Energy-based loop). Обрабатывается только последнее событие с delta_energy.
 
 ---
 

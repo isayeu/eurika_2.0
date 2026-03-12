@@ -329,6 +329,26 @@ def process(items):
     assert ns["out"] == [2, 3], "len(a)+1=2, len(bc)+1=3"
 
 
+def test_suggest_extract_block_includes_parent_body_locals(tmp_path: Path) -> None:
+    """suggest_extract_block passes parent body locals (rows, report) as extra_params, not just params."""
+    code = '''
+def foo(items):
+    rows = list(items)
+    report = []
+    for row in rows:
+        a = row + 1
+        b = a * 2
+        report.append(b)
+    return report
+'''
+    (tmp_path / "mod.py").write_text(code)
+    r = suggest_extract_block(tmp_path / "mod.py", "foo", min_lines=3)
+    assert r is not None
+    _, _, _, extra = r
+    assert "row" in extra, "loop var must be passed"
+    assert "rows" in extra or "report" in extra, "parent body locals (rows or report) must be in extra_params"
+
+
 def test_suggest_extract_block_skips_nested_parent_with_closure_dependencies(tmp_path: Path) -> None:
     """suggest_extract_block returns None when block depends on outer-scope closure vars."""
     code = """

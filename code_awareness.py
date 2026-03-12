@@ -171,16 +171,6 @@ class CodeAwareness:
                 internal.append(mod)
         return list(dict.fromkeys(internal))
 
-    @staticmethod
-    def _file_info_dict(info: FileInfo) -> Dict[str, Any]:
-        """Convert FileInfo to JSON-serializable dict."""
-        return {
-            'path': info.path,
-            'lines': info.lines,
-            'functions': info.functions,
-            'classes': info.classes,
-        }
-
     def _function_duplicate_candidate(self, content: str, node: ast.AST, file_str: str) -> Optional[tuple[str, Dict[str, Any]]]:
         """Extract normalized body and location if function qualifies as duplicate candidate. Returns None to skip."""
         if not isinstance(node, ast.FunctionDef):
@@ -230,27 +220,10 @@ class CodeAwareness:
             all_smells.extend(self.find_smells(p))
         duplicates = self.find_duplicates()
         self_map = self.build_self_map()
-        return {
-            'structure': [self._file_info_dict(i) for i in infos],
-            'smells': [
-                {
-                    'file': s.file,
-                    'location': s.location,
-                    'kind': s.kind,
-                    'message': s.message,
-                    'metric': s.metric,
-                }
-                for s in all_smells
-            ],
-            'self_map': self_map,
-            'duplicates': duplicates,
-            'summary': {
-                'files': len(infos),
-                'total_lines': sum((i.lines for i in infos)),
-                'smells_count': len(all_smells),
-                'duplicates_count': len(duplicates),
-            },
-        }
+        return {'structure': [self._file_info_dict(i) for i in infos], 'smells': [{'file': s.file, 'location': s.location, 'kind': s.kind, 'message': s.message, 'metric': s.metric} for s in all_smells], 'self_map': self_map, 'duplicates': duplicates, 'summary': {'files': len(infos), 'total_lines': sum((i.lines for i in infos)), 'smells_count': len(all_smells), 'duplicates_count': len(duplicates)}}
+
+    def _file_info_dict(self, info: FileInfo):
+        return CodeAwarenessExtracted._file_info_dict(info)
 
     def read_file(self, path: Path):
         return CodeAwarenessExtracted.read_file(path)
@@ -266,14 +239,3 @@ class CodeAwareness:
 
     def _normalize_body(self, text: str):
         return CodeAwarenessExtracted._normalize_body(text)
-
-# TODO: Refactor code_awareness.py (god_module -> split_module)
-# Suggested steps:
-# - Extract coherent sub-responsibilities into separate modules (e.g. core, analysis, reporting).
-# - Identify distinct concerns and split this module into focused units.
-# - Reduce total degree (fan-in + fan-out) via extraction.
-# - Extract from imports: eurika.extraction_sandbox.code_awareness_extracted, eurika.extraction_sandbox.code_awareness_codeawarenessextracted.
-# - Consider grouping callers: cli/core_handlers.py, runtime_scan_run_scan.py, runtime_scan.py.
-# - Extract file parsing logic into a new module named `file_parser.py`.
-# - Isolate scanning algorithms into a new module called `scanner_algorithms.py`.
-# - Move API endpoints and related functions to a new module titled `api_endpoints.py`.

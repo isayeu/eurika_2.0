@@ -147,7 +147,7 @@ Input → Plan → Validate → Apply → Verify
 | **Validate** | Decision gate: approval + critic verdict | fix_cycle_helpers.filter_executable_operations, select_hybrid_operations |
 | **Apply** | Запись патчей на диск | apply_stage.execute_fix_apply_stage |
 | **Verify** | pytest / verification | apply_stage (apply_and_verify) |
-| **Learn** | record_outcome → EventLog; opt-in adapt_weights | apply_stage (после verify) |
+| **Learn** | record_outcome → EventLog; adapt_weights (default on) | apply_stage (после verify) |
 
 **Learning Loop (R5):** Plan читает `get_merged_learning_stats`; Apply пишет `record_outcome`. См. docs/MEMORY.md §Learning Loop.
 
@@ -232,7 +232,7 @@ snapshot_before, candidates, selected_action, simulated_snapshot, snapshot_after
 2. EnergyModel: Energy = W · MetricVector
 3. Planner ранжирует по ΔEnergy = E_before - E_after; Score = Delta - Risk
 4. ExperienceStore — record_outcome без изменения весов
-5. Weight adaptation — медленно, bounded [0.02..0.25], EURIKA_WEIGHT_ADAPTATION=1; откат: удалить .eurika/weights.json
+5. Weight adaptation — медленно, bounded [0.02..0.25], включено по умолчанию; EURIKA_WEIGHT_ADAPTATION=0 отключает; откат: удалить .eurika/weights.json
 6. Meta-controller (v4.0) — eurika/cognition/meta_controller.py; при деградации (low success rate, 3+ регрессий подряд) — skip_adaptation или learning_rate_scale=0.5; EURIKA_META_CONTROLLER=1
 7. **Bounded evolution (2026-03):** EnergyModel — target как resource constraint (energy budget, caps), не только scoring. Контракт §7 в docs/BOUNDED_EVOLUTION.md. EURIKA_MAX_OPS_PER_CYCLE=12, MAX_EVENTS=500. Адаптация доказана (CYCLE_REPORT #123).
 
@@ -264,7 +264,7 @@ Analyze → Build State → Generate → Simulate → Evaluate → Select → Ex
 | Evaluate | DeltaEvaluator.compute_delta; ΔEnergy = E_after - E_before |
 | Select | rank_operations_by_energy, filter_executable, select_hybrid_operations |
 | Execute | apply_and_verify (PatchExecutor) |
-| Learn | record_outcome → EventLog, opt-in adapt_weights |
+| Learn | record_outcome → EventLog, adapt_weights (default on) |
 
 Полная формализация: **docs/COGNITIVE_LOOP.md** — контракты этапов, потоки данных, маппинг на код.
 

@@ -5,6 +5,11 @@ import sys
 from typing import Any
 from .core_handlers_common import _aggregate_multi_repo_reports, _check_path, _clog, _err, _paths_from_args
 
+def _extracted_block_126(fix_path, report):
+    fix = json.loads(fix_path.read_text(encoding='utf-8'))
+    if fix.get('telemetry'):
+        report['last_fix_telemetry'] = fix['telemetry']
+
 def handle_doctor(args: Any) -> int:
     """Diagnostics only: report + architect (no patches). Saves to eurika_doctor_report.json."""
     paths = _paths_from_args(args)
@@ -104,13 +109,7 @@ def handle_doctor(args: Any) -> int:
         except Exception:
             pass
         report: dict[str, Any] = {'summary': summary, 'history': history, 'architect': architect_text, 'patch_plan': patch_plan}
-        report['run_params'] = {
-            'no_llm': no_llm,
-            'online': getattr(args, 'online', False),
-            'quiet': quiet_doc,
-            'runtime_mode': getattr(args, 'runtime_mode', 'assist'),
-            'window': getattr(args, 'window', 5),
-        }
+        report['run_params'] = {'no_llm': no_llm, 'online': getattr(args, 'online', False), 'quiet': quiet_doc, 'runtime_mode': getattr(args, 'runtime_mode', 'assist'), 'window': getattr(args, 'window', 5)}
         if context_sources:
             report['context_sources'] = context_sources
         if suggested_policy:
@@ -124,9 +123,7 @@ def handle_doctor(args: Any) -> int:
         fix_path = path / 'eurika_fix_report.json'
         if fix_path.exists():
             try:
-                fix = json.loads(fix_path.read_text(encoding='utf-8'))
-                if fix.get('telemetry'):
-                    report['last_fix_telemetry'] = fix['telemetry']
+                _extracted_block_126(fix_path, report)
             except Exception:
                 pass
         try:

@@ -216,19 +216,29 @@ def _maybe_add_extract_class_operation(operations: List[PatchOperation], project
         return
     operations.append(PatchOperation(target_file=name, kind='extract_class', description=f'[{idx}] Extract class {class_name} from {name} ({len(methods)} static-like methods).', diff=f"# TODO: Extract class {class_name}\n# Methods to extract: {', '.join(methods[:5])}{('...' if len(methods) > 5 else '')}\n", smell_type='god_class', params={'target_class': class_name, 'methods_to_extract': methods}))
 
+def _is_root_level_module(target: Path) -> bool:
+    """True when target is at project root. Matches eurika.refactor.extract_class logic."""
+    parent = str(target.parent).replace('\\', '/')
+    return parent == '.' or parent == '' or '/' not in str(target).replace('\\', '/')
+
+
 def _existing_extracted_class_is_synced(project_root: str, target_file: str, target_class: str, methods_to_extract: List[str]) -> bool:
     """
     True when extracted class file already exists with matching class/method signature.
 
     Uses the same extracted-file naming convention as eurika.refactor.extract_class.
+    For root-level sources, checks both extraction_sandbox and same-dir (legacy).
     """
     new_class_name = target_class + 'Extracted'
     t = Path(target_file)
     new_name = t.stem + '_' + new_class_name.lower() + '.py'
-    new_rel_path = str(t.parent / new_name) if str(t.parent) != '.' else new_name
-    extracted_path = Path(project_root) / new_rel_path
+    candidates: List[Path] = []
+    if _is_root_level_module(t):
+        candidates.append(Path(project_root) / f'eurika/extraction_sandbox/{new_name}')
+    candidates.append(Path(project_root) / (str(t.parent / new_name) if str(t.parent) != '.' else new_name))
+    extracted_path = next((p for p in candidates if p.exists() and p.is_file()), None)
     source_path = Path(project_root) / target_file
-    if not (extracted_path.exists() and extracted_path.is_file()):
+    if extracted_path is None:
         return False
     try:
         import ast

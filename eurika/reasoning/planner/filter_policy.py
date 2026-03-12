@@ -160,6 +160,7 @@ _DEPRIORITIZE_REASONS = frozenset((
     "extract_qt_slot_signature_mismatch",
     "extract_missing_return",
     "extract_delegation_broken",
+    "extract_top_level_module",
     "human_rejected",
 ))
 

@@ -61,9 +61,7 @@ eurika/
 - §5.8 Целевое разделение слоёв
 - docs/RISKS.md — Fragmented Intelligence (R1)
 
-**Не начинать** полную реструктуризацию до:
-- architecture_pipeline консолидирован (R2)
-- EnergyModel явно в центре (R3)
+**Статус:** R2, R3 выполнены ✅. Миграция пройдена: world_model, execution, memory (P7–P9).
 
 ---
 

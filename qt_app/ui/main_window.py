@@ -161,10 +161,6 @@ class MainWindow(QMainWindow):
         self.no_clean_imports_check.toggled.connect(self._sync_preview)
         self.no_code_smells_check.toggled.connect(self._sync_preview)
         self.use_llm_extract_check.toggled.connect(self._sync_preview)
-        self.weight_adaptation_check.toggled.connect(self._on_weight_adaptation_toggled)
-        self.weight_adaptation_check.toggled.connect(self._sync_preview)
-        self.weight_adaptation_delta_energy_check.toggled.connect(self._sync_preview)
-        self._on_weight_adaptation_toggled(self.weight_adaptation_check.isChecked())
         self.allow_low_risk_campaign_check.toggled.connect(self._sync_preview)
         self.team_mode_check.toggled.connect(self._sync_preview)
         if getattr(self, "runtime_mode_combo", None):
@@ -346,19 +342,9 @@ class MainWindow(QMainWindow):
             parts.extend(["--runtime-mode", rm_val])
         if getattr(self, 'use_llm_extract_check', None) and self.use_llm_extract_check.isChecked() and cmd in {'fix', 'cycle'}:
             parts.append('[LLM extract]')
-        if getattr(self, 'weight_adaptation_check', None) and self.weight_adaptation_check.isChecked() and cmd in {'fix', 'cycle'}:
-            suffix = ' ΔE' if getattr(self, 'weight_adaptation_delta_energy_check', None) and self.weight_adaptation_delta_energy_check.isChecked() else ''
-            parts.append(f'[Weight adapt{suffix}]')
         self.preview_label.setText(' '.join(parts))
         self.module_edit.setEnabled(cmd == 'explain')
         self._sync_learn_visibility()
-
-    def _on_weight_adaptation_toggled(self, checked: bool) -> None:
-        """Delta energy mode requires Weight adaptation; disable when off."""
-        if getattr(self, 'weight_adaptation_delta_energy_check', None):
-            self.weight_adaptation_delta_energy_check.setEnabled(checked)
-            if not checked:
-                self.weight_adaptation_delta_energy_check.setChecked(False)
 
     def _sync_learn_visibility(self) -> None:
         """Show/hide learn-github options based on command."""
