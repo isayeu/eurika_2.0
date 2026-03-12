@@ -7,7 +7,12 @@ from typing import Dict, List, Optional
 
 SMELL_ACTION_SEP = "|"
 
-# Bounded evolution (review §1): max ops per fix cycle. 0 = unlimited.
+# RV7 (review ~4505): planner caps to prevent explosion. BOUNDED_EVOLUTION §3.
+MAX_ACTIONS_DEFAULT = 20
+MAX_PLAN_DEPTH_DEFAULT = 3
+BEAM_WIDTH_DEFAULT = 5
+
+
 def max_ops_per_cycle() -> int:
     """EURIKA_MAX_OPS_PER_CYCLE: cap operations per fix cycle. Default 12."""
     try:
@@ -15,6 +20,15 @@ def max_ops_per_cycle() -> int:
         return max(0, val)
     except (ValueError, TypeError):
         return 12
+
+
+def max_actions() -> int:
+    """EURIKA_MAX_ACTIONS: hard cap on planner output (RV7, review ~4505). Default 20."""
+    try:
+        val = int(os.environ.get("EURIKA_MAX_ACTIONS", str(MAX_ACTIONS_DEFAULT)))
+        return max(0, val)
+    except (ValueError, TypeError):
+        return MAX_ACTIONS_DEFAULT
 
 
 def energy_cap_per_cycle() -> float:

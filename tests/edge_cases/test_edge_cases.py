@@ -105,7 +105,7 @@ def test_memory_events_append_and_read(tmp_path: Path) -> None:
 @pytest.mark.edge_case
 def test_cycle_state_empty_project_returns_done_or_error(tmp_path: Path) -> None:
     """Fix/doctor on empty project (no self_map) → state=error, predictable."""
-    from cli.orchestrator import run_cycle
+    from eurika.orchestration.entry import run_cycle
 
     out = run_cycle(tmp_path, mode="doctor", no_llm=True, quiet=True)
     assert "state" in out
@@ -117,7 +117,7 @@ def test_cycle_state_empty_project_returns_done_or_error(tmp_path: Path) -> None
 @pytest.mark.edge_case
 def test_build_patch_operations_empty_input_returns_list() -> None:
     """Planner: empty summary/smells → operations list (possibly empty), no crash."""
-    from eurika.reasoning.planner_patch_ops import build_patch_operations
+    from eurika.reasoning.planner.patch_ops import build_patch_operations
 
     summary = {"system": {"modules": 0, "dependencies": 0, "cycles": 0}, "risks": []}
     out = build_patch_operations(
@@ -141,7 +141,7 @@ def test_prepare_context_sources_exception_continues(tmp_path: Path) -> None:
     (tmp_path / "a.py").write_text("import b\nx = 1\n", encoding="utf-8")
     (tmp_path / "b.py").write_text("y = 2\n", encoding="utf-8")
 
-    from cli.orchestration.prepare import prepare_fix_cycle_operations
+    from eurika.orchestration.prepare import prepare_fix_cycle_operations
 
     fake_result = type("R", (), {})()
     fake_result.success = True

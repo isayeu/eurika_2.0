@@ -23,6 +23,7 @@ from eurika.reasoning.planner.heuristics import (
     FACADE_MODULES,
     STEP_KIND_TO_ACTION,
     energy_cap_per_cycle,
+    max_actions,
     max_ops_per_cycle,
 )
 from eurika.reasoning.planner.hints_provider import (
@@ -143,13 +144,21 @@ def build_patch_operations(project_root: str, summary: Dict[str, Any], smells: L
         kind_plan_counts=kind_plan_counts,
     )
     ops_cap = max_ops_per_cycle()
+    actions_cap = max_actions()
+    effective_cap = 0
+    if ops_cap > 0 and actions_cap > 0:
+        effective_cap = min(ops_cap, actions_cap)
+    elif ops_cap > 0:
+        effective_cap = ops_cap
+    elif actions_cap > 0:
+        effective_cap = actions_cap
     energy_cap = energy_cap_per_cycle()
     root = Path(project_root) if project_root else None
     if energy_cap > 0:
         kept: List[PatchOperation] = []
         total_energy = 0.0
         for op in operations:
-            if ops_cap > 0 and len(kept) >= ops_cap:
+            if effective_cap > 0 and len(kept) >= effective_cap:
                 break
             delta = estimated_delta_for_op(op, root)
             if total_energy + delta > energy_cap:
@@ -157,8 +166,8 @@ def build_patch_operations(project_root: str, summary: Dict[str, Any], smells: L
             kept.append(op)
             total_energy += delta
         operations = kept
-    elif ops_cap > 0 and len(operations) > ops_cap:
-        operations = operations[:ops_cap]
+    elif effective_cap > 0 and len(operations) > effective_cap:
+        operations = operations[:effective_cap]
     return operations
 
 def _build_plan_targets(priorities: List[Dict[str, Any]], smells: List[ArchSmell], smells_by_node: Dict[str, List[ArchSmell]], summary: Dict[str, Any], *, graph: Optional['ProjectGraph'], learning_stats: Optional[Dict[str, Dict[str, Any]]] = None, project_root: Optional[str] = None) -> List[Dict[str, Any]]:

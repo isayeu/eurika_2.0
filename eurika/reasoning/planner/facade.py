@@ -66,10 +66,12 @@ def build_patch_plan(
     learning_stats: Optional[Dict[str, Dict[str, Any]]] = None,
     graph: Optional[Any] = None,
     self_map: Optional[Dict[str, Any]] = None,
+    weights_snapshot: Optional[Dict[tuple[str, str], float]] = None,
 ) -> PatchPlan:
     """
     Build a PatchPlan from diagnostics.
     Delegates to run_patch_plan (collect_facts → generate → rank → output).
+    RV8: weights_snapshot from ExecutionContext for deterministic ranking during cycle.
     """
     return run_patch_plan(
         project_root=project_root,
@@ -80,4 +82,5 @@ def build_patch_plan(
         learning_stats=learning_stats,
         graph=graph,
         self_map=self_map,
+        weights_snapshot=weights_snapshot,
     )

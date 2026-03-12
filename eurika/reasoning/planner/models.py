@@ -165,7 +165,7 @@ class ArchitectureSnapshot:
     @classmethod
     def from_core_snapshot(cls, core_snap: Any) -> "ArchitectureSnapshot":
         """
-        Build unified snapshot from core.ArchitectureSnapshot (pipeline output).
+        Build unified snapshot from eurika.core.ArchitectureSnapshot (pipeline output).
 
         Bridge for pipeline → planner/report. Avoids dict/loosely-coupled passing (review §3).
         """

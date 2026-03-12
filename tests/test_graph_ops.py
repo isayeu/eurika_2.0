@@ -684,6 +684,33 @@ def test_build_patch_plan_disables_smell_action_from_env(monkeypatch) -> None:
     )
 
 
+def test_max_actions_caps_plan(monkeypatch, tmp_path: Path) -> None:
+    """EURIKA_MAX_ACTIONS caps planner output (RV7, review ~4505)."""
+    from architecture_planner import build_patch_plan
+    from eurika.smells.models import ArchSmell
+
+    monkeypatch.setenv("EURIKA_MAX_ACTIONS", "4")
+    monkeypatch.setenv("EURIKA_MAX_OPS_PER_CYCLE", "20")  # loose ops cap so MAX_ACTIONS dominates
+    g = _make_graph(["a", "b", "c", "d", "e", "f"], {"a": ["b"], "b": [], "c": [], "d": [], "e": [], "f": []})
+    smells = [
+        ArchSmell(type="god_module", nodes=[n], severity=5.0, description="")
+        for n in ("a", "b", "c", "d", "e", "f")
+    ]
+    summary = {"risks": []}
+    history_info = {"trends": {}}
+    priorities = [{"name": n, "reasons": ["god_module"]} for n in ("a", "b", "c", "d", "e", "f")]
+
+    plan = build_patch_plan(
+        project_root=str(tmp_path),
+        summary=summary,
+        smells=smells,
+        history_info=history_info,
+        priorities=priorities,
+        graph=g,
+    )
+    assert len(plan.operations) <= 4, "EURIKA_MAX_ACTIONS=4 should cap plan to 4 ops"
+
+
 def test_max_ops_per_cycle_caps_plan(monkeypatch, tmp_path: Path) -> None:
     """EURIKA_MAX_OPS_PER_CYCLE caps operations per fix cycle (bounded evolution)."""
     from architecture_planner import build_patch_plan

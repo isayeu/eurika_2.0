@@ -1,17 +1,22 @@
 """
 Planning analysis: graph → smells, priorities, targets (ROADMAP v3.0 §5.6).
 
-Delegates to core_extracted.detect_smells and graph_ops.
+Delegates to eurika.smells.models.detect_smells and graph_ops.
+S4: detect_smells inlined from core_extracted (removed).
 """
 from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from eurika.reasoning.planner.core_extracted import detect_smells
-
 if TYPE_CHECKING:
     from eurika.analysis.graph import ProjectGraph
+
+
+def detect_smells(graph: "ProjectGraph") -> List[Any]:
+    """Detect architectural smells from project graph. Delegates to eurika.smells.models."""
+    from eurika.smells.models import detect_smells as _detect
+    return _detect(graph)
 
 
 def analyze(

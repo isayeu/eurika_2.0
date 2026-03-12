@@ -14,7 +14,7 @@ from eurika.reasoning.planner.analysis import index_smells_by_node
 
 if TYPE_CHECKING:
     from patch_plan import PatchPlan
-from eurika.reasoning.planner_patch_ops import build_patch_operations
+from eurika.reasoning.planner.patch_ops import build_patch_operations
 from eurika.smells.detector import ArchSmell
 
 
@@ -65,7 +65,7 @@ def generate_candidates(
     """
     Step 2: Build patch operations from facts (review §2).
 
-    Delegates to planner_patch_ops.build_patch_operations.
+    Delegates to planner.patch_ops.build_patch_operations.
     """
     return build_patch_operations(
         project_root=facts["project_root"],
@@ -88,6 +88,7 @@ def rank_candidates(
     Step 3: Rank candidates by energy/risk (review §2).
 
     When graph is present, uses energy_ranking.rank_operations_by_energy.
+    RV8: weights_snapshot from facts — frozen weights for deterministic cycle.
     """
     graph = facts.get("graph")
     if graph is None:
@@ -99,6 +100,7 @@ def rank_candidates(
         graph,
         facts["smells"],
         project_root=Path(facts["project_root"]),
+        weights_snapshot=facts.get("weights_snapshot"),
     )
 
 
@@ -121,14 +123,18 @@ def run_patch_plan(
     learning_stats: Optional[Dict[str, Dict[str, Any]]] = None,
     graph: Optional[Any] = None,
     self_map: Optional[Dict[str, Any]] = None,
+    weights_snapshot: Optional[Dict[tuple[str, str], float]] = None,
 ) -> PatchPlan:
     """
     Full PlannerEngine pipeline: collect_facts → generate_candidates → rank → output_plan.
+    RV8: weights_snapshot freezes weights for deterministic cycle.
     """
     facts = collect_facts(
         project_root, summary, smells, history_info, priorities,
         graph=graph, self_map=self_map,
     )
+    if weights_snapshot is not None:
+        facts["weights_snapshot"] = weights_snapshot
     candidates = generate_candidates(facts, learning_stats=learning_stats)
     ranked = rank_candidates(candidates, facts)
     return output_plan(ranked, project_root)

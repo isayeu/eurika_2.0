@@ -49,7 +49,12 @@ def _estimated_delta(
     smell_type: str,
     action_kind: str,
     project_root: Optional[Path] = None,
+    weights_snapshot: Optional[dict] = None,
 ) -> float:
+    """Use weights_snapshot when provided (RV8: freeze during cycle)."""
+    if weights_snapshot is not None:
+        key = (smell_type or "", action_kind or "")
+        return weights_snapshot.get(key, ESTIMATED_DELTA.get(key, 0.05))
     if project_root is not None:
         from eurika.analysis.weight_store import get_estimated_delta as _get
 
@@ -73,9 +78,10 @@ def _score_for_op(
     smell_type: Optional[str],
     kind: str,
     project_root: Optional[Path] = None,
+    weights_snapshot: Optional[dict] = None,
 ) -> float:
     """Score = estimated_delta - risk. Higher = better candidate."""
-    delta = _estimated_delta(smell_type or "", kind, project_root)
+    delta = _estimated_delta(smell_type or "", kind, project_root, weights_snapshot=weights_snapshot)
     risk = _risk_for_kind(kind)
     return delta - risk
 
@@ -86,13 +92,14 @@ def rank_operations_by_energy(
     smells: List[Any],
     *,
     project_root: Optional[Path] = None,
+    weights_snapshot: Optional[dict] = None,
     _energy_model: Optional[EnergyModel] = None,  # for future full simulation
 ) -> List[Any]:
     """
     Sort operations by Score = estimated_delta - risk (ROADMAP §5.7).
 
-    Uses heuristic estimated_delta per (smell_type, kind) until full
-    SimulationEngine returns ArchitectureSnapshot.
+    When weights_snapshot is provided (RV8), use it instead of live load_weights
+    so planner is deterministic during the cycle.
     """
     if not operations:
         return operations
@@ -102,6 +109,6 @@ def rank_operations_by_energy(
     def key(op: Any) -> float:
         st = getattr(op, "smell_type", None)
         k = getattr(op, "kind", "")
-        return -_score_for_op(st, k, project_root)  # negate: sort ascending, so best = most negative key
+        return -_score_for_op(st, k, project_root, weights_snapshot=weights_snapshot)
 
     return sorted(operations, key=key)
