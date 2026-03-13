@@ -7,7 +7,7 @@ from pathlib import Path
 
 SUPPORTED_COMMANDS = {
     "scan", "doctor", "fix", "cycle", "explain", "report-snapshot", "learning-kpi",
-    "learn-github", "clean-imports", "self-check", "whitelist-draft", "campaign-undo",
+    "learn-github", "clean-imports", "self-check", "suggest-plan", "whitelist-draft", "campaign-undo",
 }
 
 
@@ -63,10 +63,16 @@ def build_cli_args(
         args.append(root)
         return args
 
+    if command == "suggest-plan":
+        args.append(root)
+        if window > 0:
+            args.extend(["--window", str(window)])
+        return args
+
     args.append(root)
     if command in {"report-snapshot", "learning-kpi"}:
         return args
-    if command in {"doctor", "fix", "cycle"} and window > 0:
+    if command in {"doctor", "fix", "cycle", "suggest-plan"} and window > 0:
         args.extend(["--window", str(window)])
     if command in {"doctor", "cycle"} and no_llm:
         args.append("--no-llm")

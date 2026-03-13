@@ -58,6 +58,8 @@ def build_summary(graph: ProjectGraph, smells: List[ArchSmell]) -> Dict:
             "dependencies": g_sum["edges"],
             "cycles": len(cycles),
         },
+        "top_blast_radius": g_sum.get("top_blast_radius", []),
+        "dependency_density": g_sum.get("dependency_density", 0.0),
         "central_modules": [
             {
                 "name": n,

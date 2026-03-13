@@ -116,7 +116,9 @@ UI.md ✓; README ✓; критерии **B.7–B.14** выполнены. Оц�
 
 ### 4.4 Qt MVP (eurika_2.0.Qt)
 
-Цели: запуск Qt, folder picker, Commands tab (scan/doctor/fix), live output, Stop, hybrid approvals, dashboard. Стартовый промпт — см. §6.
+Цели: запуск Qt, folder picker, Commands tab (scan/doctor/fix/suggest-plan), live output, Stop, hybrid approvals, dashboard. Стартовый промпт — см. §6.
+
+**Dashboard (март 2026):** ARCHITECTURE METRICS (blast radius top N, dependency_density RV1/RV2); Suggest plan sub-tab (ROADMAP §7). Refresh заполняет из get_summary, get_suggest_plan_data.
 
 ### 4.5 Текущий фокус (март 2026)
 
@@ -550,11 +552,12 @@ while True:
 
 ### 6.2 Qt и UI
 
-- CR-A2: Commands tab — scan/doctor/fix в GUI (QProcess) ✅
+- CR-A2: Commands tab — scan/doctor/fix/suggest-plan в GUI (QProcess) ✅
 - CR-A4: qt_app.mdc с правилами для агента ✅
 - Live output + Stop/Cancel ✅
 - Hybrid approvals: Load plan, approve/reject per row, Save, apply-approved ✅ (Save feedback: "X approved, Y rejected")
-- Dashboard: Summary, risks, SELF-GUARD, Ops, History sub-tab, Run scan button ✅
+- Dashboard: Summary, risks, SELF-GUARD, Ops, History, Suggest plan sub-tab, Run scan button ✅
+- Dashboard ARCHITECTURE METRICS: blast radius top N (RV1), dependency_density (RV2) ✅
 - Quality: Ruff, Mypy, Release check (CR-F1) ✅
 - Dark theme: View → Dark theme; сохранение в qt_settings.json ✅
 
@@ -613,10 +616,10 @@ while True:
 
 Главные цели MVP:
 1) Запуск Qt, выбор project root через folder picker
-2) Вкладка запуска: scan, doctor, fix, cycle, explain
+2) Вкладка запуска: scan, doctor, fix, cycle, explain, suggest-plan
 3) Live output + Stop/Cancel
 4) Hybrid approvals (pending plan, approve/reject, apply-approved)
-5) Dashboard (summary/history/risks) через JSON API
+5) Dashboard (summary/history/risks/ARCHITECTURE METRICS/Suggest plan) через JSON API
 
 Ограничения: thin Qt shell поверх API/CLI; тест/сценарий на каждое изменение; без big-bang.
 Технологии: Python 3.12+, PySide6; qt_app/, adapters/, services/, ui/.

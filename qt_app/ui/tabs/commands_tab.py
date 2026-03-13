@@ -32,6 +32,7 @@ CMD_ITEMS = [
     ("Исправление", "fix"),
     ("Полный цикл", "cycle"),
     ("Объяснение", "explain"),
+    ("План рефакторинга", "suggest-plan"),
     ("Снимок отчёта", "report-snapshot"),
     ("Метрики обучения", "learning-kpi"),
     ("Обучение из GitHub", "learn-github"),

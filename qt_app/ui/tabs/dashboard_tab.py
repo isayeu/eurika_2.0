@@ -53,7 +53,31 @@ def _build_overview_panel(main: MainWindow) -> QWidget:
     grid.addWidget(energy_label, 6, 0)
     main.dashboard_energy.setToolTip("Lower = better. complexity, coupling, cohesion, etc.")
     grid.addWidget(main.dashboard_energy, 6, 1)
+    density_label = QLabel("Density")
+    density_label.setToolTip("RV2: edges/(n*(n-1)). 0=sparse, 1=dense.")
+    grid.addWidget(density_label, 7, 0)
+    main.dashboard_density = QLabel("-")
+    main.dashboard_density.setToolTip("Dependency density (RV2)")
+    grid.addWidget(main.dashboard_density, 7, 1)
     layout.addWidget(metrics)
+    # ARCHITECTURE METRICS (RV1, RV2)
+    arch_group = QGroupBox("ARCHITECTURE METRICS")
+    arch_layout = QVBoxLayout(arch_group)
+    arch_dens_row = QHBoxLayout()
+    arch_dens_label = QLabel("Density")
+    arch_dens_label.setToolTip("RV2: edges/(n*(n-1)). 0=sparse, 1=dense.")
+    main.dashboard_arch_density = QLabel("-")
+    arch_dens_row.addWidget(arch_dens_label)
+    arch_dens_row.addWidget(main.dashboard_arch_density)
+    arch_dens_row.addStretch()
+    arch_layout.addLayout(arch_dens_row)
+    main.dashboard_blast_radius_text = QTextEdit()
+    main.dashboard_blast_radius_text.setReadOnly(True)
+    main.dashboard_blast_radius_text.setMaximumHeight(72)
+    main.dashboard_blast_radius_text.setPlaceholderText("Run scan for blast radius (top N)")
+    main.dashboard_blast_radius_text.setToolTip("RV1: direct+transitive dependents per module")
+    arch_layout.addWidget(main.dashboard_blast_radius_text)
+    layout.addWidget(arch_group)
     # SELF-GUARD + Ops
     right = QWidget()
     right_layout = QVBoxLayout(right)
@@ -121,6 +145,22 @@ def _build_history_panel(main: MainWindow) -> QWidget:
     return w
 
 
+def _build_suggest_plan_panel(main: MainWindow) -> QWidget:
+    """Suggest-plan recommendations (ROADMAP §7)."""
+    w = QWidget()
+    layout = QVBoxLayout(w)
+    plan_group = QGroupBox("Suggest plan")
+    plan_layout = QVBoxLayout(plan_group)
+    main.dashboard_suggest_plan_text = QTextEdit()
+    main.dashboard_suggest_plan_text.setReadOnly(True)
+    main.dashboard_suggest_plan_text.setPlaceholderText(
+        "Run scan first. Suggest-plan uses summary, recommendations, and history."
+    )
+    plan_layout.addWidget(main.dashboard_suggest_plan_text)
+    layout.addWidget(plan_group)
+    return w
+
+
 def _build_learning_panel(main: MainWindow) -> QWidget:
     """Learning insights."""
     w = QWidget()
@@ -156,6 +196,7 @@ def build_dashboard_tab(main: MainWindow) -> None:
     sub_tabs = QTabWidget()
     sub_tabs.addTab(_build_risks_panel(main), "Риски")
     sub_tabs.addTab(_build_history_panel(main), "History")
+    sub_tabs.addTab(_build_suggest_plan_panel(main), "Suggest plan")
     sub_tabs.addTab(_build_learning_panel(main), "Обучение")
     layout.addWidget(sub_tabs, 1)
     main.tabs.addTab(tab, "Dashboard")

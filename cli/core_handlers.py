@@ -43,8 +43,8 @@ __all__ = [
     "handle_whitelist_draft",
 ]
 
-# Backward compat: tests import _knowledge_topics_from_env_or_summary from core_handlers
-from eurika.orchestration.doctor import knowledge_topics_from_env_or_summary as _knowledge_topics_from_env_or_summary  # noqa: F401
+# Backward compat: tests import knowledge_topics_from_env_or_summary from core_handlers
+from eurika.orchestration.doctor import knowledge_topics_from_env_or_summary  # noqa: F401
 
 
 def handle_help(parser: Any) -> int:

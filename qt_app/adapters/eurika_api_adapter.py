@@ -27,6 +27,7 @@ from eurika.api import (
     get_summary,
     save_approvals,
 )
+from eurika.api import get_suggest_plan_data as _get_suggest_plan_data
 from eurika.api.chat import chat_send as _chat_send, save_chat_feedback as _save_chat_feedback
 
 
@@ -92,6 +93,10 @@ class EurikaApiAdapter:
 
     def explain_module(self, module: str, window: int = 5) -> tuple[str | None, str | None]:
         return explain_module(self._root(), module, window=window)
+
+    def get_suggest_plan_data(self, window: int = 5) -> dict[str, Any]:
+        """Suggest-plan: summary, recommendations, history (ROADMAP §7)."""
+        return _get_suggest_plan_data(self._root(), window=window)
 
     @contextmanager
     def _temporary_llm_env(

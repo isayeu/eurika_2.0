@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import QMessageBox
 
+from report.suggest_plan_format import format_suggest_plan
+
 if TYPE_CHECKING:
     from ..main_window import MainWindow
 
@@ -87,6 +89,14 @@ def refresh_dashboard(main: MainWindow) -> None:
         )
         if hasattr(main, "dashboard_history_text"):
             main.dashboard_history_text.setPlainText("")
+        if hasattr(main, "dashboard_blast_radius_text"):
+            main.dashboard_blast_radius_text.setPlainText("")
+        if hasattr(main, "dashboard_density"):
+            main.dashboard_density.setText("-")
+        if hasattr(main, "dashboard_arch_density"):
+            main.dashboard_arch_density.setText("-")
+        if hasattr(main, "dashboard_suggest_plan_text"):
+            main.dashboard_suggest_plan_text.setPlainText("")
         return
     system = summary.get("system", {})
     main.dashboard_modules.setText(str(system.get("modules", "-")))
@@ -101,6 +111,30 @@ def refresh_dashboard(main: MainWindow) -> None:
         f"centralization={trends.get('centralization', '-')}",
     ]
     main.dashboard_trends.setText(", ".join(trend_parts))
+    # ARCHITECTURE METRICS (RV1 blast_radius, RV2 dependency_density)
+    top_br = summary.get("top_blast_radius") or []
+    if top_br:
+        br_lines = [f"{m}: {c}" for m, c in top_br[:5]]
+        main.dashboard_blast_radius_text.setPlainText("\n".join(br_lines))
+    else:
+        main.dashboard_blast_radius_text.setPlainText("")
+    dd = summary.get("dependency_density")
+    if dd is not None:
+        main.dashboard_density.setText(f"{dd:.4f}")
+        if hasattr(main, "dashboard_arch_density"):
+            main.dashboard_arch_density.setText(f"{dd:.4f}")
+    else:
+        main.dashboard_density.setText("-")
+        if hasattr(main, "dashboard_arch_density"):
+            main.dashboard_arch_density.setText("-")
+    # Suggest plan (ROADMAP §7)
+    try:
+        sp_data = main._api.get_suggest_plan_data(window=main.window_spin.value())
+        main.dashboard_suggest_plan_text.setPlainText(format_suggest_plan(sp_data))
+    except Exception:
+        main.dashboard_suggest_plan_text.setPlainText(
+            "Run scan first. Suggest-plan uses summary, recommendations, and history."
+        )
     metrics_data = main._api.get_metrics()
     if isinstance(metrics_data, dict) and "energy" in metrics_data and "error" not in metrics_data:
         main.dashboard_energy.setText(f"{metrics_data['energy']:.4f}")

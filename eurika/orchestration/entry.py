@@ -5,13 +5,14 @@ from typing import Any, Callable
 from . import load_fix_cycle_deps
 from .contracts import OperationRecord, PatchPlan
 from .deps import FixCycleDeps
+from .facade import EurikaOrchestrator
 from .apply_stage import build_fix_dry_run_result, attach_fix_telemetry, build_fix_cycle_result, execute_fix_apply_stage
 from .doctor import run_doctor_cycle as _run_doctor_cycle
 from .full_cycle import run_cycle_entry, run_full_cycle as _run_full_cycle_impl
 from .fix_cycle_impl import run_fix_cycle_impl
 from .hybrid_approval import select_hybrid_operations
 from .prepare import prepare_fix_cycle_operations
-__all__ = ['run_cycle', 'run_doctor_cycle', 'run_fix_cycle', 'run_full_cycle']
+__all__ = ['EurikaOrchestrator', 'run_cycle', 'run_doctor_cycle', 'run_fix_cycle', 'run_full_cycle']
 
 def run_doctor_cycle(path: Path, *, window: int=5, no_llm: bool=False, online: bool=False, quiet: bool=False) -> dict[str, Any]:
     return _run_doctor_cycle(path, window=window, no_llm=no_llm, online=online, quiet=quiet)
