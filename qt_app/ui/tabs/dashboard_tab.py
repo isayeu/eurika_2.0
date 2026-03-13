@@ -73,9 +73,11 @@ def _build_overview_panel(main: MainWindow) -> QWidget:
     arch_layout.addLayout(arch_dens_row)
     main.dashboard_blast_radius_text = QTextEdit()
     main.dashboard_blast_radius_text.setReadOnly(True)
-    main.dashboard_blast_radius_text.setMaximumHeight(72)
-    main.dashboard_blast_radius_text.setPlaceholderText("Run scan for blast radius (top N)")
-    main.dashboard_blast_radius_text.setToolTip("RV1: direct+transitive dependents per module")
+    main.dashboard_blast_radius_text.setMaximumHeight(220)
+    main.dashboard_blast_radius_text.setPlaceholderText("Run scan for blast radius + fragility heatmap")
+    main.dashboard_blast_radius_text.setToolTip(
+        "RV1: blast_radius. RV10: 🟢🟡🔴 by br (green<10, yellow<30, red≥30), propagation_depth"
+    )
     arch_layout.addWidget(main.dashboard_blast_radius_text)
     layout.addWidget(arch_group)
     # SELF-GUARD + Ops

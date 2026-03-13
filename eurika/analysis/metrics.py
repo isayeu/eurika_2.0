@@ -4,6 +4,7 @@ Graph analysis helpers — summary and metrics.
 Implementation moved from graph_analysis.py (v0.9 migration).
 RV1: blast_radius, top_blast_radius — direct + transitive dependents.
 RV2: dependency_density — edges / (nodes*(nodes-1)).
+RV10: propagation_depth, fragility_zone, fragility_heatmap.
 """
 
 from __future__ import annotations
@@ -12,6 +13,63 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from eurika.analysis.graph import ProjectGraph
+
+# RV10: thresholds for green/yellow/red (blast_radius)
+FRAGILITY_GREEN_MAX = 9
+FRAGILITY_YELLOW_MAX = 29
+
+
+def propagation_depth(graph: ProjectGraph, module: str) -> int:
+    """
+    RV10: Max depth of dependent chain.
+
+    When module M changes, impact propagates: direct dependents (depth 1),
+    their dependents (depth 2), etc. Returns max depth.
+    """
+    module_norm = Path(module).as_posix()
+    if module_norm not in graph.nodes:
+        return 0
+    rev = graph._reverse_edges()
+    depths: Dict[str, int] = {module_norm: 0}
+    queue: List[str] = [module_norm]
+    max_depth = 0
+    while queue:
+        n = queue.pop(0)
+        d = depths[n]
+        for src in rev.get(n, []):
+            if src not in depths:
+                depths[src] = d + 1
+                max_depth = max(max_depth, d + 1)
+                queue.append(src)
+    return max_depth
+
+
+def fragility_zone(blast_radius: int) -> str:
+    """RV10: green/yellow/red by blast_radius thresholds."""
+    if blast_radius <= FRAGILITY_GREEN_MAX:
+        return "green"
+    if blast_radius <= FRAGILITY_YELLOW_MAX:
+        return "yellow"
+    return "red"
+
+
+def fragility_heatmap(
+    graph: ProjectGraph, n: int = 15
+) -> List[Tuple[str, int, int, str]]:
+    """
+    RV10: Top N modules by blast_radius with propagation_depth and zone.
+
+    Returns [(module, blast_radius, propagation_depth, zone), ...] sorted by br desc.
+    zone: green|yellow|red.
+    """
+    pairs: List[Tuple[str, int, int, str]] = []
+    for node in graph.nodes:
+        br = graph.blast_radius(node)
+        depth = propagation_depth(graph, node)
+        zone = fragility_zone(br)
+        pairs.append((node, br, depth, zone))
+    pairs.sort(key=lambda x: -x[1])
+    return pairs[:n]
 
 
 def dependency_density(graph: ProjectGraph) -> float:
@@ -76,6 +134,10 @@ def summarize_graph(graph: ProjectGraph) -> Dict:
             for name, m in metrics.items()
         },
         "top_blast_radius": [(m, c) for m, c in top_blast],
+        "fragility_heatmap": [
+            {"module": m, "blast_radius": br, "propagation_depth": depth, "zone": zone}
+            for m, br, depth, zone in fragility_heatmap(graph, n=15)
+        ],
     }
 
 

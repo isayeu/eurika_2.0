@@ -111,9 +111,23 @@ def refresh_dashboard(main: MainWindow) -> None:
         f"centralization={trends.get('centralization', '-')}",
     ]
     main.dashboard_trends.setText(", ".join(trend_parts))
-    # ARCHITECTURE METRICS (RV1 blast_radius, RV2 dependency_density)
+    # ARCHITECTURE METRICS (RV1 blast_radius, RV2 dependency_density, RV10 fragility heatmap)
+    heatmap = summary.get("fragility_heatmap") or []
     top_br = summary.get("top_blast_radius") or []
-    if top_br:
+    if heatmap:
+        zone_emoji = {"green": "🟢", "yellow": "🟡", "red": "🔴"}
+        hm_lines = []
+        for h in heatmap[:10]:
+            mod = h.get("module", "?")
+            short = mod.split("/")[-1] if "/" in mod else mod
+            if len(short) > 35:
+                short = short[:32] + "..."
+            em = zone_emoji.get(h.get("zone", ""), "·")
+            br = h.get("blast_radius", 0)
+            dp = h.get("propagation_depth", 0)
+            hm_lines.append(f"{em} {short:35} br={br} d={dp}")
+        main.dashboard_blast_radius_text.setPlainText("Fragility (RV10) 🟢🟡🔴\n" + "\n".join(hm_lines))
+    elif top_br:
         br_lines = [f"{m}: {c}" for m, c in top_br[:5]]
         main.dashboard_blast_radius_text.setPlainText("\n".join(br_lines))
     else:
