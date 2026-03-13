@@ -19,8 +19,9 @@ intent_hints: |
   - Файлы → «выполни ls» или «покажи структуру проекта».
   - Путь сохранённого → «покажи полный путь к файлу» после «сохрани в ...».
 
-# Prefix that skips intent match (treated as LLM question)
-# question_prefix: "^(что|как|зачем|почему|why|what|how|where)\\s"
+# ROADMAP 3.6.8 Phase 5: Question-like messages skip direct handlers → LLM answers
+# If message matches, no ritual/run_command/release_check; user gets explanation, not execution.
+question_prefix: "^(что|как|зачем|почему|чем|где|какой|какие|каков|в\\s*ч[её]м|when|why|what|how|where|which)\\s"
 
 intents:
   show_report:
