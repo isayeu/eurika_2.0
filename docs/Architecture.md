@@ -104,7 +104,7 @@ L6: CLI             ← command parsing, dispatch, orchestration wiring
 
 | Layer | Модули / пакеты |
 |-------|-----------------|
-| L0 Infrastructure | `eurika/utils/fs`, `patch_apply_backup`, `eurika/storage/paths` |
+| L0 Infrastructure | `eurika/utils/fs`, `eurika/utils/env`, `eurika/utils/text`, `eurika/utils/json_io`, `patch_apply_backup`, `eurika/storage/paths` |
 | L1 Core | `core/pipeline`, `core/snapshot`, `project_graph`, `project_graph_api`, `self_map_io` |
 | L2 Analysis | `code_awareness*`, `eurika/analysis/*`, `eurika/smells/*`, `graph_analysis`, `semantic_architecture`, `system_topology` |
 | L3 Planning | `architecture_planner*`, `eurika/reasoning/*` (planner, action_plan), `patch_plan` |
