@@ -53,6 +53,12 @@ def test_get_summary_with_self_map(tmp_path: Path) -> Path:
     assert "system" in data
     assert "modules" in data["system"]
     assert "maturity" in data
+    assert "fragility_heatmap" in data
+    hm = data["fragility_heatmap"]
+    assert isinstance(hm, list)
+    if hm:
+        h = hm[0]
+        assert "module" in h and "blast_radius" in h and "zone" in h
     json.dumps(data)
 
 

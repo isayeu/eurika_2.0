@@ -326,6 +326,21 @@ def test_chat_send_ls_request_returns_real_listing_without_llm(tmp_path: Path, m
     assert "README.md" in text
 
 
+def test_chat_send_question_like_message_goes_to_llm_not_ritual(tmp_path: Path, monkeypatch) -> None:
+    """Question-like messages (что делает, чем отличается) go to LLM, not ritual (ROADMAP 3.6.8 Phase 5)."""
+    import eurika.api.chat as chat_mod
+
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda prompt, max_tokens=1024: ("Doctor диагностирует проект. Suggest-plan предлагает план рефакторинга.", None),
+    )
+    out = chat_mod.chat_send(tmp_path, "Чем doctor отличается от suggest-plan?")
+    text = out.get("text") or ""
+    assert out.get("error") is None
+    assert "Выполнил ритуал" not in text
+    assert "diagnost" in text.lower() or "рефакторинг" in text.lower() or "doctor" in text.lower()
+
+
 def test_chat_send_ritual_request_runs_scan_doctor_report_snapshot(tmp_path: Path, monkeypatch) -> None:
     """Ritual request should run eurika scan, doctor, report-snapshot (ROADMAP 3.6.8)."""
     (tmp_path / "pyproject.toml").write_text("[project]\nname='t'\n", encoding="utf-8")

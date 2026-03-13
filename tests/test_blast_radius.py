@@ -8,6 +8,9 @@ from eurika.analysis.graph import ProjectGraph
 from eurika.analysis.metrics import (
     blast_radius_for_project,
     dependency_density,
+    fragility_heatmap,
+    fragility_zone,
+    propagation_depth,
     top_blast_radius,
 )
 
@@ -83,6 +86,38 @@ def test_dependency_density_sparse() -> None:
     """2 nodes, 1 edge => 1/(2*1)=0.5."""
     graph = ProjectGraph(["a.py", "b.py"], {"a.py": ["b.py"], "b.py": []})
     assert dependency_density(graph) == 0.5
+
+
+def test_propagation_depth_rv10() -> None:
+    """RV10: Chain A->B->C => propagation_depth(C)=2 (max hops to dependents)."""
+    nodes = ["a.py", "b.py", "c.py"]
+    edges = {"a.py": ["b.py"], "b.py": ["c.py"], "c.py": []}
+    graph = ProjectGraph(nodes, edges)
+    assert propagation_depth(graph, "c.py") == 2
+    assert propagation_depth(graph, "b.py") == 1
+    assert propagation_depth(graph, "a.py") == 0
+
+
+def test_fragility_zone_rv10() -> None:
+    """RV10: green<10, yellow<30, red>=30."""
+    assert fragility_zone(5) == "green"
+    assert fragility_zone(9) == "green"
+    assert fragility_zone(10) == "yellow"
+    assert fragility_zone(29) == "yellow"
+    assert fragility_zone(30) == "red"
+
+
+def test_fragility_heatmap_rv10() -> None:
+    """RV10: Returns (module, br, depth, zone) sorted by br desc."""
+    nodes = ["a.py", "b.py", "c.py"]
+    edges = {"a.py": ["b.py"], "b.py": ["c.py"], "c.py": []}
+    graph = ProjectGraph(nodes, edges)
+    hm = fragility_heatmap(graph, n=5)
+    assert len(hm) == 3
+    c_entry = next(x for x in hm if x[0] == "c.py")
+    assert c_entry[1] == 2
+    assert c_entry[2] == 2
+    assert c_entry[3] == "green"
 
 
 def test_dependency_density_three_nodes() -> None:
