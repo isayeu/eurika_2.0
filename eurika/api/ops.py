@@ -236,7 +236,9 @@ def _should_emit_refactor_smell_op(
         content = path.read_text(encoding="utf-8")
     except OSError:
         return True
-    if diff.strip() and diff.strip() in content:
+    from eurika.utils.text import contains_stripped
+
+    if contains_stripped(content, diff):
         return False
     if f"# TODO: Refactor {rel_path}" in content:
         return False
@@ -249,24 +251,14 @@ def _should_emit_refactor_smell_op(
 
 def _use_llm_extract() -> bool:
     """When True, try LLM-powered extract for long_function (REFACTOR_CODE_SMELL_PLAN Phase 3)."""
-    import os
-
-    return os.environ.get("EURIKA_USE_LLM_EXTRACT", "0").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-    )
+    from eurika.utils.env import env_bool
+    return env_bool("EURIKA_USE_LLM_EXTRACT")
 
 
 def _emit_code_smell_todo() -> bool:
     """When True, emit refactor_code_smell (TODO) when no real fix."""
-    import os
-
-    return os.environ.get("EURIKA_EMIT_CODE_SMELL_TODO", "0").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-    )
+    from eurika.utils.env import env_bool
+    return env_bool("EURIKA_EMIT_CODE_SMELL_TODO")
 
 
 def _load_code_smell_oss_hints(root: Path, smell_type: str) -> str:

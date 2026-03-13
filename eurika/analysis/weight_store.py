@@ -202,15 +202,10 @@ def adapt_weights_from_experience(
         W -= lr * delta_energy из learn events (R9). Иначе success_rate heuristic.
     Bounded by [min_delta, max_delta]. Возвращает True если были изменения.
     """
-    import os
-
     # Default: delta_energy mode (Energy-based loop, ROADMAP §5.9). Set EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY=0 for success_rate heuristic.
     if use_delta_energy is None:
-        use_delta_energy = os.environ.get("EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY", "1").strip().lower() in (
-            "1",
-            "true",
-            "yes",
-        )
+        from eurika.utils.env import env_bool
+        use_delta_energy = env_bool("EURIKA_WEIGHT_ADAPTATION_DELTA_ENERGY", default=True)
 
     if use_delta_energy:
         return _adapt_weights_from_delta_energy(

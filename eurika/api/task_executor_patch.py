@@ -7,12 +7,18 @@ from typing import Dict, List
 from .task_executor_helpers import build_preview_snippet, run_pytest, task_backup_before_write, within_root
 from .task_executor_types import ExecutionReport, MAX_PATCH_OPS, MAX_PATCH_TEXT, TaskSpec
 
+
+def _is_dry_run(spec: TaskSpec) -> bool:
+    val = str(spec.entities.get("dry_run") or "").strip().lower()
+    return val in {"1", "true", "yes"}
+
+
 def execute_code_edit_patch(root: Path, spec: TaskSpec) -> ExecutionReport:
     """Safely apply simple text replacement with mandatory verify + rollback."""
     operations_json = str(spec.entities.get('operations_json') or '').strip()
     if operations_json:
         return execute_code_edit_patch_batch(root, spec, operations_json)
-    is_dry_run = str(spec.entities.get('dry_run') or '').strip().lower() in {'1', 'true', 'yes'}
+    is_dry_run = _is_dry_run(spec)
     target = (spec.target or '').strip()
     old_text = str(spec.entities.get('old_text') or '')
     new_text = str(spec.entities.get('new_text') or '')
@@ -67,7 +73,7 @@ def _extracted_block_135(path, originals):
 
 def execute_code_edit_patch_batch(root: Path, spec: TaskSpec, operations_json: str) -> ExecutionReport:
     """Apply multiple replacements atomically with single verify and rollback."""
-    is_dry_run = str(spec.entities.get('dry_run') or '').strip().lower() in {'1', 'true', 'yes'}
+    is_dry_run = _is_dry_run(spec)
     try:
         raw_ops = json.loads(operations_json)
     except json.JSONDecodeError as exc:

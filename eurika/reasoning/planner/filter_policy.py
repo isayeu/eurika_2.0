@@ -9,7 +9,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from eurika.utils.text import contains_stripped
 from eurika.reasoning.planner.heuristics import (
+    # noqa: F401
     SMELL_ACTION_SEP,
     diff_hints_for,
     disabled_smell_actions_from_env,
@@ -72,7 +74,7 @@ def _should_emit_default_todo_op(
         content = path.read_text(encoding="utf-8")
     except OSError:
         return True
-    if diff.strip() and diff.strip() in content:
+    if contains_stripped(content, diff):
         return False
     if kind in ("refactor_module", "split_module"):
         marker = f"# TODO: Refactor {target_file}"

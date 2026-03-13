@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from typing import Any
 
 from eurika.knowledge import SMELL_TO_KNOWLEDGE_TOPICS
+from eurika.utils.json_io import load_json_safe
 
 
 def _parse_smell_for_knowledge(risk: str) -> str | None:
@@ -51,38 +51,32 @@ def knowledge_topics_from_env_or_summary(summary: Any) -> list[str]:
 def load_suggested_policy_for_apply(path: Path) -> dict[str, str]:
     """Load suggested policy from doctor or fix report for --apply-suggested-policy (ROADMAP 2.9.4)."""
     doctor_path = path / "eurika_doctor_report.json"
-    if doctor_path.exists():
-        try:
-            doc = json.loads(doctor_path.read_text(encoding="utf-8"))
-            sugg = (doc.get("suggested_policy") or {}).get("suggested") or {}
-            if isinstance(sugg, dict):
-                return {k: str(v) for k, v in sugg.items()}
-        except Exception:
-            pass
+    doc = load_json_safe(doctor_path) if doctor_path.exists() else None
+    if doc:
+        sugg = (doc.get("suggested_policy") or {}).get("suggested") or {}
+        if isinstance(sugg, dict):
+            return {k: str(v) for k, v in sugg.items()}
     fix_path = path / "eurika_fix_report.json"
-    if fix_path.exists():
-        try:
-            fix = json.loads(fix_path.read_text(encoding="utf-8"))
-            telemetry = fix.get("telemetry") or {}
-            if telemetry:
-                from eurika.agent.config import suggest_policy_from_telemetry
+    fix = load_json_safe(fix_path) if fix_path.exists() else None
+    if fix:
+        telemetry = fix.get("telemetry") or {}
+        if telemetry:
+            from eurika.agent.config import suggest_policy_from_telemetry
 
-                return suggest_policy_from_telemetry(telemetry)
-        except Exception:
-            pass
+            return suggest_policy_from_telemetry(telemetry)
     return {}
 
 
 def _suggested_policy_from_last_fix(path: Path) -> dict[str, Any]:
     """Load last fix telemetry and suggest policy (ROADMAP 2.9.4)."""
     fix_path = path / "eurika_fix_report.json"
-    if not fix_path.exists():
+    fix = load_json_safe(fix_path)
+    if not fix:
+        return {}
+    telemetry = fix.get("telemetry") or {}
+    if not telemetry:
         return {}
     try:
-        fix = json.loads(fix_path.read_text(encoding="utf-8"))
-        telemetry = fix.get("telemetry") or {}
-        if not telemetry:
-            return {}
         from eurika.agent.config import suggest_policy_from_telemetry
 
         suggested = suggest_policy_from_telemetry(telemetry)

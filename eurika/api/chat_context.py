@@ -1,20 +1,21 @@
 """Chat context, user context and dialog state (P0.4 split from chat.py)."""
 from __future__ import annotations
+
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from eurika.utils.json_io import load_json_safe
+
 DEFAULT_SAVE_TARGET = 'app.py'
+
 
 def load_user_context(root: Path) -> Dict[str, str]:
     """Load user context (name, etc.) from .eurika/chat_history/user_context.json."""
     path = root / '.eurika' / 'chat_history' / 'user_context.json'
-    try:
-        if path.exists():
-            data = json.loads(path.read_text(encoding='utf-8'))
-            if isinstance(data, dict):
-                return {k: str(v) for k, v in data.items() if isinstance(v, (str, int, float))}
-    except Exception:
-        pass
+    data = load_json_safe(path)
+    if data:
+        return {k: str(v) for k, v in data.items() if isinstance(v, (str, int, float))}
     return {}
 
 def save_user_context(root: Path, data: Dict[str, str]) -> None:
@@ -29,14 +30,7 @@ def save_user_context(root: Path, data: Dict[str, str]) -> None:
 def load_dialog_state(root: Path) -> Dict[str, Any]:
     """Load lightweight dialog state for clarification/goal continuity."""
     path = root / '.eurika' / 'chat_history' / 'dialog_state.json'
-    try:
-        if path.exists():
-            raw = json.loads(path.read_text(encoding='utf-8'))
-            if isinstance(raw, dict):
-                return raw
-    except Exception:
-        pass
-    return {}
+    return load_json_safe(path) or {}
 
 def save_dialog_state(root: Path, state: Dict[str, Any]) -> None:
     """Persist lightweight dialog state (best effort)."""

@@ -22,7 +22,8 @@ def _cosine_sim(a: List[float], b: List[float]) -> float:
     return max(0.0, min(1.0, (raw + 1) / 2))
 
 def _use_vector_intent() -> bool:
-    return os.environ.get('EURIKA_USE_VECTOR_INTENT', '').strip().lower() in ('1', 'true', 'yes')
+    from eurika.utils.env import env_bool
+    return env_bool("EURIKA_USE_VECTOR_INTENT")
 
 def _ollama_embed(text: str, *, model: str='nomic-embed-text', base_url: str='http://localhost:11434', timeout: float=5.0) -> Optional[List[float]]:
     """Call Ollama /api/embed. Returns embedding vector or None on failure."""

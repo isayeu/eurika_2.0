@@ -130,13 +130,12 @@ def append_fix_cycle_memory(path: Path, result: Any, operations: list[OperationR
                 delta_energy=delta_energy, failure_reason=failure_reason,
                 project_size=project_size, module_size=module_size,
             )
-            import os
+            from eurika.utils.env import env_bool
             # Energy-based loop (ROADMAP §5.7–5.9): default on for fix cycle. Set EURIKA_WEIGHT_ADAPTATION=0 to disable.
-            adapt_env = os.environ.get('EURIKA_WEIGHT_ADAPTATION', '1').strip().lower()
-            if path and adapt_env in ('1', 'true', 'yes'):
+            if path and env_bool("EURIKA_WEIGHT_ADAPTATION", default=True):
                 try:
                     lr = 0.02
-                    if os.environ.get('EURIKA_META_CONTROLLER', '').strip().lower() in ('1', 'true', 'yes'):
+                    if env_bool("EURIKA_META_CONTROLLER"):
                         from eurika.cognition import evaluate_policy
                         policy = evaluate_policy(path)
                         if policy.skip_adaptation:

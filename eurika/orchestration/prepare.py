@@ -295,13 +295,8 @@ def _op_in_polygon_whitelist(op: dict[str, Any], path: Path) -> bool:
 
 def _allow_low_risk_campaign_bypass() -> bool:
     """When True, low-risk ops (e.g. remove_unused_import) bypass campaign skip."""
-    import os
-
-    return os.environ.get("EURIKA_CAMPAIGN_ALLOW_LOW_RISK", "0").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-    )
+    from eurika.utils.env import env_bool
+    return env_bool("EURIKA_CAMPAIGN_ALLOW_LOW_RISK")
 
 
 def apply_campaign_memory(

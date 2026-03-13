@@ -14,7 +14,8 @@ from typing import Any, Dict, List, Optional
 
 def get_global_memory_root() -> Optional[Path]:
     """Return global memory directory; None if disabled via EURIKA_DISABLE_GLOBAL_MEMORY."""
-    if os.environ.get("EURIKA_DISABLE_GLOBAL_MEMORY", "").strip().lower() in ("1", "true", "yes"):
+    from eurika.utils.env import env_bool
+    if env_bool("EURIKA_DISABLE_GLOBAL_MEMORY"):
         return None
     if os.environ.get("EURIKA_GLOBAL_MEMORY"):
         p = Path(os.environ["EURIKA_GLOBAL_MEMORY"]).resolve()

@@ -255,7 +255,8 @@ def ask_llm_extract_method_hints(
 
 def _use_llm_extract() -> bool:
     """Check EURIKA_USE_LLM_EXTRACT (REFACTOR_CODE_SMELL_PLAN Phase 3). Default: off."""
-    return os.environ.get("EURIKA_USE_LLM_EXTRACT", "0").strip().lower() in ("1", "true", "yes")
+    from eurika.utils.env import env_bool
+    return env_bool("EURIKA_USE_LLM_EXTRACT")
 
 
 _EXTRACT_PATCH_CALLS = 0

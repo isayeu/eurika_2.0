@@ -22,6 +22,11 @@ class _DummyHandler:
 '''
 
 
+def _norm_msg(m: str) -> str:
+    """Normalize message for pattern matching: strip and lower."""
+    return (m or "").strip().lower()
+
+
 def run_eurika_fix(project_root: Path, dry_run: bool = False, timeout: int = 180) -> str:
     """Run eurika fix . in project; return stdout+stderr. ROADMAP 3.5.11.C."""
     try:
@@ -44,7 +49,7 @@ def run_eurika_fix(project_root: Path, dry_run: bool = False, timeout: int = 180
 
 def is_apply_confirmation(message: str) -> bool:
     """Detect explicit confirmation to execute a pending action."""
-    msg = (message or "").strip().lower()
+    msg = _norm_msg(message)
     if not msg:
         return False
     markers = ("применяй", "выполняй", "это подтверждение", "apply", "go ahead", "execute")
@@ -60,7 +65,7 @@ def extract_confirmation_token(message: str) -> str:
 
 def is_reject_confirmation(message: str) -> bool:
     """Detect explicit rejection/cancel for pending plan."""
-    msg = (message or "").strip().lower()
+    msg = _norm_msg(message)
     if not msg:
         return False
     markers = ("отклонить", "отмена", "cancel", "reject")
@@ -114,6 +119,12 @@ def run_qt_smoke_test(project_root: Path, timeout: int = 120) -> str:
         return f"qt smoke: {e}"
 
 
+_QUESTION_START = re.compile(
+    r"^(что|как|зачем|почему|чем|где|какой|какие|каков|в\s*ч[её]м|when|why|what|how|where|which)\s",
+    re.IGNORECASE,
+)
+
+
 def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optional[str]]:
     """Resolve direct handler from config or legacy. Returns (handler_id, emit_cmd)."""
     from eurika.api.chat_intents_config import match_direct_intent
@@ -121,6 +132,9 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
     matched = match_direct_intent(root, msg)
     if matched:
         return matched
+    # ROADMAP 3.6.8 Phase 5: question-like messages → LLM, not ritual/run_command
+    if _QUESTION_START.search((msg or "").strip()):
+        return (None, None)
     # CR-G2: vector fuzzy match when direct fails (EURIKA_USE_VECTOR_INTENT=1)
     try:
         from eurika.api.chat_vector import match_fuzzy_intent
@@ -157,7 +171,7 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
 
 def is_identity_question(message: str) -> bool:
     """Detect direct "who are you?" questions."""
-    msg = (message or "").strip().lower()
+    msg = _norm_msg(message)
     if not msg:
         return False
     patterns = (r"^ты\s+кто\??$", r"^кто\s+ты\??$", r"^who\s+are\s+you\??$", r"^what\s+are\s+you\??$")
@@ -166,7 +180,7 @@ def is_identity_question(message: str) -> bool:
 
 def is_ls_request(message: str) -> bool:
     """Detect explicit request to run ls/list in project root."""
-    msg = (message or "").strip().lower()
+    msg = _norm_msg(message)
     if not msg:
         return False
     return (
@@ -177,7 +191,7 @@ def is_ls_request(message: str) -> bool:
 
 def is_show_report_request(message: str) -> bool:
     """Detect request to show scan/doctor report."""
-    msg = (message or "").strip().lower()
+    msg = _norm_msg(message)
     if not msg:
         return False
     keywords = (
@@ -240,7 +254,7 @@ def extract_file_path_from_show_request(message: str) -> str | None:
 
 def is_add_api_test_request(message: str) -> bool:
     """Detect request to add test for API endpoint."""
-    msg = (message or "").strip().lower()
+    msg = _norm_msg(message)
     if not msg:
         return False
     keywords = (
@@ -376,7 +390,7 @@ def test_module_imports():
 
 def is_release_check_request(message: str) -> bool:
     """Detect request to run release check (CR-B2)."""
-    msg = (message or "").strip().lower()
+    msg = _norm_msg(message)
     if not msg:
         return False
     if re.search(r"^(что|как|зачем|why|what|how)\s", msg):
@@ -397,7 +411,7 @@ def is_release_check_request(message: str) -> bool:
 
 def is_ritual_request(message: str) -> bool:
     """Detect request to run Ritual 2.1: scan → doctor → report-snapshot."""
-    msg = (message or "").strip().lower()
+    msg = _norm_msg(message)
     if not msg:
         return False
     if re.search(r"(?:выполни|запусти|run|execute)\s+(?:команд[ау]\s+)", msg) or "run command" in msg:
@@ -420,7 +434,7 @@ def is_ritual_request(message: str) -> bool:
 
 def is_git_commit_request(message: str) -> bool:
     """Detect request for git status/diff/commit."""
-    msg = (message or "").strip().lower()
+    msg = _norm_msg(message)
     if not msg:
         return False
     keywords = (
@@ -504,7 +518,7 @@ def propose_commit_message_from_status(status_out: str) -> str:
 
 def is_tree_request(message: str) -> bool:
     """Detect request for actual directory structure."""
-    msg = (message or "").strip().lower()
+    msg = _norm_msg(message)
     if not msg:
         return False
     if any(marker in msg for marker in ("цель:", "границы:", "задачи:", "задача:")):
@@ -528,7 +542,7 @@ def is_tree_request(message: str) -> bool:
 
 def is_saved_file_path_request(message: str) -> bool:
     """Detect explicit request for full path of recently saved file."""
-    msg = (message or "").strip().lower()
+    msg = _norm_msg(message)
     if not msg:
         return False
     full_path_markers = ("полный путь", "full path", "absolute path")

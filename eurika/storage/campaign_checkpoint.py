@@ -7,6 +7,8 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+from eurika.utils.json_io import load_json_safe
+
 
 def _checkpoints_dir(project_root: Path) -> Path:
     root = Path(project_root).resolve()
@@ -25,14 +27,6 @@ def _new_checkpoint_id() -> str:
     return f"{time.strftime('%Y%m%d_%H%M%S')}_{int((time.time() % 1) * 1000):03d}"
 
 
-def _load_json(path: Path) -> dict[str, Any] | None:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else None
-    except Exception:
-        return None
-
-
 def _save_json(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -43,7 +37,7 @@ def _latest_checkpoint_path_for_session(project_root: Path, session_id: str) -> 
     if not base.exists():
         return None
     for p in sorted(base.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True):
-        data = _load_json(p) or {}
+        data = load_json_safe(p) or {}
         if str(data.get("session_id") or "") != session_id:
             continue
         if str(data.get("status") or "") == "undone":
@@ -62,7 +56,7 @@ def create_campaign_checkpoint(
     if session_id:
         existing_path = _latest_checkpoint_path_for_session(project_root, session_id)
         if existing_path is not None:
-            existing = _load_json(existing_path) or {}
+            existing = load_json_safe(existing_path) or {}
             existing["updated_at"] = _now_ts()
             existing["status"] = "active"
             existing["operations_total"] = int(existing.get("operations_total") or 0) + len(operations)
@@ -111,7 +105,7 @@ def attach_run_to_checkpoint(
     if not checkpoint_id:
         return None
     path = _checkpoint_path(project_root, checkpoint_id)
-    data = _load_json(path)
+    data = load_json_safe(path)
     if not data:
         return None
     run_ids = list(data.get("run_ids") or [])
@@ -133,7 +127,7 @@ def list_campaign_checkpoints(project_root: Path, *, limit: int = 20) -> dict[st
         return {"checkpoints": [], "path": str(base)}
     rows: list[dict[str, Any]] = []
     for p in sorted(base.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True):
-        data = _load_json(p) or {}
+        data = load_json_safe(p) or {}
         rows.append(
             {
                 "checkpoint_id": str(data.get("checkpoint_id") or p.stem),
@@ -185,7 +179,7 @@ def undo_campaign_checkpoint(
     if selected is None:
         return {"errors": [f"Checkpoint not found: {checkpoint_id or 'latest'}"], "checkpoint_id": checkpoint_id}
 
-    loaded = _load_json(selected)
+    loaded = load_json_safe(selected)
     if loaded is None:
         return {
             "errors": [f"Invalid checkpoint payload: {selected.name}"],

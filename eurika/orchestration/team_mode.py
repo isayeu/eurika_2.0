@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from eurika.utils.json_io import load_json_safe
+
 PENDING_PLAN_FILE = ".eurika/pending_plan.json"
 
 
@@ -107,9 +109,8 @@ def load_pending_plan(project_root: Path) -> dict[str, Any] | None:
     path = _pending_path(project_root)
     if not path.exists():
         return None
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    data = load_json_safe(path)
+    if data is None:
         return None
     if not isinstance(data, dict):
         return None
@@ -129,9 +130,8 @@ def clear_pending_plan_after_apply(project_root: Path) -> bool:
     path = _pending_path(project_root)
     if not path.exists():
         return False
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    data = load_json_safe(path)
+    if data is None:
         return False
     if not isinstance(data, dict):
         return False
@@ -165,10 +165,10 @@ def reset_approvals_after_rollback(project_root: Path) -> bool:
     path = _pending_path(project_root)
     if not path.exists():
         return False
+    data = load_json_safe(path)
+    if not isinstance(data, dict):
+        return False
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            return False
         ops = data.get("operations")
         if not isinstance(ops, list):
             return False
@@ -195,10 +195,10 @@ def update_team_decisions(
     path = _pending_path(project_root)
     if not path.exists():
         return False, "no pending plan"
+    data = load_json_safe(path)
+    if not isinstance(data, dict):
+        return False, "invalid pending plan"
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            return False, "invalid pending plan"
         existing = data.get("operations")
         if not isinstance(existing, list):
             return False, "invalid pending plan"

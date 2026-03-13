@@ -181,7 +181,8 @@ def _call_ollama_cli(model: str, prompt: str, timeout_override: int | None=None)
         _trace_architect(f'ollama preflight: {preflight}')
         return (None, preflight)
     progress_interval = 15
-    show_progress = os.environ.get('EURIKA_OLLAMA_PROGRESS', '1').strip().lower() in ('1', 'true', 'yes')
+    from eurika.utils.env import env_bool
+    show_progress = env_bool("EURIKA_OLLAMA_PROGRESS", default=True)
     if cli_timeout_sec:
         _trace_architect(f'ollama CLI: ожидание до {cli_timeout_sec}s...')
     _result: list = []

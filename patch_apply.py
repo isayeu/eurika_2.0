@@ -26,6 +26,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
+from eurika.utils.text import contains_stripped
 from patch_apply_backup import (
     BACKUP_DIR,
     list_backups as _list_backups_impl,
@@ -141,7 +142,7 @@ def apply_patch_plan(
         # Default: append diff
         content = path.read_text(encoding="utf-8")
         # Skip if exact diff already present
-        if diff.strip() and diff.strip() in content:
+        if contains_stripped(content, diff):
             _skip("diff already in content")
             continue
         # For architectural ops (refactor_module, split_module): skip if file already has
