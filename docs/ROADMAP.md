@@ -118,7 +118,7 @@ UI.md ✓; README ✓; критерии **B.7–B.14** выполнены. Оц�
 
 Цели: запуск Qt, folder picker, Commands tab (scan/doctor/fix/suggest-plan), live output, Stop, hybrid approvals, dashboard. Стартовый промпт — см. §6.
 
-**Dashboard (март 2026):** ARCHITECTURE METRICS (blast radius top N, dependency_density RV1/RV2); Suggest plan sub-tab (ROADMAP §7). Refresh заполняет из get_summary, get_suggest_plan_data.
+**Dashboard (март 2026):** ARCHITECTURE METRICS (blast radius top N, dependency_density RV1/RV2, fragility heatmap RV10 🟢🟡🔴); Suggest plan sub-tab (ROADMAP §7). Refresh заполняет из get_summary, get_suggest_plan_data.
 
 ### 4.5 Текущий фокус (март 2026)
 
@@ -142,7 +142,7 @@ UI.md ✓; README ✓; критерии **B.7–B.14** выполнены. Оц�
 
 **P1–P9 выполнены.** Ритуалы: dogfooding после сессии (§4.3), очистка .eurika_backups перед release.
 
-**Чего избегать:** новые фичи, новые smell, self-rewriting, онлайн-патчинг (review III).
+**Architecture Freeze (S0) — активно:** следующие 1–2 релиза только упрощение и рефакторинг. Новые фичи, smell, self-rewriting, онлайн-патчинг — не добавлять (review III).
 
 ---
 
@@ -423,7 +423,7 @@ while True:
 | architecture_* proliferation | advisor, pipeline, learning, feedback, diff, summary → один reasoning engine | Частично: planner (§5.6); полная миграция — TARGET_V3_STRUCTURE |
 | API рост | chat_rag, chat_intent, chat_tools… — граница core vs api | ✅ API_BOUNDARIES; дальнейшая изоляция — backlog |
 | 5 практичных метрик | dependency_density, cycle_count, god_module_score, blast_radius, layer_violations | Частично в MetricVector; blast_radius — RV1 |
-| Fragility / Blast Radius | Радиус влияния, «опасные зоны» (core/, utils/, config/) | Backlog: risk_prediction расширение |
+| Fragility / Blast Radius | Радиус влияния, heatmap green/yellow/red | ✅ RV10: fragility_heatmap, propagation_depth |
 
 **Оценки:** амбиция 9/10, модульность 7/10, AI-модель 6/10, инженерная дисциплина 6/10. **Интерпретация:** 70% мощной архитектуры, 30% потенциального хаоса — нормально для AI-систем; критический момент стабилизации.
 
@@ -455,7 +455,7 @@ while True:
 | weight_store.py | Schema mismatch через релизы | weights_version, metrics_schema_hash ✅ RV6 |
 | planner/engine | Exponential actions | MAX_ACTIONS, energy_cap_per_cycle, EURIKA_MAX_OPS_PER_CYCLE |
 | actions_proposal | split_module для 50 строк | Фильтр file_lines; heuristics |
-| energy_ranking | Одна метрика — trade-off | multi-objective: stability_penalty — backlog |
+| energy_ranking | Одна метрика — trade-off | ✅ RV9: stability_penalty (Martin's I) |
 | llm_adapter | LLM → прямой patch | LLM → proposal, не прямой patch ✅ |
 | extract_function | closures, decorators, async | extraction-lessons, suggest_extract_block scope |
 | 13 подсистем | На грани управляемости | TARGET_V3_STRUCTURE, freeze |
@@ -481,7 +481,7 @@ while True:
 | S3 | Orchestration | Только eurika/orchestration; CLI вызывает ✅ |
 | S4 | Упростить planner | engine, actions, heuristics, models; analysis, filter_policy, hints_provider — вынос/объединение. ✅ core_extracted → graph_analysis; planner_patch_ops → planner/patch_ops |
 | S5 | Память 3 слоя | session_memory (bounded), experience_store (context), state_store (atomic) ✅ |
-| **S0** | **Architecture Freeze** | 3 релиза: не добавлять фичи, только упрощать |
+| **S0** | **Architecture Freeze** | 3 релиза: не добавлять фичи, только упрощать. **Активно (март 2026):** следующие 1–2 релиза — только упрощение и рефакторинг. Chat/RV/goal view не откатывать. |
 
 #### Концептуальные модели (long-term, после 5 метрик)
 
@@ -513,7 +513,7 @@ while True:
 | RV14 | Patch safety layer | patch_guard: syntax, tests, coverage |
 | RV15 | Plugin version contract | явный контракт для plugins |
 
-**Чего избегать:** новые фичи до стабилизации; genome/gravity/evolution до базовых 5 метрик. **Главный совет:** Architecture Freeze — 3 релиза только упрощение.
+**Чего избегать:** новые фичи до стабилизации; genome/gravity/evolution до базовых 5 метрик. **Главный совет:** Architecture Freeze — 3 релиза только упрощение. **Текущий режим (март 2026):** следующие 1–2 релиза — только simplification/refactoring, без новых фич.
 
 **Multi-agent vision (риск №10):** architect, analyzer, refactor, critic как отдельные агенты — backlog; пока один planner.
 
@@ -552,12 +552,13 @@ while True:
 
 ### 6.2 Qt и UI
 
+- **3.6.8 Chat Phase 5:** question_prefix в chat_intents; «что делает», «чем отличается», «где хранится» → LLM, не ritual/run_command ✅
 - CR-A2: Commands tab — scan/doctor/fix/suggest-plan в GUI (QProcess) ✅
 - CR-A4: qt_app.mdc с правилами для агента ✅
 - Live output + Stop/Cancel ✅
 - Hybrid approvals: Load plan, approve/reject per row, Save, apply-approved ✅ (Save feedback: "X approved, Y rejected")
 - Dashboard: Summary, risks, SELF-GUARD, Ops, History, Suggest plan sub-tab, Run scan button ✅
-- Dashboard ARCHITECTURE METRICS: blast radius top N (RV1), dependency_density (RV2) ✅
+- Dashboard ARCHITECTURE METRICS: blast radius top N (RV1), dependency_density (RV2), fragility heatmap (RV10) ✅
 - Quality: Ruff, Mypy, Release check (CR-F1) ✅
 - Dark theme: View → Dark theme; сохранение в qt_settings.json ✅
 
@@ -599,7 +600,7 @@ while True:
 - [x] **RV7** planner caps — MAX_ACTIONS=20 (EURIKA_MAX_ACTIONS), MAX_PLAN_DEPTH=3, BEAM_WIDTH=5 в heuristics; effective_cap = min(max_actions, max_ops_per_cycle); BOUNDED_EVOLUTION §3 ✅
 - [x] **RV8** Weights freeze — `weights_snapshot = weight_store.freeze()` на время planner-цикла; EURIKA_WEIGHT_ADAPTATION только после цикла ✅
 - [x] **RV9** Multi-objective ranking — stability_penalty в energy_ranking (Martin's I per target); EURIKA_STABILITY_PENALTY_LAMBDA ✅
-- [ ] **RV10** Fragility heatmap — green/yellow/red по модулям; impact_score, propagation_depth
+- [x] **RV10** Fragility heatmap — green/yellow/red по модулям; blast_radius, propagation_depth ✅
 - [ ] **RV11** Call graph / data flow — расширить project_graph (сейчас только imports)
 - [ ] **RV12** Architecture Time Machine — snapshots по времени, health trend, collapse prediction (long-term)
 - [ ] **RV13** Architecture Gravity — gravity_score, black holes (long-term, после 5 метрик)

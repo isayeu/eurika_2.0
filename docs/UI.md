@@ -9,7 +9,7 @@
 | **Models** | Управление Ollama: Start/Stop, переменные окружения, список моделей, установка. **При старте:** если Ollama не запущен — автоматически открывается вкладка и запускается `ollama serve` |
 | **Chat** | Чат с Apply/Reject для планов; @-mentions для scope; создание вкладок (в т.ч. Terminal) по intent |
 | **Commands** | scan/doctor/fix/cycle/explain/report-snapshot/learning-kpi/learn-github/clean-imports/self-check, Run/Stop, live output; learn-github: --light, --scan, --build-patterns, --limit-repos; Quality: Ruff, Mypy, Release check |
-| **Dashboard** | Summary (modules, deps, cycles, risk, maturity, trends, **Energy**), Top risks, Operational metrics, Learning insights; Energy — MetricVector (ROADMAP §5.7); автообновление при смене project root |
+| **Dashboard** | Summary (modules, deps, cycles, risk, maturity, trends, **Energy**), Top risks, Operational metrics, Learning insights, **ARCHITECTURE METRICS** (blast radius, dependency_density, fragility heatmap 🟢🟡🔴 RV10); Energy — MetricVector (ROADMAP §5.7); автообновление при смене project root |
 | **Graph** | Интерактивный граф зависимостей. Требует `eurika scan .` перед использованием. |
 | **Approvals** | Run fix (team-mode), Load plan, approve/reject per row, **diff preview** при выборе строки (ROADMAP 3.6.7), Save, Run apply-approved. Для extract_block/extract_nested — OSS Reference (Learning from GitHub) блок с примерами из pattern_library. |
 | **Terminal** | Output команд (scan, doctor, fix…) + поле ввода для shell (ls, pwd, eurika scan .) |
@@ -78,7 +78,7 @@ http://127.0.0.1:8765/
 ## Вкладки
 
 ### Dashboard
-Обзор: risk score, системные метрики (modules, deps, cycles, maturity), operational metrics (apply-rate, rollback-rate, median verify time), тренды, central modules, top risks.
+Обзор: risk score, системные метрики (modules, deps, cycles, maturity), operational metrics (apply-rate, rollback-rate, median verify time), тренды, central modules, top risks. **ARCHITECTURE METRICS:** blast radius top N (RV1), dependency_density (RV2), fragility heatmap (RV10) — propagation_depth, blast_radius с цветовой индикацией 🟢🟡🔴.
 
 **Core Command Builder:** запуск `scan/doctor/fix/cycle/explain` из единой формы с параметрами.
 
