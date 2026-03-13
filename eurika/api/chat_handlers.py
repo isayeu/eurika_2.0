@@ -98,6 +98,16 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
     if handler_id == 'ritual':
         from eurika.api.chat_tools import run_eurika_ritual
         ok, output = run_eurika_ritual(root)
+        state['active_goal'] = {
+            'intent': 'ritual',
+            'source': 'chat_direct',
+            'target': 'scan→doctor→report-snapshot',
+        }
+        store_last_execution(
+            state,
+            {'ok': ok, 'summary': 'ritual completed' if ok else 'ritual had errors'},
+        )
+        save_dialog_state(root, state)
         text = f'Выполнил ритуал (scan → doctor → report-snapshot):\n\n```\n{output}\n```'
         if not ok:
             text = f'Ритуал выполнен с ошибками:\n\n```\n{output}\n```'
@@ -108,12 +118,16 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         exit_code = -1
         if run_command_with_result is not None:
             terminal_cmd = _extracted_block_134(emit_cmd, run_command_with_result)
+            ok, output = False, ''
         else:
             from eurika.api.chat_tools import run_release_check
             ok, output = run_release_check(root)
             terminal_cmd = None
         state['last_release_check_output'] = output
         state['last_release_check_ok'] = ok
+        if terminal_cmd is None:
+            state['active_goal'] = {'intent': 'release_check', 'source': 'chat_direct', 'target': 'release_check'}
+            store_last_execution(state, {'ok': ok, 'summary': 'release_check passed' if ok else 'release_check failed'})
         save_dialog_state(root, state)
         if ok:
             text = f'{brief_release_check_analysis(output, True)}\n\n```\n{output[-8000:]}\n```'

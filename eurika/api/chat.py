@@ -200,6 +200,9 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         dry = 'dry-run' in msg.lower() or 'dry run' in msg.lower() or 'без применения' in msg.lower()
         _emit(f"$ eurika fix . {('--dry-run' if dry else '')}".strip(), on_system_action)
         output = _run_eurika_fix(root, dry_run=dry)
+        state['active_goal'] = {'intent': 'refactor', 'target': '.', 'source': 'chat'}
+        _store_last_execution(state, {'ok': True, 'summary': f'eurika fix {"(dry-run)" if dry else ""} executed'})
+        _save_dialog_state(root, state)
         text = 'Запустил `eurika fix .`' + (' (dry-run)' if dry else '') + f':\n\n{output}'
         _append_chat_history_safe(root, 'user', msg, None)
         _append_chat_history_safe(root, 'assistant', text, None)
@@ -207,6 +210,9 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     if intent == 'delete' and target:
         _emit(f'$ rm {target}', on_system_action)
         ok, res = _safe_delete_file(root, target)
+        state['active_goal'] = {'intent': 'delete', 'target': target, 'source': 'chat'}
+        _store_last_execution(state, {'ok': ok, 'summary': f'deleted {res}' if ok else f'failed: {res}'})
+        _save_dialog_state(root, state)
         if ok:
             full = (root / res).resolve()
             text = f'Удалён файл {res} ({full})'
@@ -218,6 +224,9 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     if intent == 'create' and target:
         _emit(f'$ touch {target}', on_system_action)
         ok, res = _safe_create_empty_file(root, target)
+        state['active_goal'] = {'intent': 'create', 'target': target, 'source': 'chat'}
+        _store_last_execution(state, {'ok': ok, 'summary': f'created {res}' if ok else f'failed: {res}'})
+        _save_dialog_state(root, state)
         if ok:
             full = (root / res).resolve()
             text = f'Создан пустой файл {res} ({full})'
@@ -255,6 +264,9 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         _append_chat_history_safe(root, 'user', msg, None)
         _append_chat_history_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
+    # LLM fallback: user question or unhandled intent — show «answer» instead of stale run_command/ritual
+    state['active_goal'] = {'intent': 'answer', 'source': 'llm', 'target': (msg or '')[:80]}
+    _save_dialog_state(root, state)
     scope = None
     if interpretation is not None and interpretation.entities:
         modules = (interpretation.entities.get('scope_modules') or '').split(',')

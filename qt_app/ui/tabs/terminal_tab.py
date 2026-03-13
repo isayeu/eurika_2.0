@@ -262,7 +262,7 @@ def _run_command_in_terminal(main: MainWindow, cmd: str, result_holder: list | N
         if result_holder is not None:
             result_holder[:] = [(''.join(output_buffer), code)]
     main._terminal_process = process
-    process.readyReadStandardOutput.connect(_on_stdout)
+    process.readyReadStandardOutput.connect(lambda: _on_stdout(main, output_buffer, process))
     process.readyReadStandardError.connect(_on_stderr)
     process.finished.connect(_on_finished)
     _start_terminal_process(process, cwd, cmd)

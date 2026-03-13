@@ -172,6 +172,14 @@ def _format_chat_line(role: str, text: str, *, is_error: bool = False) -> str:
     return f"{label}: {escaped}"
 
 
+def _scroll_transcript_to_bottom(main: "MainWindow") -> None:
+    """Scroll Session chat history transcript to show newest messages."""
+    if hasattr(main, "chat_transcript") and main.chat_transcript:
+        bar = main.chat_transcript.verticalScrollBar()
+        if bar:
+            bar.setValue(bar.maximum())
+
+
 def dispatch_chat_message(main: MainWindow, message: str) -> None:
     if not message:
         return

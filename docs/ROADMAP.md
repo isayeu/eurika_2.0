@@ -604,7 +604,7 @@ while True:
 - [ ] **RV12** Architecture Time Machine — snapshots по времени, health trend, collapse prediction (long-term)
 - [ ] **RV13** Architecture Gravity — gravity_score, black holes (long-term, после 5 метрик)
 - [x] **RV14** Patch safety layer — patch_guard: syntax (ast.parse before verify), tests (pytest), rollback on syntax ✅
-- [ ] **RV15** Plugin version contract — явный контракт для plugins, чтобы не ломать внутренний API
+- [x] **RV15** Plugin version contract — docs/R5_PLUGIN_INTERFACE.md §Version Contract; стабильный API, запрещённые deps
 
 ---
 
