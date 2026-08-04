@@ -477,7 +477,9 @@ def test_goal_status_and_clear_goal_intents(tmp_path: Path, monkeypatch) -> None
     assert after.get("active_goal") == {}
     assert after.get("pending_clarification") == {}
     empty = format_dialog_goal_block(after)
-    assert "Нет активной цели" in empty
+    assert empty == "Нет активной цели в контексте агента."
+    assert "Last execution" not in empty
+    assert "ritual" not in empty.lower()
 
 
 def test_llm_fallback_does_not_pin_answer_as_active_goal(tmp_path: Path, monkeypatch) -> None:

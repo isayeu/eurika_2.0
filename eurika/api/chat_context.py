@@ -90,8 +90,17 @@ def format_dialog_goal_block(state: Optional[Dict[str, Any]]) -> str:
     if isinstance(pending_git, dict) and pending_git.get("message"):
         msg = str(pending_git.get("message") or "")[:80]
         lines.append(f"Pending git commit: {msg}")
+    goal_present = isinstance(goal, dict) and bool(goal)
+    has_open_work = bool(
+        goal_present
+        or (isinstance(pending, dict) and pending)
+        or (isinstance(pending_plan, dict) and pending_plan)
+        or (isinstance(pending_git, dict) and pending_git.get("message"))
+    )
+    # Last execution is history — only attach when there is an open goal/pending,
+    # otherwise «какая цель?» looks like a stuck ritual/run.
     last = state.get("last_execution")
-    if isinstance(last, dict) and last:
+    if has_open_work and isinstance(last, dict) and last:
         lines.append(
             "Last execution: "
             f"ok={last.get('ok')}, verification_ok={last.get('verification_ok')}, "
@@ -99,7 +108,6 @@ def format_dialog_goal_block(state: Optional[Dict[str, Any]]) -> str:
         )
     if not lines:
         return "Нет активной цели в контексте агента."
-    goal_present = isinstance(goal, dict) and bool(goal)
     if not goal_present:
         lines.insert(0, "Нет активной цели в контексте агента.")
     return "\n".join(lines)
