@@ -50,12 +50,25 @@ def run_eurika_fix(project_root: Path, dry_run: bool = False, timeout: int = 180
 
 
 def is_apply_confirmation(message: str) -> bool:
-    """Detect explicit confirmation to execute a pending action."""
+    """Detect explicit confirmation to execute a pending action.
+
+    Avoid bare substring ``apply`` — it false-positives on commit texts like
+    ``собери коммит: Gate Apply after Diff``.
+    """
     msg = _norm_msg(message)
     if not msg:
         return False
-    markers = ("применяй", "выполняй", "это подтверждение", "apply", "go ahead", "execute")
-    return any(m in msg for m in markers)
+    # Commit/push intents win over HITL apply (message may contain the word Apply).
+    if is_git_commit_request(message) or is_git_push_request(message):
+        return False
+    if any(m in msg for m in ("применяй", "выполняй", "это подтверждение")):
+        return True
+    # English: leading confirm verb, or confirm + token — not mid-sentence nouns.
+    if re.match(r"^(apply|go ahead|execute)\b", msg):
+        return True
+    if re.search(r"\b(apply|execute)\b.{0,48}\btoken\b", msg):
+        return True
+    return False
 
 
 def extract_confirmation_token(message: str) -> str:

@@ -415,6 +415,20 @@ def test_chat_send_git_commit_request_returns_real_status_without_llm(tmp_path: 
     assert "применяй" in text or "Нет изменений" in text
 
 
+def test_git_commit_message_with_apply_word_does_not_hijack_confirmation() -> None:
+    """Commit text containing 'Apply' must stay git_commit, not HITL apply."""
+    from eurika.api.chat_direct import is_apply_confirmation, is_git_commit_request, resolve_direct_handler
+    from pathlib import Path
+
+    msg = "собери коммит: Gate Apply after Diff preview for chat pending plans"
+    assert is_git_commit_request(msg) is True
+    assert is_apply_confirmation(msg) is False
+    assert resolve_direct_handler(Path("."), msg)[0] == "git_commit"
+    assert is_apply_confirmation("применяй token:abcd1234") is True
+    assert is_apply_confirmation("apply token:abcd1234") is True
+    assert is_apply_confirmation("Gate Apply after Diff") is False
+
+
 def test_chat_send_git_commit_apply_executes_real_commit(tmp_path: Path, monkeypatch) -> None:
     """Apply confirmation after git commit request should execute real git commit."""
     import subprocess

@@ -86,6 +86,8 @@ class MainWindow(
         self._chat_cancelled = False
         self._pending_plan_token = ''
         self._pending_plan_fallback_active = False
+        self._pending_diff_gate_fp = ''
+        self._pending_diff_seen_fp = ''
         self._is_closing = False
         self._ollama_process = QProcess(self)
         self._ollama_task_process = QProcess(self)

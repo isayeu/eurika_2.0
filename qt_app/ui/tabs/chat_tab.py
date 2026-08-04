@@ -170,7 +170,9 @@ def _build_dialog_page(main: MainWindow) -> QWidget:
 
     main.chat_diff_view = QTextEdit()
     main.chat_diff_view.setReadOnly(True)
-    main.chat_diff_view.setPlaceholderText("Diff pending-плана (авто при Apply-ожидании / кнопка Diff)")
+    main.chat_diff_view.setPlaceholderText(
+        "Diff pending-плана (авто; Apply после просмотра)"
+    )
     main.chat_diff_view.setStyleSheet("font-family: monospace; font-size: 12px;")
     main.chat_diff_view.setMinimumHeight(120)
     context_layout.addWidget(main.chat_diff_view, 1)

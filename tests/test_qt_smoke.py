@@ -118,6 +118,44 @@ def test_response_requests_confirmation_ignores_no_token_text() -> None:
     assert chat_handlers.response_requests_confirmation(text) is False
 
 
+def test_pending_diff_gate_requires_preview_then_resets() -> None:
+    """Apply unlocks only after Diff seen for current pending fingerprint."""
+
+    class _GateHost:
+        def __init__(self) -> None:
+            self._pending_diff_gate_fp = ""
+            self._pending_diff_seen_fp = ""
+
+    host = _GateHost()
+    fp = chat_handlers._pending_preview_fingerprint({"token": "deadbeef"}, None)
+    assert fp == "plan:deadbeef"
+    chat_handlers._sync_pending_diff_gate(host, fp)
+    assert (
+        chat_handlers._apply_allowed_for_pending(
+            host, has_effective_pending=True, previewable=True, fingerprint=fp
+        )
+        is False
+    )
+    chat_handlers._mark_pending_diff_seen(host, fp)
+    assert (
+        chat_handlers._apply_allowed_for_pending(
+            host, has_effective_pending=True, previewable=True, fingerprint=fp
+        )
+        is True
+    )
+    chat_handlers._sync_pending_diff_gate(host, "plan:other")
+    assert chat_handlers._pending_diff_was_seen(host, "plan:other") is False
+    assert (
+        chat_handlers._apply_allowed_for_pending(
+            host,
+            has_effective_pending=True,
+            previewable=False,
+            fingerprint="",
+        )
+        is True
+    )
+
+
 def test_validate_project_root_rejects_empty() -> None:
     ok, msg = command_handlers.validate_project_root('')
     assert ok is False

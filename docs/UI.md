@@ -6,7 +6,7 @@
 
 | Вкладка | Назначение |
 |---------|------------|
-| **Chat** (первая) | Chat-first: подвкладки **Агент** / **Market**. На Агенте — полоска режимов (Агент / Market / Обучение), статус paper и справа панель **Контекст** (goal/pending/last run, **авто-Diff** pending-плана, Terminal / Approvals). Market: Live paper, Spot\|Futures\|Both, тикеры, исследование, 15m/1h, лента. Без live-ордеров. См. [CHAT.md](CHAT.md) |
+| **Chat** (первая) | Chat-first: подвкладки **Агент** / **Market**. На Агенте — полоска режимов (Агент / Market / Обучение), статус paper и справа панель **Контекст** (goal/pending/last run, **авто-Diff**, Apply после Diff, Terminal / Approvals). Market: Live paper, Spot\|Futures\|Both, тикеры, исследование, 15m/1h, лента. Без live-ордеров. См. [CHAT.md](CHAT.md) |
 | **Terminal** | Output команд + shell |
 | **Models** | Подвкладки **LLM** / **ML**. LLM: Ollama, GPU, chat provider. ML: PyTorch + **Market learning**. См. [CHAT.md](CHAT.md) / [HARDWARE.md](HARDWARE.md) |
 | **Commands** | scan/doctor/fix/cycle/explain/…, Run/Stop; Quality: Ruff, Mypy, Release check |
@@ -137,7 +137,7 @@ Evolution report: тренды (complexity, smells, centralization), регре�
 ### Chat
 Чат с Eurika через прослойку Ollama: введите сообщение, получите ответ с учётом контекста проекта (summary, recent events). RAG: при похожем запросе — прошлые обмены в промпт.
 
-На Агенте: **Apply / Reject / Diff** для HITL pending-плана (`dialog_state`); Diff в **Контекст** открывается **автоматически** при pending (кнопка Diff — обновить). Не путать с team-mode Approvals.
+На Агенте: **Apply / Reject / Diff** для HITL pending-плана (`dialog_state`); Diff в **Контекст** открывается **автоматически** при pending; **Apply** активен только после Diff (кнопка Diff — обновить). Не путать с team-mode Approvals.
 
 **Agent intents (3.5.11.C):**
 
