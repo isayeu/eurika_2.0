@@ -480,6 +480,39 @@ def test_goal_status_and_clear_goal_intents(tmp_path: Path, monkeypatch) -> None
     assert "Нет активной цели" in empty
 
 
+def test_llm_fallback_does_not_pin_answer_as_active_goal(tmp_path: Path, monkeypatch) -> None:
+    """Free-form LLM answers must not stick as active_goal (e.g. «git push»)."""
+    import json
+    import eurika.api.chat as chat_mod
+
+    hist = tmp_path / ".eurika" / "chat_history"
+    hist.mkdir(parents=True)
+    (hist / "dialog_state.json").write_text(
+        json.dumps(
+            {
+                "active_goal": {
+                    "intent": "answer",
+                    "source": "llm",
+                    "target": "git push",
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_a, **_k: ("ok reply", None),
+    )
+    out = chat_mod.chat_send(tmp_path, "расскажи что-нибудь про архитектуру")
+    assert out.get("error") is None
+    after = json.loads((hist / "dialog_state.json").read_text(encoding="utf-8"))
+    assert after.get("active_goal") in ({}, None) or after.get("active_goal") == {}
+    status = chat_mod.chat_send(tmp_path, "какая цель?")
+    assert "git push" not in (status.get("text") or "")
+    assert "Нет активной цели" in (status.get("text") or "")
+
+
 def test_chat_send_git_commit_apply_executes_real_commit(tmp_path: Path, monkeypatch) -> None:
     """Apply confirmation after git commit request should execute real git commit."""
     import subprocess

@@ -48,7 +48,8 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         text = (
             'Привет! Я Eurika — архитектурный coding-ассистент этого проекта. '
             'Могу показать структуру, scan, помочь с кодом. '
-            'Например: «что за проект?», «сколько файлов?», «покажи дерево».'
+            'Например: «что за проект?», «сколько файлов?», «покажи дерево», '
+            '«какая цель?», «сбрось цель».'
         )
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)

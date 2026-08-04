@@ -277,10 +277,17 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         _append_chat_history_safe(root, 'user', msg, None)
         _append_chat_history_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
-    # LLM fallback: user question or unhandled intent — show «answer» instead of stale run_command/ritual
+    # LLM fallback: Q&A is not an agent goal — clear so Context / «какая цель?»
+    # do not stick on the last free-form message (e.g. «git push»).
     _record_chat_metric(root, 'intent_miss', message=msg[:240], path='llm')
-    state['active_goal'] = {'intent': 'answer', 'source': 'llm', 'target': (msg or '')[:80]}
-    _save_dialog_state(root, state)
+    prev_goal = state.get('active_goal') if isinstance(state, dict) else None
+    if isinstance(prev_goal, dict) and (
+        not prev_goal
+        or str(prev_goal.get('intent') or '') in {'answer', 'run_command', 'ritual'}
+        or str(prev_goal.get('source') or '') == 'llm'
+    ):
+        state['active_goal'] = {}
+        _save_dialog_state(root, state)
     scope = None
     if interpretation is not None and interpretation.entities:
         modules = (interpretation.entities.get('scope_modules') or '').split(',')
