@@ -136,6 +136,16 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
+    if handler_id == 'git_push':
+        text = (
+            '**git push** из чата не запускаю (нужен твой Terminal / SSH).\n\n'
+            'Коммит уже локальный — выполни в Terminal:\n'
+            '```\ngit push\n```\n'
+            'Или `git push -u origin HEAD`, если ветка ещё не на remote.'
+        )
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
     if handler_id == 'add_api_test':
         endpoint = extract_api_endpoint_from_request(msg)
         if endpoint:

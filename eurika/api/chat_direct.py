@@ -182,6 +182,12 @@ def _accept_soft_handler(handler_id: Optional[str], msg: str) -> bool:
         return False
     if handler_id == "ritual" and not is_ritual_request(msg):
         return False
+    if handler_id == "add_api_test" and not is_add_api_test_request(msg):
+        return False
+    if handler_id == "add_module_test" and not is_add_module_test_request(msg):
+        return False
+    if handler_id == "git_commit" and not is_git_commit_request(msg):
+        return False
     return True
 
 
@@ -225,6 +231,8 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
         return ("ritual", "$ eurika scan . && eurika doctor . && eurika report-snapshot .")
     if is_release_check_request(msg):
         return ("release_check", "$ ./scripts/release_check.sh")
+    if is_git_push_request(msg):
+        return ("git_push", None)
     if is_git_commit_request(msg):
         return ("git_commit", None)
     # Soft match (ML/vector) must not steal questions or explicit LLM directives.
@@ -530,6 +538,27 @@ def is_ritual_request(message: str) -> bool:
         "report-snapshot",
     )
     return any(k in msg for k in keywords)
+
+
+def is_git_push_request(message: str) -> bool:
+    """Detect git push request (chat explains Terminal; no auto-push)."""
+    msg = _norm_msg(message)
+    if not msg:
+        return False
+    if re.search(r"^(что|как|зачем|why|what|how)\s", msg):
+        return False
+    keywords = (
+        "git push",
+        "запушь",
+        "запуш",
+        "push в remote",
+        "push to remote",
+        "отправь на github",
+        "отправь в remote",
+    )
+    if any(k in msg for k in keywords):
+        return True
+    return bool(re.match(r"^\s*push\s*$", msg))
 
 
 def is_git_commit_request(message: str) -> bool:
