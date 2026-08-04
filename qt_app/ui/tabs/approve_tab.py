@@ -73,4 +73,4 @@ def build_approve_tab(main: MainWindow) -> None:
     except Exception:
         pass
     layout.addWidget(main.approvals_diff_text, 1)
-    main.tabs.addTab(tab, 'Approvals')
+    main.approvals_tab_index = main.tabs.addTab(tab, 'Approvals')

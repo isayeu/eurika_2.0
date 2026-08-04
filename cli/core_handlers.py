@@ -7,12 +7,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from .core_handlers_ml_market import handle_ml_market
 from .core_handlers_arch import handle_arch_diff, handle_arch_history, handle_arch_summary
 from .core_handlers_clean import handle_clean_imports
 from .core_handlers_doctor import handle_doctor
 from .core_handlers_explain import handle_architect, handle_explain, handle_suggest_plan
 from .core_handlers_fix_cycle import handle_cycle, handle_fix
 from .core_handlers_learn import handle_learn_github
+from .core_handlers_prove_cycle import handle_prove_cycle
 from .core_handlers_report import handle_learning_kpi, handle_report, handle_report_snapshot
 from .core_handlers_scan import handle_scan, handle_self_check
 from .core_handlers_serve import handle_serve
@@ -33,6 +35,8 @@ __all__ = [
     "handle_help",
     "handle_learn_github",
     "handle_learning_kpi",
+    "handle_ml_market",
+    "handle_prove_cycle",
     "handle_report",
     "handle_report_snapshot",
     "handle_scan",
@@ -57,8 +61,9 @@ def handle_help(parser: Any) -> int:
     print("  fix [path]              full cycle: scan → plan → patch → verify")
     print("  explain <module> [path] role and risks of a module")
     print()
-    print("Other: report, report-snapshot, learning-kpi, campaign-undo, architect, suggest-plan, arch-summary, arch-history, history, arch-diff, self-check, clean-imports, serve")
+    print("Other: report, report-snapshot, learning-kpi, prove-cycle, campaign-undo, architect, suggest-plan, arch-summary, arch-history, history, arch-diff, self-check, clean-imports, serve, ml-market")
     print("Advanced: eurika agent <cmd>  (patch-plan, patch-apply, patch-rollback, cycle, ...)")
+    print("ML market (paper only): eurika ml-market sync|paper|train|status")
     print()
     print("  --help after any command for details.")
     print()

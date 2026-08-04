@@ -133,6 +133,18 @@ def intent_hints_for_prompt(root: Path) -> str:
     return get_intent_hints(root)
 
 
+def _user_prefers_russian(message: str, history: Optional[List[Dict[str, str]]] = None) -> bool:
+    """Detect Russian from current message or recent user turns."""
+    import re
+
+    parts = [message or ""]
+    if history:
+        for turn in history[-3:]:
+            if (turn or {}).get("role") == "user":
+                parts.append(str(turn.get("content") or ""))
+    return bool(re.search(r"[а-яёА-ЯЁ]", " ".join(parts)))
+
+
 def build_chat_prompt(
     message: str,
     context: str,
@@ -152,10 +164,18 @@ def build_chat_prompt(
             "Generate ONLY the code. No questions, no apologies. Output must contain a ```python code block."
         )
     else:
+        lang_rule = ""
+        if _user_prefers_russian(message, history):
+            lang_rule = (
+                " Reply in Russian only. Do not mix Spanish, English, or other languages. "
+                "Do not start with a greeting unless the user just greeted you. "
+                "Be concise; use project context, do not invent file paths or commands. "
+            )
         system = (
             "You are Eurika, an architecture-aware coding assistant. "
             "Never identify yourself as a base model. If asked who you are, answer that you are Eurika. "
             "You have context about the current project. Answer concisely and helpfully."
+            + lang_rule
         )
     context_block = f"\n\n[Project context]: {context}\n\n" if context else "\n\n"
     if rules_snippet:

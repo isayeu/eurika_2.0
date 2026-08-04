@@ -1,6 +1,6 @@
 # R10 — Knowledge Graph (целевая модель)
 
-**Источник:** docs/review.md §9, R10_EXTENSIBILITY_AND_KNOWLEDGE.md, TARGET_V3_STRUCTURE §5.
+**Источник:** docs/archive/review.md §9, archive/R10_EXTENSIBILITY_AND_KNOWLEDGE.md, TARGET_V3_STRUCTURE §5.
 
 **Статус:** v3.x стабилизация пройдена. Реализовано: code_graph, build_test_links, get_knowledge_graph; GET /api/test_links, /api/knowledge_graph.
 
@@ -8,7 +8,7 @@
 
 ---
 
-## 1. Три уровня графа (review.md §9)
+## 1. Три уровня графа (archive/review.md §9)
 
 ```
 code graph         — modules, functions, imports, calls
@@ -123,6 +123,6 @@ KnowledgeGraphFacade:
 
 ## 7. Связь с ROADMAP
 
-- **R10_EXTENSIBILITY_AND_KNOWLEDGE.md** — plugins ✅; KG — этот документ
+- **archive/R10_EXTENSIBILITY_AND_KNOWLEDGE.md** — plugins ✅; KG — этот документ
 - **TARGET_V3_STRUCTURE §5** — v3 стабилизация пройдена; KG implementation started
-- **review.md §9** — целевая структура трёх графов
+- **archive/review.md §9** — целевая структура трёх графов

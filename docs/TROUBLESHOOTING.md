@@ -32,7 +32,7 @@
 
 3. Временно отключить verify: `eurika fix . --dry-run` — только план, без apply/verify.
 
-**Ссылки:** `patch_engine_apply_and_verify.py` (verify_timeout=300), `eurika/api/task_executor_executors.py`.
+**Ссылки:** `patch_engine_apply_and_verify.py` (verify_timeout=300), `eurika/api/task_executor_executors.py`. Polygon drills: [POLYGON_VERIFY_PLAYBOOK.md](POLYGON_VERIFY_PLAYBOOK.md) (секция Verify timeout).
 
 ---
 
@@ -83,8 +83,9 @@
 
 2. **Ollama (локальный):**
    - Запустите Ollama: `ollama serve` (или через Qt Models → Start Ollama).
-   - Для AMD GPU: `OLLAMA_VULKAN=1 ollama serve` (см. Qt Models tab).
-   - Fallback модель: `OLLAMA_OPENAI_MODEL=qwen2.5-coder:7b`.
+   - Для **NVIDIA**: в Models включите «Use NVIDIA CUDA», `CUDA_VISIBLE_DEVICES=0` (см. `nvidia-smi`).
+   - Для **AMD GPU**: «Use Vulkan (AMD GPU)» + при необходимости HSA/ROCR/HIP.
+   - Fallback модель: `OLLAMA_OPENAI_MODEL=llama3.2:3b` (или установленная у вас).
 
 3. **Без LLM (быстрый шаблон):**
    ```bash
@@ -130,7 +131,27 @@
 
 ---
 
-## 6. Ollama: GPU не виден (AMD RX 6xxx/7xxx)
+## 6. Ollama: GPU не виден
+
+Мин./оптимум VRAM и будущий PyTorch: [HARDWARE.md](HARDWARE.md).
+
+### NVIDIA (CUDA)
+
+**Симптом:** Ollama на CPU, в `nvidia-smi` нет процесса `ollama` во время генерации.
+
+**Решение:**
+
+1. Qt Models → включить **Use NVIDIA CUDA**, `CUDA_VISIBLE_DEVICES=0`.
+2. Stop → Start Ollama (перезапуск обязателен).
+3. Во время Chat/doctor смотреть `nvidia-smi` — Memory-Usage у ollama должна расти.
+4. CLI:
+   ```bash
+   CUDA_VISIBLE_DEVICES=0 OLLAMA_VULKAN=0 ollama serve
+   ```
+
+На картах с малой VRAM (≤4 GB) берите лёгкие модели (`llama3.2:3b`), не 7B+.
+
+### AMD RX 6xxx/7xxx (Vulkan)
 
 **Симптом:** Ollama запускается, но `total_vram="0 B"`; модели работают на CPU.
 
@@ -140,7 +161,7 @@
 OLLAMA_VULKAN=1 HSA_OVERRIDE_GFX_VERSION=10.3.0 ollama serve
 ```
 
-В Qt Models tab: чекбокс «Use Vulkan (AMD GPU)» включён по умолчанию; при необходимости задайте HSA_OVERRIDE_GFX_VERSION, ROCR_VISIBLE_DEVICES, HIP_VISIBLE_DEVICES.
+В Qt Models tab: чекбокс «Use Vulkan (AMD GPU)»; при необходимости задайте HSA_OVERRIDE_GFX_VERSION, ROCR_VISIBLE_DEVICES, HIP_VISIBLE_DEVICES.
 
 **Ссылки:** README § Ollama, Qt Models tab.
 
@@ -161,6 +182,7 @@ OLLAMA_VULKAN=1 HSA_OVERRIDE_GFX_VERSION=10.3.0 ollama serve
 | Проблема          | Документ / раздел        |
 | ----------------- | ------------------------ |
 | Onboarding        | [docs/ONBOARDING.md](ONBOARDING.md) |
+| Железо / PyTorch  | [docs/HARDWARE.md](HARDWARE.md) |
 | CLI команды       | [docs/CLI.md](CLI.md)    |
 | Patch Engine      | [docs/Architecture.md](Architecture.md) § 0 |
 | Dogfooding ритуал (B.13) | [docs/DOGFOODING.md](DOGFOODING.md) — fix --dry-run после изменений, CYCLE_REPORT |

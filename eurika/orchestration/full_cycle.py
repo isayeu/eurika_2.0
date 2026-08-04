@@ -136,20 +136,22 @@ def run_cycle_entry(
             contract=contract,
         ),
     )
-    out = (
-        cycle.payload
-        if isinstance(cycle.payload, dict)
-        else {"error": "agent runtime returned invalid payload"}
-    )
-    out.setdefault("agent_runtime", _build_agent_runtime_payload(runtime_mode, cycle))
+    out: dict[str, Any]
+    if isinstance(cycle.payload, dict):
+        out = dict(cycle.payload)
+    else:
+        out = {"error": "agent runtime returned invalid payload"}
+    if "agent_runtime" not in out:
+        out["agent_runtime"] = _build_agent_runtime_payload(runtime_mode, cycle)
     report = out.get("report")
-    if isinstance(report, dict):
+    agent_runtime = out.get("agent_runtime")
+    if isinstance(report, dict) and isinstance(agent_runtime, dict):
         report.setdefault(
             "runtime",
             {
-                "degraded_mode": bool(out["agent_runtime"].get("degraded_mode")),
-                "degraded_reasons": list(out["agent_runtime"].get("degraded_reasons", [])),
-                "state": out["agent_runtime"].get("state"),
+                "degraded_mode": bool(agent_runtime.get("degraded_mode")),
+                "degraded_reasons": list(agent_runtime.get("degraded_reasons", [])),
+                "state": agent_runtime.get("state"),
                 "mode": runtime_mode,
             },
         )

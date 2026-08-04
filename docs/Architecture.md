@@ -4,7 +4,7 @@
 
 ## 0. Layer Map (ROADMAP 2.8.1, 3.1-arch.1)
 
-Формальная карта слоёв и правил зависимостей. Ссылки: **ROADMAP.md** § Фаза 2.8, § Фаза 3.1-arch, §5.7 Execution Model, **CLI.md** § Рекомендуемый цикл, **review.md** §6.
+Формальная карта слоёв и правил зависимостей. Ссылки: **ROADMAP.md** § Фаза 2.8, § Фаза 3.1-arch, §5.7 Execution Model, **CLI.md** § Рекомендуемый цикл, **archive/review.md** §6.
 
 Нотация L0–L6 соответствует рекомендациям review v3.0.1.
 
@@ -200,7 +200,7 @@ Input → Plan → Validate → Apply → Verify
 
 ### 0.9 Execution Model (review 2026 II, target v3.x)
 
-**Источник:** docs/review.md. Цель — формальная execution-модель вместо комбинаторного роста логики.
+**Источник:** docs/archive/review.md. Цель — формальная execution-модель вместо комбинаторного роста логики.
 
 **ExecutionContext** — единый контекст прохода:
 ```
@@ -249,9 +249,9 @@ User/CLI → ExecutionOrchestrator
     → Storage (write only)
 ```
 
-План миграции: **docs/EXECUTION_MODEL_PLAN.md** (этапы A–E). Детали: **ROADMAP.md** §5.7, **docs/review.md**.
+План миграции: **docs/archive/EXECUTION_MODEL_PLAN.md** (этапы A–E). Детали: **ROADMAP.md** §5.7, **docs/archive/review.md**.
 
-**Cognitive Loop (R8, target из review.md):**
+**Cognitive Loop (R8, target из archive/review.md):**
 ```
 Analyze → Build State → Generate → Simulate → Evaluate → Select → Execute → Learn
 ```
@@ -346,7 +346,7 @@ eurika/
 * **No self-modifying code** — only proposals, never execution
 * **Human-in-the-loop** by design
 
-### Цель продукта 1.0 (по review.md)
+### Цель продукта 1.0 (по archive/review.md)
 
 **Eurika = автономный архитектурный ревьюер и рефакторинг-ассистент:** анализирует проект → находит проблемы → формирует план исправлений → предлагает (и при желании применяет) патчи. Не «архитектурный симулятор», а «инженер-практик»: меньше самоанализа ради самоанализа, больше понятных действий (diagnose → plan → patch → verify → learn).
 
@@ -362,21 +362,21 @@ scan → diagnose → plan → patch → verify → learn
 
 ### Patch Engine (2.1)
 
-**Модуль `patch_engine.py`** — фасад «применить план → проверить → откат». Текущая реализация: apply_and_verify, rollback, list_backups. **Целевой API (по review.md):** явные операции **apply_patch(plan)**, **verify_patch()** (перескан + метрики), **rollback_patch()**; при провале verify — автоматический откат. Без этого Eurika не станет автономной. Детали — ROADMAP § «Этап 1 — Patch Engine».
+**Модуль `patch_engine.py`** — фасад «применить план → проверить → откат». Текущая реализация: apply_and_verify, rollback, list_backups. **Целевой API (по archive/review.md):** явные операции **apply_patch(plan)**, **verify_patch()** (перескан + метрики), **rollback_patch()**; при провале verify — автоматический откат. Без этого Eurika не станет автономной. Детали — ROADMAP § «Этап 1 — Patch Engine».
 
 ### Консолидация памяти
 
 Реализовано: **event_engine(project_root)** (eurika.storage.event_engine) — единая точка входа для журнала событий; хранилище eurika_events.json. Event { type, input, output/action, result, timestamp }; сериализация с полем `action`. **ProjectMemory.events** возвращает event_engine(project_root). Запись при scan и patch. Файлы feedback/learning/observations/history по-прежнему отдельные для своих API; единый лог «что произошло» — eurika_events.json.
 
-### Оценка по review.md и направление 2.1
+### Оценка по archive/review.md и направление 2.1
 
-- **Review II (2026):** 8.5/10 амбиция, 7/10 архитектура. Ключевая проблема — отсутствие Execution Model. Рекомендация: freeze фичей, MetricVector + EnergyModel, ΔEnergy, ExperienceStore. Подробно: **docs/review.md**.
+- **Review II (2026):** 8.5/10 амбиция, 7/10 архитектура. Ключевая проблема — отсутствие Execution Model. Рекомендация: freeze фичей, MetricVector + EnergyModel, ΔEnergy, ExperienceStore. Подробно: **docs/archive/review.md**.
 - **Исходный review:** диагноз — «архитектурный аналитик с амбициями автономного агента»; вывод — усиливать execution критично, LLM преждевременно.
 - **2.1 (план прорыва) выполнен:** Patch Engine (apply_patch, verify_patch, rollback_patch), Verify stage, Event Engine, три автофикса, CLI 4 режима — реализованы. Дальше — Knowledge Layer, стабилизация, использование.
 
-### Knowledge Layer / онлайн-слой (после 1.0, по review.md)
+### Knowledge Layer / онлайн-слой (после 1.0, по archive/review.md)
 
-Подключать внешние источники (документация, релизы, PEP) **только после** стабилизации детерминированного ядра. Не «поиск в интернете», а **Knowledge Provider Layer**: абстракция `KnowledgeProvider.query(topic) -> StructuredKnowledge`; реализации — Local, OfficialDocs, ReleaseNotes, StaticAnalyzer. LLM формулирует гипотезу → Knowledge layer проверяет по отобранным источникам → план уточняется → Patch engine применяет детерминированный патч → Verify. Онлайн-слой имеет смысл только когда Eurika уже автономный агент с verify и rollback. Детали — **review.md** (раздел про онлайн-ресурсы и Knowledge Layer).
+Подключать внешние источники (документация, релизы, PEP) **только после** стабилизации детерминированного ядра. Не «поиск в интернете», а **Knowledge Provider Layer**: абстракция `KnowledgeProvider.query(topic) -> StructuredKnowledge`; реализации — Local, OfficialDocs, ReleaseNotes, StaticAnalyzer. LLM формулирует гипотезу → Knowledge layer проверяет по отобранным источникам → план уточняется → Patch engine применяет детерминированный патч → Verify. Онлайн-слой имеет смысл только когда Eurika уже автономный агент с verify и rollback. Детали — **archive/review.md** (раздел про онлайн-ресурсы и Knowledge Layer).
 
 ---
 

@@ -145,3 +145,43 @@ def git_commit(project_root: Path, message: str) -> Tuple[bool, str]:
         return (False, "git commit: timeout")
     except Exception as e:
         return (False, f"git commit: {e}")
+
+
+def run_chat_smoke(project_root: Path, *, timeout: int = 120) -> Tuple[bool, str]:
+    """Fast smoke for chat: PyTorch probe + Qt pytest smoke (no release_check)."""
+    root = Path(project_root).resolve()
+    parts: list[str] = ["SMOKE (chat)", ""]
+    ok = True
+
+    try:
+        from eurika.ml.torch_runtime import format_torch_block, torch_status
+
+        st = torch_status(run_smoke_check=True)
+        parts.append(format_torch_block(st).strip())
+        if st.get("available") and st.get("smoke_ok") is False:
+            ok = False
+    except Exception as exc:
+        parts.append(f"PYTORCH\n  error: {type(exc).__name__}: {exc}")
+        ok = False
+
+    parts.append("")
+    smoke_path = root / "tests" / "test_qt_smoke.py"
+    if smoke_path.is_file():
+        from eurika.api.chat_direct import run_qt_smoke_test
+
+        qt_out = run_qt_smoke_test(root, timeout=timeout)
+        parts.append(qt_out)
+        if "FAIL" in qt_out or "timeout" in qt_out.lower():
+            ok = False
+    else:
+        parts.append("qt smoke: skip (tests/test_qt_smoke.py нет)")
+
+    parts.append("")
+    parts.append("ok" if ok else "fail")
+    parts.append("note: полный self-check — «проведи self-check»; release — «прогони release check»")
+    return (ok, "\n".join(parts))
+
+
+def run_self_check_capture(project_root: Path, *, timeout: int = 180) -> Tuple[bool, str]:
+    """Run ``eurika self-check`` and capture output for chat."""
+    return run_eurika_command(project_root, "self-check", timeout=timeout)

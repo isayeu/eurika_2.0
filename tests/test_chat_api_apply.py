@@ -221,6 +221,77 @@ def test_chat_send_reject_pending_plan_clears_it(tmp_path: Path) -> None:
     assert state.get("pending_plan") == {}
 
 
+def test_chat_send_reject_clears_expired_pending_plan(tmp_path: Path) -> None:
+    """Expired pending plan must still be cleared on reject (not left stale)."""
+    import eurika.api.chat as chat_mod
+
+    state_path = tmp_path / ".eurika" / "chat_history" / "dialog_state.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        _json.dumps(
+            {
+                "pending_plan": {
+                    "intent": "run_command",
+                    "target": "ollama pull nomic-embed-text",
+                    "token": "deadbeefdeadbeef",
+                    "status": "pending_confirmation",
+                    "expires_ts": 1,
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    out = chat_mod.chat_send(tmp_path, "отклонить")
+    assert out.get("error") is None
+    assert "Отклонил pending-план" in (out.get("text") or "")
+    state = _json.loads(state_path.read_text(encoding="utf-8"))
+    assert state.get("pending_plan") == {}
+
+
+def test_chat_send_reject_beats_vector_show_report(tmp_path: Path, monkeypatch) -> None:
+    """With VECTOR_INTENT on, «отклонить» must reject — never show_report."""
+    import eurika.api.chat as chat_mod
+
+    monkeypatch.setenv("EURIKA_USE_VECTOR_INTENT", "1")
+    monkeypatch.setattr(
+        "eurika.api.chat_vector.match_fuzzy_intent",
+        lambda *_a, **_k: ("show_report", None, 0.95),
+    )
+    monkeypatch.setattr(
+        "eurika.api.chat_direct.match_fuzzy_intent",
+        lambda *_a, **_k: ("show_report", None, 0.95),
+        raising=False,
+    )
+    # Also patch via resolve path import site
+    import eurika.api.chat_vector as cv
+
+    monkeypatch.setattr(cv, "match_fuzzy_intent", lambda *_a, **_k: ("show_report", None, 0.95))
+
+    state_path = tmp_path / ".eurika" / "chat_history" / "dialog_state.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        _json.dumps(
+            {
+                "pending_plan": {
+                    "intent": "run_command",
+                    "target": "echo hi",
+                    "token": "abcd1234abcd1234",
+                    "status": "pending_confirmation",
+                    "expires_ts": 4102444800,
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    out = chat_mod.chat_send(tmp_path, "отклонить")
+    text = out.get("text") or ""
+    assert "Отклонил pending-план" in text
+    assert "## 1. Fix" not in text
+    assert "Doctor" not in text
+
+
 def test_chat_send_run_lint_executes_without_confirmation(tmp_path: Path, monkeypatch) -> None:
     """Low-risk lint intent should execute immediately via executor."""
     import eurika.api.chat as chat_mod

@@ -4,7 +4,7 @@
 
 ---
 
-## Рекомендуемый цикл (по review.md и ROADMAP)
+## Рекомендуемый цикл (по archive/review.md и ROADMAP)
 
 Целевой поток — от анализа к действию, а не только к отчётам:
 
@@ -230,7 +230,7 @@ eurika learn-github . --search "language:python stars:>5000" --scan --build-patt
 
 ### eurika self-check [path]
 
-Ритуал самоанализа — полный scan. Рекомендуется выполнять из корня проекта после рефакторинга.
+Ритуал самоанализа — полный scan. Рекомендуется выполнять из корня проекта после рефакторинга. В вывод входят блоки окружения (в т.ч. `PYTORCH`, `BINANCE (read-only)`, `LBOT (remote read-only)`).
 
 **Опции v0.7:** те же, что у `scan` — `--format`, `--color`, `--no-color`.
 
@@ -597,3 +597,44 @@ eurika agent feedback-summary .
 - **EURIKA_USE_VECTOR_INTENT=1** — включить fuzzy match через Ollama embeddings
 - **vector_min_similarity** — порог cosine sim (0.68–0.85). Env: `EURIKA_VECTOR_MIN_SIM`
 - **vector_exemplars** — фразы для embedding match (лучше чем patterns для fuzzy)
+
+### PyTorch scaffold (CR-G3 step 1)
+
+- **Extra:** `pip install -e ".[torch]"` (на слабом GPU — CPU wheel: `pip install torch --index-url https://download.pytorch.org/whl/cpu`)
+- **Модуль:** `eurika.ml.torch_runtime` — `torch_available`, `torch_status`, `run_smoke`
+- **self-check:** блок `PYTORCH` (available / version / device / smoke)
+- **EURIKA_TORCH_DEVICE** — `cpu` (default); `cuda`/`mps` только если доступны
+- **Связка с LLM:** ML не заменяет Ollama/OpenAI — маршрутизация/embeddings рядом с generate; Qt Models → LLM + ML
+- **Персистентность:** опыт/веса ML не живут только в RAM — пишутся под `.eurika/` и подхватываются после рестарта (как LearningStore/EventLog)
+- Классификатор интентов — позже; learning loop от torch не зависит
+
+### ml-market (paper loop, CR-G3 step 2)
+
+```bash
+eurika ml-market sync . --symbol BTCUSDT --interval 1h
+eurika ml-market sync . --symbol BTCUSDT --interval 15m --market futures
+eurika ml-market sync . --symbol BTCUSDT --market both
+eurika ml-market paper . --replace
+eurika ml-market paper . --market futures --replace
+eurika ml-market train .
+eurika ml-market status .
+```
+
+- **Данные:** `.eurika/ml/market/spot|{futures}/{SYMBOL}_{interval}.json` (legacy flat `market/{SYMBOL}_{iv}.json` = spot)
+- **Опыт:** `.eurika/ml/paper_trades.jsonl` — action BUY/SELL + `correct` + `market` после горизонта
+- **Веса:** `.eurika/ml/weights/market_policy.pt` (+ `meta.json`) — одна общая политика
+- **Без live-ордеров.** Qt Chat → **Market**: Spot/Futures/Both, Tick / Auto; Models→ML — блок **Market learning**.
+
+### Binance read-only probe
+
+- **Модуль:** `eurika.integrations.binance_readonly` — `ping`, `ticker_price`, `klines`, `futures_klines`, `futures_ticker_price`, `account_balances`, `probe_readonly` (stdlib HTTP+HMAC, без ордеров)
+- **Env:** `BINANCE_API_KEY` / `BINANCE_API_SECRET` / `BINANCE_TESTNET` / optional `BINANCE_BASE_URL` / `BINANCE_FUTURES_BASE_URL`
+- **self-check:** блок `BINANCE (read-only)` — credentials + ping + ticker + nonzero balances
+- Live trading с Eurika — не подключено; рабочий бот на сервере (см. ниже)
+
+### Remote lbot (prodg)
+
+- **Модуль:** `eurika.integrations.remote_lbot` — `probe_remote_lbot`, `format_remote_lbot_block`
+- **Цель:** `prodg.winex.org` / SSH host `prodg`, каталог `~/lbot` (bbot current)
+- **Env:** `EURIKA_LBOT_SSH_HOST`, `EURIKA_LBOT_REMOTE_DIR`, `EURIKA_LBOT_SSH_TIMEOUT`, `EURIKA_LBOT_PROBE` (`0` = skip)
+- **self-check:** блок `LBOT (remote read-only)` — running/tmux/open trades/log age (без управления)

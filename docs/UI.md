@@ -6,15 +6,16 @@
 
 | Вкладка | Назначение |
 |---------|------------|
-| **Models** | Управление Ollama: Start/Stop, переменные окружения, список моделей, установка. **При старте:** если Ollama не запущен — автоматически открывается вкладка и запускается `ollama serve` |
-| **Chat** | Чат с Apply/Reject для планов; @-mentions для scope; создание вкладок (в т.ч. Terminal) по intent |
-| **Commands** | scan/doctor/fix/cycle/explain/report-snapshot/learning-kpi/learn-github/clean-imports/self-check, Run/Stop, live output; learn-github: --light, --scan, --build-patterns, --limit-repos; Quality: Ruff, Mypy, Release check |
+| **Chat** (первая) | Chat-first: подвкладки **Агент** / **Market**. На Агенте — полоска режимов (Агент / Market / Обучение), статус paper и справа панель **Контекст** (goal/pending/last run + Terminal / Approvals). Market: Live paper, Spot\|Futures\|Both, тикеры, исследование, 15m/1h, лента. Без live-ордеров. См. [CHAT.md](CHAT.md) |
+| **Terminal** | Output команд + shell |
+| **Models** | Подвкладки **LLM** / **ML**. LLM: Ollama, GPU, chat provider. ML: PyTorch + **Market learning**. См. [CHAT.md](CHAT.md) / [HARDWARE.md](HARDWARE.md) |
+| **Commands** | scan/doctor/fix/cycle/explain/…, Run/Stop; Quality: Ruff, Mypy, Release check |
 | **Dashboard** | Summary (modules, deps, cycles, risk, maturity, trends, **Energy**), Top risks, Operational metrics, Learning insights, **ARCHITECTURE METRICS** (blast radius, dependency_density, fragility heatmap 🟢🟡🔴 RV10); Energy — MetricVector (ROADMAP §5.7); автообновление при смене project root |
 | **Graph** | Интерактивный граф зависимостей. Требует `eurika scan .` перед использованием. |
 | **Approvals** | Run fix (team-mode), Load plan, approve/reject per row, **diff preview** при выборе строки (ROADMAP 3.6.7), Save, Run apply-approved. Для extract_block/extract_nested — OSS Reference (Learning from GitHub) блок с примерами из pattern_library. |
 | **Terminal** | Output команд (scan, doctor, fix…) + поле ввода для shell (ls, pwd, eurika scan .) |
 | **Notes** | Персональные заметки во время работы. Сохраняются в `.eurika/notes.txt` проекта (или `~/.eurika/notes.txt` без проекта). Загрузка при смене project root. |
-| **Помощь** | Индекс документов: Architecture, CLI, ROADMAP, MEMORY, BOUNDED_EVOLUTION, UI, TROUBLESHOOTING и др. Кнопка Open — открыть в редакторе. |
+| **Помощь** | Индекс документов: Architecture, CLI, **CHAT**, ROADMAP, MEMORY, TROUBLESHOOTING и др. Кнопка Open — открыть в редакторе. |
 
 ### Тема оформления (Dark theme)
 
@@ -32,11 +33,11 @@
 
 ---
 
-Важно: web static UI удалён из рантайма. `eurika serve` работает только JSON API (`/api/*`). Ниже — исторический reference по старому web-контуру.
+> **Исторический reference (не рантайм).** Web static UI удалён. `eurika serve` — только JSON API (`/api/*`). Актуальный интерфейс — Qt (`eurika-qt`), см. таблицы вкладок выше и [VISION.md](VISION.md). Ниже — описание старого web-контура для архива.
 
 ---
 
-## MVP статус
+## MVP статус (legacy Web)
 
 MVP для Web UI закрыт: покрыты базовые операторские сценарии запуска цикла, обзора архитектуры, ручного approve/reject и диалога с архитектором/чатом.
 

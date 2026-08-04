@@ -16,35 +16,11 @@ if str(_root) not in sys.path:
     sys.path.insert(0, str(_root))
 
 from cli.wiring import build_parser, dispatch_command
+from eurika.utils.env import load_project_dotenv
 
 def _load_environment(env_path: Path | str = ".env") -> None:
-    """
-    Load project environment and force project LLM routing keys from .env.
-
-    We keep normal dotenv behavior for generic vars, then explicitly apply
-    LLM-related keys from project .env so external shell exports do not
-    accidentally bypass project configuration.
-    """
-    try:
-        from dotenv import dotenv_values, load_dotenv
-    except ImportError:
-        return
-
-    path = str(env_path) if env_path else ".env"
-    load_dotenv(dotenv_path=path, override=False)
-    values = dotenv_values(dotenv_path=path)
-    keys = (
-        "OPENAI_API_KEY",
-        "OPENAI_MODEL",
-        "OPENAI_BASE_URL",
-        "OLLAMA_OPENAI_API_KEY",
-        "OLLAMA_OPENAI_MODEL",
-        "OLLAMA_OPENAI_BASE_URL",
-    )
-    for key in keys:
-        value = values.get(key)
-        if value:
-            os.environ[key] = value
+    """Load project .env (cwd); see load_project_dotenv for LLM key routing."""
+    load_project_dotenv(Path(env_path).resolve().parent)
 
 
 # Load .env if present (optional: pip install python-dotenv)

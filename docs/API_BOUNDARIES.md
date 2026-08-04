@@ -43,7 +43,7 @@
 
 ## Target v3.x (review 2026 II)
 
-По docs/review.md, ROADMAP §5.7. Целевая структура API после миграции:
+По docs/archive/review.md, ROADMAP §5.7. Целевая структура API после миграции:
 
 | Пакет | Роль |
 |-------|------|

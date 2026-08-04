@@ -103,7 +103,7 @@ def _build_ollama_cli_prompt(summary: Dict[str, Any], history: Dict[str, Any], p
 def _call_litellm(prompt: str, max_tokens: int=350) -> tuple[str | None, str | None]:
     """Try litellm first (unified OpenAI/Ollama/OpenRouter). Returns (text, None) or (None, reason)."""
     try:
-        import litellm
+        import litellm  # type: ignore[import-not-found]
     except ImportError:
         return (None, 'litellm not installed')
     import os
@@ -249,7 +249,8 @@ def _call_ollama_cli(model: str, prompt: str, timeout_override: int | None=None)
     try:
         text, reason = _run_once()
         if text:
-            return (text, None)
+            from eurika.utils.text import strip_ansi
+            return (strip_ansi(text).strip(), None)
         if reason and 'could not connect to ollama server' in reason.lower():
             return (None, 'could not connect to ollama server; start it manually with `ollama serve`')
         if reason and 'timed out' in reason.lower():
@@ -260,6 +261,29 @@ def _call_ollama_cli(model: str, prompt: str, timeout_override: int | None=None)
         return (None, reason)
     except Exception as e:
         return (None, str(e))
+
+def _chat_llm_provider() -> str:
+    """Chat routing: auto | openai | codex | ollama (set by Qt adapter or tests)."""
+    import os
+    raw = (os.environ.get("EURIKA_CHAT_PROVIDER") or "auto").strip().lower()
+    if raw in {"openai", "codex", "ollama", "auto"}:
+        return raw
+    return "auto"
+
+
+def _call_remote_openai_chat(prompt: str, max_tokens: int) -> tuple[str | None, str | None]:
+    """OpenAI / Codex path: primary HTTP client, then litellm fallback."""
+    primary_client, primary_model, init_reason = _init_primary_openai_client()
+    if not primary_client or not primary_model:
+        return (None, init_reason or "OPENAI_API_KEY not set")
+    text, err = _call_llm_architect(primary_client, primary_model, prompt, max_tokens=max_tokens)
+    if text:
+        return (text, None)
+    litellm_text, litellm_reason = _call_litellm(prompt, max_tokens=max_tokens)
+    if litellm_text:
+        return (litellm_text, None)
+    return (None, f"OpenAI failed ({err or 'unknown'}; litellm: {litellm_reason or 'n/a'})")
+
 
 def _should_use_litellm_first() -> bool:
     """Use litellm only when remote API (OpenAI/OpenRouter); skip for local Ollama (litellm has ~20s extra latency)."""
@@ -336,18 +360,35 @@ def _llm_interpret(summary: Dict[str, Any], history: Dict[str, Any], patch_plan:
 def call_llm_with_prompt(prompt: str, max_tokens: int=1024) -> tuple[str | None, str | None]:
     """Call LLM with custom prompt. Local Ollama: CLI first (fast), then HTTP. Remote: litellm -> primary -> ollama.
     ROADMAP 3.5.11: chat_send uses this."""
-    if not _should_use_litellm_first():
+    provider = _chat_llm_provider()
+    if provider in {"openai", "codex"}:
+        return _call_remote_openai_chat(prompt, max_tokens)
+    if provider == "ollama":
         import os
         cli_model = os.environ.get('OLLAMA_OPENAI_MODEL', 'qwen2.5-coder:7b')
-        cli_text, _ = _call_ollama_cli(cli_model, prompt)
+        cli_text, cli_reason = _call_ollama_cli(cli_model, prompt)
         if cli_text:
             return (cli_text, None)
         fallback_client, fallback_model, fallback_init_reason = _init_ollama_fallback_client()
+        http_reason = fallback_init_reason
         if fallback_client and fallback_model:
-            text, _ = _call_llm_architect(fallback_client, fallback_model, prompt, max_tokens=max_tokens)
+            text, http_reason = _call_llm_architect(fallback_client, fallback_model, prompt, max_tokens=max_tokens)
             if text:
                 return (text, None)
-        return (None, f"ollama CLI and HTTP failed ({fallback_init_reason or 'unknown'})")
+        return (None, f"ollama CLI and HTTP failed (CLI: {cli_reason or 'unknown'}; HTTP: {http_reason or 'unknown'})")
+    if not _should_use_litellm_first():
+        import os
+        cli_model = os.environ.get('OLLAMA_OPENAI_MODEL', 'qwen2.5-coder:7b')
+        cli_text, cli_reason = _call_ollama_cli(cli_model, prompt)
+        if cli_text:
+            return (cli_text, None)
+        fallback_client, fallback_model, fallback_init_reason = _init_ollama_fallback_client()
+        http_reason = fallback_init_reason
+        if fallback_client and fallback_model:
+            text, http_reason = _call_llm_architect(fallback_client, fallback_model, prompt, max_tokens=max_tokens)
+            if text:
+                return (text, None)
+        return (None, f"ollama CLI and HTTP failed (CLI: {cli_reason or 'unknown'}; HTTP: {http_reason or 'unknown'})")
     text, _ = _call_litellm(prompt, max_tokens=max_tokens)
     if text:
         return (text, None)

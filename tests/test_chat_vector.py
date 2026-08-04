@@ -79,6 +79,24 @@ intents:
     assert handler == "show_report"
 
 
+def test_resolve_direct_handler_skips_fuzzy_for_llm_directive(monkeypatch, tmp_path: Path) -> None:
+    """«ответь одним словом …» must go to LLM — not vector→project_overview."""
+    from eurika.api import chat_direct, chat_vector
+
+    monkeypatch.setenv("EURIKA_USE_VECTOR_INTENT", "1")
+    monkeypatch.setattr(
+        chat_vector,
+        "match_fuzzy_intent",
+        lambda *_a, **_k: ("project_overview", None, 0.95),
+    )
+    handler, _emit = chat_direct.resolve_direct_handler(
+        tmp_path, 'ответь одним словом "Жопа"'
+    )
+    assert handler is None
+    assert chat_direct.is_llm_directive_message('ответь одним словом "Жопа"')
+    assert chat_direct.is_llm_directive_message("say only the word hi")
+
+
 def test_vector_exemplars_preferred_over_patterns(monkeypatch, tmp_path: Path) -> None:
     """vector_exemplars used when present; else patterns."""
     from eurika.api import chat_vector

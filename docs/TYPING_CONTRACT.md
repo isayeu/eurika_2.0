@@ -25,3 +25,5 @@ mypy eurika cli
 Слой за слоем: CLI entry → orchestration → API surface → agent/storage/event-memory → learning/knowledge → reasoning → runtime/tool-contract → evolution → smells/core → analysis/reporting → checks/utils/storage-sidecar.
 
 См. полный список в `pyproject.toml` → `[[tool.mypy.overrides]]` → `module`.
+
+Альтернативный запуск: `python -m mypy eurika cli` после `pip install -e ".[typecheck]"`.

@@ -47,7 +47,7 @@ def build_terminal_tab(main: MainWindow) -> None:
     input_row.addWidget(main.terminal_emulator_clear_btn)
     emulator_layout.addLayout(input_row)
     layout.addWidget(emulator_box, 1)
-    main.tabs.addTab(tab, 'Terminal')
+    main.terminal_tab_index = main.tabs.addTab(tab, 'Terminal')
     main._terminal_process = None
     main._terminal_cwd = ''
 

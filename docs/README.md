@@ -1,58 +1,48 @@
 # Документация Eurika
 
-Навигация по основным документам.
+Навигация. Продуктовая цель — Cursor-подобная оболочка + самообучение + paper Market: [VISION.md](VISION.md).
 
-## 1. Разработка и планирование
+## 1. Продукт
 
 | Документ | Описание |
 |----------|----------|
-| [ROADMAP.md](ROADMAP.md) | Единый план — задачи, §4.5 фокус, R1–R10 |
-| [REPORT.md](REPORT.md) | Текущий статус, оценка зрелости |
-| [REVIEW_2026_IV_ANALYSIS.md](REVIEW_2026_IV_ANALYSIS.md) | Анализ Review IV, R1–R10 |
-| [TODO_AUDIT.md](TODO_AUDIT.md) | TODO/FIXME — все 14 пунктов закрыты |
-| [CYCLE_REPORT.md](CYCLE_REPORT.md) | Снапшоты ритуалов, #150–155 |
-| [review.md](review.md) | Исходный диагноз и план прорыва |
-| [archive/](archive/) | Выполненные планы |
+| [VISION.md](VISION.md) | Цель продукта, окно наблюдения, чеклист journal |
+| [ONBOARDING.md](ONBOARDING.md) | ≤ 10 мин: clone → Qt / scan → doctor → fix |
+| [UI.md](UI.md) | Qt UI: вкладки, тема, Chat/Market |
+| [CHAT.md](CHAT.md) | Chat: интенты, LLM/Ollama, `.env` |
+| [MEMORY.md](MEMORY.md) | EventLog, LearningStore, Market ML на диске |
 
 ## 2. Архитектура
 
 | Документ | Описание |
 |----------|----------|
-| [Architecture.md](Architecture.md) | Слои L0–L6, fix-cycle, §0.9 Execution Model |
-| [COGNITIVE_LOOP.md](COGNITIVE_LOOP.md) | R8: Cognitive Loop — контракты 8 этапов |
-| [TARGET_V3_STRUCTURE.md](TARGET_V3_STRUCTURE.md) | Целевая структура v3.x (world_model, execution, memory) |
-| [EXECUTION_MODEL_PLAN.md](EXECUTION_MODEL_PLAN.md) | Миграция ExecutionContext |
+| [Architecture.md](Architecture.md) | Слои L0–L6, fix-cycle, Execution Model |
+| [COGNITIVE_LOOP.md](COGNITIVE_LOOP.md) | R8: контракты 8 этапов |
+| [API_BOUNDARIES.md](API_BOUNDARIES.md) | Публичные фасады подсистем |
 | [DEPENDENCY_FIREWALL.md](DEPENDENCY_FIREWALL.md) | Правила layer/subsystem |
-| [API_BOUNDARIES.md](API_BOUNDARIES.md) | Публичные API подсистем |
-| [RISKS.md](RISKS.md) | 10 архитектурных рисков |
+| [RISKS.md](RISKS.md) | Архитектурные риски |
+| [BOUNDED_EVOLUTION.md](BOUNDED_EVOLUTION.md) | Дисциплина роста, caps |
 
-## 3. Цикл и память
-
-| Документ | Описание |
-|----------|----------|
-| [MEMORY.md](MEMORY.md) | EventLog, FailureLog, LearningStore |
-| [CLI.md](CLI.md) | Команды, рекомендуемый цикл |
-| [DOGFOODING.md](DOGFOODING.md) | Ритуал self-check |
-| [BOUNDED_EVOLUTION.md](BOUNDED_EVOLUTION.md) | Дисциплина роста |
-
-## 4. Knowledge и R10
+## 3. Knowledge и плагины
 
 | Документ | Описание |
 |----------|----------|
-| [KNOWLEDGE_LAYER.md](KNOWLEDGE_LAYER.md) | Knowledge Provider (query по topic) |
-| [KNOWLEDGE_GRAPH_DESIGN.md](KNOWLEDGE_GRAPH_DESIGN.md) | R10: Code/Arch/Knowledge графы |
-| [R10_EXTENSIBILITY_AND_KNOWLEDGE.md](R10_EXTENSIBILITY_AND_KNOWLEDGE.md) | Plugin system, Knowledge Graph |
+| [KNOWLEDGE_LAYER.md](KNOWLEDGE_LAYER.md) | Knowledge Provider |
+| [KNOWLEDGE_GRAPH_DESIGN.md](KNOWLEDGE_GRAPH_DESIGN.md) | Code/Arch/Knowledge графы |
 | [R5_PLUGIN_INTERFACE.md](R5_PLUGIN_INTERFACE.md) | Контракт плагинов |
 
-## 5. Справочник
+## 4. План и операции
 
 | Документ | Описание |
 |----------|----------|
-| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Verify timeout, ModuleNotFoundError, LLM fallback |
-| [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) | Чеклист перед релизом |
+| [ROADMAP.md](ROADMAP.md) | Единый план задач |
+| [CLI.md](CLI.md) | Справочник команд |
+| [DOGFOODING.md](DOGFOODING.md) | Ритуал self-check |
+| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Типовые ошибки |
+| [HARDWARE.md](HARDWARE.md) | Железо, Ollama, PyTorch |
 | [DEPENDENCIES.md](DEPENDENCIES.md) | Зависимости |
-| [ONBOARDING.md](ONBOARDING.md) | Onboarding ≤ 10 мин |
-| [SPEC.md](SPEC.md) | Контракт проекта |
-| [EXECUTION_MODEL_PLAN.md](EXECUTION_MODEL_PLAN.md) | План миграции ExecutionContext (этапы A–E ✅) |
-| [R2_LOGGING.md](R2_LOGGING.md) | Централизованное логирование |
-| [UI.md](UI.md) | Web UI (legacy) |
+| [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) | Чеклист перед релизом |
+| [TYPING_CONTRACT.md](TYPING_CONTRACT.md) | mypy optional-gate |
+| [POLYGON_VERIFY_PLAYBOOK.md](POLYGON_VERIFY_PLAYBOOK.md) | Polygon drills / verify timeout |
+| [CYCLE_REPORT.md](CYCLE_REPORT.md) | Журнал циклов (ритуал, не продуктовый индекс) |
+| [archive/](archive/) | Исторические ревью и закрытые планы |

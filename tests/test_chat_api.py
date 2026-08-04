@@ -83,7 +83,7 @@ def test_chat_send_llm_error_tolerates_history_write_failure(tmp_path: Path, mon
     monkeypatch.setattr(architect_mod, "call_llm_with_prompt", lambda _prompt, max_tokens=1024: ("", "llm offline"))
     monkeypatch.setattr(chat_mod, "append_chat_history", lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("disk full")))
 
-    out = chat_mod.chat_send(tmp_path, "hello")
+    out = chat_mod.chat_send(tmp_path, "проанализируй код")
     assert out.get("text") == ""
     assert out.get("error") == "llm offline"
 

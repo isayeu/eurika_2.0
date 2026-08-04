@@ -114,14 +114,23 @@ class EurikaApiAdapter:
             "OLLAMA_OPENAI_MODEL",
             "EURIKA_LLM_TIMEOUT_SEC",
             "EURIKA_OLLAMA_CLI_TIMEOUT_SEC",
+            "EURIKA_CHAT_PROVIDER",
         )
         old_values = {key: os.environ.get(key) for key in keys}
         try:
             os.environ["EURIKA_LLM_TIMEOUT_SEC"] = str(timeout_sec if timeout_sec > 0 else 3600)
-            os.environ["EURIKA_OLLAMA_CLI_TIMEOUT_SEC"] = str(timeout_sec if timeout_sec > 0 else 0)
-            if provider == "openai":
+            cli_timeout = timeout_sec if timeout_sec > 0 else 0
+            if provider in {"auto", "ollama"} and cli_timeout > 0:
+                cli_timeout = max(cli_timeout, 120)
+            os.environ["EURIKA_OLLAMA_CLI_TIMEOUT_SEC"] = str(cli_timeout)
+            os.environ["EURIKA_CHAT_PROVIDER"] = provider
+            if provider in {"openai", "codex"}:
                 if openai_model.strip():
                     os.environ["OPENAI_MODEL"] = openai_model.strip()
+                elif provider == "codex" and not (os.environ.get("OPENAI_MODEL") or "").strip():
+                    default = (os.environ.get("OPENAI_CODEX_MODEL") or "gpt-4o-mini").strip()
+                    os.environ["OPENAI_MODEL"] = default
+                os.environ.pop("OLLAMA_OPENAI_MODEL", None)
             elif provider == "ollama":
                 # Force Ollama as primary path for chat call.
                 os.environ.pop("OPENAI_API_KEY", None)

@@ -134,6 +134,82 @@ def _format_file_size_block(path: Path) -> str:
     return "\n".join(lines)
 
 
+def _format_pytorch_block() -> str:
+    """Optional PyTorch probe for self-check (CR-G3 scaffold). Never raises."""
+    try:
+        from eurika.ml.torch_runtime import format_torch_block
+
+        return format_torch_block()
+    except Exception:
+        return "\n".join(
+            [
+                "",
+                "PYTORCH (optional ML runtime)",
+                "",
+                "  available: no",
+                "  detail: probe failed",
+            ]
+        )
+
+
+def _format_binance_block() -> str:
+    """Binance credentials + read-only probe for self-check (no secrets). Never raises."""
+    try:
+        from eurika.integrations.binance_readonly import probe_readonly
+        from eurika.utils.env import load_project_dotenv
+
+        load_project_dotenv(".")
+        probe = probe_readonly(symbol="BTCUSDT", include_balances=True)
+        creds = probe.get("credentials") or {}
+        ping = probe.get("ping") or {}
+        ticker = probe.get("ticker") or {}
+        balances = probe.get("balances")
+        lines = ["", "BINANCE (read-only)", ""]
+        lines.append(f"  api_key: {'set' if creds.get('api_key_set') else 'missing'}")
+        lines.append(f"  api_secret: {'set' if creds.get('api_secret_set') else 'missing'}")
+        lines.append(f"  testnet: {'yes' if creds.get('testnet') else 'no'}")
+        lines.append(f"  ready: {'yes' if creds.get('ready') else 'no'}")
+        if ping:
+            ok = "yes" if ping.get("ok") else "no"
+            lines.append(f"  ping: {ok} ({ping.get('latency_ms')} ms)")
+            if ping.get("error"):
+                lines.append(f"  ping_error: {ping.get('error')}")
+        if ticker:
+            if ticker.get("ok"):
+                lines.append(f"  ticker: {ticker.get('symbol')}={ticker.get('price')}")
+            elif ticker.get("error"):
+                lines.append(f"  ticker_error: {ticker.get('error')}")
+        if isinstance(balances, dict):
+            if balances.get("ok"):
+                lines.append(f"  balances_nonzero: {balances.get('count')}")
+                for row in (balances.get("balances") or [])[:8]:
+                    lines.append(
+                        f"    {row.get('asset')}: free={row.get('free')} locked={row.get('locked')}"
+                    )
+                if int(balances.get("count") or 0) > 8:
+                    lines.append(f"    ... +{int(balances['count']) - 8} more")
+            elif balances.get("error"):
+                lines.append(f"  balances_error: {balances.get('error')}")
+        if not creds.get("ready"):
+            lines.append("  hint: set BINANCE_API_KEY / BINANCE_API_SECRET in .env")
+        lines.append("  note: probe is read-only (no orders)")
+        return "\n".join(lines)
+    except Exception:
+        return "\n".join(["", "BINANCE (read-only)", "", "  ready: no", "  detail: probe failed"])
+
+
+def _format_remote_lbot_block() -> str:
+    """Remote lbot (prodg) read-only status for self-check. Never raises."""
+    try:
+        from eurika.integrations.remote_lbot import format_remote_lbot_block
+        from eurika.utils.env import load_project_dotenv
+
+        load_project_dotenv(".")
+        return format_remote_lbot_block()
+    except Exception:
+        return "\n".join(["", "LBOT (remote read-only)", "", "  ok: no", "  detail: probe failed"])
+
+
 def _aggregate_multi_repo_reports(project_reports: list[dict[str, Any]], paths: list[Path]) -> dict[str, Any]:
     """Build aggregated JSON for multi-repo (ROADMAP 3.0.1)."""
     total_modules = 0

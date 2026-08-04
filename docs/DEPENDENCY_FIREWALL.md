@@ -2,7 +2,7 @@
 
 Проверки границ архитектурных слоёв и подсистем. CI падает при нарушении правил.
 
-См. также: Architecture.md §0.6 Verification, §0.7 API Boundaries, §0.9 Execution Model; docs/RELEASE_CHECKLIST.md; docs/review.md (target v3.x).
+См. также: Architecture.md §0.6 Verification, §0.7 API Boundaries, §0.9 Execution Model; docs/RELEASE_CHECKLIST.md; docs/archive/review.md (target v3.x).
 
 ## Как запустить
 
@@ -83,7 +83,7 @@ SubsystemBypassException(
 
 ## Target v3.x (review 2026 II)
 
-По docs/review.md, ROADMAP §5.7. Целевая структура слоёв:
+По docs/archive/review.md, ROADMAP §5.7. Целевая структура слоёв:
 
 ```
 core/           models, execution_context

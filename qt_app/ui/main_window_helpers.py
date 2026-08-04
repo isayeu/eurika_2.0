@@ -7,7 +7,7 @@ from typing import Any
 
 from PySide6.QtCore import Qt, Signal, QThread
 from PySide6.QtGui import QKeyEvent
-from PySide6.QtWidgets import QLineEdit, QWidget
+from PySide6.QtWidgets import QLineEdit, QTextEdit, QWidget
 
 _ANSI_STRIP_RE = re.compile(
     '\\x1b\\[[0-?]*[ -/]*[@-~]|\\x1b\\][^\\x07\\x1b]*(?:\\x07|\\x1b\\\\)|'
@@ -136,11 +136,28 @@ class TerminalLineEdit(QLineEdit):
         super().keyPressEvent(event)
 
 
+class ChatInputEdit(QTextEdit):
+    """Chat compose field: Ctrl+Enter sends, Enter inserts a newline."""
+
+    submit_requested = Signal()
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        key = event.key()
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            mods = event.modifiers()
+            if mods & Qt.KeyboardModifier.ControlModifier:
+                self.submit_requested.emit()
+                event.accept()
+                return
+        super().keyPressEvent(event)
+
+
 class ChatWorker(QThread):
     """Background worker for chat requests to avoid UI freeze."""
 
     finished_payload = Signal(dict)
     failed = Signal(str)
+    cancelled = Signal()
     system_action_occurred = Signal(str)
 
     def __init__(
@@ -164,6 +181,15 @@ class ChatWorker(QThread):
         self._ollama_model = ollama_model
         self._timeout_sec = timeout_sec
         self._run_command_with_result = run_command_with_result
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        """Request cooperative cancellation (UI may return before LLM subprocess exits)."""
+        self._cancelled = True
+        self.requestInterruption()
+
+    def _is_cancelled(self) -> bool:
+        return self._cancelled or self.isInterruptionRequested()
 
     def run(self) -> None:
         def _on_action(cmd: str) -> None:
@@ -180,6 +206,12 @@ class ChatWorker(QThread):
                 on_system_action=_on_action,
                 run_command_with_result=self._run_command_with_result,
             )
+            if self._is_cancelled():
+                self.cancelled.emit()
+                return
             self.finished_payload.emit(result)
         except Exception as exc:
+            if self._is_cancelled():
+                self.cancelled.emit()
+                return
             self.failed.emit(str(exc))

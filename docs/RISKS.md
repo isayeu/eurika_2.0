@@ -1,6 +1,6 @@
 # Архитектурные риски (Review IV)
 
-**Источник:** docs/review.md §риски. Мониторинг и статус митигации.
+**Источник:** docs/archive/review.md §риски. Мониторинг и статус митигации.
 
 ---
 
@@ -124,4 +124,4 @@
 | 9. No Long-Term Evolution | Частично |
 | 10. No Multi-Agent | Открыто |
 
-**Ссылки:** docs/REVIEW_2026_IV_ANALYSIS.md, docs/review.md, docs/BOUNDED_EVOLUTION.md.
+**Ссылки:** docs/archive/REVIEW_2026_IV_ANALYSIS.md, docs/archive/review.md, docs/BOUNDED_EVOLUTION.md.

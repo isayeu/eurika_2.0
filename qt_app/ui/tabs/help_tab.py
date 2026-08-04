@@ -26,18 +26,19 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _DOCS_PATH = _PROJECT_ROOT / "docs"
 
 _DOCUMENTS = [
+    ("Vision", "VISION.md", "Продукт: Cursor-shell + Learn + Market paper; окно наблюдения"),
+    ("Onboarding", "ONBOARDING.md", "Onboarding ≤ 10 мин — eurika-qt / scan → doctor → fix"),
+    ("UI", "UI.md", "Qt UI: вкладки Models/Chat/Market, тема, shortcuts"),
+    ("Chat", "CHAT.md", "Команды вкладки Chat, интенты, LLM, веб-поиск, переменные .env"),
+    ("Memory", "MEMORY.md", "EventLog, FailureLog, LearningStore, Market ML на диске"),
     ("Architecture", "Architecture.md", "L0–L6 слои, fix-cycle pipeline, dependency direction, Execution Model"),
     ("Dependency Firewall", "DEPENDENCY_FIREWALL.md", "Layer rules, ImportRule, EURIKA_STRICT_LAYER_FIREWALL"),
-    ("CLI", "CLI.md", "CLI команды, рекомендуемый цикл scan→doctor→fix"),
     ("API Boundaries", "API_BOUNDARIES.md", "Публичные фасады: from eurika.X import …"),
-    ("ROADMAP", "ROADMAP.md", "План задач, фазы, §5.7 Execution Model (MetricVector, EnergyModel)"),
-    ("Review", "review.md", "Архитектурное ревью 2026 II: Execution Model, Energy-based AI"),
-    ("Onboarding", "ONBOARDING.md", "Onboarding ≤ 10 мин — clone → scan/doctor/fix"),
-    ("Memory", "MEMORY.md", "EventLog, FailureLog, LearningStore — формализация памяти"),
-    ("Bounded Evolution", "BOUNDED_EVOLUTION.md", "Лимиты логов, памяти, planner; CYCLE_REPORT ritual"),
-    ("UI", "UI.md", "Описание GUI, вкладки, shortcuts"),
+    ("CLI", "CLI.md", "CLI команды, рекомендуемый цикл scan→doctor→fix"),
+    ("ROADMAP", "ROADMAP.md", "План задач, фазы, Execution Model"),
+    ("Bounded Evolution", "BOUNDED_EVOLUTION.md", "Лимиты логов, памяти, planner"),
+    ("Hardware", "HARDWARE.md", "Железо, Ollama, PyTorch"),
     ("Troubleshooting", "TROUBLESHOOTING.md", "Типовые ошибки и решения"),
-    ("Cycle Report", "CYCLE_REPORT.md", "История циклов, snapshots, learning KPI"),
 ]
 
 

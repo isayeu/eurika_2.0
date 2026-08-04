@@ -4,11 +4,11 @@
 
 *Требования: Python 3.10+.* Для проверки после `eurika fix` нужен pytest: `pip install pytest` или `pip install -e ".[test]"`. Рекомендуется Python 3.12/3.13 для Qt.
 
-**Текущий фокус (по review):** переход от «архитектурного аналитика» к «инженерному инструменту» — полноценный Patch Engine (apply/verify/rollback), автофиксы, единый Event Engine. Детали — в **docs/review.md** и **docs/ROADMAP.md**.
+**Продуктовая цель:** Cursor-подобная оболочка (chat-first) + самообучение агента + paper Market ML. См. **[docs/VISION.md](docs/VISION.md)** и план в **[docs/ROADMAP.md](docs/ROADMAP.md)**.
 
 ## Быстрый старт
 
-**Onboarding ≤ 10 мин:** clone → scan → doctor → fix. См. [docs/ONBOARDING.md](docs/ONBOARDING.md) (B.9). При проблемах — [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+**Onboarding ≤ 10 мин:** clone → `eurika-qt` / scan → doctor → fix. См. [docs/ONBOARDING.md](docs/ONBOARDING.md). При проблемах — [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
 ### Установка (venv-нейтрально)
 
@@ -155,18 +155,15 @@ Fallback-модель для локального OpenAI-compatible endpoint Oll
 
 Все документы — в каталоге **docs/** ([docs/README.md](docs/README.md) — навигация).
 
-- **docs/UI.md** — legacy reference по архивному Web UI (история, не текущий интерфейс)
-- **docs/archive/MIGRATION_WEB_TO_QT.md** — статус миграции интерфейса (API-only + Qt)
-- **docs/review.md** — разбор, диагноз зрелости, план прорыва (5 этапов)
-- **docs/ROADMAP.md** — план задач, оценка зрелости, «что не хватает», план прорыва, этапы до продуктовой 1.0
-- **docs/REPORT.md** — текущий статус, оценка по review, следующий шаг
-- **docs/Architecture.md** — структура системы, замкнутый цикл, Patch Engine (целевой API), направление 2.1
-- **docs/TROUBLESHOOTING.md** — типовые ошибки (verify timeout, ModuleNotFoundError, LLM fallback, self_map missing) и решения
-- **docs/CLI.md** — справочник команд, рекомендуемый цикл
-- **docs/DOGFOODING.md** — ритуал полного цикла на самом Eurika (scan → doctor → fix), про venv
-- **docs/KNOWLEDGE_LAYER.md** — Knowledge Provider Layer (контракт, формат `eurika_knowledge.json`, интеграция с doctor/architect). Пример: `docs/eurika_knowledge.example.json`. Примеры кода: `examples/knowledge/`.
-- **docs/SPEC.md** — контракт проекта (v0.1–v0.4), текущий фокус
-- **docs/THEORY.md** — идеология и философия Eurika
+- **docs/VISION.md** — продуктовая цель (Cursor-shell + Learn + Market paper)
+- **docs/ONBOARDING.md** — быстрый старт Qt / CLI
+- **docs/UI.md** / **docs/CHAT.md** / **docs/MEMORY.md** — интерфейс, чат, память и Market ML
+- **docs/ROADMAP.md** — план задач
+- **docs/Architecture.md** — слои, fix-cycle, Execution Model
+- **docs/CLI.md** — справочник команд
+- **docs/TROUBLESHOOTING.md** / **docs/DOGFOODING.md** / **docs/HARDWARE.md** — ops
+- **docs/KNOWLEDGE_LAYER.md** — Knowledge Provider (`docs/eurika_knowledge.example.json`)
+- **docs/archive/** — исторические ревью и закрытые планы
 
 ## Self-analysis ritual
 

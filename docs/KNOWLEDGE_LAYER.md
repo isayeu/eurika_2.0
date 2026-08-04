@@ -1,6 +1,6 @@
 # Knowledge Layer — проектирование (после 1.0)
 
-По **review.md**: онлайн-ресурсы и внешний knowledge подключаются **только после** детерминированного ядра (Patch Engine, Verify, rollback). Иначе — хаос и потеря воспроизводимости.
+По **archive/review.md**: онлайн-ресурсы и внешний knowledge подключаются **только после** детерминированного ядра (Patch Engine, Verify, rollback). Иначе — хаос и потеря воспроизводимости.
 
 **Статус (2026):** интегрирован в doctor, architect, explain. API: `eurika.api.get_knowledge(project_root, topic)`; GET /api/knowledge?topic=...&online=0.
 
@@ -84,4 +84,4 @@ Verify stage
 - **EURIKA_KNOWLEDGE_TTL** — TTL кэша в секундах (по умолчанию 86400 = 24h).
 - **EURIKA_KNOWLEDGE_RATE_LIMIT** — минимальный интервал между сетевыми запросами в секундах. При `--online` по умолчанию 1.0; без `--online` — 0 (нет лимита).
 
-См. также **review.md** (блок «Онлайн-ресурсы / Knowledge Layer»), **ROADMAP.md** (§ После 1.0).
+См. также **archive/review.md** (блок «Онлайн-ресурсы / Knowledge Layer»), **ROADMAP.md** (§ После 1.0).

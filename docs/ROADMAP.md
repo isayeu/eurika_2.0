@@ -1,12 +1,14 @@
 # Eurika 2.0 — ROADMAP
 
-Единый план задач. Контракт — в SPEC.md.
+Единый план задач. Продуктовая цель — [VISION.md](VISION.md); архитектура — [Architecture.md](Architecture.md).
 
 ---
 
 ## 1. Принцип и текущая задача
 
 **Основная задача:** саморазвитие — анализ и исправление собственного кода, добавление функций по запросу. Eurika работает над собой (scan/doctor/fix по своей кодовой базе). Использование на других проектах — вторично.
+
+**Продуктовая оболочка:** Cursor-подобный chat-first shell + learning loop + paper Market ML ([VISION.md](VISION.md)). Сейчас (ops): окно наблюдения Market — explore off, без правок trading-ML; детали в MEMORY / VISION.
 
 **Долгосрочное видение:** полноценный AI-агент (звонки, финансы, код по запросу); до этого далеко.
 
@@ -25,11 +27,11 @@
 
 **Вывод ревью (2026):** «Функционально мощный, архитектурно нестабильный, структурно перегруженный.» Риски: God CLI, backups в дереве, orchestration без формальной модели. **Стратегия:** усиливать execution — критично; усиливать LLM — преждевременно.
 
-**Review II (2026):** «Стало лучше структурно» — 8.5/10 амбиция, 7/10 архитектура. Ключевая проблема: отсутствие единого Execution Model; комбинаторный рост логики. Рекомендация: **freeze фичей**, ввести MetricVector + EnergyModel, затем ΔEnergy, ExperienceStore, адаптация весов. Подробно: **docs/review.md** §1.
+**Review II (2026):** «Стало лучше структурно» — 8.5/10 амбиция, 7/10 архитектура. Ключевая проблема: отсутствие единого Execution Model; комбинаторный рост логики. Рекомендация: **freeze фичей**, ввести MetricVector + EnergyModel, затем ΔEnergy, ExperienceStore, адаптация весов. Подробно: **docs/archive/review.md** §1.
 
-**Review III (2026):** Идея 9/10, Амбиция 10/10, Структурность 7/10, **Стабильность ядра 5/10**, Фокус 6/10. Позиция: Tool ✔ Smart refactor ✔ → переход к Energy-based optimizer. Ключевой совет: **упростить ядро, один автономный цикл идеальным, потом наращивать**. Чего избегать: новые фичи, новые smell, self-rewriting, онлайн-патчинг. docs/review.md §2.
+**Review III (2026):** Идея 9/10, Амбиция 10/10, Структурность 7/10, **Стабильность ядра 5/10**, Фокус 6/10. Позиция: Tool ✔ Smart refactor ✔ → переход к Energy-based optimizer. Ключевой совет: **упростить ядро, один автономный цикл идеальным, потом наращивать**. Чего избегать: новые фичи, новые smell, self-rewriting, онлайн-патчинг. docs/archive/review.md §2.
 
-**Review IV (2026):** Амбиция 9/10, модульность 7/10, AI 7/10. EnergyModel в центре (R3 ✅); Cognitive Loop формализован (R8); KG реализован (R10). Подробно: **docs/REVIEW_2026_IV_ANALYSIS.md**.
+**Review IV (2026):** Амбиция 9/10, модульность 7/10, AI 7/10. EnergyModel в центре (R3 ✅); Cognitive Loop формализован (R8); KG реализован (R10). Подробно: **docs/archive/REVIEW_2026_IV_ANALYSIS.md**.
 
 **Обновление (февраль 2026):** Split тяжёлых модулей (task_executor, serve, fix_cycle_impl, core_handlers, chat) — P0.4 выполнен; pipeline_model; test_cycle → test_cycle_report; CR rules (docs, pre-commit, test-api) в .eurika/rules; Qt MVP: hybrid approvals, dashboard, Stop. **Рост:** чистота структуры 4→5.5, контроль сложности 5→6, тестируемость ?→6, продуктовая 6→6.5. **Остаётся:** refactor_code_smell 0%, test_graph_ops/test_api крупные при необходимости, продакшн 4/10.
 
@@ -144,6 +146,8 @@ UI.md ✓; README ✓; критерии **B.7–B.14** выполнены. Оц�
 
 **Architecture Freeze (S0) — активно:** следующие 1–2 релиза только упрощение и рефакторинг. Новые фичи, smell, self-rewriting, онлайн-патчинг — не добавлять (review III).
 
+**Доказательство цикла:** `eurika prove-cycle .` — синтетический drill (remove_unused_import → verify → learning), без LLM и approvals.
+
 ---
 
 ## 5. Cursor Rules (CR) — по тематике
@@ -188,7 +192,7 @@ UI.md ✓; README ✓; критерии **B.7–B.14** выполнены. Оц�
 | ----- | ---------------------- | ------------------------------------------------- | ------ |
 | CR-G1 | chat_intents.yaml      | Паттерны, emit, intent_hints; match_direct_intent | ✅     |
 | CR-G2 | Векторная память       | Embeddings для fuzzy match (опционально)          | ✅ EURIKA_USE_VECTOR_INTENT=1 |
-| CR-G3 | PyTorch-классификатор  | Только при 100+ интентов (опционально)            | —      |
+| CR-G3 | PyTorch-классификатор  | Scaffold ✅ + paper market ✅ + **chat intent router** (`EURIKA_USE_ML_INTENT`, `intent_router`). **ML + LLM в связке**. Опыт `.eurika/ml/`. Пороги — [HARDWARE.md](HARDWARE.md) §4 | router scaffold ✅ |
 
 ---
 
@@ -230,7 +234,7 @@ Shim-файлы удалены — импорты из eurika.reasoning.planner.
 
 ### 5.7 Execution Model (review 2026 II)
 
-**Источник:** docs/review.md. Цель: формальная execution-модель вместо хаотичного роста.
+**Источник:** docs/archive/review.md. Цель: формальная execution-модель вместо хаотичного роста.
 
 **Порядок (жёсткий):** нельзя начинать с learning или глубокого рефакторинга planner — сначала MetricVector + EnergyModel.
 
@@ -264,7 +268,7 @@ storage/        state_store, event_log, learning_store (dumb persistence)
 
 ### 5.8 Сводка review (для нового ревью)
 
-**Источник:** docs/review.md. Извлечённые рекомендации и антипаттерны.
+**Источник:** docs/archive/review.md. Извлечённые рекомендации и антипаттерны.
 
 **Проблемы (что следить):**
 
@@ -328,7 +332,7 @@ storage/        state_store, event_log, learning_store (dumb persistence)
 
 ### 5.9 Review III — автономность и цикл (2026)
 
-**Источник:** docs/review.md §1–§3.
+**Источник:** docs/archive/review.md §1–§3.
 
 **Соответствие:** MetricVector, EnergyModel, State (ExecutionContext, ArchitectureSnapshot) уже есть (§5.7, §6.0.1). Review III п. «нет формального пространства состояний» — частично закрыт. **Замкнутость цикла:** delta_score → patch event, learn event; record_outcome(delta_energy). Остаётся: bounded evolution, самокоррекция решений.
 
@@ -360,7 +364,7 @@ while True:
 **Направления развития:**
 
 1. **Стабильное ядро** — один железобетонный цикл, потом наращивать.
-2. **Настоящая память** — short/long term, failure log; приоритет целей, забывание, конфликт целей. **Failure log:** view над EventLog (learn, result=False); get_recent_failures читает из events. Один источник истины (ARCHITECTURE_MEMORY_REVIEW).
+2. **Настоящая память** — short/long term, failure log; приоритет целей, забывание, конфликт целей. **Failure log:** view над EventLog (learn, result=False); get_recent_failures читает из events. Один источник истины (MEMORY.md; archive/ARCHITECTURE_MEMORY_REVIEW).
 
    **Формализация STM/LTM (review §2):**
 
@@ -393,7 +397,7 @@ while True:
 
 ### 5.10 Review IV — анализ и задачи (2026)
 
-**Источник:** docs/review.md (новый ревью), **docs/REVIEW_2026_IV_ANALYSIS.md**.
+**Источник:** docs/archive/review.md (новый ревью), **docs/archive/REVIEW_2026_IV_ANALYSIS.md**.
 
 | Приоритет | Задача | Статус |
 |-----------|--------|--------|
@@ -402,7 +406,7 @@ while True:
 | R3 | EnergyModel в центр системы | ✅ Architecture §0.9, energy_ranking |
 | R4 | Chat API изолировать (core vs api) | ✅ API_BOUNDARIES + firewall |
 | R5 | Learning центральный (ExperienceStore, weight adaptation) | ✅ Learning Loop документирован |
-| R6 | Целевая структура: world_model/, reasoning/, execution/, memory/ | docs/TARGET_V3_STRUCTURE.md |
+| R6 | Целевая структура: world_model/, reasoning/, execution/, memory/ | docs/archive/TARGET_V3_STRUCTURE.md |
 | R7 | Риски (Fragmented Intelligence и др.) | ✅ docs/RISKS.md |
 | R8 | Cognitive Loop — полная формализация | ✅ docs/COGNITIVE_LOOP.md |
 | R9 | Experience Memory с delta_energy | ✅ P6: W-=lr×ΔE, record_outcome(delta_energy) |
@@ -410,9 +414,9 @@ while True:
 
 **Риски:** docs/RISKS.md — 10 рисков, статус митигации.
 
-### 5.11 Review V — выводы из нового ревью (docs/review.md ~6000 строк)
+### 5.11 Review V — выводы из нового ревью (docs/archive/review.md ~6000 строк)
 
-**Источник:** docs/review.md ~6000 строк. Диапазоны: ~1–100 структура, ~1540–1720 десять рисков, ~3050–3700 опасные места и freeze, ~3515–3690 двадцать опасных мест, ~4510–5750 Architecture Intelligence / Time Machine / Genome / Gravity.
+**Источник:** docs/archive/review.md ~6000 строк. Диапазоны: ~1–100 структура, ~1540–1720 десять рисков, ~3050–3700 опасные места и freeze, ~3515–3690 двадцать опасных мест, ~4510–5750 Architecture Intelligence / Time Machine / Genome / Gravity.
 
 #### Краткая сводка
 

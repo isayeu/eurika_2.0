@@ -1,4 +1,4 @@
-"""Models tab: Ollama server control, chat model settings. ROADMAP 3.1-arch.3."""
+"""Models tab: LLM (Ollama) + ML (PyTorch) sub-tabs."""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSpinBox,
+    QTabWidget,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -33,28 +34,82 @@ if TYPE_CHECKING:
 
 
 def build_models_tab(main: MainWindow) -> None:
-    """Build Models tab: Ollama server, installed/available models, chat settings."""
+    """Build Models tab with LLM (Ollama/chat) and ML (PyTorch) sub-tabs."""
     tab = QWidget()
     layout = QVBoxLayout(tab)
     layout.setContentsMargins(*TAB_MARGINS)
     layout.setSpacing(8)
+
+    inner = QTabWidget()
+    main.models_inner_tabs = inner
+    inner.addTab(_build_llm_subtab(main), "LLM")
+    inner.addTab(_build_ml_subtab(main), "ML")
+    layout.addWidget(inner)
+
+    main.models_tab_index = main.tabs.addTab(tab, "Models")
+    main.models_llm_subtab_index = 0
+    main.models_ml_subtab_index = 1
+
+
+def _build_llm_subtab(main: MainWindow) -> QWidget:
+    """Ollama server + chat provider settings (GPU via Vulkan/CUDA)."""
+    page = QWidget()
+    layout = QVBoxLayout(page)
+    layout.setContentsMargins(0, 8, 0, 0)
+    layout.setSpacing(8)
+
     ollama_box = QGroupBox("Ollama server")
     ollama_layout = QFormLayout(ollama_box)
-    main.ollama_vulkan_check = QCheckBox("Use Vulkan (AMD GPU)")
-    main.ollama_vulkan_check.setChecked(True)
-    main.ollama_vulkan_check.setToolTip("OLLAMA_VULKAN=1 — Vulkan/RADV backend для AMD RX 6xxx/7xxx")
+    main.ollama_cuda_check = QCheckBox("Use NVIDIA CUDA")
+    main.ollama_cuda_check.setChecked(False)
+    main.ollama_cuda_check.setToolTip(
+        "CUDA_VISIBLE_DEVICES + OLLAMA_VULKAN=0 — ускорение на NVIDIA (GeForce/Quadro). "
+        "Несовместимо с Vulkan/AMD в одном процессе."
+    )
+    ollama_layout.addRow("NVIDIA CUDA", main.ollama_cuda_check)
+    main.ollama_cuda_devices_edit = QLineEdit("0")
+    main.ollama_cuda_devices_edit.setPlaceholderText("0  или  0,1")
+    main.ollama_cuda_devices_edit.setMaximumWidth(INPUT_MAX_WIDTH)
+    main.ollama_cuda_devices_edit.setToolTip(
+        "CUDA_VISIBLE_DEVICES — индекс GPU (nvidia-smi). Пусто = все видимые CUDA-устройства."
+    )
+    ollama_layout.addRow("CUDA_VISIBLE_DEVICES", main.ollama_cuda_devices_edit)
+    main.ollama_vulkan_check = QCheckBox("Use Vulkan (AMD GPU / NVIDIA fallback)")
+    main.ollama_vulkan_check.setChecked(False)
+    main.ollama_vulkan_check.setToolTip(
+        "OLLAMA_VULKAN=1 — Vulkan backend (AMD RADV или NVIDIA, если CUDA недоступна). "
+        "На ноутбуках Optimus укажите GGML_VK_VISIBLE_DEVICES на дискретную NVIDIA."
+    )
     ollama_layout.addRow("OLLAMA_VULKAN", main.ollama_vulkan_check)
-    main.ollama_hsa_edit = QLineEdit("10.3.0")
+    main.ollama_vk_devices_edit = QLineEdit("")
+    main.ollama_vk_devices_edit.setPlaceholderText("пусто = auto; Optimus NVIDIA часто 1")
+    main.ollama_vk_devices_edit.setMaximumWidth(INPUT_MAX_WIDTH)
+    main.ollama_vk_devices_edit.setToolTip(
+        "GGML_VK_VISIBLE_DEVICES — индекс Vulkan-устройства (vulkaninfo --summary). "
+        "Intel iGPU обычно 0, NVIDIA 940MX на Optimus — 1."
+    )
+    ollama_layout.addRow("GGML_VK_VISIBLE_DEVICES", main.ollama_vk_devices_edit)
+    main.ollama_hsa_edit = QLineEdit("")
+    main.ollama_hsa_edit.setPlaceholderText("только AMD, напр. 10.3.0")
     main.ollama_hsa_edit.setMaximumWidth(INPUT_MAX_WIDTH)
+    main.ollama_hsa_edit.setToolTip(
+        "HSA_OVERRIDE_GFX_VERSION — только для AMD ROCm/Vulkan. На NVIDIA оставьте пустым."
+    )
     main.ollama_rocr_edit = QLineEdit("")
-    main.ollama_rocr_edit.setPlaceholderText("0 или пусто")
+    main.ollama_rocr_edit.setPlaceholderText("только AMD")
     main.ollama_rocr_edit.setMaximumWidth(INPUT_MAX_WIDTH)
     main.ollama_hip_edit = QLineEdit("")
-    main.ollama_hip_edit.setPlaceholderText("0 или пусто")
+    main.ollama_hip_edit.setPlaceholderText("только AMD")
     main.ollama_hip_edit.setMaximumWidth(INPUT_MAX_WIDTH)
     ollama_layout.addRow("HSA_OVERRIDE_GFX_VERSION", main.ollama_hsa_edit)
     ollama_layout.addRow("ROCR_VISIBLE_DEVICES", main.ollama_rocr_edit)
     ollama_layout.addRow("HIP_VISIBLE_DEVICES", main.ollama_hip_edit)
+    main.ollama_gpu_hint = QLabel(
+        "GPU: CUDA для NVIDIA, Vulkan для AMD/fallback. Оба выкл. = CPU. После смены — Stop/Start Ollama."
+    )
+    main.ollama_gpu_hint.setWordWrap(True)
+    main.ollama_gpu_hint.setStyleSheet(get_secondary_hint())
+    ollama_layout.addRow("", main.ollama_gpu_hint)
     ollama_row = QHBoxLayout()
     main.ollama_start_btn = QPushButton("Start Ollama")
     main.ollama_stop_btn = QPushButton("Stop Ollama")
@@ -110,25 +165,144 @@ def build_models_tab(main: MainWindow) -> None:
     main.ollama_output.setMinimumHeight(80)
     ollama_layout.addRow("Output", main.ollama_output)
     layout.addWidget(ollama_box)
+
     controls = QGroupBox("Chat model settings")
     controls_layout = QFormLayout(controls)
     main.chat_provider_combo = QComboBox()
-    main.chat_provider_combo.addItems(["auto", "openai", "ollama"])
+    main.chat_provider_combo.addItems(["auto", "ollama", "openai", "codex"])
     main.chat_provider_combo.setMaximumWidth(COMBO_MAX_WIDTH)
+    main.chat_provider_combo.setToolTip(
+        "auto: Ollama локально или OpenAI если задан OPENAI_API_KEY\n"
+        "ollama: только локальная модель\n"
+        "openai: OpenAI / OpenRouter API\n"
+        "codex: OpenAI API (модель Codex/GPT из поля ниже)"
+    )
     controls_layout.addRow("Provider", main.chat_provider_combo)
+    main.openai_api_status = QLabel("OpenAI API: unknown")
+    controls_layout.addRow("OpenAI", main.openai_api_status)
     main.chat_openai_model = QLineEdit()
-    main.chat_openai_model.setPlaceholderText("e.g. gpt-4o-mini or mistralai/...")
+    main.chat_openai_model.setPlaceholderText("e.g. gpt-4o-mini, gpt-5-codex, mistralai/...")
     main.chat_openai_model.setMaximumWidth(INPUT_MAX_WIDTH)
     controls_layout.addRow("OpenAI/OpenRouter model", main.chat_openai_model)
-    main.chat_ollama_model = QLineEdit()
-    main.chat_ollama_model.setPlaceholderText("e.g. qwen2.5-coder:7b")
-    main.chat_ollama_model.setMaximumWidth(INPUT_MAX_WIDTH)
-    controls_layout.addRow("Ollama model", main.chat_ollama_model)
+    chat_ollama_row = QHBoxLayout()
+    main.chat_ollama_model = QComboBox()
+    main.chat_ollama_model.setEditable(True)
+    main.chat_ollama_model.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+    chat_ollama_edit = main.chat_ollama_model.lineEdit()
+    if chat_ollama_edit is not None:
+        chat_ollama_edit.setPlaceholderText("installed models or custom name")
+    main.chat_ollama_model.addItem("(no local models)")
+    main.chat_ollama_model.setMaximumWidth(COMBO_MAX_WIDTH)
+    main.chat_ollama_refresh_btn = QPushButton("Refresh")
+    main.chat_ollama_refresh_btn.setMaximumWidth(BTN_SMALL_WIDTH)
+    main.chat_ollama_refresh_btn.setToolTip("Reload installed models from Ollama API")
+    chat_ollama_row.addWidget(main.chat_ollama_model, 1)
+    chat_ollama_row.addWidget(main.chat_ollama_refresh_btn)
+    controls_layout.addRow("Ollama model", chat_ollama_row)
     main.chat_timeout_spin = QSpinBox()
     main.chat_timeout_spin.setRange(0, 9999)
     main.chat_timeout_spin.setSpecialValueText("∞ (unlimited)")
-    main.chat_timeout_spin.setValue(30)
+    main.chat_timeout_spin.setValue(120)
     main.chat_timeout_spin.setMaximumWidth(SPIN_MAX_WIDTH)
     controls_layout.addRow("Timeout sec", main.chat_timeout_spin)
     layout.addWidget(controls)
-    main.models_tab_index = main.tabs.addTab(tab, "Models")
+    layout.addStretch(1)
+    return page
+
+
+def _build_ml_subtab(main: MainWindow) -> QWidget:
+    """PyTorch optional runtime: status, device preference, smoke log."""
+    page = QWidget()
+    layout = QVBoxLayout(page)
+    layout.setContentsMargins(0, 8, 0, 0)
+    layout.setSpacing(8)
+
+    box = QGroupBox("PyTorch (optional ML runtime)")
+    form = QFormLayout(box)
+
+    main.ml_policy_hint = QLabel(
+        "LLM и ML работают в связке, не как замена: LLM (Ollama) — generate; "
+        "ML (PyTorch) — классификатор/embeddings рядом. По умолчанию ML на CPU; "
+        "на старых драйверах CUDA в torch часто недоступна — это нормально."
+    )
+    main.ml_policy_hint.setWordWrap(True)
+    main.ml_policy_hint.setStyleSheet(get_secondary_hint())
+    form.addRow("", main.ml_policy_hint)
+
+    main.ml_torch_available = QLabel("—")
+    form.addRow("Available", main.ml_torch_available)
+    main.ml_torch_version = QLabel("—")
+    form.addRow("Version", main.ml_torch_version)
+    main.ml_torch_cuda = QLabel("—")
+    form.addRow("CUDA", main.ml_torch_cuda)
+    main.ml_torch_resolved = QLabel("—")
+    form.addRow("Resolved device", main.ml_torch_resolved)
+    main.ml_torch_smoke = QLabel("—")
+    form.addRow("Smoke", main.ml_torch_smoke)
+
+    main.ml_torch_device_combo = QComboBox()
+    main.ml_torch_device_combo.addItems(["cpu", "cuda", "mps"])
+    main.ml_torch_device_combo.setMaximumWidth(COMBO_MAX_WIDTH)
+    main.ml_torch_device_combo.setToolTip(
+        "EURIKA_TORCH_DEVICE. Default cpu. cuda/mps применяются только если доступны."
+    )
+    form.addRow("EURIKA_TORCH_DEVICE", main.ml_torch_device_combo)
+
+    btn_row = QHBoxLayout()
+    main.ml_torch_refresh_btn = QPushButton("Refresh status")
+    main.ml_torch_refresh_btn.setMaximumWidth(BTN_SMALL_WIDTH)
+    main.ml_torch_smoke_btn = QPushButton("Run smoke")
+    main.ml_torch_smoke_btn.setMaximumWidth(BTN_SMALL_WIDTH)
+    btn_row.addWidget(main.ml_torch_refresh_btn)
+    btn_row.addWidget(main.ml_torch_smoke_btn)
+    btn_row.addStretch(1)
+    form.addRow("Actions", btn_row)
+
+    main.ml_torch_output = QTextEdit()
+    main.ml_torch_output.setReadOnly(True)
+    main.ml_torch_output.setPlaceholderText("PyTorch probe log…")
+    main.ml_torch_output.setMinimumHeight(100)
+    form.addRow("Log", main.ml_torch_output)
+
+    layout.addWidget(box)
+
+    learn = QGroupBox("Market learning (paper)")
+    learn_form = QFormLayout(learn)
+    main.ml_market_hint = QLabel(
+        "Прогресс бумажного обучения по рынку (.eurika/ml/). "
+        "Тики — во вкладке Chat → Market. Ордера на биржу не уходят."
+    )
+    main.ml_market_hint.setWordWrap(True)
+    main.ml_market_hint.setStyleSheet(get_secondary_hint())
+    learn_form.addRow("", main.ml_market_hint)
+
+    main.ml_market_trades = QLabel("—")
+    learn_form.addRow("Сделки", main.ml_market_trades)
+    main.ml_market_accuracy = QLabel("—")
+    learn_form.addRow("Accuracy paper", main.ml_market_accuracy)
+    main.ml_market_live = QLabel("—")
+    learn_form.addRow("Live-метки", main.ml_market_live)
+    main.ml_market_pnl = QLabel("—")
+    main.ml_market_pnl.setToolTip(
+        "Бумажный банк (старт 1000 USDT): equity / PnL$ / Σ edge после fee "
+        "(все paper / live / сессия с включения Live)"
+    )
+    learn_form.addRow("Банк / PnL", main.ml_market_pnl)
+    main.ml_market_opens = QLabel("—")
+    learn_form.addRow("Открыто", main.ml_market_opens)
+    main.ml_market_model = QLabel("—")
+    learn_form.addRow("Модель", main.ml_market_model)
+    main.ml_market_candles = QLabel("—")
+    learn_form.addRow("Свечи", main.ml_market_candles)
+
+    learn_btn = QHBoxLayout()
+    main.ml_market_refresh_btn = QPushButton("Обновить прогресс")
+    main.ml_market_refresh_btn.setMaximumWidth(BTN_SMALL_WIDTH + 40)
+    main.ml_market_refresh_btn.setToolTip("Перечитать .eurika/ml/ (сделки, веса, открытые paper)")
+    learn_btn.addWidget(main.ml_market_refresh_btn)
+    learn_btn.addStretch(1)
+    learn_form.addRow("", learn_btn)
+
+    layout.addWidget(learn)
+    layout.addStretch(1)
+    return page

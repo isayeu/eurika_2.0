@@ -18,26 +18,100 @@ if TYPE_CHECKING:
 def load_chat_preferences(main: MainWindow) -> None:
     data = main._settings.load()
     provider = str(data.get("chat_provider", "auto"))
-    if provider not in {"auto", "openai", "ollama"}:
+    if provider not in {"auto", "openai", "ollama", "codex"}:
         provider = "auto"
     main.chat_provider_combo.setCurrentText(provider)
     main.chat_openai_model.setText(str(data.get("chat_openai_model", "")))
-    main.chat_ollama_model.setText(str(data.get("chat_ollama_model", "")))
-    timeout_val = data.get("chat_timeout_sec", 30)
+    saved_ollama = str(data.get("chat_ollama_model", "")).strip()
+    if saved_ollama:
+        combo = main.chat_ollama_model
+        if combo.findText(saved_ollama) < 0:
+            combo.addItem(saved_ollama)
+        combo.setCurrentText(saved_ollama)
+    timeout_val = data.get("chat_timeout_sec", 120)
     try:
         timeout = int(timeout_val)
     except (TypeError, ValueError):
-        timeout = 30
+        timeout = 120
     main.chat_timeout_spin.setValue(min(9999, max(0, timeout)))
-    main.ollama_hsa_edit.setText(str(data.get("ollama_hsa_override_gfx", "10.3.0")))
-    main.ollama_rocr_edit.setText(str(data.get("ollama_rocr_visible_devices", "0")))
-    main.ollama_hip_edit.setText(str(data.get("ollama_hip_visible_devices", "0")))
+    main.ollama_hsa_edit.setText(str(data.get("ollama_hsa_override_gfx", "")))
+    main.ollama_rocr_edit.setText(str(data.get("ollama_rocr_visible_devices", "")))
+    main.ollama_hip_edit.setText(str(data.get("ollama_hip_visible_devices", "")))
+    cuda_saved = data.get("ollama_cuda")
+    vulkan_saved = data.get("ollama_vulkan")
+    from . import ollama_handlers
+
+    if cuda_saved is None and vulkan_saved is None:
+        # First run: on NVIDIA prefer Vulkan (CUDA package often needs newer driver than 470).
+        use_vulkan = ollama_handlers.detect_nvidia_gpu()
+        use_cuda = False
+    else:
+        use_cuda = bool(cuda_saved)
+        use_vulkan = bool(vulkan_saved) and not use_cuda
+    main.ollama_cuda_check.blockSignals(True)
+    main.ollama_vulkan_check.blockSignals(True)
+    main.ollama_cuda_check.setChecked(use_cuda)
+    main.ollama_vulkan_check.setChecked(use_vulkan)
+    main.ollama_cuda_check.blockSignals(False)
+    main.ollama_vulkan_check.blockSignals(False)
+    main.ollama_cuda_devices_edit.setText(str(data.get("ollama_cuda_visible_devices", "0")))
+    vk_devices = data.get("ollama_vk_visible_devices")
+    if vk_devices is None and use_vulkan and ollama_handlers.detect_nvidia_gpu():
+        # Optimus: NVIDIA is often Vulkan device 1 (Intel=0).
+        vk_devices = "1"
+    main.ollama_vk_devices_edit.setText(str(vk_devices if vk_devices is not None else ""))
+    ollama_handlers.sync_ollama_gpu_fields(main)
     main.ollama_custom_model_edit.setText(str(data.get("ollama_custom_model", "")))
     saved_available = str(data.get("ollama_available_model", "")).strip()
     main._saved_available_model = saved_available
+    from . import ml_handlers
+
+    ml_handlers.load_ml_preferences(main)
+
+
+def focus_agent_mode(main: MainWindow) -> None:
+    """Chat-first: stay on Chat → Агент and focus the compose box."""
+    if hasattr(main, "chat_tab_index"):
+        main.tabs.setCurrentIndex(main.chat_tab_index)
+    if hasattr(main, "chat_inner_tabs") and hasattr(main, "chat_dialog_subtab_index"):
+        main.chat_inner_tabs.setCurrentIndex(main.chat_dialog_subtab_index)
+    if hasattr(main, "chat_input"):
+        main.chat_input.setFocus()
+
+
+def focus_market_mode(main: MainWindow) -> None:
+    """Chat-first: open Chat → Market as a mode, not a separate app."""
+    if hasattr(main, "chat_tab_index"):
+        main.tabs.setCurrentIndex(main.chat_tab_index)
+    if hasattr(main, "chat_inner_tabs") and hasattr(main, "chat_market_subtab_index"):
+        main.chat_inner_tabs.setCurrentIndex(main.chat_market_subtab_index)
+
+
+def focus_learn_mode(main: MainWindow) -> None:
+    """Chat-first: Learn lives under Models → ML."""
+    if hasattr(main, "models_tab_index"):
+        main.tabs.setCurrentIndex(main.models_tab_index)
+    if hasattr(main, "models_inner_tabs") and hasattr(main, "models_ml_subtab_index"):
+        main.models_inner_tabs.setCurrentIndex(main.models_ml_subtab_index)
+
+
+def focus_terminal_mode(main: MainWindow) -> None:
+    """Chat-first: jump from Agent context panel to Terminal."""
+    if hasattr(main, "terminal_tab_index"):
+        main.tabs.setCurrentIndex(main.terminal_tab_index)
+        if hasattr(main, "terminal_emulator_input"):
+            main.terminal_emulator_input.setFocus()
+
+
+def focus_approvals_mode(main: MainWindow) -> None:
+    """Chat-first: jump from Agent context panel to Approvals."""
+    if hasattr(main, "approvals_tab_index"):
+        main.tabs.setCurrentIndex(main.approvals_tab_index)
 
 
 def refresh_chat_goal_view(main: MainWindow) -> None:
+    from eurika.api.task_executor import is_pending_plan_valid
+
     state = main._api.get_chat_dialog_state()
     goal = state.get("active_goal") if isinstance(state, dict) else {}
     pending = state.get("pending_clarification") if isinstance(state, dict) else {}
@@ -69,7 +143,9 @@ def refresh_chat_goal_view(main: MainWindow) -> None:
         lines.append("")
         lines.append("Pending clarification:")
         lines.append(f"- {(original[:180] if original else '(awaiting details)')}")
-    if isinstance(pending_plan, dict) and pending_plan:
+    plan_valid = isinstance(pending_plan, dict) and is_pending_plan_valid(pending_plan)
+    plan_stale = isinstance(pending_plan, dict) and bool(pending_plan) and not plan_valid
+    if plan_valid:
         main._pending_plan_token = str(pending_plan.get("token") or "")
         lines.append("")
         lines.append("Awaiting confirmation:")
@@ -80,6 +156,12 @@ def refresh_chat_goal_view(main: MainWindow) -> None:
         if isinstance(steps, list) and steps:
             for step in steps[:4]:
                 lines.append(f"  - {step}")
+    elif plan_stale and isinstance(pending_plan, dict):
+        lines.append("")
+        lines.append("Expired pending plan (Reject to clear):")
+        lines.append(
+            f"- intent={pending_plan.get('intent', '-')}, target={pending_plan.get('target', '-')}"
+        )
     if isinstance(last_execution, dict) and last_execution:
         lines.append("")
         lines.append("Last execution:")
@@ -97,11 +179,13 @@ def refresh_chat_goal_view(main: MainWindow) -> None:
     if not lines:
         lines.append("No active interpreted goal yet.")
     main.chat_goal_view.setPlainText("\n".join(lines))
-    has_pending_plan = isinstance(pending_plan, dict) and bool(pending_plan)
+    has_pending_plan = plan_valid
     has_pending_git = isinstance(pending_git, dict) and bool(pending_git.get("message"))
     has_effective_pending = has_pending_plan or has_pending_git or main._pending_plan_fallback_active
     main.chat_apply_btn.setEnabled(has_effective_pending)
-    main.chat_reject_btn.setEnabled(has_effective_pending)
+    main.chat_reject_btn.setEnabled(
+        has_effective_pending or plan_stale
+    )
     if has_pending_plan and isinstance(pending_plan, dict):
         pending_intent = str(pending_plan.get("intent") or "-")
         pending_target = str(pending_plan.get("target") or "").strip()
@@ -123,6 +207,12 @@ def refresh_chat_goal_view(main: MainWindow) -> None:
             main.chat_pending_label.setToolTip("")
             main.chat_apply_btn.setToolTip("")
             main.chat_reject_btn.setToolTip("")
+    elif plan_stale and isinstance(pending_plan, dict):
+        pending_intent = str(pending_plan.get("intent") or "-")
+        main.chat_pending_label.setText(f"Pending plan: expired ({pending_intent})")
+        main.chat_pending_label.setToolTip("Plan TTL expired — Reject to clear.")
+        main.chat_apply_btn.setToolTip("Cannot apply: plan expired")
+        main.chat_reject_btn.setToolTip("Clear expired pending plan")
     elif has_pending_git and isinstance(pending_git, dict):
         main._pending_plan_token = str(pending_git.get("token") or "")
         msg_preview = str(pending_git.get("message", ""))[:50]
@@ -152,13 +242,19 @@ def save_chat_preferences(main: MainWindow) -> None:
     data = main._settings.load()
     data["chat_provider"] = main.chat_provider_combo.currentText()
     data["chat_openai_model"] = main.chat_openai_model.text().strip()
-    data["chat_ollama_model"] = main.chat_ollama_model.text().strip()
+    data["chat_ollama_model"] = main.chat_ollama_model.currentText().strip()
     data["chat_timeout_sec"] = main.chat_timeout_spin.value()
     data["ollama_hsa_override_gfx"] = main.ollama_hsa_edit.text().strip()
     data["ollama_rocr_visible_devices"] = main.ollama_rocr_edit.text().strip()
     data["ollama_hip_visible_devices"] = main.ollama_hip_edit.text().strip()
+    data["ollama_cuda"] = bool(main.ollama_cuda_check.isChecked())
+    data["ollama_vulkan"] = bool(main.ollama_vulkan_check.isChecked())
+    data["ollama_cuda_visible_devices"] = main.ollama_cuda_devices_edit.text().strip()
+    data["ollama_vk_visible_devices"] = main.ollama_vk_devices_edit.text().strip()
     data["ollama_custom_model"] = main.ollama_custom_model_edit.text().strip()
     data["ollama_available_model"] = main.ollama_available_combo.currentText().strip()
+    if hasattr(main, "ml_torch_device_combo"):
+        data["torch_device"] = main.ml_torch_device_combo.currentText().strip() or "cpu"
     main._settings.save(data)
 
 
@@ -180,6 +276,31 @@ def _scroll_transcript_to_bottom(main: "MainWindow") -> None:
             bar.setValue(bar.maximum())
 
 
+def _show_chat_typing(main: MainWindow) -> None:
+    label = getattr(main, "chat_typing_label", None)
+    if label is not None:
+        label.setText("Eurika печатает…")
+        label.setVisible(True)
+
+
+def _hide_chat_typing(main: MainWindow) -> None:
+    label = getattr(main, "chat_typing_label", None)
+    if label is not None:
+        label.clear()
+        label.setVisible(False)
+
+
+def _set_chat_busy(main: MainWindow, *, busy: bool) -> None:
+    main.chat_send_btn.setEnabled(not busy)
+    cancel_btn = getattr(main, "chat_cancel_btn", None)
+    if cancel_btn is not None:
+        cancel_btn.setEnabled(busy)
+    if busy:
+        _show_chat_typing(main)
+    else:
+        _hide_chat_typing(main)
+
+
 def dispatch_chat_message(main: MainWindow, message: str) -> None:
     if not message:
         return
@@ -189,12 +310,13 @@ def dispatch_chat_message(main: MainWindow, message: str) -> None:
     save_chat_preferences(main)
     provider = main.chat_provider_combo.currentText()
     openai_model = main.chat_openai_model.text().strip()
-    ollama_model = main.chat_ollama_model.text().strip()
+    ollama_model = main.chat_ollama_model.currentText().strip()
     timeout_sec = main.chat_timeout_spin.value()
     main.chat_transcript.append(_format_chat_line("user", message))
     main._chat_history.append({"role": "user", "content": message})
     main.chat_input.clear()
-    main.chat_send_btn.setEnabled(False)
+    main._chat_cancelled = False
+    _set_chat_busy(main, busy=True)
     main.status_label.setText("State: chat-running")
     worker = ChatWorker(
         api=main._api,
@@ -209,6 +331,7 @@ def dispatch_chat_message(main: MainWindow, message: str) -> None:
     main._chat_worker = worker
     worker.finished_payload.connect(lambda p: on_chat_result(main, p))
     worker.failed.connect(lambda e: on_chat_error(main, e))
+    worker.cancelled.connect(lambda: on_chat_cancelled(main))
     worker.finished.connect(lambda: on_chat_finished(main))
     worker.system_action_occurred.connect(lambda cmd: on_system_action(main, cmd))
     worker.start()
@@ -217,6 +340,19 @@ def dispatch_chat_message(main: MainWindow, message: str) -> None:
 def send_chat_message(main: MainWindow) -> None:
     message = main.chat_input.toPlainText().strip()
     dispatch_chat_message(main, message)
+
+
+def cancel_chat_request(main: MainWindow) -> None:
+    worker = main._chat_worker
+    if worker is None or not worker.isRunning():
+        return
+    main._chat_cancelled = True
+    worker.cancel()
+    label = getattr(main, "chat_typing_label", None)
+    if label is not None:
+        label.setText("Отмена…")
+        label.setVisible(True)
+    main.chat_cancel_btn.setEnabled(False)
 
 
 def apply_pending_chat_plan(main: MainWindow) -> None:
@@ -268,6 +404,8 @@ def on_system_action(main: MainWindow, cmd: str) -> None:
 
 
 def on_chat_result(main: MainWindow, payload: dict[str, Any]) -> None:
+    if getattr(main, "_chat_cancelled", False):
+        return
     if "terminal_output" in payload and hasattr(main, "terminal_emulator_output"):
         cmd = payload.get("terminal_cmd", "")
         out = payload.get("terminal_output", "")
@@ -296,6 +434,8 @@ def on_chat_result(main: MainWindow, payload: dict[str, Any]) -> None:
 
 
 def on_chat_error(main: MainWindow, error: str) -> None:
+    if getattr(main, "_chat_cancelled", False):
+        return
     main.chat_transcript.append(_format_chat_line("assistant", f"[exception]: {error}", is_error=True))
     refresh_chat_goal_view(main)
 
@@ -331,12 +471,27 @@ def response_requests_confirmation(text: str) -> bool:
     return "применяй token:" in lowered
 
 
+def on_chat_cancelled(main: MainWindow) -> None:
+    main._chat_cancelled = True
+
+
 def on_chat_finished(main: MainWindow) -> None:
-    main.chat_send_btn.setEnabled(True)
+    cancelled = getattr(main, "_chat_cancelled", False)
+    main._chat_cancelled = False
+    _set_chat_busy(main, busy=False)
     main.status_label.setText("State: idle")
     if main._chat_worker is not None:
         main._chat_worker.deleteLater()
         main._chat_worker = None
+    if cancelled:
+        main.chat_transcript.append(
+            _format_chat_line(
+                "assistant",
+                "[отменено] Запрос прерван. Ollama может ещё завершить процесс в фоне.",
+            )
+        )
+        _scroll_transcript_to_bottom(main)
+        return
 
 
 def clear_chat_session(main: MainWindow) -> None:

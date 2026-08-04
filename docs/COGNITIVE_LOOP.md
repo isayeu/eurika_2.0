@@ -1,6 +1,6 @@
 # R8 — Cognitive Loop (полная формализация)
 
-**Источник:** docs/review.md §Cognitive Loop, Architecture.md §0.9, REVIEW_2026_IV_ANALYSIS R8.
+**Источник:** docs/archive/review.md §Cognitive Loop, Architecture.md §0.9, REVIEW_2026_IV_ANALYSIS R8.
 
 **Цель:** формализовать восьмиэтапный когнитивный цикл Eurika как контракты входа/выхода, потоки данных и маппинг на код.
 
@@ -12,7 +12,7 @@
 Analyze → Build State → Generate → Simulate → Evaluate → Select → Execute → Learn
 ```
 
-| # | Этап | review.md | Architecture §0.9 |
+| # | Этап | archive/review.md | Architecture §0.9 |
 |---|------|-----------|-------------------|
 | 1 | **Analyze** | Analyze | run_fix_scan_stage, run_fix_diagnose_stage |
 | 2 | **Build State** | Build State | snapshot_before (ArchitectureSnapshot) |
@@ -181,6 +181,6 @@ execute_fix_apply_stage:
 ## 6. Ссылки
 
 - Architecture.md §0.9, §0.5.1
-- docs/EXECUTION_MODEL_PLAN.md
-- docs/review.md (Cognitive Loop)
+- docs/archive/EXECUTION_MODEL_PLAN.md
+- docs/archive/review.md (Cognitive Loop)
 - eurika/orchestration/prepare.py, apply_stage.py

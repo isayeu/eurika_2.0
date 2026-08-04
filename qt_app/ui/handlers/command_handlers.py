@@ -44,14 +44,29 @@ def validate_project_root(root: str) -> tuple[bool, str]:
         return (False, f"Path does not exist: {path}")
     if not path.is_dir():
         return (False, f"Project root must be a directory: {path}")
-    has_pyproject = (path / "pyproject.toml").is_file()
-    has_self_map = (path / "self_map.json").is_file()
-    if has_pyproject or has_self_map:
+    if (path / "pyproject.toml").is_file() or (path / "self_map.json").is_file():
+        return (True, "")
+    if _has_python_sources(path):
         return (True, "")
     return (
         False,
-        "Project root has no pyproject.toml or self_map.json. Run eurika scan first or select a Python project.",
+        "Project root has no pyproject.toml, self_map.json, or Python files. "
+        "Select a Python project or run `eurika scan .` first.",
     )
+
+
+def _has_python_sources(path: Path, *, max_depth: int = 2) -> bool:
+    """True if directory looks like a Python project (`.py` within max_depth)."""
+    try:
+        for child in path.rglob("*.py"):
+            rel = child.relative_to(path)
+            if any(part in {"__pycache__", ".venv", "venv", ".git"} for part in rel.parts[:-1]):
+                continue
+            if len(rel.parts) <= max_depth:
+                return True
+    except OSError:
+        return False
+    return False
 
 
 def run_command(main: MainWindow) -> None:

@@ -40,6 +40,36 @@ def test_chat_send_uses_ollama_provider(monkeypatch) -> None:
     assert captured["ollama_model"] == "qwen2.5-coder:7b"
 
 
+def test_chat_send_uses_codex_provider(monkeypatch) -> None:
+    captured = {}
+
+    def _fake_chat_send(_root, _message, _history, **kwargs):
+        import os
+
+        captured["provider"] = os.environ.get("EURIKA_CHAT_PROVIDER")
+        captured["openai_model"] = os.environ.get("OPENAI_MODEL")
+        captured["ollama_model"] = os.environ.get("OLLAMA_OPENAI_MODEL")
+        return {"text": "ok", "error": None}
+
+    monkeypatch.setattr(adapter_mod, "_chat_send", _fake_chat_send)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    api = EurikaApiAdapter(".")
+    out = api.chat_send(
+        message="hello",
+        history=[],
+        provider="codex",
+        openai_model="gpt-5-codex",
+        ollama_model="llama3.2:3b",
+        timeout_sec=60,
+    )
+
+    assert out["error"] is None
+    assert captured["provider"] == "codex"
+    assert captured["openai_model"] == "gpt-5-codex"
+    assert captured["ollama_model"] is None
+
+
 def test_list_ollama_models_parses_tags_payload(monkeypatch) -> None:
     class _Resp:
         def __enter__(self):

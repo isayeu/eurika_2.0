@@ -23,8 +23,10 @@ class _DummyHandler:
 
 
 def _norm_msg(m: str) -> str:
-    """Normalize message for pattern matching: strip and lower."""
-    return (m or "").strip().lower()
+    """Normalize message for legacy pattern matching."""
+    from eurika.api.chat_intents_config import normalize_intent_text
+
+    return normalize_intent_text(m)
 
 
 def run_eurika_fix(project_root: Path, dry_run: bool = False, timeout: int = 180) -> str:
@@ -120,36 +122,89 @@ def run_qt_smoke_test(project_root: Path, timeout: int = 120) -> str:
 
 
 _QUESTION_START = re.compile(
-    r"^(что|как|зачем|почему|чем|где|какой|какие|каков|в\s*ч[её]м|when|why|what|how|where|which)\s",
+    r"^(кто|что|как|зачем|почему|чем|где|какой|какие|каков|в\s*ч[её]м|who|when|why|what|how|where|which)\s",
     re.IGNORECASE,
 )
+
+# Free-form LLM instructions must not be fuzzy-mapped to project_overview/ritual/etc.
+_LLM_DIRECTIVE = re.compile(
+    r"(?:"
+    r"^(?:ответь|скажи|напиши|повтори|выведи|произнеси|reply|say|write|respond|answer)\b"
+    r"|одним\s+слов"
+    r"|одной\s+фраз"
+    r"|in\s+one\s+word"
+    r"|only\s+(?:the\s+)?word\b"
+    r"|verbatim"
+    r")",
+    re.IGNORECASE,
+)
+
+# Soft-match may invent web_search; require an explicit internet cue.
+_WEB_SEARCH_MARKERS = (
+    "в интернете",
+    "погугли",
+    "загугли",
+    "web search",
+    "search the web",
+    "search online",
+    "find on the internet",
+    "интернет-поиск",
+    "интернет поиск",
+    "поищи в интернет",
+    "найди в интернет",
+)
+
+
+def is_llm_directive_message(message: str) -> bool:
+    """True when the user asks the model to produce free-form text (not a project command)."""
+    msg = (message or "").strip()
+    if not msg:
+        return False
+    return bool(_LLM_DIRECTIVE.search(msg))
+
+
+def looks_like_web_search_request(message: str) -> bool:
+    """True only when the user explicitly asked for an internet search."""
+    msg = _norm_msg(message)
+    if not msg:
+        return False
+    return any(m in msg for m in _WEB_SEARCH_MARKERS)
+
+
+def _accept_soft_handler(handler_id: Optional[str], msg: str) -> bool:
+    """Reject soft matches that need hard lexical cues (e.g. web_search)."""
+    if not handler_id:
+        return False
+    if handler_id == "web_search" and not looks_like_web_search_request(msg):
+        return False
+    return True
 
 
 def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optional[str]]:
     """Resolve direct handler from config or legacy. Returns (handler_id, emit_cmd)."""
     from eurika.api.chat_intents_config import match_direct_intent
 
+    # Never fuzzy-route HITL confirmations (vector may map «отклонить» → show_report).
+    if is_reject_confirmation(msg) or is_apply_confirmation(msg):
+        return (None, None)
     matched = match_direct_intent(root, msg)
     if matched:
         return matched
-    # ROADMAP 3.6.8 Phase 5: question-like messages → LLM, not ritual/run_command
-    if _QUESTION_START.search((msg or "").strip()):
-        return (None, None)
-    # CR-G2: vector fuzzy match when direct fails (EURIKA_USE_VECTOR_INTENT=1)
-    try:
-        from eurika.api.chat_vector import match_fuzzy_intent
-
-        fuzzy = match_fuzzy_intent(root, msg)
-        if fuzzy:
-            return (fuzzy[0], fuzzy[1])
-    except Exception:
-        pass
+    # Factual handlers before soft-match — otherwise "что за проект?" goes to LLM.
     if is_identity_question(msg):
         return ("identity", None)
+    if is_greeting(msg):
+        return ("greeting", None)
+    if is_project_overview_request(msg):
+        return ("project_overview", None)
+    if is_file_recount_request(msg):
+        return ("file_recount", None)
     if is_ls_request(msg):
         return ("project_ls", "$ ls -la")
     if is_tree_request(msg):
         return ("project_tree", "$ eurika project-tree .")
+    if is_scan_request(msg):
+        return ("scan", "$ eurika scan .")
     if is_saved_file_path_request(msg):
         return ("saved_file_path", None)
     if is_show_report_request(msg):
@@ -160,6 +215,28 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
         return ("add_module_test", None)
     if is_show_file_request(msg):
         return ("show_file", None)
+    # Soft match (ML/vector) must not steal questions or explicit LLM directives.
+    raw = (msg or "").strip()
+    if _QUESTION_START.search(raw) or is_llm_directive_message(raw):
+        return (None, None)
+    # CR-G3: optional ML intent router (YAML/factual already tried)
+    try:
+        from eurika.ml.intent_router import match_ml_intent
+
+        ml = match_ml_intent(root, msg)
+        if ml and _accept_soft_handler(ml[0], msg):
+            return ml
+    except Exception:
+        pass
+    # CR-G2: vector fuzzy match when direct fails (EURIKA_USE_VECTOR_INTENT=1)
+    try:
+        from eurika.api.chat_vector import match_fuzzy_intent
+
+        fuzzy = match_fuzzy_intent(root, msg)
+        if fuzzy and _accept_soft_handler(fuzzy[0], msg):
+            return (fuzzy[0], fuzzy[1])
+    except Exception:
+        pass
     if is_ritual_request(msg):
         return ("ritual", "$ eurika scan . && eurika doctor . && eurika report-snapshot .")
     if is_release_check_request(msg):
@@ -170,11 +247,29 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
 
 
 def is_identity_question(message: str) -> bool:
-    """Detect direct "who are you?" questions."""
+    """Detect persona / authorship questions («кто ты?», «кто написал программу?»)."""
+    from eurika.api.chat_identity import IDENTITY_REGEX_NORM
+
     msg = _norm_msg(message)
     if not msg:
         return False
-    patterns = (r"^ты\s+кто\??$", r"^кто\s+ты\??$", r"^who\s+are\s+you\??$", r"^what\s+are\s+you\??$")
+    return any(re.match(p, msg) for p in IDENTITY_REGEX_NORM)
+
+
+def is_greeting(message: str) -> bool:
+    """Detect short greetings — answer locally, not via LLM."""
+    msg = _norm_msg(message)
+    if not msg or len(msg) > 50:
+        return False
+    patterns = (
+        r"^привет[!.…]*$",
+        r"^здравствуй",
+        r"^добрый\s+(день|вечер|утро)",
+        r"^hello[!.]*$",
+        r"^hi[!.]*$",
+        r"^hey[!.]*$",
+        r"^good\s+(morning|evening|afternoon)",
+    )
     return any(re.match(p, msg) for p in patterns)
 
 
@@ -194,6 +289,7 @@ def is_show_report_request(message: str) -> bool:
     msg = _norm_msg(message)
     if not msg:
         return False
+    # Avoid bare «отчет»/«report» — too broad for substring match.
     keywords = (
         "покажи отчет",
         "покажи отчёт",
@@ -201,9 +297,7 @@ def is_show_report_request(message: str) -> bool:
         "сформируй отчёт",
         "посмотри результат",
         "покажи результат",
-        "report",
-        "отчет",
-        "отчёт",
+        "show report",
         "doctor report",
         "scan report",
         "результат scan",
@@ -516,6 +610,84 @@ def propose_commit_message_from_status(status_out: str) -> str:
     return f"Update {len(files)} files"
 
 
+def is_project_overview_request(message: str) -> bool:
+    """Detect request for structured project description (not free-form LLM chat)."""
+    msg = _norm_msg(message)
+    if not msg:
+        return False
+    markers = (
+        "что за проект",
+        "что за проект открыт",
+        "какой проект открыт",
+        "что это за проект",
+        "что это за",
+        "опиши проект",
+        "расскажи о проекте",
+        "расскажи про проект",
+        "какой это проект",
+        "какой проект",
+        "what is this project",
+        "describe the project",
+        "about this project",
+    )
+    return any(m in msg for m in markers)
+
+
+def is_file_recount_request(message: str) -> bool:
+    """Detect request to recount files on disk."""
+    msg = _norm_msg(message)
+    if not msg:
+        return False
+    # Allow filler words: «сколько всего там файлов?», «сколько в проекте файлов?»
+    if re.search(r"сколько\s+(?:\w+\s+){0,6}файл", msg):
+        return True
+    if re.search(r"сколько\s+(?:\w+\s+){0,6}модул", msg):
+        return True
+    if re.search(r"how\s+many\s+(?:\w+\s+){0,4}files?", msg):
+        return True
+    # «ты пересчитала все файлы?», «пересчитай заново файлы»
+    if re.search(r"(?:пере|под|по)счита\w*\s+(?:\w+\s+){0,6}файл", msg):
+        return True
+    if "файл" in msg and re.search(r"(?:пере|под|по)счита\w*", msg):
+        return True
+    markers = (
+        "пересчитай файлы",
+        "пересчитай файл",
+        "пересчитай",
+        "пересчитать файлы",
+        "подсчитай файлы",
+        "подсчитай файл",
+        "посчитай файлы",
+        "count files",
+        "recount files",
+    )
+    return any(m in msg for m in markers)
+
+
+def is_scan_request(message: str) -> bool:
+    """Detect request to run architectural scan (not file tree)."""
+    msg = _norm_msg(message)
+    if not msg:
+        return False
+    if "дерево" in msg or "структур" in msg:
+        return False
+    # Skip when user is using run_command syntax that just mentions scan.
+    if any(
+        marker in msg
+        for marker in ("выполни команд", "выполнить команд", "execute command", "run command")
+    ):
+        return False
+    keywords = (
+        "просканируй",
+        "прогони scan",
+        "запусти scan",
+        "сканируй проект",
+        "eurika scan",
+        "run scan",
+    )
+    return any(k in msg for k in keywords)
+
+
 def is_tree_request(message: str) -> bool:
     """Detect request for actual directory structure."""
     msg = _norm_msg(message)
@@ -529,11 +701,16 @@ def is_tree_request(message: str) -> bool:
         "какая структура",
         "структуру проекта",
         "фактическую структуру",
+        "дерево проекта",
+        "дерево файлов",
         "tree",
         "project structure",
         "folder structure",
+        "project tree",
     )
     if any(k in msg for k in explicit):
+        return True
+    if "дерево" in msg and any(k in msg for k in ("покажи", "просканируй", "сканируй", "выведи", "показать", "все")):
         return True
     has_structure_word = re.search(r"\bструктур\w*\b", msg) is not None
     has_question_marker = any(k in msg for k in ("?", "какая", "покажи", "фактическ", "полную"))

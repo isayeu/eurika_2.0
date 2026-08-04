@@ -18,6 +18,7 @@ def build_parser(*, version: str) -> argparse.ArgumentParser:
 
     _add_product_commands(subparsers)  # scan, doctor, fix, explain — ROADMAP этап 5
     _add_other_commands(subparsers)
+    _add_ml_market_commands(subparsers)
     _add_agent_commands(subparsers)
 
     subparsers.add_parser("help", help="Show Eurika command overview")
@@ -187,6 +188,21 @@ def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
     clean_imports_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
     clean_imports_parser.add_argument("--apply", action="store_true", help="Write changes to files (default: dry-run)")
 
+    prove_cycle_parser = subparsers.add_parser(
+        "prove-cycle",
+        help="Deterministic patch→verify→learning on synthetic drill (no LLM, no approvals)",
+    )
+    prove_cycle_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
+    prove_cycle_parser.add_argument("--dry-run", action="store_true", help="Simulate only; do not apply")
+    prove_cycle_parser.add_argument("--quiet", "-q", action="store_true", help="JSON output only")
+    prove_cycle_parser.add_argument(
+        "--verify-timeout",
+        type=int,
+        default=60,
+        metavar="SEC",
+        help="Verify step timeout in seconds (default: 60)",
+    )
+
     serve_parser = subparsers.add_parser("serve", help="Run JSON API server for future UI (GET /api/summary, /api/history, /api/diff)")
     serve_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
     serve_parser.add_argument("--port", type=int, default=8765, help="Port (default: 8765)")
@@ -201,6 +217,51 @@ def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
     learn_github_parser.add_argument("--search-limit", type=int, default=5, help="Max repos from --search (default: 5)")
     learn_github_parser.add_argument("--limit-repos", type=int, default=None, metavar="N", help="Use only first N repos (for faster pattern build). Default: all.")
     learn_github_parser.add_argument("--light", action="store_true", help="Use lightweight curated list (starlette, httpx) — faster clone/scan")
+
+
+def _add_ml_market_commands(subparsers: argparse._SubParsersAction) -> None:
+    """Paper ML market loop: sync klines → paper labels → train (no live orders)."""
+    ml = subparsers.add_parser(
+        "ml-market",
+        help="Paper market ML: sync klines, paper BUY/SELL labels, train CPU policy (no live orders)",
+    )
+    ml_sub = ml.add_subparsers(dest="ml_market_command", required=True)
+
+    sync_p = ml_sub.add_parser("sync", help="Fetch Binance klines into .eurika/ml/market/")
+    sync_p.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
+    sync_p.add_argument("--symbol", default="BTCUSDT", help="Symbol (default: BTCUSDT)")
+    sync_p.add_argument("--interval", default="1h", help="Kline interval (default: 1h)")
+    sync_p.add_argument("--limit", type=int, default=500, help="Max klines per request (default: 500)")
+    sync_p.add_argument(
+        "--market",
+        default="spot",
+        choices=["spot", "futures", "both"],
+        help="Candle market: spot, USD-M futures, or both (default: spot)",
+    )
+
+    paper_p = ml_sub.add_parser("paper", help="Backfill paper trades + correct/incorrect labels")
+    paper_p.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
+    paper_p.add_argument("--symbol", default="BTCUSDT")
+    paper_p.add_argument("--interval", default="1h")
+    paper_p.add_argument(
+        "--market",
+        default="spot",
+        choices=["spot", "futures"],
+        help="Which candle series to label (default: spot)",
+    )
+    paper_p.add_argument("--window", type=int, default=32, help="Feature window bars (default: 32)")
+    paper_p.add_argument("--horizon", type=int, default=4, help="Label horizon bars (default: 4)")
+    paper_p.add_argument("--fee", type=float, default=0.001, help="Round-trip fee rate (default: 0.001)")
+    paper_p.add_argument("--thr", type=float, default=0.0, help="Edge threshold for correct (default: 0)")
+    paper_p.add_argument("--replace", action="store_true", help="Overwrite paper_trades.jsonl instead of append")
+    paper_p.add_argument("--use-model", action="store_true", help="Use trained weights for actions (else momentum)")
+
+    train_p = ml_sub.add_parser("train", help="Train tiny CPU policy on paper_trades.jsonl")
+    train_p.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
+    train_p.add_argument("--epochs", type=int, default=40, help="Training epochs (default: 40)")
+
+    status_p = ml_sub.add_parser("status", help="Show market / paper / weights status")
+    status_p.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
 
 
 def _add_agent_commands(subparsers: argparse._SubParsersAction) -> None:

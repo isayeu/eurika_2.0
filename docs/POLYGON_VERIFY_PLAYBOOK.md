@@ -51,3 +51,18 @@ eurika learning-kpi . --polygon
 ```
 
 Секция **Polygon drills** покажет `verify_success`, `verify_fail`, `rate` по smell|action. Кандидаты в whitelist: 2+ success, 0 fail.
+
+---
+
+## Verify timeout (диагноз)
+
+Частый `verify_fail` на polygon — не ошибка кода, а **таймаут pytest**. При `apply_and_verify` verify гоняет полный `pytest -q`; полный прогон часто >90–300s → `verify command timed out` → rollback, хотя фикс корректен.
+
+Для тренировочных циклов — быстрый verify только затронутых тестов (`python -m pytest`, иначе возможен `ModuleNotFoundError` из-за sys.path):
+
+```bash
+eurika fix . --no-code-smells --allow-low-risk-campaign \
+  --verify-cmd "python -m pytest tests/test_clean_imports_cli.py -q"
+```
+
+В `pyproject.toml` по умолчанию может быть быстрый `verify_cmd` / `verify_timeout = 300`. Полный прогон: `--verify-cmd ".venv/bin/pytest tests/ -q"` или `EURIKA_VERIFY_TIMEOUT=600`.

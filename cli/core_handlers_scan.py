@@ -7,9 +7,12 @@ from typing import Any
 from .core_handlers_common import (
     _check_path,
     _clog,
+    _format_binance_block,
     _format_blast_radius_block,
     _format_file_size_block,
     _format_layer_discipline_block,
+    _format_pytorch_block,
+    _format_remote_lbot_block,
     _paths_from_args,
 )
 
@@ -54,6 +57,15 @@ def handle_self_check(args: Any) -> int:
     fs_report = _format_file_size_block(path)
     if fs_report:
         _clog().info("%s", fs_report)
+    pt_report = _format_pytorch_block()
+    if pt_report:
+        _clog().info("%s", pt_report)
+    bn_report = _format_binance_block()
+    if bn_report:
+        _clog().info("%s", bn_report)
+    lbot_report = _format_remote_lbot_block()
+    if lbot_report:
+        _clog().info("%s", lbot_report)
     guard_result = collect_self_guard(path)
     _clog().info("%s", format_self_guard_block(guard_result))
     if getattr(args, "strict", False) and not self_guard_pass(guard_result):

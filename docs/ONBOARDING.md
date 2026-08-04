@@ -1,11 +1,14 @@
 # Onboarding ≤ 10 мин (B.9)
 
-Сценарий для новичка: clone → scan → doctor → fix за 10 минут.
+Сценарий для новичка: clone → **eurika-qt** (или scan → doctor → fix) за 10 минут.
+
+Продуктовая цель: [VISION.md](VISION.md) — Cursor-подобная оболочка + самообучение + paper Market.
 
 ## Предварительно
 
 - Python 3.10+ (рекомендуется 3.12+)
 - Git
+- Железо: см. [HARDWARE.md](HARDWARE.md) — минимум (CPU/8 GB RAM) и оптимум под GPU/Ollama; PyTorch — для Market ML
 
 ## Шаги (≈10 мин)
 
@@ -24,7 +27,16 @@ source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[test,qt]"
 ```
 
+### 2b. Qt shell (рекомендуется)
+
+```bash
+eurika-qt .
+```
+
+Укажите project root = этот репозиторий. Chat → Market — paper learning (без live-ордеров). См. [UI.md](UI.md), [CHAT.md](CHAT.md).
+
 ### 3. Scan — полный скан проекта (≈2–3 мин)
+
 
 ```bash
 eurika scan .
@@ -75,6 +87,13 @@ eurika-qt .
 Новичок выполняет clone → scan → doctor → fix (или fix --dry-run) за ≤ 10 минут следуя этой инструкции.
 
 При ошибках (verify timeout, ModuleNotFoundError, LLM fallback, self_map missing) см. [docs/TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+
+## Chat (eurika-qt)
+
+1. Укажите **Project root** (папка с `.py` — не обязательно `pyproject.toml`).
+2. Вкладка **Chat**: «что за проект?», «покажи дерево», «сколько файлов?» — ответ без LLM.
+3. Свободные вопросы — через Ollama/OpenAI (вкладка **Models**).
+4. Полный список команд и переменных `.env`: [CHAT.md](CHAT.md).
 
 ## Опционально (продвинутое)
 

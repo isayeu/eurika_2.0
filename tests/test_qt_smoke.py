@@ -29,6 +29,8 @@ def test_qt_main_window_smoke() -> None:
         assert window.windowTitle() == "Eurika Qt"
         assert window.root_edit is not None
         assert window.chat_send_btn is not None
+        assert window.chat_cancel_btn is not None
+        assert window.chat_typing_label is not None
         assert window.chat_apply_btn is not None
         assert window.chat_reject_btn is not None
         assert window.chat_pending_label is not None
@@ -37,12 +39,22 @@ def test_qt_main_window_smoke() -> None:
         assert window.chat_goal_view is not None
         assert window.ollama_start_btn is not None
         assert window.ollama_stop_btn is not None
+        assert window.ollama_cuda_check is not None
+        assert window.ollama_cuda_devices_edit is not None
+        assert window.ollama_vulkan_check is not None
         assert window.ollama_status is not None
         assert window.ollama_health is not None
         assert window.ollama_installed_combo is not None
         assert window.ollama_available_combo is not None
         assert window.ollama_custom_model_edit is not None
         assert window.ollama_install_btn is not None
+        assert window.models_inner_tabs is not None
+        assert window.models_inner_tabs.count() == 2
+        assert window.models_inner_tabs.tabText(0) == "LLM"
+        assert window.models_inner_tabs.tabText(1) == "ML"
+        assert window.ml_torch_device_combo is not None
+        assert window.ml_torch_refresh_btn is not None
+        assert window.ml_torch_output is not None
         tab_names = [window.tabs.tabText(i) for i in range(window.tabs.count())]
         assert "Graph" in tab_names
         assert "Models" in tab_names
@@ -134,5 +146,12 @@ def test_validate_project_root_rejects_missing_path() -> None:
 def test_validate_project_root_rejects_dir_without_markers(tmp_path: Path) -> None:
     ok, msg = command_handlers.validate_project_root(str(tmp_path))
     assert ok is False
-    assert 'pyproject' in msg.lower() or 'self_map' in msg.lower() or 'scan' in msg.lower()
+    assert 'pyproject' in msg.lower() or 'self_map' in msg.lower() or 'python' in msg.lower()
+
+
+def test_validate_project_root_accepts_python_sources_only(tmp_path: Path) -> None:
+    (tmp_path / 'app.py').write_text('print("ok")\n', encoding='utf-8')
+    ok, msg = command_handlers.validate_project_root(str(tmp_path))
+    assert ok is True
+    assert msg == ''
 

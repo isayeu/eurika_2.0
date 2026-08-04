@@ -1,7 +1,24 @@
 # Chat intents config — copy to .eurika/config/chat_intents.yaml
-# CR-G1: match_direct_intent (exact, patterns, require)
-# CR-G2: vector fuzzy match (EURIKA_USE_VECTOR_INTENT=1) — vector_exemplars, vector_min_similarity
-# Язык: русский приоритетен в exemplars для fuzzy match
+#
+# Eurika ships a hardcoded default for greeting / project_overview /
+# file_recount / project_tree / scan / project_ls / identity (см.
+# eurika/api/chat_intents_default.py). Этот файл — пример того, что можно
+# переопределить или добавить.
+#
+# Правила слияния:
+#   - intent_id: <spec>     — заменяет дефолтный intent целиком
+#   - intent_id: null       — выключает дефолтный intent
+#   - top-level (version, intent_hints, question_prefix, vector_min_similarity)
+#     — пользовательское значение перезаписывает дефолт.
+#
+# Engine:
+#   - patterns: substring match (или regex, если match_mode: regex)
+#   - exact: точное совпадение
+#   - require: все подстроки должны присутствовать
+#   - exclude / exclude_prefix: пропускать intent при совпадении
+#   - emit: команда для эха в Terminal (или null)
+#
+# CR-G2: vector fuzzy match (EURIKA_USE_VECTOR_INTENT=1) — vector_exemplars.
 
 version: 1
 
@@ -24,6 +41,71 @@ intent_hints: |
 question_prefix: "^(что|как|зачем|почему|чем|где|какой|какие|каков|в\\s*ч[её]м|when|why|what|how|where|which)\\s"
 
 intents:
+  # ----- Factual intents (provided by default, override here as needed) -----
+
+  greeting:
+    match_mode: regex
+    patterns:
+      - "^\\s*привет[!.…]*\\s*$"
+      - "^\\s*здравствуй"
+      - "^\\s*добрый\\s+(день|вечер|утро)"
+      - "^\\s*hello[!.]*\\s*$"
+      - "^\\s*hi[!.]*\\s*$"
+    emit: null
+
+  project_overview:
+    patterns:
+      - "что за проект"
+      - "что это за проект"
+      - "опиши проект"
+      - "расскажи о проекте"
+      - "what is this project"
+      - "describe the project"
+    vector_exemplars:
+      - "что за проект открыт?"
+      - "опиши проект"
+      - "describe this project"
+    emit: null
+
+  file_recount:
+    match_mode: regex
+    patterns:
+      - "сколько\\s+(?:\\w+\\s+){0,6}файл"
+      - "сколько\\s+(?:\\w+\\s+){0,6}модул"
+      - "(?:пере|под|по)счита\\w*\\s+(?:\\w+\\s+){0,6}файл"
+      - "how\\s+many\\s+(?:\\w+\\s+){0,4}files?"
+      - "\\bпересчита"
+    emit: null
+
+  list_docs:
+    patterns:
+      - "какие документ"
+      - "какая документация"
+      - "покажи документ"
+      - "список документ"
+      - "list docs"
+      - "show documentation"
+      - "what docs"
+    emit: null
+
+  scan:
+    patterns:
+      - "просканируй"
+      - "прогони scan"
+      - "запусти scan"
+      - "сканируй проект"
+      - "eurika scan"
+      - "run scan"
+    exclude:
+      - "дерево"
+      - "структур"
+      - "выполни команд"
+      - "execute command"
+      - "run command"
+    emit: "$ eurika scan ."
+
+  # ----- Workflow intents -----
+
   show_report:
     patterns:
       - "покажи отчёт"
@@ -90,6 +172,42 @@ intents:
       - "выполни release check"
       - "run release check"
     emit: "$ ./scripts/release_check.sh"
+
+  smoke_test:
+    patterns:
+      - "проведи smoke"
+      - "прогони smoke"
+      - "запусти smoke"
+      - "выполни smoke"
+      - "smoke test"
+      - "smoke-test"
+      - "смоук тест"
+      - "проведи смоук"
+      - "qt smoke"
+      - "run smoke"
+      - "run smoke test"
+    exact:
+      - "smoke"
+      - "smoke test"
+    vector_exemplars:
+      - "проведи smoke test"
+      - "запусти smoke"
+      - "run smoke test"
+      - "qt smoke"
+    emit: null
+
+  self_check:
+    patterns:
+      - "проведи self-check"
+      - "прогони self-check"
+      - "запусти self-check"
+      - "self-check"
+      - "self check"
+      - "eurika self-check"
+    exact:
+      - "self-check"
+      - "self check"
+    emit: "$ eurika self-check ."
 
   roadmap_verify:
     patterns:
@@ -227,13 +345,44 @@ intents:
     emit: null
 
   identity:
+    match_mode: regex
+    patterns:
+      - '^\\s*ты\\s+кто\\??\\s*$'
+      - '^\\s*кто\\s+ты(\\s+такой)?\\??\\s*$'
+      - '^\\s*кто\\s+(твой|ваш)\\s+создател\\w*\\??\\s*$'
+      - '^\\s*кто\\s+автор(\\s+(этого\\s+)?(проекта|программы|кода|eurika))?\\??\\s*$'
+      - '^\\s*кто\\s+тебя\\s+(создал|сделал|написал|разработал)\\??\\s*$'
+      - '^\\s*кто\\s+(создал|сделал|написал|разработал)\\s+тебя\\??\\s*$'
+      - '^\\s*кто\\s+(создал|сделал|написал|разработал)\\s+(твой|ваш)\\s+\\w+\\??\\s*$'
+      - '^\\s*кто\\s+(создал|сделал|написал|разработал)\\s+(эту|этот)\\s+(программ\\w*|проект\\w*|код\\w*|ассистент\\w*)\\??\\s*$'
+      - '^\\s*кто\\s+(создал|сделал|написал|разработал)\\s+eurika\\??\\s*$'
+      - '^\\s*who\\s+are\\s+you\\??\\s*$'
+      - '^\\s*what\\s+are\\s+you\\??\\s*$'
+      - '^\\s*who\\s+is\\s+your\\s+(creator|author)\\??\\s*$'
+      - '^\\s*who\\s+(created|made|built|wrote|coded|developed)\\s+you\\??\\s*$'
+      - '^\\s*who\\s+(created|made|built|wrote|coded|developed)\\s+your\\s+\\w+\\??\\s*$'
+      - '^\\s*who\\s+(created|made|built|wrote|coded|developed)\\s+this\\s+(program|project|code|assistant)\\??\\s*$'
     exact:
       - "ты кто"
       - "кто ты"
+      - "кто тебя создал"
+      - "кто твой создатель"
+      - "кто написал твой код"
+      - "кто написал эту программу"
       - "who are you"
-      - "what are you"
+      - "who created you"
+      - "who wrote your code"
+      - "who wrote this program"
     vector_exemplars:
       - "ты кто"
       - "кто ты такой"
+      - "кто тебя создал"
+      - "кто твой создатель"
+      - "кто написал твой код"
+      - "кто написал эту программу"
+      - "кто автор проекта"
       - "who are you"
+      - "who created you"
+      - "who wrote your code"
+      - "who wrote this program"
     emit: null

@@ -9,6 +9,7 @@ from .chat_context import build_chat_context as _build_chat_context, load_dialog
 from .chat_direct import extract_confirmation_token as _extract_confirmation_token, is_apply_confirmation as _is_apply_confirmation, is_reject_confirmation as _is_reject_confirmation, resolve_direct_handler as _resolve_direct_handler, run_eurika_fix as _run_eurika_fix
 from .chat_prompt import build_chat_prompt as _build_chat_prompt, fetch_knowledge_for_chat as _fetch_knowledge_for_chat, intent_hints_for_prompt as _intent_hints_for_prompt, knowledge_topics_for_chat as _knowledge_topics_for_chat, load_chat_feedback_for_prompt as _load_chat_feedback_for_prompt, load_eurika_rules_for_chat as _load_eurika_rules_for_chat
 from .chat_handlers import run_direct_handlers as _run_direct_handlers
+from .chat_metrics import record_chat_metric as _record_chat_metric
 from .chat_utils import enforce_eurika_persona as _enforce_eurika_persona, format_execution_report as _format_execution_report, grounded_ui_tabs_text as _grounded_ui_tabs_text, infer_default_save_target as _infer_default_save_target, safe_create_empty_file as _safe_create_empty_file, safe_delete_file as _safe_delete_file, safe_write_file as _safe_write_file
 DEFAULT_SAVE_TARGET = 'app.py'
 
@@ -67,21 +68,18 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     if not msg:
         return {'text': '', 'error': 'message is empty'}
     state = _load_dialog_state(root)
-    handler_id, emit_cmd = _resolve_direct_handler(root, msg)
-    skip_emit = handler_id == 'release_check' and run_command_with_result is not None
-    if emit_cmd and '{' not in str(emit_cmd) and (not skip_emit):
-        _emit(emit_cmd, on_system_action)
-
-    def _emit_one(cmd: str) -> None:
-        _emit(cmd, on_system_action)
-
-    direct_result = _run_direct_handlers(handler_id, root, msg, state, emit_cmd, _emit_one, _append_chat_history_safe, run_command_with_result)
-    if direct_result is not None:
-        return direct_result
+    # HITL confirmations must beat vector/ML fuzzy intents (e.g. «отклонить» → show_report).
     if _is_reject_confirmation(msg):
         pending_plan = state.get('pending_plan') if isinstance(state, dict) else {}
-        if isinstance(pending_plan, dict) and is_pending_plan_valid(pending_plan):
+        pending_git = state.get('pending_git_commit') if isinstance(state, dict) else None
+        cleared = False
+        if isinstance(pending_plan, dict) and pending_plan:
             state['pending_plan'] = {}
+            cleared = True
+        if isinstance(pending_git, dict) and pending_git.get('message'):
+            state['pending_git_commit'] = {}
+            cleared = True
+        if cleared:
             _save_dialog_state(root, state)
             text = 'Отклонил pending-план. Ничего не применял.'
         else:
@@ -89,6 +87,21 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         _append_chat_history_safe(root, 'user', msg, None)
         _append_chat_history_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
+    is_apply = _is_apply_confirmation(msg)
+    handler_id, emit_cmd = (None, None) if is_apply else _resolve_direct_handler(root, msg)
+    if handler_id:
+        _record_chat_metric(root, 'intent_match', handler=handler_id, message=msg[:240])
+    skip_emit = handler_id == 'release_check' and run_command_with_result is not None
+    if emit_cmd and '{' not in str(emit_cmd) and (not skip_emit):
+        _emit(emit_cmd, on_system_action)
+
+    def _emit_one(cmd: str) -> None:
+        _emit(cmd, on_system_action)
+
+    if not is_apply:
+        direct_result = _run_direct_handlers(handler_id, root, msg, state, emit_cmd, _emit_one, _append_chat_history_safe, run_command_with_result)
+        if direct_result is not None:
+            return direct_result
     intent, target = (None, None)
     interpretation = None
     effective_msg = msg
@@ -265,6 +278,7 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         _append_chat_history_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
     # LLM fallback: user question or unhandled intent — show «answer» instead of stale run_command/ritual
+    _record_chat_metric(root, 'intent_miss', message=msg[:240], path='llm')
     state['active_goal'] = {'intent': 'answer', 'source': 'llm', 'target': (msg or '')[:80]}
     _save_dialog_state(root, state)
     scope = None

@@ -262,6 +262,13 @@ def test_chat_prompt_includes_intent_interpretation_rules() -> None:
     assert "покажи отчёт" in prompt or "отчёт" in prompt
 
 
+def test_chat_prompt_russian_when_user_writes_russian() -> None:
+    from eurika.api.chat import _build_chat_prompt
+
+    prompt = _build_chat_prompt("почему модуль X важен?", "ctx", history=None)
+    assert "Russian only" in prompt
+
+
 def test_load_chat_feedback_injects_few_shot_into_prompt(tmp_path: Path) -> None:
     """When chat_feedback.json exists, prompt should include few-shot block (ROADMAP 3.6.8 Phase 4)."""
     from eurika.api.chat import _build_chat_prompt, _load_chat_feedback_for_prompt, save_chat_feedback
@@ -284,7 +291,14 @@ def test_chat_send_identity_question_returns_eurika_persona(tmp_path: Path) -> N
 
     out = chat_send(tmp_path, "ты кто?")
     assert out.get("error") is None
-    assert "Я Eurika" in (out.get("text") or "")
+    text = out.get("text") or ""
+    assert "Я Eurika" in text
+    assert "Исаев" in text
+    assert "ProDG" in text
+
+    creator = chat_send(tmp_path, "Кто твой создатель?")
+    assert creator.get("error") is None
+    assert "Исаев Андрей Аркадьевич" in (creator.get("text") or "")
 
 
 def test_chat_send_rewrites_model_identity_leak(tmp_path: Path, monkeypatch) -> None:
@@ -417,6 +431,279 @@ def test_chat_send_tree_request_returns_real_tree_without_llm(tmp_path: Path, mo
     assert "main.py" in text
     assert "tests/" in text
     assert "test_main.py" in text
+
+
+def test_chat_send_project_overview_without_llm(tmp_path: Path, monkeypatch) -> None:
+    """'что за проект?' should return structured overview, not LLM."""
+    import eurika.api.chat as chat_mod
+
+    (tmp_path / "app.py").write_text("print('ok')\n", encoding="utf-8")
+    (tmp_path / "self_map.json").write_text(
+        '{"modules":[{"path":"app.py","lines":1,"functions":[],"classes":[]}],'
+        '"dependencies":{},"summary":{"files":1,"total_lines":1}}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "что за проект?")
+    text = out.get("text") or ""
+    assert out.get("error") is None
+    assert "1 модулей" in text or "1 модул" in text
+    assert "app.py" in text or ".py" in text
+
+
+def test_chat_send_file_recount_without_llm(tmp_path: Path, monkeypatch) -> None:
+    """'пересчитай файлы' should recount from disk without LLM."""
+    import eurika.api.chat as chat_mod
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "main.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "src" / "util.py").write_text("y = 2\n", encoding="utf-8")
+    (tmp_path / "self_map.json").write_text(
+        '{"modules":[{"path":"src/main.py","lines":1},{"path":"src/util.py","lines":1}],'
+        '"dependencies":{},"summary":{"files":2,"total_lines":2}}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "ты уверена? пересчитай файлы")
+    text = out.get("text") or ""
+    assert out.get("error") is None
+    assert "Пересчитал файлы" in text
+    assert "main.py" in text
+    assert "util.py" in text
+    assert "2" in text
+
+
+def test_chat_send_greeting_without_llm(tmp_path: Path, monkeypatch) -> None:
+    """'привет' should get a local greeting, not LLM."""
+    import eurika.api.chat as chat_mod
+
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "привет")
+    text = out.get("text") or ""
+    assert out.get("error") is None
+    assert "Eurika" in text
+    assert "puedo" not in text.lower()
+
+
+def test_chat_send_file_count_question_without_llm(tmp_path: Path, monkeypatch) -> None:
+    """'сколько всего файлов в проекте?' should recount from disk."""
+    import eurika.api.chat as chat_mod
+
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "b.txt").write_text("y\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "сколько всего файлов в проекте?")
+    text = out.get("text") or ""
+    assert out.get("error") is None
+    assert "Всего файлов" in text
+    assert "2" in text
+    assert "puedo" not in text.lower()
+
+
+def test_chat_send_file_count_with_filler_words_without_llm(tmp_path: Path, monkeypatch) -> None:
+    """'сколько всего там файлов?' should recount from disk."""
+    import eurika.api.chat as chat_mod
+
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "сколько всего там файлов?")
+    text = out.get("text") or ""
+    assert out.get("error") is None
+    assert "Всего файлов" in text
+    assert "puedo" not in text.lower()
+
+
+def test_chat_send_file_recount_confirmation_without_llm(tmp_path: Path, monkeypatch) -> None:
+    """'ты пересчитала все файлы?' should recount again, not LLM."""
+    import eurika.api.chat as chat_mod
+
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "ты пересчитала все файлы?")
+    text = out.get("text") or ""
+    assert out.get("error") is None
+    assert "Пересчитал файлы" in text
+    assert "Всего файлов" in text
+
+
+def test_chat_send_list_docs_without_llm(tmp_path: Path, monkeypatch) -> None:
+    """'какие есть документы по проекту?' lists docs from disk, no LLM."""
+    import eurika.api.chat as chat_mod
+
+    (tmp_path / "README.md").write_text("# Project\n\nIntro\n", encoding="utf-8")
+    (tmp_path / "CHANGELOG.md").write_text("# Changelog\n", encoding="utf-8")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "Architecture.md").write_text("# Architecture\n", encoding="utf-8")
+    (tmp_path / "docs" / "ROADMAP.md").write_text("# Roadmap\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "Какие есть документы по проекту?")
+    text = out.get("text") or ""
+    assert out.get("error") is None
+    assert "Документация проекта" in text
+    assert "README.md" in text
+    assert "Architecture.md" in text
+    assert "ROADMAP.md" in text
+
+
+def test_chat_send_list_docs_empty_project(tmp_path: Path, monkeypatch) -> None:
+    """When no docs found, suggest informative project artifacts."""
+    import eurika.api.chat as chat_mod
+
+    (tmp_path / "self_map.json").write_text('{"modules":[]}', encoding="utf-8")
+    (tmp_path / "kv").mkdir()
+    (tmp_path / "kv" / "ui.kv").write_text("#:kivy\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "покажи документацию")
+    text = out.get("text") or ""
+    assert out.get("error") is None
+    assert "не найдено" in text.lower()
+    assert "self_map.json" in text or "ui.kv" in text
+
+
+def test_chat_send_web_search_without_llm(tmp_path: Path, monkeypatch) -> None:
+    """'поищи в интернете kivy' uses web search handler, not LLM."""
+    import eurika.api.chat as chat_mod
+    from eurika.utils.web_search import WebSearchResult
+
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    monkeypatch.setattr(
+        "eurika.utils.web_search.search_web",
+        lambda query, **kwargs: (
+            [WebSearchResult("Kivy", "https://kivy.org", "UI framework", "duckduckgo")],
+            "duckduckgo",
+            None,
+        ),
+    )
+    out = chat_mod.chat_send(tmp_path, "поищи в интернете kivy sqlite")
+    text = out.get("text") or ""
+    assert out.get("error") is None
+    assert "Результаты поиска" in text
+    assert "https://kivy.org" in text
+
+
+def test_chat_send_capabilities_without_llm(tmp_path: Path, monkeypatch) -> None:
+    """'что ты умеешь?' returns structured help, not LLM."""
+    import eurika.api.chat as chat_mod
+
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "Что ты умеешь?")
+    text = out.get("text") or ""
+    assert out.get("error") is None
+    assert "локальный доступ к проекту" in text
+    assert "что за проект" in text
+    assert "поищи в интернете" in text
+    assert "god_module" not in text.lower()
+
+
+def test_chat_send_can_write_programs_without_llm(tmp_path: Path, monkeypatch) -> None:
+    """'ты можешь писать программы?' must not go to LLM (weak models hallucinate)."""
+    import eurika.api.chat as chat_mod
+    from eurika.api.chat_intents_config import clear_cache, match_direct_intent
+
+    clear_cache()
+    assert match_direct_intent(tmp_path, "ты можешь писать программы?") == ("capabilities", None)
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "ты можешь писать программы?")
+    text = out.get("text") or ""
+    assert out.get("error") is None
+    assert "локальный доступ к проекту" in text
+    assert "Правила за рефакторинго" not in text
+    assert "L4" not in text
+
+
+def test_chat_send_roadmap_next_without_llm(tmp_path: Path, monkeypatch) -> None:
+    """Roadmap / development questions read ROADMAP.md, not LLM."""
+    import eurika.api.chat as chat_mod
+
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "ROADMAP.md").write_text(
+        """# ROADMAP
+
+## 1. Принцип и текущая задача
+
+Саморазвитие Eurika.
+
+### 4.5 Текущий фокус
+
+| Приоритет | Задача | Статус |
+|-----------|--------|--------|
+| 1 | Chat intents | ✅ |
+
+### 4.6 Следующие шаги
+
+**Architecture Freeze (S0) — активно:** только упрощение.
+
+## 6. Открытый бэклог
+
+- [ ] **RV11** Call graph
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    msg = "просмотри документацию, что у нас дальше по развитию проекта?"
+    out = chat_mod.chat_send(tmp_path, msg)
+    text = out.get("text") or ""
+    assert out.get("error") is None
+    assert "без LLM" in text
+    assert "Architecture Freeze" in text
+    assert "RV11" in text
+    assert "403 модул" not in text
+    assert "patch_engine" not in text.lower()
+
+
+def test_discover_project_docs_finds_nested_readme(tmp_path: Path) -> None:
+    """Auto-discovery scans shallow tree for README outside docs/."""
+    from eurika.api.chat_utils import discover_project_docs
+
+    sub = tmp_path / "flutter_app"
+    sub.mkdir()
+    (sub / "README.md").write_text("# Flutter app\n", encoding="utf-8")
+    (tmp_path / "notes").mkdir()
+    (tmp_path / "notes" / "design.md").write_text("# Design\n", encoding="utf-8")
+    grouped, total = discover_project_docs(tmp_path)
+    assert total >= 2
+    other = grouped.get("other") or []
+    notes = grouped.get("notes") or []
+    paths = {str(p.relative_to(tmp_path)) for p, _ in other + notes}
+    assert "flutter_app/README.md" in paths or any("README.md" in p for p in paths)
+    assert any("design.md" in p for p in paths)
 
 
 def test_chat_send_ui_tabs_query_returns_grounded_tabs_without_llm(tmp_path: Path, monkeypatch) -> None:

@@ -1,11 +1,12 @@
 """Direct handler execution (P0.4 split from chat.py)."""
 from __future__ import annotations
+import os
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 from eurika.api.task_executor import build_task_spec, execute_spec
 from .chat_context import save_dialog_state, store_last_execution
 from .chat_direct import extract_api_endpoint_from_request, extract_commit_message_from_request, extract_file_path_from_show_request, extract_module_path_from_request, generate_and_append_api_test, generate_module_test, infer_commit_message_via_llm, propose_commit_message_from_status
-from .chat_utils import brief_release_check_analysis, format_doctor_report_for_chat, format_project_tree, format_root_ls, read_file_for_chat, syntax_lang_for_path
+from .chat_utils import brief_release_check_analysis, format_capabilities_help, format_doctor_report_for_chat, format_file_recount, format_project_docs, format_project_overview, format_project_tree, format_roadmap_next_steps, format_root_ls, read_file_for_chat, syntax_lang_for_path
 
 def _extracted_block_134(emit_cmd, run_command_with_result):
     shell_cmd = (emit_cmd or '').strip().lstrip('$ ').strip()
@@ -18,10 +19,67 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
     if not handler_id:
         return None
     if handler_id == 'identity':
-        text = 'Я Eurika — архитектурный coding-ассистент этого проекта. Могу помочь с анализом, рефакторингом и изменениями кода.'
+        text = (
+            'Я Eurika — локальный архитектурный coding-ассистент этого проекта. '
+            'Создатель: Исаев Андрей Аркадьевич (ProDG). '
+            'Могу помочь с анализом, рефакторингом и изменениями кода.'
+        )
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
+    if handler_id == 'greeting':
+        text = (
+            'Привет! Я Eurika — архитектурный coding-ассистент этого проекта. '
+            'Могу показать структуру, scan, помочь с кодом. '
+            'Например: «что за проект?», «сколько файлов?», «покажи дерево».'
+        )
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'capabilities':
+        text = format_capabilities_help()
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'project_overview':
+        text = format_project_overview(root)
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'file_recount':
+        text = format_file_recount(root)
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'list_docs':
+        text = format_project_docs(root)
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'roadmap_next':
+        text = format_roadmap_next_steps(root)
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'web_search':
+        from eurika.utils.web_search import (
+            extract_web_search_query,
+            format_web_search_results,
+            search_web,
+            web_search_enabled,
+        )
+        if not web_search_enabled():
+            text = 'Веб-поиск отключён (`EURIKA_WEB_SEARCH=0`).'
+            append_safe(root, 'user', msg, None)
+            append_safe(root, 'assistant', text, None)
+            return {'text': text, 'error': None}
+        query = extract_web_search_query(msg)
+        results, provider, note = search_web(query)
+        text = format_web_search_results(query, results, provider=provider, note=note)
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        err = note if not results and note else None
+        return {'text': text, 'error': err}
     if handler_id == 'project_ls':
         report_obj = execute_spec(root, build_task_spec(intent='project_ls', message=msg))
         report = _report_dict(report_obj)
@@ -42,6 +100,20 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
+    if handler_id == 'scan':
+        from eurika.api.chat_tools import run_eurika_command
+        ok, output = run_eurika_command(root, 'scan', '.', timeout=300)
+        store_last_execution(state, {'ok': ok, 'summary': 'eurika scan completed' if ok else 'eurika scan failed'})
+        save_dialog_state(root, state)
+        excerpt = (output or '').strip()[-8000:]
+        text = (
+            f'Выполнил `eurika scan .` для `{root}`:\n\n```\n{excerpt}\n```'
+            if ok
+            else f'Scan завершился с ошибкой:\n\n```\n{excerpt}\n```'
+        )
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None if ok else excerpt}
     if handler_id == 'saved_file_path':
         last_saved_abs = str(state.get('last_saved_file_abs') or '').strip()
         text = f'Полный путь к последнему сохранённому файлу:\n{last_saved_abs}' if last_saved_abs else 'Пока не вижу сохранённого файла в текущей сессии. Сначала попроси: «напиши ... и сохрани».'
@@ -143,6 +215,241 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             result['terminal_output'] = output
             result['terminal_exit_code'] = exit_code
         return result
+    if handler_id == 'smoke_test':
+        from eurika.api.chat_tools import run_chat_smoke
+        ok, output = run_chat_smoke(root)
+        state['last_smoke_ok'] = ok
+        state['last_smoke_output'] = output
+        save_dialog_state(root, state)
+        text = f"**Smoke test:** {'OK' if ok else 'FAIL'}\n\n```\n{output[-8000:]}\n```"
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None if ok else output}
+    if handler_id == 'self_check':
+        from eurika.api.chat_tools import run_self_check_capture
+        if run_command_with_result is not None and emit_cmd:
+            terminal_cmd = _extracted_block_134(emit_cmd, run_command_with_result)
+            text = 'Запускаю self-check в Terminal…'
+            append_safe(root, 'user', msg, None)
+            append_safe(root, 'assistant', text, None)
+            return {
+                'text': text,
+                'error': None,
+                'terminal_cmd': terminal_cmd,
+                'terminal_output': '',
+                'terminal_exit_code': -1,
+            }
+        ok, output = run_self_check_capture(root)
+        text = f"**Self-check:** {'OK' if ok else 'с замечаниями'}\n\n```\n{output[-8000:]}\n```"
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None if ok else output}
+    if handler_id == 'ml_status':
+        from eurika.utils.env import env_bool
+
+        lines = ['**Статус ML**', '']
+        # Torch
+        try:
+            from eurika.ml.torch_runtime import format_torch_block, torch_status
+
+            lines.append(format_torch_block(torch_status(run_smoke_check=False)).strip())
+        except Exception as exc:
+            lines.append(f'PYTORCH: error {type(exc).__name__}: {exc}')
+        lines.append('')
+        # Chat ML intent
+        on = env_bool('EURIKA_USE_ML_INTENT')
+        lines.append(f'EURIKA_USE_ML_INTENT: {"1 (вкл)" if on else "0 (выкл)"}')
+        vec_on = env_bool('EURIKA_USE_VECTOR_INTENT')
+        lines.append(f'EURIKA_USE_VECTOR_INTENT: {"1 (вкл)" if vec_on else "0 (выкл)"}')
+        try:
+            from eurika.ml.intent_router import intent_meta_path
+
+            mp = intent_meta_path(root)
+            if mp.is_file():
+                import json
+
+                meta = json.loads(mp.read_text(encoding='utf-8'))
+                lines.append(
+                    f"intent router: samples={meta.get('samples')}, "
+                    f"acc={meta.get('train_accuracy')}, arch={meta.get('arch')}"
+                )
+            else:
+                lines.append('intent router: весов нет')
+        except Exception as exc:
+            lines.append(f'intent router: {type(exc).__name__}: {exc}')
+        lines.append('')
+        # Market paper learning
+        try:
+            from eurika.ml.learning_status import format_market_learning_block
+
+            lines.append(format_market_learning_block(root))
+        except Exception as exc:
+            lines.append(f'Market learning: {type(exc).__name__}: {exc}')
+        lines.append('')
+        lines.append('Команды: «проведи smoke test» · Models→ML · Chat→Market')
+        text = '\n'.join(lines)
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'market_logic':
+        text = (
+            "**Логика Market в Eurika (paper-only, без live-ордеров)**\n\n"
+            "По [VISION](docs/VISION.md): ты строишь **скелет** (данные, метки, банк, journal, verify); "
+            "Eurika **учится зарабатывать** по исходам (edge / `pnl_usdt` → веса), "
+            "а не по ручным правилам вроде «RSI→buy».\n\n"
+            "**Цикл** (`eurika/ml/`, Chat → Market):\n"
+            "1. Свечи Binance spot / USD-M futures → **24 фичи** с окна баров "
+            "(ret, vol, rsi/bb/macd, структура) — **без** id тикера.\n"
+            "2. **Entry** MLP → HOLD/BUY/SELL (`market_policy.pt`) — **одна** общая policy на все пары.\n"
+            "3. Исполнение paper: style (market/limit/stop/oco), levels TP/SL/trail (`market_levels.pt`), "
+            "банк ~1000 USDT, риск ~1% маржи/сделку, soft-fut плечо.\n"
+            "4. **Exit**: TP/SL/trail/горизонт/exit-MLP (`market_exit.pt`); метка + edge → дообучение.\n"
+            "5. Артефакты: `paper_trades.jsonl`, `open_paper.json`, `paper_portfolio.json`, "
+            "`market_journal.jsonl`, `weights/*.pt`.\n\n"
+            "Soft-entry / soft-fut / cooldown — **рычаги скелета**, не «стратегия навсегда».\n\n"
+            "Сейчас на рынке (банк/opens) → «анализ рынка».\n"
+            "Общая модель vs per-ticker → «одна модель или на каждый тикер?»."
+        )
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'market_situation':
+        try:
+            from eurika.ml.learning_status import format_market_situation_block
+
+            text = format_market_situation_block(root)
+        except Exception as exc:
+            text = f'Market сейчас: {type(exc).__name__}: {exc}'
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'session_digest':
+        try:
+            from eurika.ml.session_digest import build_session_digest, format_session_digest
+
+            # Chat ask: show digest but do not advance last-seen (UI open does that).
+            data = build_session_digest(root, mark_seen=False)
+            text = format_session_digest(data)
+        except Exception as exc:
+            text = f'Digest: {type(exc).__name__}: {exc}'
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'market_ml_scope':
+        text = (
+            "**Market ML: общая модель, не per-ticker.**\n\n"
+            "По коду (`eurika/ml/market_model.py`):\n"
+            "1. Свечи хранятся отдельно по парам (ADAUSDT, BTCUSDT, …).\n"
+            "2. Признаки — **24** числа с окна свечей **без** id символа "
+            "(ret, vol, atr_burst, range_break, rsi, bb, macd, структура…).\n"
+            "3. Все paper-сделки из `paper_trades.jsonl` учат **один MLP** → HOLD/BUY/SELL "
+            "(`market_policy.pt`; legacy Linear только как fallback).\n"
+            "4. Предсказание для любой пары идёт через эти общие веса.\n\n"
+            "Итого: учится «форма движения» рынка в целом; отдельной стратегии на каждый тикер нет.\n"
+            "Per-ticker модели — пока не реализованы.\n\n"
+            "Срез *что сейчас на рынке* (банк / opens / советы) — спроси: "
+            "«анализ рынка» / «что сейчас на маркете?»."
+        )
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id in {
+        'ml_intent_on',
+        'ml_intent_off',
+        'ml_intent_status',
+        'vector_intent_on',
+        'vector_intent_off',
+        'vector_intent_status',
+    }:
+        from eurika.utils.env import env_bool, upsert_project_env_var
+
+        is_vector = handler_id.startswith('vector_')
+        flag = 'EURIKA_USE_VECTOR_INTENT' if is_vector else 'EURIKA_USE_ML_INTENT'
+
+        if handler_id.endswith('_status'):
+            on = env_bool(flag)
+            env_val = (os.environ.get(flag) or '0').strip() or '0'
+            env_file = root / '.env'
+            in_dotenv = False
+            if env_file.is_file():
+                try:
+                    in_dotenv = any(
+                        ln.strip().startswith(f'{flag}=')
+                        for ln in env_file.read_text(encoding='utf-8').splitlines()
+                    )
+                except OSError:
+                    in_dotenv = False
+            extra = ''
+            if not is_vector:
+                try:
+                    from eurika.ml.intent_router import intent_meta_path
+                    import json
+
+                    mp = intent_meta_path(root)
+                    if mp.is_file():
+                        meta = json.loads(mp.read_text(encoding='utf-8'))
+                        extra = (
+                            f"\nРоутер: samples={meta.get('samples')}, "
+                            f"acc={meta.get('train_accuracy')}, arch={meta.get('arch')}"
+                        )
+                except Exception:
+                    extra = ''
+            else:
+                extra = (
+                    "\nНужен Ollama embedding: `ollama pull nomic-embed-text`. "
+                    "Fuzzy-match интентов по смыслу (CR-G2)."
+                )
+            text = (
+                f"**{flag}** = `{env_val}` "
+                f"({'включён' if on else 'выключен'}).\n"
+                f"В процессе: `os.environ`={'1' if on else '0'}; "
+                f"в `.env`: {'да' if in_dotenv else 'нет'}."
+                f"{extra}\n"
+                f"Вкл: «включи {flag}=1». Выкл: «выключи {flag}»."
+            )
+            append_safe(root, 'user', msg, None)
+            append_safe(root, 'assistant', text, None)
+            return {'text': text, 'error': None}
+
+        enable = handler_id.endswith('_on')
+        path = upsert_project_env_var(root, flag, '1' if enable else '0')
+        extra = ''
+        if enable and not is_vector:
+            try:
+                from eurika.ml.intent_router import train_intent_router
+                from eurika.ml.torch_runtime import torch_available
+
+                if torch_available():
+                    trained = train_intent_router(root, epochs=120)
+                    if trained.get('ok'):
+                        acc = float(trained.get('train_accuracy') or 0)
+                        extra = (
+                            f"\nРоутер обучен: samples={trained.get('samples')}, "
+                            f"классов={trained.get('classes')}, acc={acc:.3f}"
+                        )
+                        if acc < 0.5:
+                            extra += "\n⚠ acc низкая — ML почти не будет перехватывать; YAML-интенты ок."
+                    else:
+                        extra = f"\nОбучение роутера: {trained.get('error')}"
+                else:
+                    extra = "\nTorch недоступен — флаг записан, роутер после `pip install -e '.[torch]'`."
+            except Exception as exc:
+                extra = f"\nОбучение роутера: {type(exc).__name__}: {exc}"
+        elif enable and is_vector:
+            extra = (
+                "\nПроверь: `ollama pull nomic-embed-text` и что Ollama запущена. "
+                "Перезапуск Qt не обязателен (флаг уже в os.environ)."
+            )
+        text = (
+            f"**{flag}** = `{'1' if enable else '0'}` "
+            f"({'включён' if enable else 'выключен'}).\n"
+            f"Сохранено в `{path}`."
+            f"{extra}\n"
+            "YAML-интенты по-прежнему главнее fuzzy/ML."
+        )
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
     if handler_id == 'git_commit':
         import secrets
         from eurika.api.chat_tools import git_diff, git_status

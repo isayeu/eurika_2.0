@@ -112,7 +112,7 @@ Eurika склонна к усложнению — это сила и риск. B
 
 ## 7. EnergyModel как resource constraint (2026-03)
 
-**Источник:** EXECUTION_MODEL_PLAN, ROADMAP §5.7, review 2026 II.
+**Источник:** archive/EXECUTION_MODEL_PLAN, ROADMAP §5.7, review 2026 II.
 
 | Аспект | Реализация |
 |--------|------------|
@@ -152,5 +152,5 @@ Eurika склонна к усложнению — это сила и риск. B
 ## Ссылки
 
 - **ROADMAP.md** §5 — Bounded evolution, EURIKA_MAX_OPS_PER_CYCLE
-- **review.md** §1 — bounded learning, границы эволюции
+- **archive/review.md** §1 — bounded learning, границы эволюции
 - **.eurika/rules/bounded-evolution.mdc** — правило для агента
