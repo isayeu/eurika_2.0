@@ -62,6 +62,11 @@ def test_qt_main_window_smoke() -> None:
         assert "Terminal" in tab_names
         assert window.terminal_emulator_input is not None
         assert window.terminal_emulator_output is not None
+        assert window.terminal_emulator_stop_btn is not None
+        assert window.terminal_emulator_clear_btn is not None
+        from qt_app.ui.main_window_helpers import TerminalView
+        assert isinstance(window.terminal_emulator_output, TerminalView)
+        assert window.terminal_emulator_output.toPlainText().endswith("$ ")
         print("SMOKE_OK")
         sys.exit(0)
         """
@@ -120,13 +125,16 @@ def test_response_requests_confirmation_ignores_no_token_text() -> None:
 
 def test_pending_diff_gate_requires_preview_then_resets() -> None:
     """Apply unlocks only after Diff seen for current pending fingerprint."""
+    from typing import cast
+
+    from qt_app.ui.main_window import MainWindow
 
     class _GateHost:
         def __init__(self) -> None:
             self._pending_diff_gate_fp = ""
             self._pending_diff_seen_fp = ""
 
-    host = _GateHost()
+    host = cast(MainWindow, _GateHost())
     fp = chat_handlers._pending_preview_fingerprint({"token": "deadbeef"}, None)
     assert fp == "plan:deadbeef"
     chat_handlers._sync_pending_diff_gate(host, fp)
@@ -154,6 +162,42 @@ def test_pending_diff_gate_requires_preview_then_resets() -> None:
         )
         is True
     )
+
+
+
+def test_terminal_view_prompt_history_and_append_preserves_partial() -> None:
+    """Classic TerminalView: prompt, history, append keeps partial command."""
+    from PySide6.QtWidgets import QApplication
+    from qt_app.ui.main_window_helpers import TerminalView
+
+    app = QApplication.instance() or QApplication([])
+    view = TerminalView()
+    assert view.toPlainText().endswith("$ ")
+    view.set_command_text("ls -la")
+    assert view.current_command() == "ls -la"
+    view.add_to_history("pwd")
+    view.add_to_history("ls")
+    view.set_command_text("")
+    # simulate Up history
+    view._history_index = -1
+    view._pending_from_history = view.current_command()
+    view._history_index = 0
+    view.set_command_text(view._history[-1])
+    assert view.current_command() == "ls"
+    view.set_command_text("partial")
+    view.append("[Chat] hello")
+    assert "[Chat] hello" in view.toPlainText()
+    assert view.current_command() == "partial"
+    assert view.toPlainText().endswith("$ partial")
+    submitted: list[str] = []
+    view.command_submitted.connect(submitted.append)
+    view.add_to_history("echo hi")
+    view.set_command_text("echo hi")
+    cmd = view.commit_command_line()
+    assert cmd.strip() == "echo hi"
+    assert view.is_input_locked()
+    view.unlock_input()
+    assert view.toPlainText().endswith("$ ")
 
 
 def test_validate_project_root_rejects_empty() -> None:

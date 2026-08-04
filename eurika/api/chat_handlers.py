@@ -4,7 +4,13 @@ import os
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 from eurika.api.task_executor import build_task_spec, execute_spec
-from .chat_context import save_dialog_state, store_last_execution
+from .chat_context import (
+    clear_dialog_goals,
+    format_dialog_goal_block,
+    load_dialog_state,
+    save_dialog_state,
+    store_last_execution,
+)
 from .chat_direct import extract_api_endpoint_from_request, extract_commit_message_from_request, extract_file_path_from_show_request, extract_module_path_from_request, generate_and_append_api_test, generate_module_test, infer_commit_message_via_llm, propose_commit_message_from_status
 from .chat_utils import brief_release_check_analysis, format_capabilities_help, format_doctor_report_for_chat, format_file_recount, format_project_docs, format_project_overview, format_project_tree, format_roadmap_next_steps, format_root_ls, read_file_for_chat, syntax_lang_for_path
 
@@ -133,6 +139,28 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         return {'text': text, 'error': None}
     if handler_id == 'show_report':
         text = format_doctor_report_for_chat(root)
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'goal_status':
+        text = format_dialog_goal_block(load_dialog_state(root))
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'clear_goal':
+        st = load_dialog_state(root)
+        if not isinstance(st, dict):
+            st = {}
+        clear_dialog_goals(st)
+        save_dialog_state(root, st)
+        # Keep in-memory state in sync for this request if caller passed one.
+        if isinstance(state, dict):
+            state['active_goal'] = {}
+            state['pending_clarification'] = {}
+        text = (
+            'Сбросил активную цель и ожидание уточнения. '
+            'Pending Apply/Reject (plan/git) не трогал — для них «отклонить».'
+        )
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}

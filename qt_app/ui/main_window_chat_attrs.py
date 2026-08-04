@@ -17,7 +17,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from qt_app.ui.main_window_helpers import ChatInputEdit, TerminalLineEdit
+from qt_app.ui.main_window_helpers import (
+    ChatInputEdit,
+    TerminalInputShim,
+    TerminalLineEdit,
+    TerminalRunShim,
+    TerminalView,
+)
 
 
 class ChatTabAttrs:
@@ -86,9 +92,9 @@ class TerminalTabAttrs:
 
     terminal_tab: QWidget
     terminal_tab_index: int
-    terminal_emulator_output: QTextEdit
-    terminal_emulator_input: TerminalLineEdit
-    terminal_emulator_btn: QPushButton
+    terminal_emulator_output: TerminalView
+    terminal_emulator_input: TerminalInputShim | TerminalLineEdit
+    terminal_emulator_btn: TerminalRunShim | QPushButton
     terminal_emulator_stop_btn: QPushButton
     terminal_emulator_clear_btn: QPushButton
     _terminal_process: QProcess | None

@@ -19,6 +19,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "vector_min_similarity": 0.72,
     "intent_hints": (
         "- Команды: «покажи структуру», «сколько файлов?», «что за проект?», «что дальше по развитию?», «покажи отчёт».\n"
+        "- Цель агента: «какая цель?», «что в контексте?», «сбрось цель».\n"
         "- Market: «анализ рынка» — сейчас; «логика маркета» — как устроен paper ML; "
         "«пока меня не было» — digest; «одна модель или на каждый тикер?» — scope ML.\n"
         "- Скан: «просканируй проект» (eurika scan .).\n"
@@ -113,6 +114,50 @@ DEFAULT_CONFIG: Dict[str, Any] = {
                 "about this project",
                 "what is this project",
             ],
+        },
+        "goal_status": {
+            "patterns": [
+                "какая цель",
+                "какая сейчас цель",
+                "что в контексте",
+                "что в контексте агента",
+                "покажи цель",
+                "покажи активную цель",
+                "статус цели",
+                "active goal",
+                "what is the goal",
+                "what's the goal",
+                "current goal",
+                "show goal",
+                "agent context",
+            ],
+            "exact": [
+                "цель?",
+                "цель",
+                "контекст?",
+                "контекст",
+            ],
+            "emit": None,
+        },
+        "clear_goal": {
+            "patterns": [
+                "сбрось цель",
+                "сбросить цель",
+                "очисти цель",
+                "очистить цель",
+                "забудь цель",
+                "сбрось контекст цели",
+                "очисти контекст агента",
+                "clear goal",
+                "reset goal",
+                "clear active goal",
+            ],
+            "exact": [
+                "сбрось цель",
+                "очисти цель",
+                "clear goal",
+            ],
+            "emit": None,
         },
         "file_recount": {
             "match_mode": "regex",

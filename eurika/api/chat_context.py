@@ -45,6 +45,73 @@ def store_last_execution(state: Dict[str, Any], report: Dict[str, Any]) -> None:
     """Store compact last execution block in dialog state."""
     state['last_execution'] = {'ok': bool(report.get('ok')), 'summary': str(report.get('summary') or ''), 'verification_ok': bool((report.get('verification') or {}).get('ok')), 'artifacts_changed': list(report.get('artifacts_changed') or [])}
 
+
+def format_dialog_goal_block(state: Optional[Dict[str, Any]]) -> str:
+    """Human-readable active goal / pending / last run for chat and LLM context."""
+    if not isinstance(state, dict) or not state:
+        return "Нет активной цели в контексте агента."
+    lines: List[str] = []
+    goal = state.get("active_goal")
+    if isinstance(goal, dict) and goal:
+        intent = goal.get("intent") or "-"
+        target = str(goal.get("target") or "").strip()
+        source = goal.get("source") or "-"
+        risk = goal.get("risk_level") or ""
+        conf = goal.get("confidence")
+        head = f"intent={intent}"
+        if target:
+            head += f", target={target}"
+        head += f", source={source}"
+        if conf is not None:
+            head += f", confidence={conf}"
+        if risk:
+            head += f", risk={risk}"
+        lines.append(f"Активная цель: {head}")
+        steps = goal.get("plan_steps") or goal.get("steps") or []
+        if isinstance(steps, list) and steps:
+            for step in steps[:4]:
+                lines.append(f"  - {step}")
+    pending = state.get("pending_clarification")
+    if isinstance(pending, dict) and pending:
+        original = str(pending.get("original") or "").strip()
+        lines.append(
+            "Ожидает уточнения: "
+            + (original[:180] if original else "(без текста)")
+        )
+    pending_plan = state.get("pending_plan")
+    if isinstance(pending_plan, dict) and pending_plan:
+        lines.append(
+            "Pending plan: "
+            f"intent={pending_plan.get('intent') or '-'}, "
+            f"token={pending_plan.get('token') or '-'}, "
+            f"risk={pending_plan.get('risk_level') or '-'}"
+        )
+    pending_git = state.get("pending_git_commit")
+    if isinstance(pending_git, dict) and pending_git.get("message"):
+        msg = str(pending_git.get("message") or "")[:80]
+        lines.append(f"Pending git commit: {msg}")
+    last = state.get("last_execution")
+    if isinstance(last, dict) and last:
+        lines.append(
+            "Last execution: "
+            f"ok={last.get('ok')}, verification_ok={last.get('verification_ok')}, "
+            f"summary={last.get('summary') or '-'}"
+        )
+    if not lines:
+        return "Нет активной цели в контексте агента."
+    goal_present = isinstance(goal, dict) and bool(goal)
+    if not goal_present:
+        lines.insert(0, "Нет активной цели в контексте агента.")
+    return "\n".join(lines)
+
+
+def clear_dialog_goals(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Clear active goal and pending clarification (HITL pending_plan untouched)."""
+    state["active_goal"] = {}
+    state["pending_clarification"] = {}
+    return state
+
+
 def _extracted_block_97(node, nid, details):
     fi = node.get('fan_in', 0)
     fo = node.get('fan_out', 0)
@@ -86,6 +153,18 @@ def build_chat_context(root: Path, scope: Optional[Dict[str, Any]]=None) -> str:
         if uc:
             parts = [f'{k}={v}' for k, v in uc.items()]
             lines.append(f"[User: {'; '.join(parts)}]")
+    except Exception:
+        pass
+    try:
+        state = load_dialog_state(root)
+        if isinstance(state, dict):
+            goal_block = format_dialog_goal_block(state)
+            if goal_block and not goal_block.startswith("Нет активной цели"):
+                # Compact one-liner for LLM prompt (keep chat answers multi-line via handler).
+                compact = " | ".join(
+                    ln.strip() for ln in goal_block.splitlines() if ln.strip()
+                )[:500]
+                lines.append(f"[Agent context: {compact}]")
     except Exception:
         pass
     try:

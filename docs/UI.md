@@ -7,13 +7,13 @@
 | Вкладка | Назначение |
 |---------|------------|
 | **Chat** (первая) | Chat-first: подвкладки **Агент** / **Market**. На Агенте — полоска режимов (Агент / Market / Обучение), статус paper и справа панель **Контекст** (goal/pending/last run, **авто-Diff**, Apply после Diff, Terminal / Approvals). Market: Live paper, Spot\|Futures\|Both, тикеры, исследование, 15m/1h, лента. Без live-ордеров. См. [CHAT.md](CHAT.md) |
-| **Terminal** | Output команд + shell |
+| **Terminal** | Классический экран: ввод после `$ ` (Enter = Run), Stop/Clear сверху; вывод Commands + shell |
 | **Models** | Подвкладки **LLM** / **ML**. LLM: Ollama, GPU, chat provider. ML: PyTorch + **Market learning**. См. [CHAT.md](CHAT.md) / [HARDWARE.md](HARDWARE.md) |
 | **Commands** | scan/doctor/fix/cycle/explain/…, Run/Stop; Quality: Ruff, Mypy, Release check |
 | **Dashboard** | Summary (modules, deps, cycles, risk, maturity, trends, **Energy**), Top risks, Operational metrics, Learning insights, **ARCHITECTURE METRICS** (blast radius, dependency_density, fragility heatmap 🟢🟡🔴 RV10); Energy — MetricVector (ROADMAP §5.7); автообновление при смене project root |
 | **Graph** | Интерактивный граф зависимостей. Требует `eurika scan .` перед использованием. |
 | **Approvals** | Run fix (team-mode), Load plan, approve/reject per row, **diff preview** при выборе строки (ROADMAP 3.6.7), Save, Run apply-approved. Для extract_block/extract_nested — OSS Reference (Learning from GitHub) блок с примерами из pattern_library. |
-| **Terminal** | Output команд (scan, doctor, fix…) + поле ввода для shell (ls, pwd, eurika scan .) |
+| **Terminal** | Классический экран (inline `$ `), Stop/Clear сверху; Commands + shell (ls, pwd, eurika scan .) |
 | **Notes** | Персональные заметки во время работы. Сохраняются в `.eurika/notes.txt` проекта (или `~/.eurika/notes.txt` без проекта). Загрузка при смене project root. |
 | **Помощь** | Индекс документов: Architecture, CLI, **CHAT**, ROADMAP, MEMORY, TROUBLESHOOTING и др. Кнопка Open — открыть в редакторе. |
 
@@ -89,8 +89,8 @@ http://127.0.0.1:8765/
 - `explain`: module + `--window`
 
 Кнопки:
-- **Build command** — формирует команду и подставляет её в Terminal
-- **Copy command** — копирует собранную команду в clipboard (fallback: подстановка в Terminal input)
+- **Build command** — формирует команду и подставляет её в Terminal (prompt `$ `)
+- **Copy command** — копирует собранную команду в clipboard (fallback: подстановка в Terminal prompt)
 - **Run** — выполняет собранную команду через `/api/exec`
 - UI динамически показывает только релевантные поля для выбранной команды
 - Для `fix/cycle` поля `session-id` и `non-interactive` показываются только при `runtime-mode=hybrid`
@@ -129,7 +129,7 @@ Evolution report: тренды (complexity, smells, centralization), регре�
 - `eurika explain <module>`
 - `eurika report-snapshot .`
 
-Путь всегда — project root сервера. Введите команду и нажмите Run. Вывод (stdout + stderr) отображается в терминальной области.
+Путь всегда — project root сервера. В Qt: классический экран — команда после `$ `, Enter; Stop/Clear сверху. Вывод (stdout + stderr) в той же области.
 
 ### Ask Architect
 Кнопка получает интерпретацию архитектора (architect_text из doctor-цикла): краткая сводка состояния кодовой базы и рекомендаций. Использует тот же контекст, что и `eurika doctor .`.

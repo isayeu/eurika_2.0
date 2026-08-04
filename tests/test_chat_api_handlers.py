@@ -429,6 +429,57 @@ def test_git_commit_message_with_apply_word_does_not_hijack_confirmation() -> No
     assert is_apply_confirmation("Gate Apply after Diff") is False
 
 
+def test_goal_status_and_clear_goal_intents(tmp_path: Path, monkeypatch) -> None:
+    """goal_status / clear_goal are direct handlers; context injects active goal."""
+    import json
+    import eurika.api.chat as chat_mod
+    from eurika.api.chat_context import build_chat_context, format_dialog_goal_block
+    from eurika.api.chat_direct import resolve_direct_handler
+
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    hist = tmp_path / ".eurika" / "chat_history"
+    hist.mkdir(parents=True)
+    state = {
+        "active_goal": {
+            "intent": "refactor",
+            "target": "foo.py",
+            "source": "chat",
+            "risk_level": "low",
+        },
+        "pending_clarification": {"original": "уточни файл"},
+        "pending_plan": {},
+        "last_execution": {"ok": True, "summary": "done", "verification_ok": True},
+    }
+    (hist / "dialog_state.json").write_text(
+        json.dumps(state, ensure_ascii=False), encoding="utf-8"
+    )
+
+    assert resolve_direct_handler(tmp_path, "какая цель?")[0] == "goal_status"
+    assert resolve_direct_handler(tmp_path, "сбрось цель")[0] == "clear_goal"
+
+    status = chat_mod.chat_send(tmp_path, "какая цель?")
+    text = status.get("text") or ""
+    assert status.get("error") is None
+    assert "refactor" in text and "foo.py" in text
+    assert "уточни файл" in text
+
+    ctx = build_chat_context(tmp_path)
+    assert "[Agent context:" in ctx
+    assert "refactor" in ctx
+
+    cleared = chat_mod.chat_send(tmp_path, "сбрось цель")
+    assert cleared.get("error") is None
+    assert "Сбросил" in (cleared.get("text") or "")
+    after = json.loads((hist / "dialog_state.json").read_text(encoding="utf-8"))
+    assert after.get("active_goal") == {}
+    assert after.get("pending_clarification") == {}
+    empty = format_dialog_goal_block(after)
+    assert "Нет активной цели" in empty
+
+
 def test_chat_send_git_commit_apply_executes_real_commit(tmp_path: Path, monkeypatch) -> None:
     """Apply confirmation after git commit request should execute real git commit."""
     import subprocess
