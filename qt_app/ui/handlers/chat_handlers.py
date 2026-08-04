@@ -104,21 +104,39 @@ def focus_terminal_mode(main: MainWindow) -> None:
 
 
 def focus_approvals_mode(main: MainWindow) -> None:
-    """Chat-first: jump from Agent context panel to Approvals."""
+    """Chat-first: jump from Agent context panel to Approvals; load team-mode plan quietly."""
     if hasattr(main, "approvals_tab_index"):
         main.tabs.setCurrentIndex(main.approvals_tab_index)
+    try:
+        payload = main._api.get_pending_plan()
+        operations = payload.get("operations") if isinstance(payload, dict) else None
+        if isinstance(operations, list) and operations and not payload.get("error"):
+            from . import approve_handlers
+
+            approve_handlers.load_pending_plan(main)
+    except Exception:
+        pass
 
 
 def refresh_chat_goal_view(main: MainWindow) -> None:
     from eurika.api.task_executor import is_pending_plan_valid
 
     state = main._api.get_chat_dialog_state()
-    goal = state.get("active_goal") if isinstance(state, dict) else {}
-    pending = state.get("pending_clarification") if isinstance(state, dict) else {}
-    pending_plan = state.get("pending_plan") if isinstance(state, dict) else {}
-    last_execution = state.get("last_execution") if isinstance(state, dict) else {}
+    state_dict: dict[str, Any] = state if isinstance(state, dict) else {}
+    raw_goal = state_dict.get("active_goal")
+    goal: dict[str, Any] = raw_goal if isinstance(raw_goal, dict) else {}
+    raw_pending = state_dict.get("pending_clarification")
+    pending: dict[str, Any] = raw_pending if isinstance(raw_pending, dict) else {}
+    raw_pending_plan = state_dict.get("pending_plan")
+    pending_plan: dict[str, Any] = (
+        raw_pending_plan if isinstance(raw_pending_plan, dict) else {}
+    )
+    raw_last_execution = state_dict.get("last_execution")
+    last_execution: dict[str, Any] = (
+        raw_last_execution if isinstance(raw_last_execution, dict) else {}
+    )
     lines: list[str] = []
-    if isinstance(goal, dict) and goal:
+    if goal:
         lines.append("Current interpreted goal:")
         intent = goal.get("intent", "-")
         target = goal.get("target", "")
@@ -138,31 +156,40 @@ def refresh_chat_goal_view(main: MainWindow) -> None:
             lines.append("- plan:")
             for step in plan_steps[:5]:
                 lines.append(f"  - {step}")
-    if isinstance(pending, dict) and pending:
+    if pending:
         original = str(pending.get("original", "")).strip()
         lines.append("")
         lines.append("Pending clarification:")
         lines.append(f"- {(original[:180] if original else '(awaiting details)')}")
-    plan_valid = isinstance(pending_plan, dict) and is_pending_plan_valid(pending_plan)
-    plan_stale = isinstance(pending_plan, dict) and bool(pending_plan) and not plan_valid
+    plan_valid = bool(pending_plan) and is_pending_plan_valid(pending_plan)
+    plan_stale = bool(pending_plan) and not plan_valid
     if plan_valid:
         main._pending_plan_token = str(pending_plan.get("token") or "")
         lines.append("")
         lines.append("Awaiting confirmation:")
-        lines.append(
-            f"- intent={pending_plan.get('intent', '-')}, risk={pending_plan.get('risk_level', '-')}, token={pending_plan.get('token', '-')}"
-        )
+        pending_target = str(pending_plan.get("target") or "").strip()
+        if pending_target:
+            lines.append(
+                f"- intent={pending_plan.get('intent', '-')}, target={pending_target}, "
+                f"risk={pending_plan.get('risk_level', '-')}, token={pending_plan.get('token', '-')}"
+            )
+        else:
+            lines.append(
+                f"- intent={pending_plan.get('intent', '-')}, risk={pending_plan.get('risk_level', '-')}, "
+                f"token={pending_plan.get('token', '-')}"
+            )
         steps = pending_plan.get("steps") or []
         if isinstance(steps, list) and steps:
             for step in steps[:4]:
                 lines.append(f"  - {step}")
-    elif plan_stale and isinstance(pending_plan, dict):
+        lines.append("- Diff: авто-preview ниже (кнопка Diff — обновить)")
+    elif plan_stale:
         lines.append("")
         lines.append("Expired pending plan (Reject to clear):")
         lines.append(
             f"- intent={pending_plan.get('intent', '-')}, target={pending_plan.get('target', '-')}"
         )
-    if isinstance(last_execution, dict) and last_execution:
+    if last_execution:
         lines.append("")
         lines.append("Last execution:")
         lines.append(
@@ -171,7 +198,8 @@ def refresh_chat_goal_view(main: MainWindow) -> None:
         changed = last_execution.get("artifacts_changed") or []
         if isinstance(changed, list) and changed:
             lines.append(f"- changed={', '.join((str(x) for x in changed[:6]))}")
-    pending_git = state.get("pending_git_commit") if isinstance(state, dict) else None
+    raw_pending_git = state_dict.get("pending_git_commit")
+    pending_git = raw_pending_git if isinstance(raw_pending_git, dict) else None
     if isinstance(pending_git, dict) and pending_git.get("message"):
         lines.append("")
         lines.append("Pending git commit:")
@@ -186,7 +214,14 @@ def refresh_chat_goal_view(main: MainWindow) -> None:
     main.chat_reject_btn.setEnabled(
         has_effective_pending or plan_stale
     )
-    if has_pending_plan and isinstance(pending_plan, dict):
+    can_preview = bool(pending_plan) or has_pending_git
+    if hasattr(main, "chat_diff_btn"):
+        main.chat_diff_btn.setEnabled(can_preview)
+    if can_preview:
+        preview_pending_chat_plan(main)
+    elif hasattr(main, "chat_diff_view"):
+        main.chat_diff_view.clear()
+    if has_pending_plan:
         pending_intent = str(pending_plan.get("intent") or "-")
         pending_target = str(pending_plan.get("target") or "").strip()
         if pending_target:
@@ -207,12 +242,16 @@ def refresh_chat_goal_view(main: MainWindow) -> None:
             main.chat_pending_label.setToolTip("")
             main.chat_apply_btn.setToolTip("")
             main.chat_reject_btn.setToolTip("")
-    elif plan_stale and isinstance(pending_plan, dict):
+        if hasattr(main, "chat_diff_btn"):
+            main.chat_diff_btn.setToolTip("Обновить unified diff pending-плана")
+    elif plan_stale:
         pending_intent = str(pending_plan.get("intent") or "-")
         main.chat_pending_label.setText(f"Pending plan: expired ({pending_intent})")
         main.chat_pending_label.setToolTip("Plan TTL expired — Reject to clear.")
         main.chat_apply_btn.setToolTip("Cannot apply: plan expired")
         main.chat_reject_btn.setToolTip("Clear expired pending plan")
+        if hasattr(main, "chat_diff_btn"):
+            main.chat_diff_btn.setToolTip("Обновить diff expired плана (только просмотр)")
     elif has_pending_git and isinstance(pending_git, dict):
         main._pending_plan_token = str(pending_git.get("token") or "")
         msg_preview = str(pending_git.get("message", ""))[:50]
@@ -220,6 +259,8 @@ def refresh_chat_goal_view(main: MainWindow) -> None:
         main.chat_pending_label.setToolTip(f"Commit message: {pending_git.get('message', '-')}")
         main.chat_apply_btn.setToolTip("Apply git commit")
         main.chat_reject_btn.setToolTip("Reject git commit")
+        if hasattr(main, "chat_diff_btn"):
+            main.chat_diff_btn.setToolTip("Обновить preview pending git commit")
     elif main._pending_plan_fallback_active:
         if main._pending_plan_token:
             main.chat_pending_label.setText(
@@ -230,12 +271,17 @@ def refresh_chat_goal_view(main: MainWindow) -> None:
         main.chat_pending_label.setToolTip("Awaiting confirmation from chat response.")
         main.chat_apply_btn.setToolTip("Apply pending action")
         main.chat_reject_btn.setToolTip("Reject pending action")
+        if hasattr(main, "chat_diff_btn"):
+            main.chat_diff_btn.setEnabled(False)
+            main.chat_diff_btn.setToolTip("Diff недоступен до синхронизации dialog_state")
     else:
         main._pending_plan_token = ""
         main.chat_pending_label.setText("Pending plan: none")
         main.chat_pending_label.setToolTip("")
         main.chat_apply_btn.setToolTip("")
         main.chat_reject_btn.setToolTip("")
+        if hasattr(main, "chat_diff_btn"):
+            main.chat_diff_btn.setToolTip("Нет pending-плана для Diff")
 
 
 def save_chat_preferences(main: MainWindow) -> None:
@@ -365,6 +411,53 @@ def apply_pending_chat_plan(main: MainWindow) -> None:
 def reject_pending_chat_plan(main: MainWindow) -> None:
     main._pending_plan_fallback_active = False
     dispatch_chat_message(main, "отклонить")
+
+
+def preview_pending_chat_plan(main: MainWindow) -> None:
+    """Show unified diff / summary for chat pending_plan in the Agent context panel."""
+    if not hasattr(main, "chat_diff_view"):
+        return
+    state = main._api.get_chat_dialog_state()
+    pending_plan = state.get("pending_plan") if isinstance(state, dict) else None
+    pending_git = state.get("pending_git_commit") if isinstance(state, dict) else None
+    if isinstance(pending_git, dict) and pending_git.get("message") and not (
+        isinstance(pending_plan, dict) and pending_plan
+    ):
+        msg = str(pending_git.get("message") or "")
+        token = str(pending_git.get("token") or "")
+        main.chat_diff_view.setPlainText(
+            f"Pending git commit\ntoken={token or '-'}\n\n{msg}"
+        )
+        return
+    try:
+        result = main._api.preview_chat_pending_plan(
+            pending_plan if isinstance(pending_plan, dict) else None
+        )
+    except Exception as exc:
+        main.chat_diff_view.setPlainText(f"Preview error: {exc}")
+        return
+    if not isinstance(result, dict):
+        main.chat_diff_view.setPlainText("Preview error: empty result")
+        return
+    header_bits = [
+        f"intent={result.get('intent') or '-'}",
+        f"target={result.get('target') or '-'}",
+    ]
+    if result.get("expired"):
+        header_bits.append("expired=yes")
+    if result.get("token"):
+        header_bits.append(f"token={result.get('token')}")
+    body = str(result.get("unified_diff") or result.get("summary") or "").strip()
+    err = result.get("error")
+    parts = [" | ".join(header_bits)]
+    if err:
+        parts.append(f"error: {err}")
+    if body:
+        parts.append("")
+        parts.append(body)
+    elif not err:
+        parts.append("(no diff)")
+    main.chat_diff_view.setPlainText("\n".join(parts))
 
 
 def _run_command_subprocess(cmd: str, project_root: str) -> tuple[str, int]:

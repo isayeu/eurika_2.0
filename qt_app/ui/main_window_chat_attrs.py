@@ -32,6 +32,7 @@ class ChatTabAttrs:
     chat_mode_learn_btn: QPushButton
     chat_mode_status_label: QLabel
     chat_goal_view: QTextEdit
+    chat_diff_view: QTextEdit
     chat_focus_terminal_btn: QPushButton
     chat_focus_approvals_btn: QPushButton
     chat_transcript: QTextEdit
@@ -43,6 +44,7 @@ class ChatTabAttrs:
     chat_clear_btn: QPushButton
     chat_apply_btn: QPushButton
     chat_reject_btn: QPushButton
+    chat_diff_btn: QPushButton
     chat_feedback_helpful_btn: QPushButton
     chat_feedback_not_btn: QPushButton
     market_live_check: QCheckBox

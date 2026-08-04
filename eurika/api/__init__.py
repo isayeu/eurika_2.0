@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
 from .architecture import get_firewall_violations_detail, get_graph, get_metrics, get_risk_prediction, get_self_guard, get_smells_with_plugins, get_summary
-from .diff_api import get_diff, preview_operation
+from .diff_api import get_diff, preview_chat_pending_plan, preview_operation
 from .explain_api import get_explain_data
 from .knowledge_api import get_knowledge, get_knowledge_graph, get_test_links
 from .learning_api import get_chat_dialog_state, get_learning_insights, get_operational_metrics, get_pattern_library
@@ -29,6 +29,7 @@ __all__ = [
     "get_smells_with_plugins",
     "get_summary",
     "get_diff",
+    "preview_chat_pending_plan",
     "preview_operation",
     "get_explain_data",
     "get_chat_dialog_state",

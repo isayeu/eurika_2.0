@@ -177,6 +177,11 @@ def _accept_soft_handler(handler_id: Optional[str], msg: str) -> bool:
         return False
     if handler_id == "web_search" and not looks_like_web_search_request(msg):
         return False
+    # Soft/vector must not invent release_check / ritual without explicit cues.
+    if handler_id == "release_check" and not is_release_check_request(msg):
+        return False
+    if handler_id == "ritual" and not is_ritual_request(msg):
+        return False
     return True
 
 
@@ -215,6 +220,13 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
         return ("add_module_test", None)
     if is_show_file_request(msg):
         return ("show_file", None)
+    # Hard skills before soft ML/vector — «git commit …» must not become release_check.
+    if is_ritual_request(msg):
+        return ("ritual", "$ eurika scan . && eurika doctor . && eurika report-snapshot .")
+    if is_release_check_request(msg):
+        return ("release_check", "$ ./scripts/release_check.sh")
+    if is_git_commit_request(msg):
+        return ("git_commit", None)
     # Soft match (ML/vector) must not steal questions or explicit LLM directives.
     raw = (msg or "").strip()
     if _QUESTION_START.search(raw) or is_llm_directive_message(raw):
@@ -237,12 +249,6 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
             return (fuzzy[0], fuzzy[1])
     except Exception:
         pass
-    if is_ritual_request(msg):
-        return ("ritual", "$ eurika scan . && eurika doctor . && eurika report-snapshot .")
-    if is_release_check_request(msg):
-        return ("release_check", "$ ./scripts/release_check.sh")
-    if is_git_commit_request(msg):
-        return ("git_commit", None)
     return (None, None)
 
 
@@ -541,6 +547,7 @@ def is_git_commit_request(message: str) -> bool:
         "сделай commit",
         "commit changes",
         "commit the changes",
+        "git commit",
         "git status",
         "git diff",
         "покажи status",
@@ -558,12 +565,14 @@ def extract_commit_message_from_request(message: str) -> Optional[str]:
     msg_raw = (message or "").strip()
     patterns = [
         r'(?:в\s+сообщении\s+напиши|напиши\s+в\s+сообщении|сообщение\s+напиши)\s*[:=]\s*["\']?([^"\'\n]+)',
-        r'(?:с\s+сообщением|with\s+message|message\s*[:=])\s*["\']?([^"\'\n]+)["\']?',
+        r'(?:с\s+сообщением|with\s+message)\s*[:=]?\s*["\']?([^"\'\n]+)["\']?',
+        r'(?:message\s*[:=])\s*["\']?([^"\'\n]+)["\']?',
     ]
     for pat in patterns:
         m = re.search(pat, msg_raw, re.IGNORECASE)
         if m:
-            return m.group(1).strip()
+            proposed = m.group(1).strip().lstrip(":").strip().strip("\"'")
+            return proposed or None
     return None
 
 

@@ -8,11 +8,22 @@ from .chat_context import save_dialog_state, store_last_execution
 from .chat_direct import extract_api_endpoint_from_request, extract_commit_message_from_request, extract_file_path_from_show_request, extract_module_path_from_request, generate_and_append_api_test, generate_module_test, infer_commit_message_via_llm, propose_commit_message_from_status
 from .chat_utils import brief_release_check_analysis, format_capabilities_help, format_doctor_report_for_chat, format_file_recount, format_project_docs, format_project_overview, format_project_tree, format_roadmap_next_steps, format_root_ls, read_file_for_chat, syntax_lang_for_path
 
+def _run_emit_with_result(
+    emit_cmd: Optional[str],
+    run_command_with_result: Callable[[str], tuple[str, int]],
+) -> tuple[Optional[str], str, int]:
+    """Run emit shell command via Qt callback; return (terminal_cmd, output, exit_code)."""
+    shell_cmd = (emit_cmd or "").strip().lstrip("$ ").strip()
+    if not shell_cmd:
+        return None, "", -1
+    out, code = run_command_with_result(shell_cmd)
+    return f"$ {shell_cmd}", (out or ""), int(code)
+
+
 def _extracted_block_134(emit_cmd, run_command_with_result):
-    shell_cmd = (emit_cmd or '').strip().lstrip('$ ').strip()
-    if shell_cmd:
-        run_command_with_result(shell_cmd)
-    return f'$ {shell_cmd}' if shell_cmd else None
+    """Legacy helper: run emit and return terminal_cmd only (result discarded)."""
+    terminal_cmd, _out, _code = _run_emit_with_result(emit_cmd, run_command_with_result)
+    return terminal_cmd
 
 def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: Dict[str, Any], emit_cmd: Optional[str], emit: Callable[[str], None], append_safe: Callable[[Path, str, str, Optional[str]], None], run_command_with_result: Optional[Callable[[str], tuple[str, int]]]) -> Optional[Dict[str, Any]]:
     """Execute direct handler; return result dict if handled, else None."""
@@ -189,8 +200,13 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
     if handler_id == 'release_check':
         exit_code = -1
         if run_command_with_result is not None:
-            terminal_cmd = _extracted_block_134(emit_cmd, run_command_with_result)
-            ok, output = False, ''
+            terminal_cmd, output, exit_code = _run_emit_with_result(
+                emit_cmd or "$ ./scripts/release_check.sh",
+                run_command_with_result,
+            )
+            ok = exit_code == 0
+            if not output.strip() and not ok:
+                output = f"release_check failed (exit {exit_code})"
         else:
             from eurika.api.chat_tools import run_release_check
             ok, output = run_release_check(root)

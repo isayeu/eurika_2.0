@@ -104,3 +104,173 @@ def preview_operation(project_root: Path, op: Dict[str, Any]) -> Dict[str, Any]:
     if op.get("oss_examples"):
         out["oss_examples"] = op["oss_examples"]
     return out
+
+
+def _unified_file_diff(target_file: str, old_content: str, new_content: str) -> str:
+    lines = list(
+        difflib.unified_diff(
+            old_content.splitlines(keepends=True),
+            new_content.splitlines(keepends=True),
+            fromfile=f"a/{target_file}",
+            tofile=f"b/{target_file}",
+            lineterm="",
+        )
+    )
+    return "".join(lines)
+
+
+def _preview_code_edit_ops(
+    root: Path, ops: list[Dict[str, Any]]
+) -> tuple[list[Dict[str, Any]], str]:
+    """Build per-file previews for chat code_edit_patch ops. Returns (files, combined_diff)."""
+    from .task_executor_helpers import within_root
+
+    files: list[Dict[str, Any]] = []
+    chunks: list[str] = []
+    for op in ops:
+        target = str(op.get("target") or "").strip()
+        old_text = str(op.get("old_text") or "")
+        new_text = str(op.get("new_text") or "")
+        entry: Dict[str, Any] = {"target_file": target}
+        if not target or not old_text:
+            entry["error"] = "target and old_text required"
+            files.append(entry)
+            continue
+        path = (root / target).resolve()
+        if not within_root(root, path):
+            entry["error"] = "path outside project"
+            files.append(entry)
+            continue
+        if not path.exists() or not path.is_file():
+            entry["error"] = f"file not found: {target}"
+            files.append(entry)
+            continue
+        try:
+            old_content = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            entry["error"] = f"read failed: {exc}"
+            files.append(entry)
+            continue
+        occurrences = old_content.count(old_text)
+        if occurrences != 1:
+            entry["error"] = f"old_text occurrences must be exactly 1, got {occurrences}"
+            entry["old_content"] = old_content
+            files.append(entry)
+            continue
+        new_content = old_content.replace(old_text, new_text, 1)
+        unified = _unified_file_diff(target, old_content, new_content)
+        entry.update(
+            {
+                "old_content": old_content,
+                "new_content": new_content,
+                "unified_diff": unified,
+            }
+        )
+        files.append(entry)
+        if unified:
+            chunks.append(unified)
+    return files, "\n".join(chunks)
+
+
+def preview_chat_pending_plan(
+    project_root: Path, pending_plan: Dict[str, Any] | None
+) -> Dict[str, Any]:
+    """Preview chat HITL pending_plan as unified diff / summary (Agent Diff button).
+
+    Chat pending lives in dialog_state (not team-mode pending_plan.json).
+    Primary path: intent=code_edit_patch with old_text/new_text or operations_json.
+    """
+    import json
+
+    from .task_executor import is_pending_plan_valid
+    from .task_executor_helpers import within_root
+
+    if not isinstance(pending_plan, dict) or not pending_plan:
+        return {"error": "no pending plan"}
+    expired = not is_pending_plan_valid(pending_plan)
+    intent = str(pending_plan.get("intent") or "").strip()
+    target = str(pending_plan.get("target") or "").strip()
+    raw_entities = pending_plan.get("entities")
+    entities: Dict[str, Any] = raw_entities if isinstance(raw_entities, dict) else {}
+    raw_steps = pending_plan.get("steps")
+    steps: list[Any] = raw_steps if isinstance(raw_steps, list) else []
+    root = Path(project_root).resolve()
+    base: Dict[str, Any] = {
+        "intent": intent,
+        "target": target,
+        "token": str(pending_plan.get("token") or ""),
+        "expired": expired,
+        "risk_level": str(pending_plan.get("risk_level") or ""),
+    }
+
+    if intent == "code_edit_patch":
+        ops: list[Dict[str, Any]] = []
+        operations_json = str(entities.get("operations_json") or "").strip()
+        if operations_json:
+            try:
+                raw_ops = json.loads(operations_json)
+            except json.JSONDecodeError as exc:
+                return {**base, "error": f"invalid operations_json: {exc}"}
+            if not isinstance(raw_ops, list) or not raw_ops:
+                return {**base, "error": "operations_json must be non-empty list"}
+            for item in raw_ops:
+                if not isinstance(item, dict):
+                    continue
+                ops.append(
+                    {
+                        "target": str(item.get("target") or "").strip(),
+                        "old_text": str(item.get("old_text") or ""),
+                        "new_text": str(item.get("new_text") or ""),
+                    }
+                )
+        else:
+            ops.append(
+                {
+                    "target": target,
+                    "old_text": str(entities.get("old_text") or ""),
+                    "new_text": str(entities.get("new_text") or ""),
+                }
+            )
+        files, combined = _preview_code_edit_ops(root, ops)
+        out = {**base, "files": files, "unified_diff": combined}
+        if not combined:
+            first_err = next((f.get("error") for f in files if f.get("error")), None)
+            out["error"] = first_err or "no change"
+        return out
+
+    if intent == "delete" and target:
+        path = (root / target).resolve()
+        if not within_root(root, path):
+            return {**base, "error": "path outside project"}
+        if not path.exists() or not path.is_file():
+            return {**base, "error": f"file not found: {target}"}
+        try:
+            old_content = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            return {**base, "error": f"read failed: {exc}"}
+        unified = _unified_file_diff(target, old_content, "")
+        return {
+            **base,
+            "files": [{"target_file": target, "old_content": old_content, "new_content": "", "unified_diff": unified}],
+            "unified_diff": unified,
+        }
+
+    if intent == "create" and target:
+        content = str(entities.get("code") or entities.get("content") or "")
+        path = (root / target).resolve()
+        if path.exists():
+            return {**base, "error": f"file already exists: {target}"}
+        unified = _unified_file_diff(target, "", content)
+        summary = f"create {target}" + (f" ({len(content)} chars)" if content else " (empty)")
+        return {**base, "unified_diff": unified or summary, "summary": summary}
+
+    if intent == "run_command":
+        cmd = str(entities.get("command") or target or "").strip()
+        summary = f"$ {cmd}" if cmd else "run_command (no command)"
+        return {**base, "unified_diff": summary, "summary": summary}
+
+    lines = [f"intent={intent or '-'}", f"target={target or '-'}", f"risk={base['risk_level'] or '-'}"]
+    for step in steps[:8]:
+        lines.append(f"- {step}")
+    summary = "\n".join(lines)
+    return {**base, "unified_diff": summary, "summary": summary}

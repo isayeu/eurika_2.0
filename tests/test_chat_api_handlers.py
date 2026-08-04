@@ -87,10 +87,36 @@ def test_chat_send_release_check_failure_stores_output(tmp_path: Path, monkeypat
     text = out.get("text") or ""
     assert "не прошёл" in text or "FAIL" in text or "исправь" in text.lower()
     assert "FAIL: pytest tests/" in text
-    from eurika.api.chat import _load_dialog_state
-    st = _load_dialog_state(tmp_path)
+    from eurika.api.chat_context import load_dialog_state
+
+    st = load_dialog_state(tmp_path)
     assert st.get("last_release_check_output") == "FAIL: pytest tests/"
     assert st.get("last_release_check_ok") is False
+
+
+def test_chat_send_release_check_qt_callback_uses_exit_code(tmp_path: Path, monkeypatch) -> None:
+    """Qt path must not force empty FAIL; use run_command_with_result output/code."""
+    import eurika.api.chat as chat_mod
+
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+
+    def _run(cmd: str) -> tuple[str, int]:
+        assert "release_check" in cmd
+        return ("==> Release check\nFAIL: ruff", 1)
+
+    out = chat_mod.chat_send(
+        tmp_path,
+        "прогони release check",
+        run_command_with_result=_run,
+    )
+    text = out.get("text") or ""
+    assert "не прошёл" in text
+    assert "FAIL: ruff" in text
+    assert "(вывод пуст)" not in text
+    assert out.get("terminal_exit_code") == 1
 
 
 def test_chat_send_roadmap_verify_phase(tmp_path: Path, monkeypatch) -> None:

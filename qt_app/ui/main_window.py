@@ -244,6 +244,7 @@ class MainWindow(
         self.chat_clear_btn.clicked.connect(lambda: chat_handlers.clear_chat_session(self))
         self.chat_apply_btn.clicked.connect(lambda: chat_handlers.apply_pending_chat_plan(self))
         self.chat_reject_btn.clicked.connect(lambda: chat_handlers.reject_pending_chat_plan(self))
+        self.chat_diff_btn.clicked.connect(lambda: chat_handlers.preview_pending_chat_plan(self))
         self.chat_feedback_helpful_btn.clicked.connect(lambda: chat_handlers.submit_chat_feedback(self, helpful=True))
         self.chat_feedback_not_btn.clicked.connect(lambda: chat_handlers.submit_chat_feedback(self, helpful=False))
         self.market_live_check.toggled.connect(lambda c: market_handlers.on_market_live_toggled(self, c))

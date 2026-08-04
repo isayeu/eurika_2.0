@@ -39,7 +39,7 @@ def test_get_summary_returns_json_serializable(tmp_path: Path) -> None:
     assert "self_map" in s or "path" in s
 
 
-def test_get_summary_with_self_map(tmp_path: Path) -> Path:
+def test_get_summary_with_self_map(tmp_path: Path) -> None:
     """With a minimal self_map, get_summary returns system/central_modules/risks/maturity."""
     self_map = tmp_path / "self_map.json"
     self_map.write_text(
@@ -188,6 +188,7 @@ def test_explain_module_returns_formatted_text(tmp_path: Path) -> None:
     (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
     text, err = explain_module(tmp_path, "a.py", window=3)
     assert err is None
+    assert text is not None
     assert "MODULE EXPLANATION" in text
     assert "fan-in" in text
 
@@ -244,6 +245,74 @@ def test_preview_operation_unsupported_kind(tmp_path: Path) -> None:
     result = preview_operation(tmp_path, {"target_file": "a.py", "kind": "split_module", "params": {}})
     assert "error" in result
     assert "not supported" in result["error"].lower()
+
+
+def test_preview_chat_pending_plan_code_edit(tmp_path: Path) -> None:
+    """preview_chat_pending_plan returns unified_diff for code_edit_patch."""
+    from eurika.api import preview_chat_pending_plan
+
+    (tmp_path / "mod.py").write_text("x = 1\n", encoding="utf-8")
+    plan = {
+        "token": "abc",
+        "intent": "code_edit_patch",
+        "target": "mod.py",
+        "entities": {"old_text": "x = 1", "new_text": "x = 2"},
+        "risk_level": "medium",
+        "status": "pending_confirmation",
+        "created_ts": 1,
+        "expires_ts": 9_999_999_999,
+        "steps": ["replace"],
+    }
+    result = preview_chat_pending_plan(tmp_path, plan)
+    assert "error" not in result
+    assert "x = 2" in result.get("unified_diff", "")
+    assert result.get("intent") == "code_edit_patch"
+    assert result.get("expired") is False
+
+
+def test_preview_chat_pending_plan_batch(tmp_path: Path) -> None:
+    """Batch operations_json yields combined unified_diff."""
+    import json
+
+    from eurika.api import preview_chat_pending_plan
+
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("y = 1\n", encoding="utf-8")
+    ops = [
+        {"target": "a.py", "old_text": "x = 1", "new_text": "x = 2"},
+        {"target": "b.py", "old_text": "y = 1", "new_text": "y = 2"},
+    ]
+    plan = {
+        "token": "batch",
+        "intent": "code_edit_patch",
+        "target": "a.py",
+        "entities": {"operations_json": json.dumps(ops)},
+        "status": "pending_confirmation",
+        "created_ts": 1,
+        "expires_ts": 9_999_999_999,
+        "steps": [],
+    }
+    result = preview_chat_pending_plan(tmp_path, plan)
+    assert "error" not in result
+    diff = result.get("unified_diff", "")
+    assert "a.py" in diff
+    assert "b.py" in diff
+
+
+def test_preview_chat_pending_plan_missing_match(tmp_path: Path) -> None:
+    from eurika.api import preview_chat_pending_plan
+
+    (tmp_path / "mod.py").write_text("x = 1\n", encoding="utf-8")
+    plan = {
+        "intent": "code_edit_patch",
+        "target": "mod.py",
+        "entities": {"old_text": "nope", "new_text": "x = 2"},
+        "status": "pending_confirmation",
+        "created_ts": 1,
+        "expires_ts": 9_999_999_999,
+    }
+    result = preview_chat_pending_plan(tmp_path, plan)
+    assert result.get("error")
 
 
 def test_get_patch_plan_returns_none_without_self_map(tmp_path: Path) -> None:

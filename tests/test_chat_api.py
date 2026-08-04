@@ -11,6 +11,9 @@ def test_extract_commit_message_from_request_regex() -> None:
     msg = "Собери коммит. В сообщении напиши: ROADMAP 3.6.8 Phase 1–4"
     assert extract_commit_message_from_request(msg) == "ROADMAP 3.6.8 Phase 1–4"
     assert extract_commit_message_from_request("собери коммит с сообщением fix docs") == "fix docs"
+    assert extract_commit_message_from_request(
+        "git commit с сообщением: Add chat pending Diff preview"
+    ) == "Add chat pending Diff preview"
     assert extract_commit_message_from_request("собери коммит") is None
 
 

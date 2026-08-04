@@ -21,6 +21,7 @@ from eurika.api import (
     get_operational_metrics,
     get_patch_plan,
     get_pending_plan,
+    preview_chat_pending_plan,
     preview_operation,
     get_risk_prediction,
     get_self_guard,
@@ -84,6 +85,14 @@ class EurikaApiAdapter:
     def preview_operation(self, op: dict[str, Any]) -> dict[str, Any]:
         """Preview single-file op: returns old_content, new_content, unified_diff (ROADMAP 3.6.7)."""
         return preview_operation(self._root(), op)
+
+    def preview_chat_pending_plan(self, pending_plan: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Preview chat HITL pending_plan as unified diff (Agent Diff)."""
+        plan = pending_plan
+        if plan is None:
+            state = get_chat_dialog_state(self._root())
+            plan = state.get("pending_plan") if isinstance(state, dict) else None
+        return preview_chat_pending_plan(self._root(), plan if isinstance(plan, dict) else None)
 
     def save_approvals(self, operations: list[dict[str, Any]]) -> dict[str, Any]:
         return save_approvals(self._root(), operations)

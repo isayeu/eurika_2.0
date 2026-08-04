@@ -235,6 +235,7 @@ intents:
       - "сделай commit"
       - "commit changes"
       - "commit the changes"
+      - "git commit"
       - "git status"
       - "git diff"
       - "покажи status"
