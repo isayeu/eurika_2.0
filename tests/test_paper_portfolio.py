@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from eurika.ml import live_paper as lp
 from eurika.ml import paper_portfolio as pp
 from eurika.ml.learning_status import format_market_learning_block, market_learning_status
@@ -101,6 +103,41 @@ def test_propose_size_soft_futures_caps_lev(tmp_path: Path) -> None:
     )
     assert abs(float(risk_h["leverage"]) - 1.0) < 1e-9
     assert str(risk_h.get("lev_tag") or "").startswith("soft_h")
+
+
+def test_propose_size_soft_margin_scale(tmp_path: Path) -> None:
+    port = pp.ensure_portfolio(tmp_path)
+    hard = pp.propose_size(
+        port,
+        market="spot",
+        features={"volatility": 0.001},
+        soft_entry=False,
+    )
+    soft = pp.propose_size(
+        port,
+        market="spot",
+        features={"volatility": 0.001},
+        soft_entry=True,
+    )
+    assert hard["ok"] and soft["ok"]
+    assert float(soft["margin_usdt"]) == pytest.approx(
+        float(hard["margin_usdt"]) * pp.DEFAULT_SOFT_MARGIN_SCALE
+    )
+    assert soft.get("size_tag") == f"soft_sz×{pp.DEFAULT_SOFT_MARGIN_SCALE:g}"
+    assert soft.get("soft_margin_scale") == pp.DEFAULT_SOFT_MARGIN_SCALE
+    assert not hard.get("size_tag")
+    # Portfolio override
+    port2 = dict(port)
+    port2["soft_margin_scale"] = 0.5
+    soft_half = pp.propose_size(
+        port2,
+        market="spot",
+        features={"volatility": 0.001},
+        soft_entry=True,
+    )
+    assert soft_half["ok"]
+    assert float(soft_half["margin_usdt"]) == pytest.approx(float(hard["margin_usdt"]) * 0.5)
+    assert soft_half.get("size_tag") == "soft_sz×0.5"
 
 
 def test_propose_size_lev_from_confidence(tmp_path: Path) -> None:

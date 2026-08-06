@@ -382,6 +382,14 @@ def _attach_size_fields(target: dict[str, Any], size: Mapping[str, Any]) -> None
     target["margin_usdt"] = float(size.get("margin_usdt") or 0.0)
     target["notional_usdt"] = float(size.get("notional_usdt") or 0.0)
     target["leverage"] = float(size.get("leverage") or 1.0)
+    tag = str(size.get("size_tag") or "").strip()
+    if tag:
+        target["size_tag"] = tag
+    if size.get("soft_entry"):
+        try:
+            target["soft_margin_scale"] = float(size.get("soft_margin_scale") or 1.0)
+        except (TypeError, ValueError):
+            target["soft_margin_scale"] = 1.0
 
 
 def _portfolio_for_sizing(project_root: str | Path) -> dict[str, Any]:
@@ -1610,6 +1618,9 @@ def run_live_tick(
                 size_note += f" [lev {lev_tag} p={float(size['side_prob']):.2f}]"
             elif lev_tag and lev_tag not in ("vol", "cap"):
                 size_note += f" [{lev_tag}]"
+            size_tag = str(size.get("size_tag") or "").strip()
+            if size_tag:
+                size_note += f" [{size_tag}]"
             if utc_h is not None:
                 size_note += f" utc={utc_h:02d}"
             events.append(
@@ -1695,6 +1706,9 @@ def run_live_tick(
                 bits.append(lev_tag)
             elif lev_tag.startswith("soft"):
                 bits.append(f"lev {lev_tag}")
+            size_tag = str(size.get("size_tag") or "").strip()
+            if size_tag:
+                bits.append(size_tag)
             if utc_h is not None:
                 bits.append(f"utc={utc_h:02d}")
             events.append(

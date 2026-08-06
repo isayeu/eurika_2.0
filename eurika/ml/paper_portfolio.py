@@ -22,6 +22,8 @@ DEFAULT_LEV_MAX = 5.0
 # Soft-entry futures: never allow high lev at low side_prob (vol-only fallback
 # used to push 5× on quiet tape). Hard model still uses full 1…5× confidence.
 DEFAULT_SOFT_FUTURES_LEV_MAX = 2.0
+# Soft entries: smaller stake — high WR but SL losses dominate (journal 2026-08).
+DEFAULT_SOFT_MARGIN_SCALE = 0.6
 # UTC hours that historically drained equity (observe + mild soft cap).
 SOFT_RISK_HOURS_UTC = frozenset({7, 8, 9})
 # Soft futures levels: tighter SL, earlier trail arm.
@@ -326,7 +328,8 @@ def propose_size(
     """Propose margin/notional/leverage or reject if risk budget exhausted.
 
     Futures leverage tracks **direction confidence** (side prob), not SL punishment.
-    Soft-entry futures get an explicit lev cap (stricter in risk UTC hours).
+    Soft-entry futures get an explicit lev cap (stricter in risk UTC hours) and
+    scaled risk margin (DEFAULT_SOFT_MARGIN_SCALE → journal ``size_tag``).
     ``project_root`` kept for call-site compat; unused (no SL soft-cap by default).
     """
     _ = project_root
@@ -339,6 +342,15 @@ def propose_size(
         else portfolio.get("max_margin_frac") or DEFAULT_MAX_MARGIN_FRAC
     )
     rf = max(0.001, min(0.05, rf))
+    size_tag = ""
+    soft_margin_scale = 1.0
+    if soft_entry:
+        soft_margin_scale = float(
+            portfolio.get("soft_margin_scale") or DEFAULT_SOFT_MARGIN_SCALE
+        )
+        soft_margin_scale = max(0.1, min(1.0, soft_margin_scale))
+        rf = max(0.001, rf * soft_margin_scale)
+        size_tag = f"soft_sz×{soft_margin_scale:g}"
     mf = max(rf, min(1.0, mf))
     budget = equity * mf
     free = max(0.0, budget - used)
@@ -354,6 +366,9 @@ def propose_size(
             "leverage": 1.0,
             "margin_usdt": 0.0,
             "notional_usdt": 0.0,
+            "size_tag": size_tag,
+            "soft_margin_scale": soft_margin_scale if soft_entry else 1.0,
+            "soft_entry": bool(soft_entry),
         }
     hi = float(lev_max) if lev_max is not None else DEFAULT_LEV_MAX
     soft_cap = soft_futures_lev_cap(soft_entry=soft_entry, market=market, utc_hour=utc_hour)
@@ -410,6 +425,8 @@ def propose_size(
         "margin_usdt": margin,
         "notional_usdt": notional,
         "risk_frac": rf,
+        "size_tag": size_tag,
+        "soft_margin_scale": soft_margin_scale if soft_entry else 1.0,
     }
 
 

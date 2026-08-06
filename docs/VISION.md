@@ -18,14 +18,14 @@
 2. **Exit-first** — model-CLOSE с **¼ TP** (было ½); soft CLOSE-prob; bank при CLOSE>HOLD (~0.30×TP); trail ×0.75 при открытии; MFE-fade bank раньше.
 3. **Reentry cooldown** — после model-exit блок той же стороны **20×1m**; после **SL — 40×1m** (`reentry_cooldown.json`); противная сторона свободна.
 4. **Cancelable entry bias** — близкий cancelable вместо market; soft-entry → **OCO bracket** (limit+stop); fill одной ноги → `sibling_fill` / OCO cancel; смена стороны → `side_flip` pending.
-5. **Paper bank 1000 USDT** — риск 1% equity на сделку (маржа); futures lev 1…5× = **уверенность** модели (side prob); **soft futures ≤2×** (в UTC 07–09 → 1×); soft futures SL/trail ужесточены; суммарная маржа ≤30% equity; PnL USDT = edge×notional → рост `equity_usdt`.
+5. **Paper bank 1000 USDT** — риск 1% equity на сделку (маржа); **soft entry → ×0.6 маржи** (`soft_sz×0.6`); futures lev 1…5× = **уверенность** модели (side prob); **soft futures ≤2×** (в UTC 07–09 → 1×); soft futures SL/trail ужесточены; суммарная маржа ≤30% equity; PnL USDT = edge×notional → рост `equity_usdt`.
 6. **Anti-horizon (time-stop)** — MFE ≥~0.28×TP и ход отдан (осталось ≤40% MFE или ≤0) после min баров → выход `time_stop` до мёртвого горизонта.
 7. **Exit train** — CLOSE-сэмплы с +MFE/giveback весят больше (`sample_weight=close_mfe|giveback`).
 8. **UTC hour tag** — journal `utc_hour` на open/pending (наблюдение часа 08:00; мягкий soft-cap в 07–09).
 
-Следить journal: `model/soft`, `стиль=oco`, `side_flip`, `sibling_fill`, cooldown (model/SL), `time_stop`, `lev soft_cap` / `lev conf`, `utc=`, setup-reject, отказ «нет бюджета риска»; **equity / PnL$** vs доля `horizon`/`sl`/`model`/`time_stop`.
+Следить journal: `model/soft`, `стиль=oco`, `side_flip`, `sibling_fill`, cooldown (model/SL), `time_stop`, `lev soft_cap` / `lev conf`, `soft_sz×`, `utc=`, setup-reject, отказ «нет бюджета риска»; **equity / PnL$** vs доля `horizon`/`sl`/`model`/`time_stop`.
 
-**Режим сейчас:** Live с банком + time-stop + soft futures risk + SL-cooldown. Не сбрасывать банк без причины.
+**Режим сейчас:** Live с банком + time-stop + soft futures risk + soft size-cap + SL-cooldown. Не сбрасывать банк без причины.
 
 ### Ежедневный разбор journal (5 минут)
 
@@ -48,7 +48,7 @@
 4. ~~**Вес меток по `pnl_usdt` / edge**~~ ✅ — entry MLP; exit CLOSE weighted by MFE/giveback ✅.
 5. ~~**Exit / burst-fade**~~ ✅ — SELL при +burst>2 ок **после** fade; model-exit банчит отдачу MFE раньше.
 6. **HTF bias 4h** (не 6–8h): только **фильтр режима** — sync 4h + 2–3 фичи (`ret`/`sma_ratio`/знак тренда); soft BUY/SELL лишь если HTF не против; journal `htf=up|down|flat`. **Не** третий боевой вход и не TP на 4h. 6–8h — мало баров для учёбы; 4h предпочтительнее. **Не трогать**, пока SL/horizon не стабилизируются.
-7. ~~**ML risk / аллокация**~~ частично ✅ — futures lev = confidence; soft futures ≤2× (UTC 07–09 → 1×) + tighter SL/trail; risk-головы — позже.
+7. ~~**ML risk / аллокация**~~ частично ✅ — futures lev = confidence; soft futures ≤2× (UTC 07–09 → 1×) + tighter SL/trail; **soft margin ×0.6** (`soft_sz×`); risk-головы — позже.
 8. ~~**Комиссии spot vs futures** / funding~~ ✅ — spot 0.1% RT, futures 0.08% RT; funding с Binance public `premiumIndex`/`fundingRate` (signed; иначе 0). Funding-farm — отдельный режим.
 9. ~~**Структурный journal**~~ ✅ — `reason`, `bar_ts`, `symbol`, `market`, `utc_hour` (+ edge/correct у outcome).
 10. Позже: walk-forward; impulse-путь на 1m-фичах при сильном burst/break; полный режимный фильтр по часу (сейчас тег + soft-cap 07–09).
