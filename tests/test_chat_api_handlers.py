@@ -482,6 +482,64 @@ def test_goal_status_and_clear_goal_intents(tmp_path: Path, monkeypatch) -> None
     assert "ritual" not in empty.lower()
 
 
+def test_goal_reflection_intent_and_nudge(tmp_path: Path, monkeypatch) -> None:
+    """goal_reflection shows last_execution even without open goal; nudge after ritual."""
+    import json
+    import eurika.api.chat as chat_mod
+    from eurika.api.chat_context import append_goal_nudge, format_goal_nudge, format_goal_reflection
+    from eurika.api.chat_direct import resolve_direct_handler
+
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    hist = tmp_path / ".eurika" / "chat_history"
+    hist.mkdir(parents=True)
+    state = {
+        "active_goal": {
+            "intent": "ritual",
+            "target": "scan→doctor→report-snapshot",
+            "source": "chat_direct",
+        },
+        "last_execution": {
+            "ok": True,
+            "summary": "ritual completed",
+            "verification_ok": False,
+            "artifacts_changed": ["a.py", "b.py"],
+        },
+    }
+    (hist / "dialog_state.json").write_text(
+        json.dumps(state, ensure_ascii=False), encoding="utf-8"
+    )
+
+    assert resolve_direct_handler(tmp_path, "что получилось?")[0] == "goal_reflection"
+    assert resolve_direct_handler(tmp_path, "итог цели")[0] == "goal_reflection"
+
+    out = chat_mod.chat_send(tmp_path, "что получилось?")
+    text = out.get("text") or ""
+    assert out.get("error") is None
+    assert "ritual" in text
+    assert "ritual completed" in text
+    assert "ok=True" in text
+    assert "a.py" in text
+
+    # Without active goal, reflection still surfaces last_execution.
+    only_last = {
+        "active_goal": {},
+        "last_execution": {"ok": False, "summary": "scan failed", "verification_ok": False},
+    }
+    reflected = format_goal_reflection(only_last)
+    assert "Активной цели нет" in reflected
+    assert "scan failed" in reflected
+    assert format_goal_nudge(only_last) == ""
+    assert "что получилось?" in append_goal_nudge("готово", state)
+    assert append_goal_nudge("готово", only_last) == "готово"
+
+    # Empty
+    empty = format_goal_reflection({})
+    assert "Пока нет итога" in empty
+
+
 def test_llm_fallback_does_not_pin_answer_as_active_goal(tmp_path: Path, monkeypatch) -> None:
     """Free-form LLM answers must not stick as active_goal (e.g. «git push»)."""
     import json

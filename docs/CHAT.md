@@ -48,6 +48,7 @@
 | `просканируй проект` | `eurika scan .` |
 | `покажи отчёт`, `doctor report` | Отчёт doctor |
 | `какая цель?`, `что в контексте?` | Статус active_goal / pending / last run |
+| `что получилось?`, `итог цели` | Reflection: цель + last_execution (без LLM) |
 | `сбрось цель`, `clear goal` | Очистить active_goal + pending_clarification (не HITL Apply) |
 | `проведи ритуал` | scan → doctor → report-snapshot |
 | `прогони release check` | `./scripts/release_check.sh` |

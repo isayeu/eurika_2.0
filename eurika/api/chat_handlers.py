@@ -5,8 +5,10 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 from eurika.api.task_executor import build_task_spec, execute_spec
 from .chat_context import (
+    append_goal_nudge,
     clear_dialog_goals,
     format_dialog_goal_block,
+    format_goal_reflection,
     load_dialog_state,
     save_dialog_state,
     store_last_execution,
@@ -49,7 +51,7 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             'Привет! Я Eurika — архитектурный coding-ассистент этого проекта. '
             'Могу показать структуру, scan, помочь с кодом. '
             'Например: «что за проект?», «сколько файлов?», «покажи дерево», '
-            '«какая цель?», «сбрось цель».'
+            '«какая цель?», «что получилось?», «сбрось цель».'
         )
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
@@ -129,6 +131,11 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             if ok
             else f'Scan завершился с ошибкой:\n\n```\n{excerpt}\n```'
         )
+        # Scan itself is not always an active_goal — pin a light goal for nudge/reflection.
+        if not (isinstance(state.get('active_goal'), dict) and state.get('active_goal')):
+            state['active_goal'] = {'intent': 'scan', 'source': 'chat_direct', 'target': '.'}
+            save_dialog_state(root, state)
+        text = append_goal_nudge(text, state)
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None if ok else excerpt}
@@ -145,6 +152,13 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         return {'text': text, 'error': None}
     if handler_id == 'goal_status':
         text = format_dialog_goal_block(load_dialog_state(root))
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'goal_reflection':
+        # Prefer in-memory state (same request), fall back to disk.
+        st = state if isinstance(state, dict) and state else load_dialog_state(root)
+        text = format_goal_reflection(st)
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
@@ -233,6 +247,7 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         text = f'Выполнил ритуал (scan → doctor → report-snapshot):\n\n```\n{output}\n```'
         if not ok:
             text = f'Ритуал выполнен с ошибками:\n\n```\n{output}\n```'
+        text = append_goal_nudge(text, state)
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None if ok else output}
@@ -262,6 +277,7 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             summary = brief_release_check_analysis(output, False)
             excerpt = output[-6000:].strip() if output.strip() else '(вывод пуст)'
             text = f'{summary}\n\n```\n{excerpt}\n```'
+        text = append_goal_nudge(text, state)
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         result: Dict[str, Any] = {'text': text, 'error': None}

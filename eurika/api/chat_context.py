@@ -46,6 +46,75 @@ def store_last_execution(state: Dict[str, Any], report: Dict[str, Any]) -> None:
     state['last_execution'] = {'ok': bool(report.get('ok')), 'summary': str(report.get('summary') or ''), 'verification_ok': bool((report.get('verification') or {}).get('ok')), 'artifacts_changed': list(report.get('artifacts_changed') or [])}
 
 
+def format_goal_reflection(state: Optional[Dict[str, Any]]) -> str:
+    """Reflection over active_goal + last_execution (always shows last run if any).
+
+    Unlike ``format_dialog_goal_block``, empty goal still surfaces last_execution —
+    answer to «что получилось?» / «итог цели».
+    """
+    if not isinstance(state, dict) or not state:
+        return (
+            "Пока нет итога: ни активной цели, ни last_execution. "
+            "Сначала scan / ритуал / Apply, потом спроси снова."
+        )
+    lines: List[str] = []
+    goal = state.get("active_goal")
+    if isinstance(goal, dict) and goal:
+        intent = goal.get("intent") or "-"
+        target = str(goal.get("target") or "").strip()
+        head = f"Цель: intent={intent}"
+        if target:
+            head += f", target={target}"
+        source = goal.get("source")
+        if source:
+            head += f", source={source}"
+        lines.append(head)
+    else:
+        lines.append("Активной цели нет.")
+    last = state.get("last_execution")
+    if isinstance(last, dict) and last:
+        ok = last.get("ok")
+        ver = last.get("verification_ok")
+        summary = str(last.get("summary") or "-").strip() or "-"
+        lines.append(f"Итог: ok={ok}, verification_ok={ver}, summary={summary}")
+        changed = last.get("artifacts_changed") or []
+        if isinstance(changed, list) and changed:
+            preview = ", ".join(str(x) for x in changed[:5])
+            more = f" (+{len(changed) - 5})" if len(changed) > 5 else ""
+            lines.append(f"Артефакты: {preview}{more}")
+    else:
+        lines.append("Last execution ещё не записан.")
+    lines.append('Дальше: «сбрось цель» или «какая цель?» / новая задача.')
+    return "\n".join(lines)
+
+
+def format_goal_nudge(state: Optional[Dict[str, Any]]) -> str:
+    """One-line post-run nudge when there is an active goal (empty if none)."""
+    if not isinstance(state, dict):
+        return ""
+    goal = state.get("active_goal")
+    if not isinstance(goal, dict) or not goal:
+        return ""
+    intent = str(goal.get("intent") or "-").strip() or "-"
+    last = state.get("last_execution") if isinstance(state.get("last_execution"), dict) else {}
+    ok = last.get("ok") if isinstance(last, dict) else None
+    ok_bit = f" ok={ok}" if ok is not None else ""
+    return (
+        f"Цель `{intent}`{ok_bit}; скажи «что получилось?» или «сбрось цель»."
+    )
+
+
+def append_goal_nudge(text: str, state: Optional[Dict[str, Any]]) -> str:
+    """Append reflection nudge under a handler reply when useful."""
+    nudge = format_goal_nudge(state)
+    if not nudge:
+        return text
+    base = (text or "").rstrip()
+    if not base:
+        return nudge
+    return f"{base}\n\n_{nudge}_"
+
+
 def format_dialog_goal_block(state: Optional[Dict[str, Any]]) -> str:
     """Human-readable active goal / pending / last run for chat and LLM context."""
     if not isinstance(state, dict) or not state:

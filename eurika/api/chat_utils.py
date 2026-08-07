@@ -709,6 +709,7 @@ def format_capabilities_help() -> str:
 **Анализ и рефакторинг:**
 - «просканируй проект» — `eurika scan .`
 - «покажи отчёт» — doctor report
+- «какая цель?» / «что получилось?» / «сбрось цель» — контекст агента
 - «проведи ритуал» — scan → doctor → report-snapshot
 - «проведи smoke test» — быстрый smoke (torch + Qt)
 - «проведи self-check» — полный self-check

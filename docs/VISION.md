@@ -40,7 +40,7 @@
 ## Backlog после окна (порядок)
 
 ### A. Продукт / UX
-1. **Chat-first оболочка** — частично ✅ (2026-08-03…04): Chat первая вкладка; подвкладка **Агент**; полоска режимов Агент/Market/Обучение + статус Market; панель **Контекст** + **авто-Diff** + **gate Apply после Diff**; Classic Terminal (inline `$`); intents **goal_status / clear_goal**. Дальше: goals/reflection (C13) без большого рефактора вкладок.
+1. **Chat-first оболочка** — частично ✅ (2026-08-03…06): Chat первая вкладка; подвкладка **Агент**; полоска режимов Агент/Market/Обучение + статус Market; панель **Контекст** + **авто-Diff** + **gate Apply после Diff**; Classic Terminal (inline `$`); intents **goal_status / clear_goal / goal_reflection** («что получилось?») + nudge после scan/ритуал/Apply. Дальше: nudges/goals глубже (C13) без большого рефактора вкладок.
 2. ~~**Session digest «пока тебя не было»**~~ ✅ (2026-08-03) — при открытии Qt в ленту Market; Chat: «пока меня не было».
 
 ### B. Market paper (по статистике journal)
@@ -56,7 +56,7 @@
 ### C. Agent / платформа
 11. **Plugin hooks** `after_*` — `routeCRM/plugins` + R5.
 12. **Telegram-канал** к тому же агенту (`eurika` v1 `telegram_bot`).
-13. Goals / reflection / nudges (v1) — после chat-first.
+13. ~~**Goals / reflection / nudges (v1)**~~ частично ✅ — `goal_status` / `clear_goal` / `goal_reflection` («что получилось?») + nudge после scan/ritual/Apply; deeper goals later.
 
 ### Не брать
 Live-ордера / ключи / freqtrade с prodg; indicator-правила «RSI→buy» / «памп→buy» как ML-логика; OPT/aviation/vpn как домен; третий ТФ как отдельный торговый движок.

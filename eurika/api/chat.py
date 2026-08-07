@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from eurika.api.task_executor import build_task_spec, execute_spec, has_capability, is_pending_plan_valid, make_pending_plan
-from .chat_context import build_chat_context as _build_chat_context, load_dialog_state as _load_dialog_state, load_user_context as _load_user_context, save_dialog_state as _save_dialog_state, save_user_context as _save_user_context, store_last_execution as _store_last_execution
+from .chat_context import build_chat_context as _build_chat_context, load_dialog_state as _load_dialog_state, load_user_context as _load_user_context, save_dialog_state as _save_dialog_state, save_user_context as _save_user_context, store_last_execution as _store_last_execution, append_goal_nudge as _append_goal_nudge
 from .chat_direct import extract_confirmation_token as _extract_confirmation_token, is_apply_confirmation as _is_apply_confirmation, is_reject_confirmation as _is_reject_confirmation, resolve_direct_handler as _resolve_direct_handler, run_eurika_fix as _run_eurika_fix
 from .chat_prompt import build_chat_prompt as _build_chat_prompt, fetch_knowledge_for_chat as _fetch_knowledge_for_chat, intent_hints_for_prompt as _intent_hints_for_prompt, knowledge_topics_for_chat as _knowledge_topics_for_chat, load_chat_feedback_for_prompt as _load_chat_feedback_for_prompt, load_eurika_rules_for_chat as _load_eurika_rules_for_chat
 from .chat_handlers import run_direct_handlers as _run_direct_handlers
@@ -159,7 +159,7 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
             state['active_goal'] = {'intent': spec.intent, 'target': spec.target, 'source': 'executor'}
             _store_last_execution(state, report)
             _save_dialog_state(root, state)
-            text = _format_execution_report(report)
+            text = _append_goal_nudge(_format_execution_report(report), state)
             _append_chat_history_safe(root, 'user', msg, None)
             _append_chat_history_safe(root, 'assistant', text, None)
             return {'text': text, 'error': None}
@@ -205,7 +205,7 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         report = {'ok': report_obj.ok, 'summary': report_obj.summary, 'applied_steps': report_obj.applied_steps, 'skipped_steps': report_obj.skipped_steps, 'verification': report_obj.verification, 'artifacts_changed': report_obj.artifacts_changed, 'error': report_obj.error}
         _store_last_execution(state, report)
         _save_dialog_state(root, state)
-        text = _format_execution_report(report)
+        text = _append_goal_nudge(_format_execution_report(report), state)
         _append_chat_history_safe(root, 'user', msg, None)
         _append_chat_history_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
@@ -217,6 +217,7 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         _store_last_execution(state, {'ok': True, 'summary': f'eurika fix {"(dry-run)" if dry else ""} executed'})
         _save_dialog_state(root, state)
         text = 'Запустил `eurika fix .`' + (' (dry-run)' if dry else '') + f':\n\n{output}'
+        text = _append_goal_nudge(text, state)
         _append_chat_history_safe(root, 'user', msg, None)
         _append_chat_history_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
