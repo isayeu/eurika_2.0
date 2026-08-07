@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -305,11 +307,17 @@ def test_interpret_architecture_with_meta_llm_error_sets_reason() -> None:
 
 def test_interpret_architecture_with_meta_knowledge_throws_uses_empty_snippet() -> None:
     """R2 Fallback: when knowledge resolution throws, architect uses empty snippet and completes."""
+    from eurika.knowledge import LocalKnowledgeProvider
+
     summary = {"system": {"modules": 2, "dependencies": 1, "cycles": 0}, "maturity": "low"}
     history = {"trends": {}, "regressions": []}
     with patch("eurika.reasoning.architect.resolve_knowledge_snippet", side_effect=OSError("fetch failed")):
         text, meta = interpret_architecture_with_meta(
-            summary, history, use_llm=False, knowledge_provider=object(), knowledge_topic="python"
+            summary,
+            history,
+            use_llm=False,
+            knowledge_provider=LocalKnowledgeProvider(),
+            knowledge_topic="python",
         )
     assert isinstance(text, str) and len(text) > 0
     assert "degraded_mode" in meta
@@ -325,3 +333,132 @@ def test_interpret_architecture_with_meta_llm_success_not_degraded() -> None:
     assert meta.get("degraded_reasons") == []
     assert meta.get("llm_used") is True
     assert meta.get("use_llm") is True
+
+
+def test_groq_base_url_skips_litellm_first(monkeypatch) -> None:
+    """Custom Groq OPENAI_BASE_URL must not route litellm as ollama/model."""
+    from eurika.reasoning.architect import (
+        _has_remote_openai_compatible,
+        _should_use_litellm_first,
+    )
+
+    monkeypatch.setenv("OPENAI_API_KEY", "gsk-test")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://api.groq.com/openai/v1")
+    monkeypatch.setenv("OPENAI_MODEL", "llama-3.3-70b-versatile")
+    assert _has_remote_openai_compatible() is True
+    assert _should_use_litellm_first() is False
+
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://openrouter.ai/api/v1")
+    assert _should_use_litellm_first() is True
+
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    assert _should_use_litellm_first() is True
+
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://127.0.0.1:11434/v1")
+    assert _has_remote_openai_compatible() is False
+    assert _should_use_litellm_first() is False
+
+
+def test_call_llm_with_prompt_falls_back_to_ollama_on_groq_rate_limit(monkeypatch) -> None:
+    """Groq TPD 429 must not stop at litellm — chat falls through to local Ollama."""
+    from eurika.reasoning.architect import call_llm_with_prompt
+
+    monkeypatch.setenv("OPENAI_API_KEY", "gsk-test")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://api.groq.com/openai/v1")
+    monkeypatch.setenv("OPENAI_MODEL", "llama-3.3-70b-versatile")
+    monkeypatch.delenv("EURIKA_CHAT_PROVIDER", raising=False)
+
+    rate_err = (
+        "Error code: 429 - Rate limit reached for model "
+        "`llama-3.3-70b-versatile` on tokens per day (TPD). "
+        "Please try again in 27m41.472s."
+    )
+    with (
+        patch(
+            "eurika.reasoning.architect._init_primary_openai_client",
+            return_value=(object(), "llama-3.3-70b-versatile", None),
+        ),
+        patch(
+            "eurika.reasoning.architect._call_llm_architect",
+            side_effect=[(None, rate_err), ("local ok", None)],
+        ) as call_llm,
+        patch(
+            "eurika.reasoning.architect._call_litellm",
+            return_value=(None, "should not be called"),
+        ) as call_lite,
+        patch(
+            "eurika.reasoning.architect._init_ollama_fallback_client",
+            return_value=(object(), "qwen2.5-coder:7b", None),
+        ),
+        patch(
+            "eurika.reasoning.architect._call_ollama_cli",
+            return_value=(None, "cli unused"),
+        ),
+    ):
+        text, err = call_llm_with_prompt("что мы делаем сегодня?", max_tokens=64)
+
+    assert err is None
+    assert text is not None
+    assert text.startswith("local ok")
+    assert "Лимит Groq достигнут" in text
+    assert "27" in text or "мин" in text
+    assert call_lite.call_count == 0
+    assert call_llm.call_count == 2
+
+
+def test_is_rate_limit_error_detects_groq_tpd() -> None:
+    from eurika.reasoning.architect import _is_rate_limit_error
+
+    assert _is_rate_limit_error("Error code: 429 - tokens per day (TPD)")
+    assert _is_rate_limit_error("RateLimitError: rate_limit_exceeded")
+    assert not _is_rate_limit_error("connection refused")
+
+
+def test_format_rate_limit_user_message_includes_when_again() -> None:
+    from eurika.reasoning.architect import (
+        format_rate_limit_user_message,
+        humanize_llm_error,
+        parse_rate_limit_retry_seconds,
+    )
+
+    raw = "Please try again in 27m41.472s. Rate limit reached (TPD)."
+    assert parse_rate_limit_retry_seconds(raw) == pytest.approx(27 * 60 + 41.472, rel=1e-3)
+    msg = format_rate_limit_user_message(raw, used_local_fallback=True)
+    assert "Лимит" in msg
+    assert "мин" in msg
+    assert "Ollama" in msg
+    assert "Лимит" in humanize_llm_error(f"Error code: 429 — {raw}")
+
+
+def test_rate_limit_without_ollama_returns_friendly_error(monkeypatch) -> None:
+    from eurika.reasoning.architect import call_llm_with_prompt
+
+    monkeypatch.setenv("OPENAI_API_KEY", "gsk-test")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://api.groq.com/openai/v1")
+    monkeypatch.delenv("EURIKA_CHAT_PROVIDER", raising=False)
+    rate_err = "Error code: 429 — Please try again in 5m0s. tokens per day"
+    with (
+        patch(
+            "eurika.reasoning.architect._init_primary_openai_client",
+            return_value=(object(), "llama-3.3-70b-versatile", None),
+        ),
+        patch(
+            "eurika.reasoning.architect._call_llm_architect",
+            return_value=(None, rate_err),
+        ),
+        patch("eurika.reasoning.architect._call_litellm", return_value=(None, "n/a")),
+        patch(
+            "eurika.reasoning.architect._init_ollama_fallback_client",
+            return_value=(None, None, "ollama down"),
+        ),
+        patch(
+            "eurika.reasoning.architect._call_ollama_cli",
+            return_value=(None, "cli down"),
+        ),
+    ):
+        text, err = call_llm_with_prompt("ping", max_tokens=16)
+    assert text is None
+    assert err is not None
+    assert "Лимит Groq достигнут" in err
+    assert "5 мин" in err or "~5 мин" in err
+    assert "Ollama" in err

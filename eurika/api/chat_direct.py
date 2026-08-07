@@ -207,9 +207,40 @@ def looks_like_web_search_request(message: str) -> bool:
     return any(m in msg for m in _WEB_SEARCH_MARKERS)
 
 
+def looks_like_market_ml_scope_request(message: str) -> bool:
+    """Hard cues for «одна модель vs per-ticker» — not bare «проблемы?»."""
+    msg = _norm_msg(message)
+    if not msg:
+        return False
+    cues = (
+        "тикер",
+        "ticker",
+        "per-ticker",
+        "per ticker",
+        "market_policy",
+        "общая модель",
+        "одна модель",
+        "отдельная модель",
+        "как учится market",
+        "как учится ml",
+        "shared market",
+        "policy на все",
+        "на каждый тикер",
+        "каждого тикера",
+        "для рынка",
+        "по разным тикерам",
+    )
+    return any(c in msg for c in cues)
+
+
 def _accept_soft_handler(handler_id: Optional[str], msg: str) -> bool:
     """Reject soft matches that need hard lexical cues (e.g. web_search)."""
     if not handler_id:
+        return False
+    # Env toggles / ls must never come from ML or vector fuzzy match.
+    if handler_id.startswith(("ml_intent_", "vector_intent_")):
+        return False
+    if handler_id in {"project_ls", "git_push"}:
         return False
     if handler_id == "web_search" and not looks_like_web_search_request(msg):
         return False
@@ -217,6 +248,38 @@ def _accept_soft_handler(handler_id: Optional[str], msg: str) -> bool:
     if handler_id == "release_check" and not is_release_check_request(msg):
         return False
     if handler_id == "ritual" and not is_ritual_request(msg):
+        return False
+    if handler_id == "roadmap_verify" and not is_roadmap_verify_request(msg):
+        return False
+    if handler_id == "host_health" and not is_host_health_request(msg):
+        return False
+    if handler_id == "self_check" and is_host_health_request(msg):
+        return False
+    if handler_id == "self_check" and not is_os_env_check_request(msg):
+        # Soft path only reaches here; require explicit self-check/env cues.
+        return False
+    # Soft/vector must never invent goal/docs rituals without lexical cues.
+    if handler_id in {"goal_reflection", "goal_status", "clear_goal", "continue_dev", "docs_audit"}:
+        return False
+    if handler_id == "project_overview" and not is_project_overview_request(msg):
+        return False
+    if handler_id == "market_ml_scope" and not looks_like_market_ml_scope_request(msg):
+        return False
+    if handler_id in {"market_situation", "market_logic", "session_digest", "ml_status"}:
+        return False
+    # Host OS phrases must not soft-map to project skills.
+    if is_host_health_request(msg) and handler_id in {
+        "scan",
+        "docs_audit",
+        "list_docs",
+        "roadmap_next",
+        "roadmap_verify",
+        "project_overview",
+        "ritual",
+        "goal_reflection",
+    }:
+        return False
+    if handler_id == "show_file" and not is_show_file_request(msg):
         return False
     if handler_id == "add_api_test" and not is_add_api_test_request(msg):
         return False
@@ -273,6 +336,13 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
         return ("ritual", "$ eurika scan . && eurika doctor . && eurika report-snapshot .")
     if is_release_check_request(msg):
         return ("release_check", "$ ./scripts/release_check.sh")
+    if is_roadmap_verify_request(msg):
+        return ("roadmap_verify", None)
+    if is_host_health_request(msg):
+        return ("host_health", "$ # host health (read-only probe)")
+    # No domain auto-shell: host questions fall through to the LLM tool-loop.
+    if is_os_env_check_request(msg):
+        return ("self_check", "$ eurika self-check .")
     if is_git_push_request(msg):
         return ("git_push", None)
     if is_git_commit_request(msg):
@@ -330,14 +400,41 @@ def is_greeting(message: str) -> bool:
 
 
 def is_ls_request(message: str) -> bool:
-    """Detect explicit request to run ls/list in project root."""
+    """Detect explicit request to run ls/list in project root (or show dir contents)."""
     msg = _norm_msg(message)
     if not msg:
         return False
-    return (
-        any(k in msg for k in (" ls ", "команду ls", "выполни ls", "run ls", "execute ls", "list root", "list files"))
-        or msg == "ls"
+    if msg == "ls":
+        return True
+    keywords = (
+        " ls ",
+        "команду ls",
+        "выполни ls",
+        "run ls",
+        "execute ls",
+        "list root",
+        "list files",
+        "покажи файлы",
+        "содержимое каталог",
+        "содержимое папк",
+        "содержимое директ",
+        "содержимое проект",
+        "содержимое корн",
+        "что в каталог",
+        "что в папк",
+        "что в директ",
+        "что в корне",
+        "list directory",
+        "list folder",
+        "directory contents",
+        "folder contents",
+        "покажи каталог",
+        "покажи папку",
+        "покажи директорию",
+        "список файлов",
+        "список в корне",
     )
+    return any(k in msg for k in keywords)
 
 
 def is_show_report_request(message: str) -> bool:
@@ -363,25 +460,49 @@ def is_show_report_request(message: str) -> bool:
 
 
 def is_show_file_request(message: str) -> bool:
-    """Detect request to show/read file contents."""
+    """Detect request to show/read file contents (not directory listing)."""
     msg = (message or "").strip()
     if not msg:
         return False
+    if is_ls_request(msg) or is_tree_request(msg):
+        return False
     lower = msg.lower()
+    # Directory / project contents → project_ls, not show_file.
+    if any(
+        k in lower
+        for k in (
+            "каталог",
+            "папк",
+            "директ",
+            "directory",
+            "folder",
+            "проект",
+            "project",
+        )
+    ) and "файл" not in lower and "file" not in lower:
+        # «покажи содержимое каталога проекта» — no explicit file.
+        if "содержим" in lower or "содержимое" in lower:
+            return False
     triggers = (
         "покажи файл",
-        "покажи содержимое",
         "открой файл",
         "прочитай файл",
         "show file",
         "read file",
         "open file",
-        "покажи ",
-        "открой ",
+        "покажи содержимое файла",
     )
-    if not any(t in lower for t in triggers):
-        return False
-    return "." in msg or "/" in msg
+    if any(t in lower for t in triggers):
+        return True
+    # Legacy: «покажи path/to/file.py» with extension or slash.
+    if lower.startswith("покажи ") or lower.startswith("открой "):
+        return "." in msg or "/" in msg
+    if "покажи содержимое" in lower:
+        # Require a path-like token; bare «содержимое» alone is not a file read.
+        return ("/" in msg or re.search(r"\.\w{1,8}\b", msg) is not None) and not any(
+            k in lower for k in ("каталог", "папк", "директ", "проект", "directory", "folder")
+        )
+    return False
 
 
 def extract_file_path_from_show_request(message: str) -> str | None:
@@ -557,6 +678,71 @@ def is_release_check_request(message: str) -> bool:
         "прогони releasecheck",
     )
     return any(k in msg for k in keywords)
+
+
+def is_roadmap_verify_request(message: str) -> bool:
+    """True only with explicit ROADMAP/phase cues (not OS «операционка»)."""
+    msg = _norm_msg(message)
+    if not msg:
+        return False
+    if is_os_env_check_request(message):
+        return False
+    # Require a phase/roadmap cue — bare «проверь» must not hit this skill.
+    if re.search(
+        r"(?:фаз[ауеы]?\b|phase\b|roadmap\b|verify\s+phase|сверк\w*\s+roadmap|"
+        r"roadmap\s+verify|проверка\s+фаз|фаза\s+реализован|реализац\w+|"
+        r"\bcr-[a-z]\d*\b)",
+        msg,
+        re.I,
+    ):
+        return True
+    return False
+
+
+def is_host_health_request(message: str) -> bool:
+    """Host OS health (Arch/Linux) — not Eurika project self-check."""
+    msg = _norm_msg(message)
+    if not msg:
+        return False
+    # Explicit project/env skills win elsewhere; don't steal self-check wording.
+    if re.search(r"\bself[-\s]?check\b|eurika\s+self|окружен\w*\s+eurika|статус\s+ml\b", msg):
+        return False
+    if re.search(
+        r"(?:операционк|"
+        r"операционн\w*\s+систем|"
+        r"здоровь\w*\s+(?:ос\b|системы|систем|хоста|машины)|"
+        r"состояни\w*\s+(?:ос\b|системы|систем|хоста)|"
+        r"нагрузк\w*\s+(?:на\s+)?(?:систем|ос\b|хост|машин)|"
+        r"\barch\b|\barchlinux\b|"
+        r"\bжелезо\b|\bhardware\b|"
+        r"(?:проверь|проверить)\s+(?:мою\s+|нашу\s+)?(?:ос\b|os\b|хост|сервер)|"
+        r"хорошо\s+ли\s+(?:настроен|работает)\s+(?:операцион|систем|хост|машин)|"
+        r"host\s+health|os\s+health|system\s+health)",
+        msg,
+        re.I,
+    ):
+        return True
+    return False
+
+
+def is_os_env_check_request(message: str) -> bool:
+    """Eurika project/env probe via self-check (torch/binance/lbot) — not host OS."""
+    msg = _norm_msg(message)
+    if not msg:
+        return False
+    if is_host_health_request(message):
+        return False
+    if re.search(
+        r"(?:self[-\s]?check|"
+        r"eurika\s+self|"
+        r"окружен\w*\s+(?:eurika|проекта)|"
+        r"системн\w*\s+требован|"
+        r"проверь\s+окружение\s+проекта)",
+        msg,
+        re.I,
+    ):
+        return True
+    return False
 
 
 def is_ritual_request(message: str) -> bool:

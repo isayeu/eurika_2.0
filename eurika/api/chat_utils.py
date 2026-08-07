@@ -561,7 +561,110 @@ def format_project_tree(root: Path, max_depth: int=3, limit: int=500) -> str:
     _walk(root, max_depth, '', acc)
     return '\n'.join(acc) if acc else '(пусто)'
 
+
+def _extract_self_check_section(output: str, title: str, *, max_lines: int = 40) -> str:
+    """Extract a titled section from self-check text until the next known header."""
+    text = output or ""
+    if not text or not title:
+        return ""
+    idx = text.find(title)
+    if idx < 0:
+        return ""
+    known_headers = (
+        "PYTORCH (optional ML runtime)",
+        "BINANCE (read-only)",
+        "LBOT (remote read-only)",
+        "LAYER DISCIPLINE:",
+        "FILE SIZE LIMITS",
+        "SELF-GUARD (R5):",
+        "ARCHITECTURE SUMMARY",
+        "ARCHITECTURE METRICS",
+        "ARCHITECTURE HEALTH",
+        "ARCHITECTURE EVOLUTION",
+        "ARCHITECTURE RECOMMENDATIONS",
+        "SEMANTIC ARCHITECTURE",
+        "SYSTEM TOPOLOGY",
+    )
+    chunk = text[idx:]
+    lines = chunk.splitlines()
+    out: List[str] = [lines[0]]
+    for line in lines[1:]:
+        stripped = line.strip()
+        if stripped and any(
+            stripped.startswith(h) and not stripped.startswith(title)
+            for h in known_headers
+        ):
+            break
+        out.append(line)
+        if len(out) >= max_lines:
+            out.append("…")
+            break
+    return "\n".join(out).strip()
+
+
+def format_self_check_for_chat(output: str, *, ok: bool, os_focus: bool = False) -> str:
+    """Chat-friendly self-check: OS/env brief, or short status + pointer to Terminal."""
+    raw = (output or "").strip()
+    status = "OK" if ok else "с замечаниями"
+    if not raw:
+        return f"**Self-check:** {status}\n\n(вывод пуст — смотри Terminal)"
+
+    if os_focus:
+        sections = []
+        for title, limit in (
+            ("PYTORCH (optional ML runtime)", 16),
+            ("BINANCE (read-only)", 24),
+            ("LBOT (remote read-only)", 24),
+            ("LAYER DISCIPLINE:", 6),
+            ("SELF-GUARD (R5):", 12),
+        ):
+            block = _extract_self_check_section(raw, title, max_lines=limit)
+            if block:
+                sections.append(block)
+        verdict_bits: List[str] = []
+        low = raw.lower()
+        if "pytorch" in low:
+            if "available: yes" in low or "available:yes" in low.replace(" ", ""):
+                verdict_bits.append("PyTorch доступен")
+            if "cuda: no" in low or "device: cpu" in low:
+                verdict_bits.append("инференс/ML на CPU (CUDA нет)")
+            elif "cuda: yes" in low:
+                verdict_bits.append("CUDA есть")
+        if "binance" in low and "ready: yes" in low:
+            verdict_bits.append("Binance read-only готов")
+        if "lbot" in low and ("ok: yes" in low or "running: yes" in low):
+            verdict_bits.append("LBOT remote жив")
+        if "LAYER DISCIPLINE: OK" in raw:
+            verdict_bits.append("layer discipline OK")
+
+        head = f"**Операционка / окружение (self-check): {status}**"
+        if verdict_bits:
+            head += "\n\n" + "; ".join(verdict_bits) + "."
+        if sections:
+            body = "\n\n".join(sections)
+            return (
+                f"{head}\n\n```\n{body}\n```\n\n"
+                "Полный лог (архитектура/smells) — во вкладке **Terminal**. "
+                "God-module в отчёте — про код, не про настройку ОС."
+            )
+        return (
+            f"{head}\n\n"
+            "Ключевые блоки PYTORCH/BINANCE/LBOT в выводе не найдены — "
+            "смотри полный self-check в **Terminal**."
+        )
+
+    # Generic self-check: avoid dumping 8k of architecture mid-cut.
+    tail = raw[-2500:] if len(raw) > 2500 else raw
+    if len(raw) > 2500:
+        tail = "…[начало в Terminal]\n" + tail
+    return (
+        f"**Self-check:** {status}\n\n```\n{tail}\n```\n\n"
+        "Полный вывод — во вкладке **Terminal**."
+    )
+
+
 def brief_release_check_analysis(output: str, ok: bool) -> str:
+
     """Extract brief analysis from release check output for chat."""
     import re
     if ok:
@@ -636,12 +739,39 @@ def _collect_open_roadmap_items(content: str, *, limit: int = 8) -> List[str]:
 
 
 def format_roadmap_next_steps(root: Path) -> str:
-    """Summarize current focus and next steps from docs/ROADMAP.md — no LLM."""
+    """Summarize next steps — prefer docs/VISION.md backlog, else ROADMAP.md."""
     root = root.resolve()
+    vision = root / "docs" / "VISION.md"
+    if vision.is_file():
+        try:
+            content = vision.read_text(encoding="utf-8")
+        except OSError as exc:
+            return f"Не удалось прочитать docs/VISION.md: {exc}"
+        backlog = _slice_markdown_section(content, "Backlog после окна", max_chars=3500)
+        now = _slice_markdown_section(content, "Сейчас (прибыль", max_chars=1200)
+        lines: List[str] = [
+            "## Дальше по бэклогу (из `docs/VISION.md`)",
+            "",
+            "Ответ по документу на диске, без LLM. Market — только наблюдение journal.",
+            "",
+        ]
+        if now:
+            lines.append(now)
+            lines.append("")
+        if backlog:
+            lines.append(backlog)
+            lines.append("")
+        lines.append(
+            "Практический следующий шаг: мелкий chat UX / goals polish (A1); "
+            "Market entry/HTF/explore не трогать без разбора journal."
+        )
+        lines.append("Полный файл: `docs/VISION.md`. Аудит: «аудит документации».")
+        return "\n".join(lines).strip()
+
     path = _find_roadmap_path(root)
     if path is None:
         return (
-            f"ROADMAP.md не найден в `{root}` (искал docs/ROADMAP.md и ROADMAP.md).\n\n"
+            f"VISION.md / ROADMAP.md не найдены в `{root}`.\n\n"
             "Спроси «какие документы по проекту?» — покажу, что есть на диске."
         )
     try:
@@ -650,7 +780,7 @@ def format_roadmap_next_steps(root: Path) -> str:
         return f"Не удалось прочитать {path.relative_to(root)}: {exc}"
 
     rel = path.relative_to(root)
-    lines: List[str] = [
+    lines = [
         f"## Дальнейшее развитие (из `{rel}`)",
         "",
         "Ответ по документу на диске, без LLM.",
@@ -681,6 +811,30 @@ def format_roadmap_next_steps(root: Path) -> str:
 
     lines.append(f"Полный файл: `{rel}`. Сверка фазы: «проверь фазу 2.7».")
     return "\n".join(lines).strip()
+
+
+def format_continue_dev_brief(root: Path) -> str:
+    """Compact «приступай» reply: next VISION step, not a full doc dump."""
+    root = root.resolve()
+    vision = root / "docs" / "VISION.md"
+    has_vision = vision.is_file()
+    lines: List[str] = [
+        "**Приступаю** к следующему шагу бэклога (VISION A1).",
+        "",
+        "**Сейчас (non-Market):** мелкий chat UX / goals polish.",
+        "- intents: «приступай» / «продолжай» → этот план (не toggle ML/vector)",
+        "- soft ML/vector не трогает env-флаги и `ls`",
+        "- `verification_ok=n/a` для skills без verify-патча",
+        "",
+        "**Не трогаем:** Market entry / HTF / explore / live-ордера — только journal.",
+        "",
+        "Дальше по желанию: «аудит документации», «что дальше по бэклогу?», "
+        "«какая цель?» / конкретная правка в Chat.",
+    ]
+    if has_vision:
+        lines.append("")
+        lines.append("Источник: `docs/VISION.md` § Backlog после окна.")
+    return "\n".join(lines)
 
 
 def format_capabilities_help() -> str:
@@ -732,10 +886,20 @@ def grounded_ui_tabs_text() -> str:
     return 'В текущем Qt UI есть вкладки: ' + ', '.join((f'`{name}`' for name in tabs)) + '.'
 
 def enforce_eurika_persona(text: str) -> str:
-    """Replace base model mentions with Eurika identity."""
+    """Replace base-model identity claims with Eurika.
+
+    Do not rewrite runtime names (Ollama/Groq): rate-limit footers and ops notes
+    must stay accurate about which backend answered.
+    """
     import re
+
     out = text
-    for pat, repl in [('\\bQwen\\b', 'Eurika'), ('\\bLlama\\b', 'Eurika'), ('\\bOllama\\b', 'Eurika'), ('\\bOpenAI\\b', 'Eurika'), ('\\bGPT-\\d+\\b', 'Eurika')]:
+    for pat, repl in [
+        (r"\bQwen\b", "Eurika"),
+        (r"\bLlama\b", "Eurika"),
+        (r"\bOpenAI\b", "Eurika"),
+        (r"\bGPT-\d+\b", "Eurika"),
+    ]:
         out = re.sub(pat, repl, out, flags=re.IGNORECASE)
     return out
 

@@ -9,13 +9,14 @@ from .chat_context import (
     clear_dialog_goals,
     format_dialog_goal_block,
     format_goal_reflection,
+    enrich_goal_reflection_with_llm,
     load_dialog_state,
     release_active_goal_keep_execution,
     save_dialog_state,
     store_last_execution,
 )
 from .chat_direct import extract_api_endpoint_from_request, extract_commit_message_from_request, extract_file_path_from_show_request, extract_module_path_from_request, generate_and_append_api_test, generate_module_test, infer_commit_message_via_llm, propose_commit_message_from_status
-from .chat_utils import brief_release_check_analysis, format_capabilities_help, format_doctor_report_for_chat, format_file_recount, format_project_docs, format_project_overview, format_project_tree, format_roadmap_next_steps, format_root_ls, read_file_for_chat, syntax_lang_for_path
+from .chat_utils import brief_release_check_analysis, format_capabilities_help, format_continue_dev_brief, format_doctor_report_for_chat, format_file_recount, format_project_docs, format_project_overview, format_project_tree, format_roadmap_next_steps, format_root_ls, format_self_check_for_chat, read_file_for_chat, syntax_lang_for_path
 
 def _run_emit_with_result(
     emit_cmd: Optional[str],
@@ -27,6 +28,41 @@ def _run_emit_with_result(
         return None, "", -1
     out, code = run_command_with_result(shell_cmd)
     return f"$ {shell_cmd}", (out or ""), int(code)
+
+
+def _shell_for_chat(
+    *,
+    shell_cmd: str,
+    run_command_with_result: Optional[Callable[[str], tuple[str, int]]],
+    fallback: Optional[Callable[[], tuple[bool, str]]] = None,
+    emit_cmd: Optional[str] = None,
+) -> tuple[Optional[str], str, int, bool]:
+    """Prefer Qt Terminal callback; else silent fallback. Returns (term_cmd, out, code, ok)."""
+    cmd = (shell_cmd or "").strip()
+    if not cmd and emit_cmd:
+        cmd = (emit_cmd or "").strip().lstrip("$ ").strip()
+    if run_command_with_result is not None and cmd:
+        term_cmd, output, code = _run_emit_with_result(emit_cmd or f"$ {cmd}", run_command_with_result)
+        return term_cmd, output, code, code == 0
+    if fallback is not None:
+        ok, output = fallback()
+        # Still expose what would have run, so Qt can mirror even without callback.
+        return (f"$ {cmd}" if cmd else None), (output or ""), (0 if ok else 1), bool(ok)
+    return (f"$ {cmd}" if cmd else None), "", -1, False
+
+
+def _with_terminal(
+    result: Dict[str, Any],
+    terminal_cmd: Optional[str],
+    output: str,
+    exit_code: int,
+) -> Dict[str, Any]:
+    """Attach terminal mirror fields when a command was (or would be) run."""
+    if terminal_cmd:
+        result["terminal_cmd"] = terminal_cmd
+        result["terminal_output"] = output or ""
+        result["terminal_exit_code"] = int(exit_code)
+    return result
 
 
 def _extracted_block_134(emit_cmd, run_command_with_result):
@@ -77,8 +113,51 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
+    if handler_id == 'docs_audit':
+        from eurika.api.docs_audit import run_docs_audit
+
+        text, meta = run_docs_audit(root, use_llm=True)
+        store_last_execution(
+            state,
+            {
+                'ok': bool(meta.get('ok', True)),
+                'summary': f"docs_audit via {meta.get('source')}",
+            },
+        )
+        if not (isinstance(state.get('active_goal'), dict) and state.get('active_goal')):
+            state['active_goal'] = {
+                'intent': 'docs_audit',
+                'source': 'chat_direct',
+                'target': 'VISION/ROADMAP',
+            }
+        text = append_goal_nudge(text, state)
+        release_active_goal_keep_execution(state)
+        save_dialog_state(root, state)
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
     if handler_id == 'roadmap_next':
         text = format_roadmap_next_steps(root)
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'continue_dev':
+        text = format_continue_dev_brief(root)
+        store_last_execution(
+            state,
+            {
+                'ok': True,
+                'summary': 'continue_dev: VISION A1 chat UX / goals polish',
+            },
+        )
+        state['active_goal'] = {
+            'intent': 'continue_dev',
+            'source': 'chat_direct',
+            'target': 'VISION A1 chat UX / goals polish',
+        }
+        text = append_goal_nudge(text, state)
+        # Keep sticky goal until user clears or finishes a concrete task.
+        save_dialog_state(root, state)
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
@@ -123,24 +202,60 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         report = _report_dict(report_obj)
         store_last_execution(state, report)
         save_dialog_state(root, state)
-        listing = format_root_ls(root)
+        term_cmd, listing, code, ok = _shell_for_chat(
+            shell_cmd='ls -la',
+            run_command_with_result=run_command_with_result,
+            fallback=lambda: (True, format_root_ls(root)),
+            emit_cmd=emit_cmd or '$ ls -la',
+        )
+        if not (listing or '').strip():
+            listing = format_root_ls(root)
+            ok = True
         text = f'Да. Выполнил `ls` в корне проекта `{root}`:\n\n```\n{listing}\n```'
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
-        return {'text': text, 'error': None}
+        return _with_terminal(
+            {'text': text, 'error': None if ok else listing},
+            term_cmd,
+            listing,
+            code if run_command_with_result is not None else 0,
+        )
     if handler_id == 'project_tree':
         report_obj = execute_spec(root, build_task_spec(intent='project_tree', message=msg))
         report = _report_dict(report_obj)
         store_last_execution(state, report)
         save_dialog_state(root, state)
-        tree = format_project_tree(root, max_depth=3, limit=500)
+        tree_cmd = (
+            "find . -maxdepth 3 "
+            "\\( -name .git -o -name .venv -o -name venv -o -name __pycache__ -o -name node_modules \\) "
+            "-prune -o -print 2>/dev/null | head -n 500"
+        )
+        term_cmd, tree, code, ok = _shell_for_chat(
+            shell_cmd=tree_cmd,
+            run_command_with_result=run_command_with_result,
+            fallback=lambda: (True, format_project_tree(root, max_depth=3, limit=500)),
+            emit_cmd=emit_cmd or f'$ {tree_cmd}',
+        )
+        if not (tree or '').strip():
+            tree = format_project_tree(root, max_depth=3, limit=500)
+            ok = True
         text = f'Показываю фактическую структуру проекта `{root}`:\n\n```\n{tree}\n```'
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
-        return {'text': text, 'error': None}
+        return _with_terminal(
+            {'text': text, 'error': None if ok else tree},
+            term_cmd,
+            tree,
+            code if run_command_with_result is not None else 0,
+        )
     if handler_id == 'scan':
         from eurika.api.chat_tools import run_eurika_command
-        ok, output = run_eurika_command(root, 'scan', '.', timeout=300)
+        term_cmd, output, code, ok = _shell_for_chat(
+            shell_cmd='eurika scan .',
+            run_command_with_result=run_command_with_result,
+            fallback=lambda: run_eurika_command(root, 'scan', '.', timeout=300),
+            emit_cmd=emit_cmd or '$ eurika scan .',
+        )
         store_last_execution(state, {'ok': ok, 'summary': 'eurika scan completed' if ok else 'eurika scan failed'})
         save_dialog_state(root, state)
         excerpt = (output or '').strip()[-8000:]
@@ -158,7 +273,12 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         save_dialog_state(root, state)
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
-        return {'text': text, 'error': None if ok else excerpt}
+        return _with_terminal(
+            {'text': text, 'error': None if ok else excerpt},
+            term_cmd,
+            excerpt,
+            code,
+        )
     if handler_id == 'saved_file_path':
         last_saved_abs = str(state.get('last_saved_file_abs') or '').strip()
         text = f'Полный путь к последнему сохранённому файлу:\n{last_saved_abs}' if last_saved_abs else 'Пока не вижу сохранённого файла в текущей сессии. Сначала попроси: «напиши ... и сохрани».'
@@ -178,7 +298,8 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
     if handler_id == 'goal_reflection':
         # Prefer in-memory state (same request), fall back to disk.
         st = state if isinstance(state, dict) and state else load_dialog_state(root)
-        text = format_goal_reflection(st)
+        facts = format_goal_reflection(st)
+        text = enrich_goal_reflection_with_llm(facts, st, use_llm=True)
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
@@ -256,7 +377,15 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         return {'text': text, 'error': None}
     if handler_id == 'ritual':
         from eurika.api.chat_tools import run_eurika_ritual
-        ok, output = run_eurika_ritual(root)
+        ritual_shell = (
+            "eurika scan . && eurika doctor . && eurika report-snapshot ."
+        )
+        term_cmd, output, code, ok = _shell_for_chat(
+            shell_cmd=ritual_shell,
+            run_command_with_result=run_command_with_result,
+            fallback=lambda: run_eurika_ritual(root),
+            emit_cmd=emit_cmd or f"$ {ritual_shell}",
+        )
         state['active_goal'] = {
             'intent': 'ritual',
             'source': 'chat_direct',
@@ -275,11 +404,17 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         save_dialog_state(root, state)
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
-        return {'text': text, 'error': None if ok else output}
+        return _with_terminal(
+            {'text': text, 'error': None if ok else output},
+            term_cmd,
+            output,
+            code,
+        )
     if handler_id == 'release_check':
         exit_code = -1
+        term_cmd: Optional[str] = None
         if run_command_with_result is not None:
-            terminal_cmd, output, exit_code = _run_emit_with_result(
+            term_cmd, output, exit_code = _run_emit_with_result(
                 emit_cmd or "$ ./scripts/release_check.sh",
                 run_command_with_result,
             )
@@ -289,12 +424,12 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         else:
             from eurika.api.chat_tools import run_release_check
             ok, output = run_release_check(root)
-            terminal_cmd = None
+            term_cmd = "$ ./scripts/release_check.sh"
+            exit_code = 0 if ok else 1
         state['last_release_check_output'] = output
         state['last_release_check_ok'] = ok
-        if terminal_cmd is None:
-            state['active_goal'] = {'intent': 'release_check', 'source': 'chat_direct', 'target': 'release_check'}
-            store_last_execution(state, {'ok': ok, 'summary': 'release_check passed' if ok else 'release_check failed'})
+        state['active_goal'] = {'intent': 'release_check', 'source': 'chat_direct', 'target': 'release_check'}
+        store_last_execution(state, {'ok': ok, 'summary': 'release_check passed' if ok else 'release_check failed'})
         save_dialog_state(root, state)
         if ok:
             text = f'{brief_release_check_analysis(output, True)}\n\n```\n{output[-8000:]}\n```'
@@ -308,41 +443,88 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             save_dialog_state(root, state)
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
-        result: Dict[str, Any] = {'text': text, 'error': None}
-        if terminal_cmd is not None:
-            result['terminal_cmd'] = terminal_cmd
-            result['terminal_output'] = output
-            result['terminal_exit_code'] = exit_code
-        return result
+        return _with_terminal(
+            {'text': text, 'error': None},
+            term_cmd,
+            output,
+            exit_code,
+        )
     if handler_id == 'smoke_test':
         from eurika.api.chat_tools import run_chat_smoke
-        ok, output = run_chat_smoke(root)
+        # Prefer a visible shell smoke when Terminal callback is available.
+        smoke_shell = (
+            "python -c \"from eurika.ml.torch_runtime import torch_status; "
+            "print(torch_status(run_smoke_check=True))\" "
+            "&& python -m pytest tests/test_qt_smoke.py -q --tb=line"
+        )
+        term_cmd, output, code, ok = _shell_for_chat(
+            shell_cmd=smoke_shell,
+            run_command_with_result=run_command_with_result,
+            fallback=lambda: run_chat_smoke(root),
+            emit_cmd=emit_cmd or f"$ {smoke_shell}",
+        )
         state['last_smoke_ok'] = ok
         state['last_smoke_output'] = output
         save_dialog_state(root, state)
         text = f"**Smoke test:** {'OK' if ok else 'FAIL'}\n\n```\n{output[-8000:]}\n```"
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
-        return {'text': text, 'error': None if ok else output}
+        return _with_terminal(
+            {'text': text, 'error': None if ok else output},
+            term_cmd,
+            output,
+            code,
+        )
     if handler_id == 'self_check':
         from eurika.api.chat_tools import run_self_check_capture
-        if run_command_with_result is not None and emit_cmd:
-            terminal_cmd = _extracted_block_134(emit_cmd, run_command_with_result)
-            text = 'Запускаю self-check в Terminal…'
-            append_safe(root, 'user', msg, None)
-            append_safe(root, 'assistant', text, None)
-            return {
-                'text': text,
-                'error': None,
-                'terminal_cmd': terminal_cmd,
-                'terminal_output': '',
-                'terminal_exit_code': -1,
-            }
-        ok, output = run_self_check_capture(root)
-        text = f"**Self-check:** {'OK' if ok else 'с замечаниями'}\n\n```\n{output[-8000:]}\n```"
+
+        term_cmd, output, code, ok = _shell_for_chat(
+            shell_cmd='eurika self-check .',
+            run_command_with_result=run_command_with_result,
+            fallback=lambda: run_self_check_capture(root),
+            emit_cmd=emit_cmd or '$ eurika self-check .',
+        )
+        text = format_self_check_for_chat(
+            output or '',
+            ok=ok,
+            os_focus=False,
+        )
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
-        return {'text': text, 'error': None if ok else output}
+        return _with_terminal(
+            {'text': text, 'error': None if ok else output},
+            term_cmd,
+            output,
+            code,
+        )
+    if handler_id == 'host_health':
+        from eurika.api.host_health import (
+            enrich_host_health_with_llm,
+            format_host_health_for_chat,
+            run_host_health_probe,
+        )
+
+        result = run_host_health_probe()
+        facts = format_host_health_for_chat(result)
+        text = enrich_host_health_with_llm(facts, use_llm=True)
+        store_last_execution(
+            state,
+            {
+                "ok": result.ok,
+                "summary": f"host_health level={result.level}",
+                "artifacts_changed": [],
+            },
+        )
+        save_dialog_state(root, state)
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        # Chat: always expert text (never raw probe as error). Terminal: probe log.
+        return _with_terminal(
+            {'text': text, 'error': None},
+            "$ # host-health read-only (uptime / free / df / journal / …)",
+            result.output,
+            0 if result.ok else 1,
+        )
     if handler_id == 'ml_status':
         from eurika.utils.env import env_bool
 
@@ -552,8 +734,29 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
     if handler_id == 'git_commit':
         import secrets
         from eurika.api.chat_tools import git_diff, git_status
-        ok_status, status_out = git_status(root)
-        ok_diff, diff_out = git_diff(root)
+        term_parts: list[str] = []
+        if run_command_with_result is not None:
+            st_cmd, status_out, st_code, ok_status = _shell_for_chat(
+                shell_cmd='git status',
+                run_command_with_result=run_command_with_result,
+            )
+            if st_cmd:
+                term_parts.append(f"{st_cmd}\n{status_out}")
+            df_cmd, diff_out, df_code, ok_diff = _shell_for_chat(
+                shell_cmd='git diff && git diff --cached',
+                run_command_with_result=run_command_with_result,
+            )
+            if df_cmd:
+                term_parts.append(f"{df_cmd}\n{diff_out}")
+            term_cmd = "$ git status && git diff && git diff --cached"
+            term_out = "\n\n".join(term_parts)
+            term_code = st_code if st_code != 0 else df_code
+        else:
+            ok_status, status_out = git_status(root)
+            ok_diff, diff_out = git_diff(root)
+            term_cmd = "$ git status && git diff"
+            term_out = f"{status_out or ''}\n{diff_out or ''}".strip()
+            term_code = 0 if ok_status else 1
         if not ok_status and (not status_out):
             status_out = 'Не git-репозиторий или git недоступен.'
         blocks = [f"**git status**\n```\n{status_out or '(пусто)'}\n```"]
@@ -579,7 +782,12 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         text = '\n\n'.join(blocks)
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
-        return {'text': text, 'error': None}
+        return _with_terminal(
+            {'text': text, 'error': None},
+            term_cmd,
+            term_out,
+            term_code,
+        )
     return None
 
 def _report_dict(report_obj: Any) -> Dict[str, Any]:

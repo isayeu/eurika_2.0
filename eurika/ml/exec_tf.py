@@ -70,7 +70,17 @@ def _bar_high_low(c: dict[str, Any]) -> tuple[float, float, float]:
 
 
 def find_entry_index(candles: Sequence[dict[str, Any]], entry_ts: int) -> int:
-    """Index of entry bar (exact open_time, else first bar >= entry_ts)."""
+    """Index of entry bar (exact open_time, else first bar >= entry_ts).
+
+    If ``entry_ts`` is older than the first retained candle, return -1 (scrolled
+    out of the window). Remapping to index 0 would restart the horizon every
+    tick and leave the position open forever.
+    """
+    if not candles:
+        return -1
+    first_ts = int(candles[0].get("open_time") or 0)
+    if int(entry_ts) < first_ts:
+        return -1
     for i, c in enumerate(candles):
         if int(c.get("open_time") or 0) == int(entry_ts):
             return i

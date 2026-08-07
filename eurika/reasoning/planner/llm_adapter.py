@@ -1,7 +1,8 @@
 """
 LLM hints for patch planning (ROADMAP 2.9.2).
 
-For god_module, hub, bottleneck: optional Ollama call to suggest split points.
+For god_module, hub, bottleneck: optional LLM call to suggest split points.
+Routed like chat (remote OpenAI-compatible API when configured, else local Ollama).
 Result merged into patch_plan hints; fallback to graph heuristics when unavailable.
 """
 
@@ -27,6 +28,34 @@ def _use_llm_hints() -> bool:
 
 def _ollama_model() -> str:
     return os.environ.get("OLLAMA_OPENAI_MODEL", "qwen2.5-coder:7b")
+
+
+def _call_planner_llm(
+    prompt: str,
+    *,
+    max_tokens: int = 512,
+    local_timeout_override: int | None = None,
+) -> tuple[str | None, str | None]:
+    """Single LLM seam for planner hints, routed like chat (remote API, else local Ollama)."""
+    from eurika.reasoning.architect import (
+        _call_ollama_cli,
+        _chat_llm_provider,
+        _has_remote_openai_compatible,
+        call_llm_with_prompt,
+    )
+
+    if _chat_llm_provider() != "ollama" and _has_remote_openai_compatible():
+        return call_llm_with_prompt(prompt, max_tokens=max_tokens)
+    return _call_ollama_cli(_ollama_model(), prompt, timeout_override=local_timeout_override)
+
+
+def _planner_llm_label() -> str:
+    """Provider name for traces."""
+    from eurika.reasoning.architect import _chat_llm_provider, _has_remote_openai_compatible
+
+    if _chat_llm_provider() != "ollama" and _has_remote_openai_compatible():
+        return os.environ.get("OPENAI_MODEL") or "remote API"
+    return _ollama_model()
 
 
 def _trace_planner(msg: str) -> None:
@@ -236,9 +265,7 @@ def ask_llm_extract_method_hints(
     prompt = _build_extract_method_prompt(function_name, src, oss_snippets=oss_snippets or None)
     _register_llm_hint_call()
     try:
-        from eurika.reasoning.architect import _call_ollama_cli
-
-        text, reason = _call_ollama_cli(_ollama_model(), prompt)
+        text, reason = _call_planner_llm(prompt)
         if text:
             hints = _parse_llm_hints(text)
             _HINT_CACHE[cache_key] = hints
@@ -413,8 +440,7 @@ def ask_llm_extract_patch(
     prompt = _build_extract_patch_prompt(function_name, content, oss or None, file_path=path_str)
     _EXTRACT_PATCH_CALLS += 1
     try:
-        from eurika.reasoning.architect import _call_ollama_cli
-        text, _reason = _call_ollama_cli(_ollama_model(), prompt, timeout_override=0)
+        text, _reason = _call_planner_llm(prompt, max_tokens=4096, local_timeout_override=0)
         if not text or not text.strip():
             _HINT_CACHE[cache_key] = []
             return None
@@ -445,8 +471,8 @@ def ask_llm_extract_patch(
     return None
 
 
-def _parse_llm_hints(text: str) -> List[str]:
-    """Extract hint-like lines from LLM response. Filters noise."""
+def _parse_llm_hints(text: Optional[str]) -> List[str]:
+    """Extract hint-like lines from LLM response. Filters noise. None/empty → []."""
     if not text or not isinstance(text, str):
         return []
     hints: List[str] = []
@@ -544,11 +570,9 @@ def ask_ollama_split_hints(
         _HINT_CACHE[cache_key] = []
         return []
     _register_llm_hint_call()
-    _trace_planner(f"split hints для {module_name} (ollama, до 120s)...")
+    _trace_planner(f"split hints для {module_name} ({_planner_llm_label()})...")
     try:
-        from eurika.reasoning.architect import _call_ollama_cli
-
-        text, reason = _call_ollama_cli(_ollama_model(), prompt)
+        text, reason = _call_planner_llm(prompt)
         if text:
             hints = _parse_llm_hints(text)
             _HINT_CACHE[cache_key] = hints

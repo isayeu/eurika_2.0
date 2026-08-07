@@ -78,10 +78,14 @@ def run_command(main: MainWindow) -> None:
     ollama_model = main._resolve_ollama_model_for_command()
     cmd = main._get_current_command()
     runtime_mode_val = main._get_runtime_mode()
-    learn_light = getattr(main, "learn_light_check", None) and main.learn_light_check.isChecked()
-    learn_scan = getattr(main, "learn_scan_check", None) and main.learn_scan_check.isChecked()
-    learn_build = getattr(main, "learn_build_patterns_check", None) and main.learn_build_patterns_check.isChecked()
-    learn_limit = main.learn_limit_spin.value() if getattr(main, "learn_limit_spin", None) else 0
+    learn_light_w = getattr(main, "learn_light_check", None)
+    learn_scan_w = getattr(main, "learn_scan_check", None)
+    learn_build_w = getattr(main, "learn_build_patterns_check", None)
+    learn_light = bool(learn_light_w.isChecked()) if learn_light_w is not None else False
+    learn_scan = bool(learn_scan_w.isChecked()) if learn_scan_w is not None else False
+    learn_build = bool(learn_build_w.isChecked()) if learn_build_w is not None else False
+    learn_limit_w = getattr(main, "learn_limit_spin", None)
+    learn_limit = int(learn_limit_w.value()) if learn_limit_w is not None else 0
     if cmd == "cycle":
         main.tabs.setCurrentIndex(main.tabs.indexOf(main.commands_tab))
         main._command_service.run_ritual(
@@ -246,6 +250,10 @@ def on_command_finished(main: MainWindow, exit_code: int) -> None:
     from .dashboard_handlers import refresh_dashboard
 
     refresh_dashboard(main)
+    if "scan" in cmd or "doctor" in cmd or "ritual" in cmd:
+        from . import chat_handlers as _chat_handlers
+
+        _chat_handlers.refresh_chat_mention_candidates(main)
 
 
 def format_fix_report_summary(main: MainWindow) -> str:
@@ -309,8 +317,9 @@ def on_state_changed(main: MainWindow, state: str) -> None:
     main.mypy_btn.setEnabled(not running)
     main.release_check_btn.setEnabled(not running)
     # Stop on Terminal tab: active when CommandService running, or terminal emulator running
+    term_proc = getattr(main, "_terminal_process", None)
     term_running = (
-        getattr(main, "_terminal_process", None) is not None
-        and main._terminal_process.state() != QProcess.NotRunning
+        term_proc is not None
+        and term_proc.state() != QProcess.ProcessState.NotRunning
     )
     main.terminal_emulator_stop_btn.setEnabled(running or term_running)

@@ -8,15 +8,30 @@
 
 | Режим | Когда | Пример |
 |-------|--------|--------|
-| **Прямой обработчик** | Фраза совпала с intent → ответ без LLM, мгновенно | «что за проект?», «покажи дерево» |
-| **LLM** | Свободный вопрос, объяснение, код | «почему модуль X связан с Y?» |
+| **Прямой обработчик** | Узкий факт/ритуал (ls, scan, …) | «покажи дерево» |
+| **LLM + tool-loop (по умолчанию)** | Всё остальное: модель отвечает сама, а если нужны факты о машине — сама запускает read-only команды и отвечает по их выводу | «какое устройство подключалось последним?» |
 
 Прямые ответы предпочтительны для фактов о проекте: они не галлюцинируют и не зависят от модели.
+
+### Tool-loop (`eurika/api/chat_host_ops.py`)
+
+Один цикл вместо двухфазного ритуала: **LLM → инструмент → LLM**.
+
+1. Модель получает описание инструмента `host_shell` и, если ей нужны факты, выводит блок ```` ```eurika-cmds ```` с командами.
+2. Eurika выполняет их сама (без подтверждения — они read-only), пишет `$ cmd` + вывод во вкладку **Terminal**.
+3. Вывод возвращается модели, она отвечает своими словами. Если команды не прошли allowlist, модель получает отказ со списком разрешённого и пробует снова (до 3 шагов).
+
+Ответ пользователю формирует **только LLM** — в коде нет шаблонов вроде «Проверка на хосте», подсказок «напиши проверь» и пост-фильтров над текстом модели. Блоки команд вырезаются из финального ответа (это синтаксис протокола, а не содержимое); обычные ```` ```python ```` блоки не трогаются.
+
+Единственный жёсткий гейт — read-only allowlist бинарников (`is_safe_host_command`): без sudo, пайпов, редиректов и `; | & $ \` < >`, `systemctl` только status/list/show, `cat/head/tail` только `/proc /sys /etc` без секретов.
+
+**Хардкод:** ручные доменные списки фраз — нет. Списки request/response допустимы, когда Eurika **сама** их набирает из опыта (см. `docs/VISION.md` → Политика хардкода). Allowlist shell — только safety.
 
 **Связка ML + LLM (опционально):** `EURIKA_USE_ML_INTENT=1` — после YAML/прямых фактов маленький PyTorch-роутер (`eurika.ml.intent_router`) предлагает handler или «в LLM». Веса: `.eurika/ml/weights/intent_router.pt`. YAML-интенты всегда главнее.
 
 **Отправка в Qt:** кнопка Send или **Ctrl+Enter** (Enter — новая строка). Пока идёт запрос к LLM — подсказка «Eurika печатает…» и кнопка **Cancel** (ответ не попадёт в историю; Ollama может ещё доработать в фоне).
 
+**Terminal mirror:** любые shell-команды из Chat (`scan`, `self-check`, `ls`, ритуал, release check, smoke, git status/diff/commit) пишутся во вкладку **Terminal** как `[Chat] $ …` + полный вывод + `exit_code` (без скрытого второго запуска).
 ---
 
 ## Команды без LLM (прямые интенты)
@@ -34,11 +49,13 @@
 | Фраза | Действие |
 |-------|----------|
 | `что за проект?`, `какой проект открыт?` | Обзор: тип, файлы, scan (self_map.json) |
-| `что дальше по развитию?`, `просмотри roadmap` | Выжимка из `docs/ROADMAP.md` (фокус, следующие шаги) |
+| `что дальше по развитию?`, `просмотри roadmap`, бэклог | Выжимка из `docs/VISION.md` (fallback ROADMAP) |
+| `приступай`, `продолжай` | Компактный следующий шаг VISION A1 + цель `continue_dev` |
 | `сколько файлов?`, `пересчитай файлы`, `сколько всего там файлов?` | Подсчёт файлов с диска |
 | `покажи дерево`, `структуру проекта`, `покажи структуру` | Дерево каталогов |
 | `какие документы по проекту?`, `покажи документацию` | README, docs/, notes/, .eurika/rules |
 | `выполни ls`, `ls` | Список в корне проекта |
+| `покажи содержимое каталога проекта` | То же (`ls`); не путать с «покажи файл …» |
 | `покажи файл app.py` | Содержимое файла |
 
 ### Анализ Eurika
@@ -48,13 +65,18 @@
 | `просканируй проект` / `scan` / `скан` | `eurika scan .` |
 | опечатка вроде `scsn` | Подсказка; **да** → scan, **нет** → отмена (не list_docs) |
 | `покажи отчёт`, `doctor report` | Отчёт doctor |
+| `какие документы по проекту?`, `покажи документацию` | Список README / docs / rules |
+| `прочти всю документацию, что реализовано?` | Аудит VISION/ROADMAP vs код (LLM/Groq; fallback по ✅) |
 | `какая цель?`, `что в контексте?` | Статус active_goal / pending / last run |
-| `что получилось?`, `итог цели` | Reflection: цель + last_execution (без LLM) |
+| `что получилось?`, `итог цели` | Reflection: факты + краткий narrative (Groq/Ollama); без LLM — только факты |
+| ↑/↓ в поле Chat | История отправленных запросов (персист `.eurika/chat_prompt_history.json`) |
+| `@` в поле Chat | Автодополнение модулей из `self_map.json` и smell-типов (`@patch_engine.py`, `@god_module`); Tab/Enter — вставить, Esc — закрыть |
 | `сбрось цель`, `clear goal` | Очистить active_goal + pending_clarification + last_execution (не HITL Apply) |
 | `проведи ритуал` | scan → doctor → report-snapshot |
 | `прогони release check` | `./scripts/release_check.sh` |
 | `проведи smoke test`, `smoke` | Быстрый smoke: PyTorch + Qt pytest (без LLM) |
-| `проведи self-check` | `eurika self-check .` |
+| `проведи self-check` | `eurika self-check .` — **проект/env** (torch, Binance, LBOT, layers) |
+| `проверь операционку` / `здоровье ОС` / Arch | **Хост** (uptime/RAM/диск/journal/GPU) + краткий LLM; не путать с self-check проекта |
 | `включи EURIKA_USE_ML_INTENT=1` | Записать флаг в `.env`, обучить chat-роутер |
 | `выключи EURIKA_USE_ML_INTENT` | Выключить ML-роутер |
 | `проверь включен ли ML_INTENT`, `статус EURIKA_USE_ML_INTENT` | Показать флаг / `.env` / acc роутера |
@@ -98,16 +120,31 @@
 | Переменная | Назначение |
 |------------|------------|
 | `EURIKA_CHAT_PROVIDER` | `auto` \| `ollama` \| `openai` \| `codex` — маршрутизация чата |
-| `OPENAI_API_KEY` | Ключ OpenAI / совместимого API |
-| `OPENAI_MODEL` | Модель (например `gpt-4o-mini`, `gpt-5-codex`) |
-| `OPENAI_BASE_URL` | Базовый URL API (по умолчанию OpenAI) |
+| `OPENAI_API_KEY` | Ключ OpenAI **или** любого OpenAI-compatible API (Groq/OpenRouter/Gemini/…) |
+| `OPENAI_MODEL` | Модель (например `gpt-4o-mini`, `llama-3.3-70b-versatile`, `gemini-2.0-flash`) |
+| `OPENAI_BASE_URL` | Базовый URL API (по умолчанию OpenAI; см. пресеты ниже) |
 | `OLLAMA_OPENAI_BASE_URL` | Ollama OpenAI-совместимый endpoint (обычно `http://127.0.0.1:11434/v1`) |
 | `OLLAMA_OPENAI_MODEL` | Имя модели Ollama (должна быть установлена: `ollama pull …`) |
 | `OLLAMA_OPENAI_API_KEY` | Для Ollama часто `ollama` |
 | `EURIKA_OLLAMA_CLI_TIMEOUT_SEC` | Таймаут CLI Ollama, сек. (по умолчанию `120`; CPU-модели медленные) |
 | `EURIKA_OLLAMA_PROGRESS` | `1` / `0` — спиннер прогресса в терминале при Ollama CLI |
 
-**Поведение `auto`:** при наличии `OPENAI_API_KEY` — OpenAI API; иначе Ollama. `codex` — только OpenAI API, без fallback на Ollama.
+**Поведение `auto`:** при наличии `OPENAI_API_KEY` — remote OpenAI-compatible API; иначе Ollama. `codex` — только remote API, без fallback на Ollama.
+
+### Free / cloud LLM presets
+
+Отдельный SDK не нужен — тот же OpenAI-compatible HTTP. В Qt: **Models → API preset** (подставляет `OPENAI_BASE_URL` + модель по умолчанию). Ключ только в `.env` как `OPENAI_API_KEY`.
+
+| Preset | `OPENAI_BASE_URL` | Пример модели | Ключ |
+|--------|-------------------|---------------|------|
+| Groq | `https://api.groq.com/openai/v1` | `llama-3.3-70b-versatile` | console.groq.com/keys |
+| OpenRouter | `https://openrouter.ai/api/v1` | `openrouter/free` или `…:free` | openrouter.ai/keys |
+| Gemini | `https://generativelanguage.googleapis.com/v1beta/openai/` | `gemini-2.0-flash` | aistudio.google.com/apikey |
+| Cerebras | `https://api.cerebras.ai/v1` | `llama-3.3-70b` | cloud.cerebras.ai |
+| Mistral | `https://api.mistral.ai/v1` | `mistral-small-latest` | console.mistral.ai |
+| OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` | platform.openai.com |
+
+Шаблоны блоков — в `.env.example`. Free-tier лимиты (RPM/TPM) меняются у провайдеров; при 429 снижай timeout/частоту или вернись на Ollama.
 
 Таймаут чата в Qt задаётся на вкладке Models (поле timeout, по умолчанию 120 с).
 

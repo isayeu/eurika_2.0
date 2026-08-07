@@ -48,6 +48,7 @@ class ModelsTabAttrs:
     ollama_output: QTextEdit
 
     chat_provider_combo: QComboBox
+    chat_api_preset_combo: QComboBox
     openai_api_status: QLabel
     chat_openai_model: QLineEdit
     chat_ollama_model: QComboBox

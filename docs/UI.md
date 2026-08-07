@@ -23,7 +23,7 @@
 
 ### Chat: @-mentions (ROADMAP 3.6.5)
 
-Сужение контекста через `@module` и `@smell`. Примеры (по данным `eurika scan` / `eurika doctor`):
+Сужение контекста через `@module` и `@smell`. В поле Chat при вводе `@` — автодополнение кандидатов из `self_map.json` + smell-типов (Tab/Enter вставить, Esc закрыть). Примеры (по данным `eurika scan` / `eurika doctor`):
 
 | Запрос | Результат |
 |--------|-----------|

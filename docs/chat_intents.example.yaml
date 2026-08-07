@@ -196,6 +196,24 @@ intents:
       - "qt smoke"
     emit: null
 
+  host_health:
+    patterns:
+      - "здоровье ос"
+      - "здоровье системы"
+      - "операционку"
+      - "операционка"
+      - "проверь ос"
+      - "проверь arch"
+      - "host health"
+      - "os health"
+      - "system health"
+    vector_exemplars:
+      - "проверь операционку"
+      - "здоровье ОС Arch"
+      - "нагрузка системы"
+      - "host health check"
+    emit: null
+
   self_check:
     patterns:
       - "проведи self-check"
@@ -204,6 +222,8 @@ intents:
       - "self-check"
       - "self check"
       - "eurika self-check"
+      - "окружение eurika"
+      - "окружение проекта"
     exact:
       - "self-check"
       - "self check"
@@ -216,6 +236,10 @@ intents:
       - "verify phase"
       - "проверь 2.7"
       - "сверь roadmap с фазами"
+    exclude:
+      - "операционк"
+      - "железо"
+      - "hardware"
     vector_exemplars:
       - "проверь фазу 2.7"
       - "сверь roadmap"
@@ -260,10 +284,16 @@ intents:
       - "list root"
       - "list files"
       - "покажи файлы"
+      - "содержимое каталог"
+      - "содержимое папк"
+      - "содержимое проект"
+      - "список файлов"
+      - "list directory"
     exact: ["ls"]
     vector_exemplars:
       - "выполни ls"
       - "покажи файлы в корне"
+      - "покажи содержимое каталога проекта"
       - "list root files"
       - "команду ls"
     emit: "$ ls -la"

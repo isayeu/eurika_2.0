@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import html
 import re
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QTimer
@@ -15,6 +16,79 @@ if TYPE_CHECKING:
     from ..main_window import MainWindow
 
 
+def _chat_prompt_history_path(main: "MainWindow") -> Path | None:
+    root = ""
+    try:
+        root = str(main._settings.get_project_root() or "").strip()
+    except Exception:
+        root = ""
+    if not root:
+        return None
+    return Path(root) / ".eurika" / "chat_prompt_history.json"
+
+
+def _load_chat_prompt_history(main: "MainWindow", settings_data: dict[str, Any]) -> None:
+    if not hasattr(main, "chat_input") or not hasattr(main.chat_input, "set_history"):
+        return
+    import json
+
+    prompts: list[str] = []
+    path = _chat_prompt_history_path(main)
+    if path is not None and path.is_file():
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(raw, dict) and isinstance(raw.get("prompts"), list):
+                prompts = [str(x) for x in raw["prompts"]]
+            elif isinstance(raw, list):
+                prompts = [str(x) for x in raw]
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            prompts = []
+    if not prompts:
+        saved = settings_data.get("chat_prompt_history")
+        if isinstance(saved, list):
+            prompts = [str(x) for x in saved]
+    main.chat_input.set_history(prompts)
+
+
+def _save_chat_prompt_history(main: "MainWindow") -> None:
+    if not hasattr(main, "chat_input") or not hasattr(main.chat_input, "history_snapshot"):
+        return
+    import json
+
+    prompts = main.chat_input.history_snapshot()[-200:]
+    path = _chat_prompt_history_path(main)
+    if path is not None:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                json.dumps({"prompts": prompts}, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+    # Mirror into qt_settings as backup when project path missing / write failed.
+    try:
+        data = main._settings.load()
+        data["chat_prompt_history"] = prompts
+        main._settings.save(data)
+    except Exception:
+        pass
+
+
+def refresh_chat_mention_candidates(main: "MainWindow") -> None:
+    """Reload @-mention catalog from project self_map (Cursor-like autocomplete)."""
+    if not hasattr(main, "chat_input") or not hasattr(main.chat_input, "refresh_mentions_from_root"):
+        return
+    root = ""
+    try:
+        root = str(main._settings.get_project_root() or "").strip()
+    except Exception:
+        root = ""
+    if not root and hasattr(main, "root_edit"):
+        root = (main.root_edit.text() or "").strip()
+    main.chat_input.refresh_mentions_from_root(root or None)
+
+
 def load_chat_preferences(main: MainWindow) -> None:
     data = main._settings.load()
     provider = str(data.get("chat_provider", "auto"))
@@ -22,6 +96,21 @@ def load_chat_preferences(main: MainWindow) -> None:
         provider = "auto"
     main.chat_provider_combo.setCurrentText(provider)
     main.chat_openai_model.setText(str(data.get("chat_openai_model", "")))
+    if hasattr(main, "chat_api_preset_combo"):
+        from eurika.utils.llm_presets import detect_llm_api_preset, get_llm_api_preset
+
+        saved_preset = str(data.get("chat_api_preset", "")).strip().lower()
+        if saved_preset and get_llm_api_preset(saved_preset) is None:
+            saved_preset = ""
+        if not saved_preset:
+            import os
+
+            saved_preset = detect_llm_api_preset(os.environ.get("OPENAI_BASE_URL"))
+        combo = main.chat_api_preset_combo
+        combo.blockSignals(True)
+        idx = combo.findData(saved_preset)
+        combo.setCurrentIndex(idx if idx >= 0 else 0)
+        combo.blockSignals(False)
     saved_ollama = str(data.get("chat_ollama_model", "")).strip()
     if saved_ollama:
         combo = main.chat_ollama_model
@@ -33,6 +122,9 @@ def load_chat_preferences(main: MainWindow) -> None:
         timeout = int(timeout_val)
     except (TypeError, ValueError):
         timeout = 120
+    # Prompt ↑/↓ history (project-local; fallback qt_settings).
+    _load_chat_prompt_history(main, data)
+    refresh_chat_mention_candidates(main)
     main.chat_timeout_spin.setValue(min(9999, max(0, timeout)))
     main.ollama_hsa_edit.setText(str(data.get("ollama_hsa_override_gfx", "")))
     main.ollama_rocr_edit.setText(str(data.get("ollama_rocr_visible_devices", "")))
@@ -291,6 +383,8 @@ def save_chat_preferences(main: MainWindow) -> None:
     data = main._settings.load()
     data["chat_provider"] = main.chat_provider_combo.currentText()
     data["chat_openai_model"] = main.chat_openai_model.text().strip()
+    if hasattr(main, "chat_api_preset_combo"):
+        data["chat_api_preset"] = str(main.chat_api_preset_combo.currentData() or "")
     data["chat_ollama_model"] = main.chat_ollama_model.currentText().strip()
     data["chat_timeout_sec"] = main.chat_timeout_spin.value()
     data["ollama_hsa_override_gfx"] = main.ollama_hsa_edit.text().strip()
@@ -305,6 +399,40 @@ def save_chat_preferences(main: MainWindow) -> None:
     if hasattr(main, "ml_torch_device_combo"):
         data["torch_device"] = main.ml_torch_device_combo.currentText().strip() or "cpu"
     main._settings.save(data)
+
+
+def on_chat_api_preset_changed(main: MainWindow, *_args: object) -> None:
+    """Fill remote model + nudge provider when user picks a cloud preset."""
+    if not hasattr(main, "chat_api_preset_combo"):
+        return
+    from eurika.utils.llm_presets import get_llm_api_preset
+
+    preset_id = str(main.chat_api_preset_combo.currentData() or "")
+    preset = get_llm_api_preset(preset_id)
+    if preset is None:
+        save_chat_preferences(main)
+        if hasattr(main, "_refresh_openai_api_status"):
+            main._refresh_openai_api_status()
+        return
+    main.chat_openai_model.setText(preset.default_model)
+    # Cloud preset implies remote OpenAI-compatible path.
+    if main.chat_provider_combo.currentText() in {"auto", "ollama"}:
+        main.chat_provider_combo.setCurrentText("openai")
+    save_chat_preferences(main)
+    if hasattr(main, "_refresh_openai_api_status"):
+        main._refresh_openai_api_status()
+
+
+def current_chat_api_preset_id(main: MainWindow) -> str:
+    if not hasattr(main, "chat_api_preset_combo"):
+        return ""
+    return str(main.chat_api_preset_combo.currentData() or "")
+
+
+def current_chat_openai_base_url(main: MainWindow) -> str:
+    from eurika.utils.llm_presets import resolve_preset_base_url
+
+    return resolve_preset_base_url(current_chat_api_preset_id(main))
 
 
 def _format_chat_line(role: str, text: str, *, is_error: bool = False) -> str:
@@ -361,6 +489,7 @@ def dispatch_chat_message(main: MainWindow, message: str) -> None:
     openai_model = main.chat_openai_model.text().strip()
     ollama_model = main.chat_ollama_model.currentText().strip()
     timeout_sec = main.chat_timeout_spin.value()
+    openai_base_url = current_chat_openai_base_url(main)
     main.chat_transcript.append(_format_chat_line("user", message))
     main._chat_history.append({"role": "user", "content": message})
     main.chat_input.clear()
@@ -375,6 +504,7 @@ def dispatch_chat_message(main: MainWindow, message: str) -> None:
         openai_model=openai_model,
         ollama_model=ollama_model,
         timeout_sec=timeout_sec,
+        openai_base_url=openai_base_url,
         run_command_with_result=lambda cmd: _run_command_subprocess(cmd, str(main._api._root())),
     )
     main._chat_worker = worker
@@ -388,6 +518,9 @@ def dispatch_chat_message(main: MainWindow, message: str) -> None:
 
 def send_chat_message(main: MainWindow) -> None:
     message = main.chat_input.toPlainText().strip()
+    if message and hasattr(main.chat_input, "add_to_history"):
+        main.chat_input.add_to_history(message)
+        _save_chat_prompt_history(main)
     dispatch_chat_message(main, message)
 
 
@@ -530,17 +663,16 @@ def _run_command_subprocess(cmd: str, project_root: str) -> tuple[str, int]:
 
 
 def on_system_action(main: MainWindow, cmd: str) -> None:
-    """Emit Chat action to Terminal tab; if cmd starts with '$ ', also execute it."""
+    """Emit Chat action to Terminal tab.
+
+    Shell lines (``$ …``) are logged only — handlers execute via
+    ``run_command_with_result`` and mirror output through ``on_chat_result``
+    to avoid double-run. Comment / note emits (``# …``) stay log-only.
+    """
     if hasattr(main, "terminal_emulator_output") and main.terminal_emulator_output:
         main.terminal_emulator_output.append(f"[Chat] {cmd}")
-    run_cmd = (cmd or "").strip()
-    if run_cmd.startswith("$ "):
-        shell_cmd = run_cmd[2:].strip()
-        if shell_cmd and hasattr(main, "terminal_emulator_input"):
-            if not terminal_tab.execute_command_from_chat(main, shell_cmd):
-                main.terminal_emulator_output.append(
-                    "[Chat] (terminal busy — run manually in input below)"
-                )
+        if hasattr(main, "terminal_tab_index"):
+            main.tabs.setCurrentIndex(main.terminal_tab_index)
 
 
 def on_chat_result(main: MainWindow, payload: dict[str, Any]) -> None:
@@ -550,6 +682,8 @@ def on_chat_result(main: MainWindow, payload: dict[str, Any]) -> None:
         cmd = payload.get("terminal_cmd", "")
         out = payload.get("terminal_output", "")
         code = payload.get("terminal_exit_code", -1)
+        if hasattr(main, "terminal_tab_index"):
+            main.tabs.setCurrentIndex(main.terminal_tab_index)
         if cmd:
             main.terminal_emulator_output.append(f"[Chat] {cmd}")
         if out:
@@ -557,9 +691,18 @@ def on_chat_result(main: MainWindow, payload: dict[str, Any]) -> None:
         main.terminal_emulator_output.append(f"[done] exit_code={code}\n")
     text = str(payload.get("text", "")).strip()
     err = payload.get("error")
-    if err:
+    # Prefer structured chat text over dumping raw tool output as [error].
+    if err and not text:
         main.chat_transcript.append(_format_chat_line("assistant", f"[error]: {err}", is_error=True))
         return
+    if err and text:
+        # Keep a short note; do not replace the expert reply with a raw dump.
+        err_s = str(err).strip()
+        if len(err_s) > 280:
+            err_s = err_s[:240] + "…"
+        main.chat_transcript.append(
+            _format_chat_line("assistant", f"[note]: {err_s}", is_error=True)
+        )
     if not text:
         main.chat_transcript.append(_format_chat_line("assistant", "(empty response)"))
         refresh_chat_goal_view(main)

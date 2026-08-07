@@ -278,6 +278,8 @@ def test_live_reject_when_budget_exhausted(tmp_path: Path, monkeypatch) -> None:
         },
     )
     monkeypatch.setattr("eurika.ml.live_paper.entry_setup_ok", lambda *a, **k: True)
+    # Flat synthetic bars would trip the cost gate first; this test is about budget.
+    monkeypatch.setattr("eurika.ml.live_paper.cost_gate_ok", lambda *a, **k: (True, ""))
     r = lp.run_live_tick(
         tmp_path,
         symbol="BTCUSDT",

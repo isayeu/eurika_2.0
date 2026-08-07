@@ -1,5 +1,6 @@
 """Tests for eurika.reasoning.planner.llm_adapter (ROADMAP 2.9.2)."""
 
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,7 +17,7 @@ from eurika.reasoning.planner.llm_adapter import (
 
 
 @pytest.fixture(autouse=True)
-def _reset_llm_hint_runtime_state() -> None:
+def _reset_llm_hint_runtime_state() -> Iterator[None]:
     """Isolate module-level LLM hint state between tests."""
     from eurika.reasoning.planner.llm_adapter import _reset_hint_runtime_state
 
@@ -49,7 +50,8 @@ def test_parse_llm_hints_filters_boilerplate() -> None:
 
 def test_parse_llm_hints_empty_input() -> None:
     assert _parse_llm_hints("") == []
-    assert _parse_llm_hints(None) == []  # type: ignore
+    missing: str | None = None
+    assert _parse_llm_hints(missing) == []
 
 
 def test_build_planner_prompt_god_module() -> None:
@@ -98,7 +100,7 @@ def test_ask_ollama_unknown_smell_returns_empty() -> None:
 def test_ask_ollama_success_returns_hints() -> None:
     """When Ollama returns text, parsed hints are returned."""
     with patch("eurika.reasoning.planner.llm_adapter._use_llm_hints", return_value=True):
-        with patch("eurika.reasoning.architect._call_ollama_cli") as mock_cli:
+        with patch("eurika.reasoning.planner.llm_adapter._call_planner_llm") as mock_cli:
             mock_cli.return_value = (
                 "- Extract core logic into core.py\n- Move helpers to utils.py",
                 None,
@@ -115,7 +117,7 @@ def test_ask_ollama_success_returns_hints() -> None:
 def test_ask_ollama_failure_returns_empty() -> None:
     """When Ollama fails, returns [] (fallback to heuristics)."""
     with patch("eurika.reasoning.planner.llm_adapter._use_llm_hints", return_value=True):
-        with patch("eurika.reasoning.architect._call_ollama_cli") as mock_cli:
+        with patch("eurika.reasoning.planner.llm_adapter._call_planner_llm") as mock_cli:
             mock_cli.return_value = (None, "connection refused")
             result = ask_ollama_split_hints(
                 "god_module",
@@ -130,7 +132,7 @@ def test_ask_ollama_respects_max_calls_budget(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv("EURIKA_LLM_HINTS_MAX_CALLS", "1")
     monkeypatch.setenv("EURIKA_LLM_HINTS_BUDGET_SEC", "999")
     with patch("eurika.reasoning.planner.llm_adapter._use_llm_hints", return_value=True):
-        with patch("eurika.reasoning.architect._call_ollama_cli") as mock_cli:
+        with patch("eurika.reasoning.planner.llm_adapter._call_planner_llm") as mock_cli:
             mock_cli.return_value = ("- Extract one helper module", None)
             r1 = ask_ollama_split_hints("god_module", "a.py", {"imports_from": [], "imported_by": []})
             r2 = ask_ollama_split_hints("god_module", "b.py", {"imports_from": [], "imported_by": []})
@@ -144,7 +146,7 @@ def test_ask_ollama_unlimited_budget_allows_multiple_calls(monkeypatch: pytest.M
     monkeypatch.setenv("EURIKA_LLM_HINTS_MAX_CALLS", "0")
     monkeypatch.setenv("EURIKA_LLM_HINTS_BUDGET_SEC", "0")
     with patch("eurika.reasoning.planner.llm_adapter._use_llm_hints", return_value=True):
-        with patch("eurika.reasoning.architect._call_ollama_cli") as mock_cli:
+        with patch("eurika.reasoning.planner.llm_adapter._call_planner_llm") as mock_cli:
             mock_cli.return_value = ("- Extract helpers", None)
             r1 = ask_ollama_split_hints("god_module", "a.py", {"imports_from": [], "imported_by": []})
             r2 = ask_ollama_split_hints("god_module", "b.py", {"imports_from": [], "imported_by": []})
@@ -158,7 +160,7 @@ def test_ask_ollama_unlimited_budget_allows_multiple_calls(monkeypatch: pytest.M
 def test_ask_ollama_caches_result_per_module() -> None:
     """Repeated request for same smell/module should not re-call Ollama."""
     with patch("eurika.reasoning.planner.llm_adapter._use_llm_hints", return_value=True):
-        with patch("eurika.reasoning.architect._call_ollama_cli") as mock_cli:
+        with patch("eurika.reasoning.planner.llm_adapter._call_planner_llm") as mock_cli:
             mock_cli.return_value = ("- Extract parser helpers", None)
             r1 = ask_ollama_split_hints("god_module", "same.py", {"imports_from": [], "imported_by": []})
             r2 = ask_ollama_split_hints("god_module", "same.py", {"imports_from": [], "imported_by": []})
@@ -169,7 +171,7 @@ def test_ask_ollama_caches_result_per_module() -> None:
 def test_ask_ollama_timeout_triggers_circuit_breaker() -> None:
     """Timeout/connect failure disables further hint calls for the run."""
     with patch("eurika.reasoning.planner.llm_adapter._use_llm_hints", return_value=True):
-        with patch("eurika.reasoning.architect._call_ollama_cli") as mock_cli:
+        with patch("eurika.reasoning.planner.llm_adapter._call_planner_llm") as mock_cli:
             mock_cli.return_value = (None, "timed out (cli timeout=45s)")
             r1 = ask_ollama_split_hints("god_module", "first.py", {"imports_from": [], "imported_by": []})
             r2 = ask_ollama_split_hints("god_module", "second.py", {"imports_from": [], "imported_by": []})
@@ -194,7 +196,7 @@ def test_ask_llm_extract_method_hints_success(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     with patch("eurika.reasoning.planner.llm_adapter._use_llm_extract_hints", return_value=True):
-        with patch("eurika.reasoning.architect._call_ollama_cli") as mock_cli:
+        with patch("eurika.reasoning.planner.llm_adapter._call_planner_llm") as mock_cli:
             mock_cli.return_value = (
                 "- Extract the loop body to _process_chunk(data)\n- Move validation to helper",
                 None,
@@ -222,7 +224,7 @@ def test_ask_llm_extract_patch_success(tmp_path: Path, monkeypatch: pytest.Monke
     )
     refactored = '"""Module."""\ndef _helper(n):\n    return sum(range(n))\ndef long_func(x):\n    return _helper(10) + x\n'
     with patch("eurika.reasoning.planner.llm_adapter._use_llm_extract", return_value=True):
-        with patch("eurika.reasoning.architect._call_ollama_cli") as mock_cli:
+        with patch("eurika.reasoning.planner.llm_adapter._call_planner_llm") as mock_cli:
             mock_cli.return_value = (f"```python\n{refactored}\n```", None)
             result = ask_llm_extract_patch(py_file, "long_func")
     assert result is not None
@@ -241,10 +243,46 @@ def test_ask_llm_extract_patch_rejects_when_llm_drops_function(tmp_path: Path, m
     # LLM returns only handle_whitelist_draft, drops handle_campaign_undo
     refactored = '"""Multi."""\ndef handle_whitelist_draft(args):\n    return 0\n'
     with patch("eurika.reasoning.planner.llm_adapter._use_llm_extract", return_value=True):
-        with patch("eurika.reasoning.architect._call_ollama_cli") as mock_cli:
+        with patch("eurika.reasoning.planner.llm_adapter._call_planner_llm") as mock_cli:
             mock_cli.return_value = (f"```python\n{refactored}\n```", None)
             result = ask_llm_extract_patch(py_file, "handle_whitelist_draft")
     assert result is None
+
+
+def test_planner_llm_uses_configured_remote_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Planner must honour the same provider as chat, not always local Ollama."""
+    from eurika.reasoning.planner.llm_adapter import _call_planner_llm, _planner_llm_label
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://api.example.com/v1")
+    monkeypatch.setenv("OPENAI_MODEL", "remote-model")
+    monkeypatch.delenv("EURIKA_CHAT_PROVIDER", raising=False)
+    with (
+        patch("eurika.reasoning.architect.call_llm_with_prompt", return_value=("remote", None)) as remote,
+        patch("eurika.reasoning.architect._call_ollama_cli", return_value=("local", None)) as local,
+    ):
+        text, reason = _call_planner_llm("prompt")
+    assert (text, reason) == ("remote", None)
+    assert remote.call_count == 1
+    assert local.call_count == 0
+    assert _planner_llm_label() == "remote-model"
+
+
+def test_planner_llm_falls_back_to_local_ollama(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without a remote key (or with provider=ollama) the local CLI is used."""
+    from eurika.reasoning.planner.llm_adapter import _call_planner_llm
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    monkeypatch.setenv("EURIKA_CHAT_PROVIDER", "ollama")
+    with (
+        patch("eurika.reasoning.architect.call_llm_with_prompt", return_value=("remote", None)) as remote,
+        patch("eurika.reasoning.architect._call_ollama_cli", return_value=("local", None)) as local,
+    ):
+        text, _ = _call_planner_llm("prompt", local_timeout_override=0)
+    assert text == "local"
+    assert remote.call_count == 0
+    assert local.call_args.kwargs.get("timeout_override") == 0
 
 
 def test_llm_hint_runtime_stats_exposes_budget_state(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -252,7 +290,7 @@ def test_llm_hint_runtime_stats_exposes_budget_state(monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("EURIKA_LLM_HINTS_MAX_CALLS", "2")
     monkeypatch.setenv("EURIKA_LLM_HINTS_BUDGET_SEC", "999")
     with patch("eurika.reasoning.planner.llm_adapter._use_llm_hints", return_value=True):
-        with patch("eurika.reasoning.architect._call_ollama_cli") as mock_cli:
+        with patch("eurika.reasoning.planner.llm_adapter._call_planner_llm") as mock_cli:
             mock_cli.return_value = ("- Extract parser helpers", None)
             _ = ask_ollama_split_hints("god_module", "stats.py", {"imports_from": [], "imported_by": []})
     stats = llm_hint_runtime_stats()

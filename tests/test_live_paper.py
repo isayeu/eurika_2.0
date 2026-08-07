@@ -17,6 +17,15 @@ def _disable_exec_tf_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(lp, "DEFAULT_EXEC_INTERVAL", "")
 
 
+@pytest.fixture(autouse=True)
+def _open_cost_gate(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Synthetic bars are flat, so the cost gate would block every entry.
+
+    Tests about the gate itself opt back in by restoring the real function.
+    """
+    monkeypatch.setattr(lp, "cost_gate_ok", lambda *a, **k: (True, ""))
+
+
 def _candles(n: int = 50, *, start: float = 100.0) -> list[dict[str, float | int]]:
     rows = []
     px = start
@@ -111,6 +120,7 @@ def test_format_market_event() -> None:
 
 
 def test_explore_when_idle_opens_despite_hold(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Explore buys a label as a shadow — never sits the paper-equity exam."""
     batch = _candles(40)
     ms.save_candles(tmp_path, batch[:36], symbol="BTCUSDT", interval="15m")
 
@@ -137,9 +147,209 @@ def test_explore_when_idle_opens_despite_hold(tmp_path: Path, monkeypatch: pytes
     assert r["ok"] is True
     kinds = [e["kind"] for e in r["events"]]
     assert "explore" in kinds
-    assert "paper" in kinds
-    assert r["opens"] == 1
-    assert (r.get("suggestion") or {}).get("explored") is True
+    assert "paper" not in kinds
+    assert r["opens"] == 0
+    assert lp.load_open_positions(tmp_path) == []
+    shadows = lp.load_shadow_positions(tmp_path)
+    assert len(shadows) == 1
+    assert "explore" in str(shadows[0].get("source") or "")
+
+
+def test_cost_gate_blocks_entry_when_move_will_not_pay_the_fee(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Flat synthetic bars: nothing is expanding, so the entry must not open."""
+    from eurika.ml import entry_cost
+
+    monkeypatch.setattr(lp, "cost_gate_ok", entry_cost.cost_gate_ok)
+    ms.save_candles(tmp_path, _candles(40)[:36], symbol="BTCUSDT", interval="15m", market="spot")
+    monkeypatch.setattr(
+        "eurika.ml.live_paper.predict_action",
+        lambda root, vec: {
+            "action": "BUY",
+            "source": "model",
+            "probs": {"HOLD": 0.20, "BUY": 0.70, "SELL": 0.10},
+        },
+    )
+
+    r = lp.run_live_tick(
+        tmp_path,
+        symbol="BTCUSDT",
+        interval="15m",
+        window=16,
+        horizon=2,
+        market="spot",
+        micro_train=False,
+        explore=False,
+        fetch=lambda *a, **k: {"ok": True, "candles": [], "error": None},
+    )
+    assert r["ok"] is True
+    assert lp.load_open_positions(tmp_path) == []
+    msgs = " ".join(str(e.get("message") or "") for e in r["events"])
+    assert "не окупает комиссию" in msgs
+    # The refused entry is still tracked, or the journal would only ever see
+    # the regime the gate allows and the next calibration would unlock itself.
+    shadows = lp.load_shadow_positions(tmp_path)
+    assert len(shadows) == 1
+    assert shadows[0]["action"] == "BUY"
+    assert shadows[0]["shadow"] is True
+    assert not shadows[0].get("margin_usdt")
+
+
+def test_shadow_entry_becomes_a_label_without_touching_money(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A shadow resolves through the same machinery, but pays nothing."""
+    from eurika.ml import entry_cost
+    from eurika.ml.paper_portfolio import ensure_portfolio
+    from eurika.ml.paper_trader import load_paper_trades
+
+    monkeypatch.setattr(lp, "cost_gate_ok", entry_cost.cost_gate_ok)
+    monkeypatch.setattr(
+        "eurika.ml.live_paper.predict_action",
+        lambda root, vec: {
+            "action": "BUY",
+            "source": "model",
+            "probs": {"HOLD": 0.20, "BUY": 0.70, "SELL": 0.10},
+        },
+    )
+    equity_before = float(ensure_portfolio(tmp_path)["equity_usdt"])
+    for n in (36, 40):
+        ms.save_candles(
+            tmp_path, _candles(48)[:n], symbol="BTCUSDT", interval="15m", market="spot"
+        )
+        lp.run_live_tick(
+            tmp_path,
+            symbol="BTCUSDT",
+            interval="15m",
+            window=16,
+            horizon=2,
+            market="spot",
+            micro_train=False,
+            explore=False,
+            fetch=lambda *a, **k: {"ok": True, "candles": [], "error": None},
+        )
+
+    rows = [r for r in load_paper_trades(tmp_path) if r.get("shadow")]
+    assert rows, "shadow entry must produce a training label"
+    row = rows[0]
+    assert row["live"] is False
+    assert row["pnl_usdt"] is None
+    assert row["feature_vec"]
+    assert row["edge"] is not None
+    assert lp.load_open_positions(tmp_path) == []
+    assert float(ensure_portfolio(tmp_path)["equity_usdt"]) == equity_before
+
+
+def test_shadow_does_not_block_a_real_entry_on_the_same_symbol(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Shadows live in their own book; the live path must not see them as open."""
+    lp.save_shadow_positions(
+        tmp_path,
+        [
+            {
+                "ts": 1,
+                "symbol": "BTCUSDT",
+                "market": "spot",
+                "action": "BUY",
+                "entry": 100.0,
+                "horizon": 2,
+                "shadow": True,
+            }
+        ],
+    )
+    ms.save_candles(tmp_path, _candles(40)[:36], symbol="BTCUSDT", interval="15m", market="spot")
+    monkeypatch.setattr(
+        "eurika.ml.live_paper.predict_action",
+        lambda root, vec: {
+            "action": "BUY",
+            "source": "model",
+            "probs": {"HOLD": 0.20, "BUY": 0.70, "SELL": 0.10},
+        },
+    )
+    r = lp.run_live_tick(
+        tmp_path,
+        symbol="BTCUSDT",
+        interval="15m",
+        window=16,
+        horizon=2,
+        market="spot",
+        micro_train=False,
+        explore=False,
+        fetch=lambda *a, **k: {"ok": True, "candles": [], "error": None},
+    )
+    assert r["ok"] is True
+    assert len(lp.load_open_positions(tmp_path)) == 1
+
+
+def test_cost_gate_lets_expanding_move_through(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same setup, but a calibrated gate that the current expansion clears."""
+    from eurika.ml import entry_cost
+
+    monkeypatch.setattr(lp, "cost_gate_ok", entry_cost.cost_gate_ok)
+    gate_path = entry_cost.cost_gate_path(tmp_path)
+    gate_path.parent.mkdir(parents=True, exist_ok=True)
+    gate_path.write_text('{"expansion_min": -9.0, "cost_mult": 1.5}', encoding="utf-8")
+    ms.save_candles(tmp_path, _candles(40)[:36], symbol="BTCUSDT", interval="15m", market="spot")
+    monkeypatch.setattr(
+        "eurika.ml.live_paper.predict_action",
+        lambda root, vec: {
+            "action": "BUY",
+            "source": "model",
+            "probs": {"HOLD": 0.20, "BUY": 0.70, "SELL": 0.10},
+        },
+    )
+
+    r = lp.run_live_tick(
+        tmp_path,
+        symbol="BTCUSDT",
+        interval="15m",
+        window=16,
+        horizon=2,
+        market="spot",
+        micro_train=False,
+        explore=False,
+        fetch=lambda *a, **k: {"ok": True, "candles": [], "error": None},
+    )
+    assert r["ok"] is True
+    assert len(lp.load_open_positions(tmp_path)) == 1
+
+
+def test_cost_gate_does_not_block_explore(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Explore is a shadow probe: cost gate never sees it, equity never moves."""
+    from eurika.ml import entry_cost
+
+    monkeypatch.setattr(lp, "cost_gate_ok", entry_cost.cost_gate_ok)
+    ms.save_candles(tmp_path, _candles(40)[:36], symbol="BTCUSDT", interval="15m")
+    monkeypatch.setattr(
+        "eurika.ml.live_paper.predict_action",
+        lambda root, vec: {
+            "action": "HOLD",
+            "source": "model",
+            "probs": {"HOLD": 0.9, "BUY": 0.05, "SELL": 0.05},
+        },
+    )
+    r = lp.run_live_tick(
+        tmp_path,
+        symbol="BTCUSDT",
+        interval="15m",
+        window=16,
+        horizon=2,
+        micro_train=False,
+        explore=True,
+        explore_when_idle=True,
+        explore_live_cap=0,
+        fetch=lambda *a, **k: {"ok": True, "candles": [], "error": None},
+        rng=random.Random(0),
+    )
+    assert r["ok"] is True
+    assert r["opens"] == 0
+    assert lp.load_open_positions(tmp_path) == []
+    assert len(lp.load_shadow_positions(tmp_path)) == 1
+    assert "explore" in [e["kind"] for e in r["events"]]
 
 
 def test_explore_stops_after_live_cap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -225,10 +435,11 @@ def test_universe_tick_two_symbols(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert r["ok"] is True
     assert r["symbols"] == ["ETHUSDT", "SOLUSDT"]
     assert any(e.get("kind") == "info" and "universe" in str(e.get("message")) for e in r["events"])
-    opens = lp.load_open_positions(tmp_path)
-    assert len(opens) == 2
+    assert lp.load_open_positions(tmp_path) == []
+    shadows = lp.load_shadow_positions(tmp_path)
+    assert len(shadows) == 2
 
-    # Second tick while waiting: fully silent (no spam)
+    # Second tick while shadows wait: live book is idle (no spam)
     r2 = lp.run_live_universe_tick(
         tmp_path,
         symbols=["ETHUSDT", "SOLUSDT"],
@@ -513,8 +724,9 @@ def test_universe_both_markets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     )
     assert r["ok"] is True
     assert r["markets"] == ["spot", "futures"]
-    opens = lp.load_open_positions(tmp_path)
-    kinds = {str(p.get("market") or "spot") for p in opens}
+    assert lp.load_open_positions(tmp_path) == []
+    shadows = lp.load_shadow_positions(tmp_path)
+    kinds = {str(p.get("market") or "spot") for p in shadows}
     assert kinds == {"spot", "futures"}
 
 
@@ -928,3 +1140,170 @@ def test_sl_exit_registers_reentry_cooldown(tmp_path: Path, monkeypatch: pytest.
     assert cd is not None
     assert cd.get("exit_reason") == "sl"
     assert any("после SL" in str(e.get("message") or "") for e in r["events"])
+
+
+def test_planned_hold_prefers_exec_horizon() -> None:
+    pos = {
+        "horizon": 4,
+        "interval": "1h",
+        "horizon_exec": 240,
+        "exec_interval": "1m",
+    }
+    assert lp.planned_hold_ms(pos, interval="1h", horizon=4) == 240 * 60_000
+
+
+def test_stale_force_close_max_age() -> None:
+    planned = 240 * 60_000
+    entry = 1_700_000_000_000
+    pos = {
+        "ts": entry,
+        "horizon": 4,
+        "interval": "1h",
+        "horizon_exec": 240,
+        "exec_interval": "1m",
+    }
+    assert (
+        lp.stale_force_close_reason(
+            pos,
+            now_ts_ms=entry + planned * lp.MAX_HOLD_MULT - 1,
+            interval="1h",
+            horizon=4,
+        )
+        is None
+    )
+    assert (
+        lp.stale_force_close_reason(
+            pos,
+            now_ts_ms=entry + planned * lp.MAX_HOLD_MULT,
+            interval="1h",
+            horizon=4,
+        )
+        == "max_age"
+    )
+
+
+def test_stale_force_close_when_entry_left_window() -> None:
+    planned = 240 * 60_000
+    entry = 1_700_000_000_000
+    pos = {
+        "ts": entry,
+        "horizon": 4,
+        "interval": "1h",
+        "horizon_exec": 240,
+        "exec_interval": "1m",
+    }
+    candles = [{"open_time": entry + planned + 60_000, "close": 1.0}]
+    assert (
+        lp.stale_force_close_reason(
+            pos,
+            now_ts_ms=entry + planned + 60_000,
+            interval="1h",
+            horizon=4,
+            candles_exec=candles,
+        )
+        == "stale"
+    )
+    # Still inside planned hold → do not force-close yet.
+    assert (
+        lp.stale_force_close_reason(
+            pos,
+            now_ts_ms=entry + planned // 2,
+            interval="1h",
+            horizon=4,
+            candles_exec=[{"open_time": entry + planned // 2, "close": 1.0}],
+        )
+        is None
+    )
+
+
+def test_live_tick_force_closes_max_age_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Open past N×horizon closes at last close with exit_reason=max_age."""
+    monkeypatch.setattr(lp, "DEFAULT_EXEC_INTERVAL", "1m")
+    root = tmp_path
+    t0 = 1_700_000_000_000
+    main = []
+    px = 100.0
+    for i in range(20):
+        main.append(
+            {
+                "open_time": t0 + i * 3_600_000,
+                "open": px,
+                "high": px * 1.001,
+                "low": px * 0.999,
+                "close": px,
+                "volume": 1.0,
+                "close_time": t0 + (i + 1) * 3_600_000 - 1,
+            }
+        )
+    entry_ts = t0
+    # 1m window starts long after entry (scrolled out); age ≫ 3×4h hold.
+    now = entry_ts + 13 * 3_600_000
+    exec_bars = []
+    for i in range(30):
+        ts = now - (29 - i) * 60_000
+        exec_bars.append(
+            {
+                "open_time": ts,
+                "open": 101.0,
+                "high": 101.1,
+                "low": 100.9,
+                "close": 101.0,
+                "volume": 1.0,
+                "close_time": ts + 59_999,
+            }
+        )
+    ms.save_candles(root, main, symbol="BTCUSDT", interval="1h", market="spot")
+    ms.save_candles(root, exec_bars, symbol="BTCUSDT", interval="1m", market="spot")
+    lp.save_open_positions(
+        root,
+        [
+            {
+                "ts": entry_ts,
+                "symbol": "BTCUSDT",
+                "interval": "1h",
+                "market": "spot",
+                "action": "BUY",
+                "entry": 100.0,
+                "horizon": 4,
+                "horizon_exec": 240,
+                "exec_interval": "1m",
+                "tp_pct": 0.01,
+                "sl_pct": 0.01,
+                "entry_style": "market",
+                "source": "model",
+                "features": {},
+                "feature_vec": [0.0] * 12,
+                "margin_usdt": 10.0,
+                "notional_usdt": 10.0,
+                "leverage": 1.0,
+            }
+        ],
+    )
+
+    def _fake_fetch(*_a, **_k):
+        return {"ok": True, "candles": [], "error": None}
+
+    r = lp.run_live_tick(
+        root,
+        symbol="BTCUSDT",
+        interval="1h",
+        horizon=4,
+        window=16,
+        market="spot",
+        exec_interval="1m",
+        explore=False,
+        micro_train=False,
+        allow_open=False,
+        fetch=_fake_fetch,
+    )
+    assert r["ok"]
+    assert r["resolved"] == 1
+    from eurika.ml.paper_trader import load_paper_trades
+
+    assert lp.load_open_positions(root) == []
+    trade = load_paper_trades(root)[-1]
+    assert trade["exit_reason"] == "max_age"
+    assert abs(float(trade["exit"]) - 101.0) < 1e-9
+    assert any("max-age" in str(e.get("message") or "") for e in r["events"])

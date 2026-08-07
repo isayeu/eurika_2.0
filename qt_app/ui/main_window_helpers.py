@@ -5,9 +5,9 @@ import os
 import re
 from typing import Any
 
-from PySide6.QtCore import Qt, Signal, QThread
+from PySide6.QtCore import QPoint, Qt, QThread, Signal
 from PySide6.QtGui import QKeyEvent, QTextCursor
-from PySide6.QtWidgets import QLineEdit, QTextEdit, QWidget
+from PySide6.QtWidgets import QAbstractItemView, QLineEdit, QListWidget, QListWidgetItem, QTextEdit, QWidget
 
 _ANSI_STRIP_RE = re.compile(
     '\\x1b\\[[0-?]*[ -/]*[@-~]|\\x1b\\][^\\x07\\x1b]*(?:\\x07|\\x1b\\\\)|'
@@ -435,18 +435,232 @@ class TerminalRunShim:
 
 
 class ChatInputEdit(QTextEdit):
-    """Chat compose field: Ctrl+Enter sends, Enter inserts a newline."""
+    """Chat compose field: Ctrl+Enter sends; Up/Down browse sent prompts (like Terminal).
+
+    Cursor-like ``@`` autocomplete: modules from self_map + smell types.
+    """
 
     submit_requested = Signal()
 
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._history: list[str] = []
+        self._history_index = -1
+        self._pending_from_history: str | None = None
+        self._mention_catalog: list[str] = []
+        self._mention_popup: QListWidget | None = None
+        self.textChanged.connect(self._on_text_changed_for_mentions)
+
+    def set_mention_catalog(self, items: list[str] | None) -> None:
+        self._mention_catalog = [str(x) for x in (items or []) if str(x).strip()]
+
+    def refresh_mentions_from_root(self, root: str | None) -> None:
+        from eurika.api.chat_mentions import build_mention_catalog
+
+        self.set_mention_catalog(build_mention_catalog(root))
+
+    def mention_popup_visible(self) -> bool:
+        return bool(self._mention_popup is not None and self._mention_popup.isVisible())
+
+    def _ensure_mention_popup(self) -> QListWidget:
+        if self._mention_popup is None:
+            popup = QListWidget(self)
+            popup.setWindowFlags(
+                Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint | Qt.WindowType.NoDropShadowWindowHint
+            )
+            popup.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            popup.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            popup.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+            popup.setMaximumHeight(180)
+            popup.setMinimumWidth(220)
+            popup.itemClicked.connect(self._on_mention_item_clicked)
+            self._mention_popup = popup
+        return self._mention_popup
+
+    def _hide_mention_popup(self) -> None:
+        if self._mention_popup is not None:
+            self._mention_popup.hide()
+            self._mention_popup.clear()
+
+    def _on_text_changed_for_mentions(self) -> None:
+        self._update_mention_popup()
+
+    def _current_at_token(self) -> tuple[int, int, str] | None:
+        from eurika.api.chat_mentions import extract_at_token
+
+        return extract_at_token(self.toPlainText(), self.textCursor().position())
+
+    def _update_mention_popup(self) -> None:
+        from eurika.api.chat_mentions import filter_mention_candidates
+
+        token = self._current_at_token()
+        if token is None:
+            self._hide_mention_popup()
+            return
+        _at, _end, prefix = token
+        catalog = self._mention_catalog
+        if not catalog:
+            # Still offer smells even before root refresh.
+            from eurika.api.chat_mentions import smell_mention_ids
+
+            catalog = smell_mention_ids()
+        matches = filter_mention_candidates(catalog, prefix)
+        if not matches:
+            self._hide_mention_popup()
+            return
+        popup = self._ensure_mention_popup()
+        popup.clear()
+        for name in matches:
+            popup.addItem(QListWidgetItem(name))
+        popup.setCurrentRow(0)
+        # Size to content (capped).
+        row_h = popup.sizeHintForRow(0) if popup.count() else 20
+        popup.setFixedHeight(min(180, max(28, row_h * min(popup.count(), 8) + 8)))
+        widest = max(220, popup.sizeHintForColumn(0) + 24)
+        popup.setFixedWidth(min(420, widest))
+        rect = self.cursorRect()
+        global_pos = self.mapToGlobal(rect.bottomLeft())
+        popup.move(global_pos + QPoint(0, 2))
+        popup.show()
+
+    def _insert_mention(self, name: str) -> None:
+        token = self._current_at_token()
+        if token is None:
+            return
+        at, end, _prefix = token
+        cursor = self.textCursor()
+        cursor.setPosition(at)
+        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        cursor.insertText(f"@{name} ")
+        self.setTextCursor(cursor)
+        self._hide_mention_popup()
+
+    def _on_mention_item_clicked(self, item: QListWidgetItem) -> None:
+        if item is None:
+            return
+        self._insert_mention(item.text())
+
+    def add_to_history(self, cmd: str) -> None:
+        cmd = (cmd or "").strip()
+        if not cmd:
+            return
+        if self._history and self._history[-1] == cmd:
+            self._history_index = -1
+            self._pending_from_history = None
+            return
+        self._history.append(cmd)
+        if len(self._history) > 500:
+            self._history.pop(0)
+        self._history_index = -1
+        self._pending_from_history = None
+
+    def history_snapshot(self) -> list[str]:
+        return list(self._history)
+
+    def set_history(self, items: list[str] | None) -> None:
+        cleaned: list[str] = []
+        for raw in items or []:
+            s = str(raw or "").strip()
+            if s:
+                cleaned.append(s)
+        self._history = cleaned[-500:]
+        self._history_index = -1
+        self._pending_from_history = None
+
+    def _cursor_on_first_block(self) -> bool:
+        return self.textCursor().blockNumber() == 0
+
+    def _cursor_on_last_block(self) -> bool:
+        return self.textCursor().blockNumber() >= max(0, self.document().blockCount() - 1)
+
+    def _apply_history_entry(self, text: str) -> None:
+        self.setPlainText(text)
+        cursor = self.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        self.setTextCursor(cursor)
+
     def keyPressEvent(self, event: QKeyEvent) -> None:
         key = event.key()
-        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            mods = event.modifiers()
-            if mods & Qt.KeyboardModifier.ControlModifier:
+        if self.mention_popup_visible() and self._mention_popup is not None:
+            if key == Qt.Key.Key_Escape:
+                self._hide_mention_popup()
+                event.accept()
+                return
+            if key in (Qt.Key.Key_Up, Qt.Key.Key_Down):
+                row = self._mention_popup.currentRow()
+                count = self._mention_popup.count()
+                if count <= 0:
+                    self._hide_mention_popup()
+                    super().keyPressEvent(event)
+                    return
+                if key == Qt.Key.Key_Up:
+                    row = (row - 1) % count
+                else:
+                    row = (row + 1) % count
+                self._mention_popup.setCurrentRow(row)
+                event.accept()
+                return
+            if key == Qt.Key.Key_Tab or (
+                key in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
+                and not (event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+            ):
+                item = self._mention_popup.currentItem()
+                if item is not None:
+                    self._insert_mention(item.text())
+                    event.accept()
+                    return
+            if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and (
+                event.modifiers() & Qt.KeyboardModifier.ControlModifier
+            ):
+                self._hide_mention_popup()
                 self.submit_requested.emit()
                 event.accept()
                 return
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            mods = event.modifiers()
+            if mods & Qt.KeyboardModifier.ControlModifier:
+                self._hide_mention_popup()
+                self.submit_requested.emit()
+                event.accept()
+                return
+        if key == Qt.Key.Key_Up and self._cursor_on_first_block():
+            if not self._history:
+                super().keyPressEvent(event)
+                return
+            if self._history_index < 0:
+                self._pending_from_history = self.toPlainText()
+            self._history_index = min(len(self._history) - 1, self._history_index + 1)
+            self._apply_history_entry(self._history[-(self._history_index + 1)])
+            event.accept()
+            return
+        if key == Qt.Key.Key_Down and self._cursor_on_last_block():
+            if self._history_index < 0:
+                super().keyPressEvent(event)
+                return
+            if self._history_index <= 0:
+                self._history_index = -1
+                self._apply_history_entry(self._pending_from_history or "")
+                self._pending_from_history = None
+            else:
+                self._history_index -= 1
+                self._apply_history_entry(self._history[-(self._history_index + 1)])
+            event.accept()
+            return
+        # Reset browse index when the user edits (not while only navigating).
+        if key not in (Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_Left, Qt.Key.Key_Right,
+                       Qt.Key.Key_Home, Qt.Key.Key_End, Qt.Key.Key_Shift, Qt.Key.Key_Control,
+                       Qt.Key.Key_Alt, Qt.Key.Key_Meta):
+            if self._history_index >= 0 and key not in (
+                Qt.Key.Key_Control,
+                Qt.Key.Key_Shift,
+                Qt.Key.Key_Alt,
+            ):
+                # Keep index until real text change — clear on printable / backspace.
+                if key in (Qt.Key.Key_Backspace, Qt.Key.Key_Delete) or (
+                    event.text() and event.text().isprintable()
+                ):
+                    self._history_index = -1
+                    self._pending_from_history = None
         super().keyPressEvent(event)
 
 
@@ -468,6 +682,7 @@ class ChatWorker(QThread):
         openai_model: str,
         ollama_model: str,
         timeout_sec: int,
+        openai_base_url: str = "",
         run_command_with_result: Any = None,
     ) -> None:
         super().__init__()
@@ -478,6 +693,7 @@ class ChatWorker(QThread):
         self._openai_model = openai_model
         self._ollama_model = ollama_model
         self._timeout_sec = timeout_sec
+        self._openai_base_url = openai_base_url
         self._run_command_with_result = run_command_with_result
         self._cancelled = False
 
@@ -501,6 +717,7 @@ class ChatWorker(QThread):
                 openai_model=self._openai_model,
                 ollama_model=self._ollama_model,
                 timeout_sec=self._timeout_sec,
+                openai_base_url=self._openai_base_url,
                 on_system_action=_on_action,
                 run_command_with_result=self._run_command_with_result,
             )

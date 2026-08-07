@@ -115,6 +115,7 @@ class EurikaApiAdapter:
         openai_model: str,
         ollama_model: str,
         timeout_sec: int,
+        openai_base_url: str = "",
     ):
         keys = (
             "OPENAI_API_KEY",
@@ -133,6 +134,9 @@ class EurikaApiAdapter:
                 cli_timeout = max(cli_timeout, 120)
             os.environ["EURIKA_OLLAMA_CLI_TIMEOUT_SEC"] = str(cli_timeout)
             os.environ["EURIKA_CHAT_PROVIDER"] = provider
+            base = (openai_base_url or "").strip()
+            if base and provider in {"auto", "openai", "codex"}:
+                os.environ["OPENAI_BASE_URL"] = base
             if provider in {"openai", "codex"}:
                 if openai_model.strip():
                     os.environ["OPENAI_MODEL"] = openai_model.strip()
@@ -169,6 +173,7 @@ class EurikaApiAdapter:
         openai_model: str = "",
         ollama_model: str = "",
         timeout_sec: int = 20,
+        openai_base_url: str = "",
         on_system_action: Callable[[str], None] | None = None,
         run_command_with_result: Callable[[str], tuple[str, int]] | None = None,
     ) -> dict[str, Any]:
@@ -177,6 +182,7 @@ class EurikaApiAdapter:
             openai_model=openai_model,
             ollama_model=ollama_model,
             timeout_sec=timeout_sec,
+            openai_base_url=openai_base_url,
         ):
             return _chat_send(
                 self._root(),

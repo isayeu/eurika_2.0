@@ -320,7 +320,10 @@ def load_paper_trades(project_root: str | Path) -> list[dict[str, Any]]:
 
 
 def paper_status(project_root: str | Path) -> dict[str, Any]:
-    rows = load_paper_trades(project_root)
+    all_rows = load_paper_trades(project_root)
+    # Shadow rows are labels, not trades — counted apart so the status stays
+    # a picture of what the book actually did.
+    rows = [r for r in all_rows if not r.get("shadow")]
     correct = sum(1 for r in rows if r.get("correct"))
     buys = sum(1 for r in rows if r.get("action") == "BUY")
     sells = sum(1 for r in rows if r.get("action") == "SELL")
@@ -332,4 +335,5 @@ def paper_status(project_root: str | Path) -> dict[str, Any]:
         "buys": buys,
         "sells": sells,
         "accuracy": (correct / len(rows)) if rows else None,
+        "shadow_count": len(all_rows) - len(rows),
     }

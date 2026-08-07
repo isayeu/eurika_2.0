@@ -10,6 +10,7 @@ _PROJECT_ENV_KEYS = (
     "OPENAI_API_KEY",
     "OPENAI_MODEL",
     "OPENAI_BASE_URL",
+    "EURIKA_CHAT_PROVIDER",
     "OLLAMA_OPENAI_API_KEY",
     "OLLAMA_OPENAI_MODEL",
     "OLLAMA_OPENAI_BASE_URL",
@@ -29,6 +30,44 @@ _PROJECT_ENV_KEYS = (
     "EURIKA_USE_VECTOR_INTENT",
     "EURIKA_TORCH_DEVICE",
 )
+
+# Subset for callers that only need LLM routing and must not flip feature flags
+# (e.g. the chat API, which can be imported by tests and other apps).
+LLM_ROUTING_ENV_KEYS = (
+    "OPENAI_API_KEY",
+    "OPENAI_MODEL",
+    "OPENAI_BASE_URL",
+    "EURIKA_CHAT_PROVIDER",
+    "OLLAMA_OPENAI_API_KEY",
+    "OLLAMA_OPENAI_MODEL",
+    "OLLAMA_OPENAI_BASE_URL",
+)
+
+
+def _parse_env_file(env_path: Path) -> dict[str, str]:
+    """Minimal KEY=VALUE parser (no python-dotenv required)."""
+    out: dict[str, str] = {}
+    try:
+        text = env_path.read_text(encoding="utf-8")
+    except OSError:
+        return out
+    for line in text.splitlines():
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        if s.startswith("export "):
+            s = s[7:].strip()
+        if "=" not in s:
+            continue
+        key, _, val = s.partition("=")
+        key = key.strip()
+        if not key:
+            continue
+        val = val.strip()
+        if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+            val = val[1:-1]
+        out[key] = val
+    return out
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -77,19 +116,36 @@ def upsert_project_env_var(
     return env_path
 
 
-def load_project_dotenv(project_root: str | Path | None = None) -> None:
-    """Load .env from project root; selected project keys override shell exports."""
-    try:
-        from dotenv import dotenv_values, load_dotenv
-    except ImportError:
-        return
+def load_project_dotenv(
+    project_root: str | Path | None = None,
+    *,
+    keys: tuple[str, ...] | None = None,
+) -> None:
+    """Load .env from project root; selected project keys override shell exports.
+
+    Uses python-dotenv when installed; otherwise a tiny built-in parser so API
+    keys still reach the Qt process.
+
+    ``keys`` restricts what is applied (e.g. ``LLM_ROUTING_ENV_KEYS``); nothing
+    outside that set reaches ``os.environ``, so a library caller cannot flip
+    feature flags for the whole process.
+    """
     root = Path(project_root or ".").resolve()
     env_path = root / ".env"
     if not env_path.is_file():
         return
-    load_dotenv(dotenv_path=str(env_path), override=False)
-    values = dotenv_values(dotenv_path=str(env_path))
-    for key in _PROJECT_ENV_KEYS:
+    wanted = keys if keys is not None else _PROJECT_ENV_KEYS
+    values: dict[str, str | None] = {}
+    try:
+        from dotenv import dotenv_values, load_dotenv
+
+        if keys is None:
+            load_dotenv(dotenv_path=str(env_path), override=False)
+        raw = dotenv_values(dotenv_path=str(env_path))
+        values = {k: (str(v) if v is not None else None) for k, v in raw.items()}
+    except ImportError:
+        values = {k: v for k, v in _parse_env_file(env_path).items()}
+    for key in wanted:
         value = values.get(key)
         if value:
             os.environ[key] = value

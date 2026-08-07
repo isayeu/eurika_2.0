@@ -280,6 +280,10 @@ class MainWindow(
         self.ollama_vulkan_check.toggled.connect(lambda c: ollama_handlers.on_ollama_vulkan_toggled(self, c))
         self.ollama_refresh_models_btn.clicked.connect(lambda: ollama_handlers.refresh_ollama_models(self, user_initiated=True))
         self.chat_ollama_refresh_btn.clicked.connect(lambda: ollama_handlers.refresh_ollama_models(self, user_initiated=True))
+        if hasattr(self, "chat_api_preset_combo"):
+            self.chat_api_preset_combo.currentIndexChanged.connect(
+                lambda *_: chat_handlers.on_chat_api_preset_changed(self)
+            )
         self.ollama_install_btn.clicked.connect(lambda: ollama_handlers.install_selected_ollama_model(self))
         self.ollama_installed_combo.currentTextChanged.connect(lambda v: ollama_handlers.sync_chat_model_from_installed(self, v))
         self.ml_torch_refresh_btn.clicked.connect(
@@ -355,15 +359,44 @@ class MainWindow(
     def _refresh_openai_api_status(self) -> None:
         if not hasattr(self, "openai_api_status"):
             return
+        from eurika.utils.llm_presets import detect_llm_api_preset, get_llm_api_preset
+
         key = (os.environ.get("OPENAI_API_KEY") or "").strip()
+        base = (os.environ.get("OPENAI_BASE_URL") or "").strip()
+        model = (os.environ.get("OPENAI_MODEL") or "").strip() or "—"
+        ui_model = ""
+        if hasattr(self, "chat_openai_model"):
+            ui_model = self.chat_openai_model.text().strip()
+        if ui_model:
+            model = ui_model
+        preset_id = ""
+        if hasattr(self, "chat_api_preset_combo"):
+            preset_id = str(self.chat_api_preset_combo.currentData() or "")
+        if not preset_id:
+            preset_id = detect_llm_api_preset(base)
+        preset = get_llm_api_preset(preset_id)
+        if preset is not None:
+            base = preset.base_url
+            if model in {"—", ""}:
+                model = preset.default_model
+        if not base:
+            base = "https://api.openai.com/v1"
         if key:
-            model = (os.environ.get("OPENAI_MODEL") or "gpt-4o-mini").strip()
-            base = (os.environ.get("OPENAI_BASE_URL") or "https://api.openai.com/v1").strip()
-            self.openai_api_status.setText(f"OpenAI API: configured ({model})")
-            self.openai_api_status.setToolTip(f"OPENAI_BASE_URL={base}")
+            label = preset.label if preset else "OpenAI-compatible"
+            self.openai_api_status.setText(f"API: configured · {label} ({model})")
+            tip = f"OPENAI_BASE_URL={base}"
+            if preset and preset.key_hint:
+                tip += f"\nkey: {preset.key_hint}"
+            self.openai_api_status.setToolTip(tip)
         else:
-            self.openai_api_status.setText("OpenAI API: not set — add OPENAI_API_KEY to .env")
-            self.openai_api_status.setToolTip("pip install python-dotenv; см. README § Architect")
+            hint = "add OPENAI_API_KEY to .env"
+            if preset and preset.key_hint:
+                hint = f"{hint} ({preset.key_hint})"
+            self.openai_api_status.setText(f"API: not set — {hint}")
+            self.openai_api_status.setToolTip(
+                "Ключ в .env как OPENAI_API_KEY; preset задаёт только BASE_URL/модель. "
+                "см. docs/CHAT.md § Free / cloud LLM presets"
+            )
 
     def _select_root(self) -> None:
         start = (self.root_edit.text() or '').strip()

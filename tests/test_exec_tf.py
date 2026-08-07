@@ -8,6 +8,7 @@ import pytest
 
 from eurika.ml.exec_tf import (
     EXIT_FEATURE_NAMES,
+    find_entry_index,
     main_horizon_to_exec,
     path_excursions,
     retro_exit_samples,
@@ -40,6 +41,24 @@ def _m1(n: int, *, entry: float = 100.0, step_ms: int = 60_000) -> list[dict]:
             }
         )
     return rows
+
+
+def test_find_entry_index_scrolled_out_returns_minus_one() -> None:
+    """Ancient entry must not remap to bar 0 (that restarts the horizon forever)."""
+    bars = _m1(5, entry=100.0)
+    assert find_entry_index(bars, bars[0]["open_time"]) == 0
+    assert find_entry_index(bars, bars[0]["open_time"] - 60_000) == -1
+    assert find_entry_index(bars, bars[-1]["open_time"] + 60_000) == -1
+    sim = simulate_exec_exit(
+        bars,
+        entry_ts=bars[0]["open_time"] - 60_000,
+        entry=100.0,
+        action="BUY",
+        horizon_exec=10,
+        tp_pct=0.01,
+        sl_pct=0.01,
+    )
+    assert sim is None
 
 
 def test_simulate_buy_tp() -> None:

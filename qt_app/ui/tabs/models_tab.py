@@ -172,18 +172,33 @@ def _build_llm_subtab(main: MainWindow) -> QWidget:
     main.chat_provider_combo.addItems(["auto", "ollama", "openai", "codex"])
     main.chat_provider_combo.setMaximumWidth(COMBO_MAX_WIDTH)
     main.chat_provider_combo.setToolTip(
-        "auto: Ollama локально или OpenAI если задан OPENAI_API_KEY\n"
+        "auto: Ollama локально или OpenAI-compatible если задан OPENAI_API_KEY\n"
         "ollama: только локальная модель\n"
-        "openai: OpenAI / OpenRouter API\n"
+        "openai: OpenAI-compatible API (Groq/OpenRouter/Gemini/… через preset)\n"
         "codex: OpenAI API (модель Codex/GPT из поля ниже)"
     )
     controls_layout.addRow("Provider", main.chat_provider_combo)
+
+    from eurika.utils.llm_presets import list_llm_api_presets
+
+    main.chat_api_preset_combo = QComboBox()
+    main.chat_api_preset_combo.setMaximumWidth(COMBO_MAX_WIDTH)
+    main.chat_api_preset_combo.addItem("(из .env)", "")
+    for preset in list_llm_api_presets():
+        main.chat_api_preset_combo.addItem(preset.label, preset.id)
+    main.chat_api_preset_combo.setToolTip(
+        "Пресет OPENAI_BASE_URL для free/cloud API.\n"
+        "Ключ всегда в OPENAI_API_KEY (.env) — сюда не пишется.\n"
+        "Provider лучше поставить openai (или auto при наличии ключа)."
+    )
+    controls_layout.addRow("API preset", main.chat_api_preset_combo)
+
     main.openai_api_status = QLabel("OpenAI API: unknown")
-    controls_layout.addRow("OpenAI", main.openai_api_status)
+    controls_layout.addRow("API status", main.openai_api_status)
     main.chat_openai_model = QLineEdit()
-    main.chat_openai_model.setPlaceholderText("e.g. gpt-4o-mini, gpt-5-codex, mistralai/...")
+    main.chat_openai_model.setPlaceholderText("e.g. llama-3.3-70b-versatile, gemini-2.0-flash, …")
     main.chat_openai_model.setMaximumWidth(INPUT_MAX_WIDTH)
-    controls_layout.addRow("OpenAI/OpenRouter model", main.chat_openai_model)
+    controls_layout.addRow("Remote model", main.chat_openai_model)
     chat_ollama_row = QHBoxLayout()
     main.chat_ollama_model = QComboBox()
     main.chat_ollama_model.setEditable(True)

@@ -590,6 +590,7 @@ def test_goal_reflection_intent_and_nudge(tmp_path: Path, monkeypatch) -> None:
     assert resolve_direct_handler(tmp_path, "что получилось?")[0] == "goal_reflection"
     assert resolve_direct_handler(tmp_path, "итог цели")[0] == "goal_reflection"
 
+    # LLM failure → factual block only (exception swallowed).
     out = chat_mod.chat_send(tmp_path, "что получилось?")
     text = out.get("text") or ""
     assert out.get("error") is None
@@ -597,6 +598,50 @@ def test_goal_reflection_intent_and_nudge(tmp_path: Path, monkeypatch) -> None:
     assert "ritual completed" in text
     assert "ok=True" in text
     assert "a.py" in text
+    assert "Кратко" not in text
+
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_a, **_k: ("Ритуал прошёл; можно смотреть отчёт или спросить статус.", None),
+    )
+    out_llm = chat_mod.chat_send(tmp_path, "что получилось?")
+    text_llm = out_llm.get("text") or ""
+    assert "Кратко" in text_llm
+    assert "Ритуал прошёл" in text_llm
+    assert "ritual completed" in text_llm
+
+    # Trivial ls last_execution → fixed note, no LLM call.
+    from eurika.api.chat_context import enrich_goal_reflection_with_llm
+
+    ls_state = {
+        "active_goal": {},
+        "last_execution": {
+            "ok": True,
+            "summary": "root listing fetched",
+            "verification_ok": None,
+        },
+    }
+    facts_ls = format_goal_reflection(ls_state)
+
+    def _boom(*_a, **_k):
+        raise AssertionError("LLM must not run for trivial ls")
+
+    monkeypatch.setattr("eurika.reasoning.architect.call_llm_with_prompt", _boom)
+    brief = enrich_goal_reflection_with_llm(facts_ls, ls_state, use_llm=True)
+    assert "ls" in brief.lower()
+    assert "не шаг разработки" in brief or "просто" in brief
+    assert "verification_ok=n/a" in facts_ls
+
+    # Stale True from old ls still displays as n/a.
+    stale_ls = {
+        "active_goal": {},
+        "last_execution": {
+            "ok": True,
+            "summary": "root listing fetched",
+            "verification_ok": True,
+        },
+    }
+    assert "verification_ok=n/a" in format_goal_reflection(stale_ls)
 
     # Without active goal, reflection still surfaces last_execution.
     only_last = {
@@ -627,7 +672,7 @@ def test_goal_reflection_intent_and_nudge(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_format_agent_context_panel_goal_release_and_empty() -> None:
-    from eurika.api.chat_context import format_agent_context_panel
+    from eurika.api.chat_context import format_agent_context_panel, store_last_execution
 
     empty = format_agent_context_panel({})
     assert "Нет активной цели и итога" in empty
@@ -647,6 +692,21 @@ def test_format_agent_context_panel_goal_release_and_empty() -> None:
     assert "Итог (last_execution)" in released
     assert "eurika scan completed" in released
     assert "что получилось?" in released
+
+    # Chat skills without a verify step → verification_ok n/a (not False).
+    state: dict = {}
+    store_last_execution(state, {"ok": True, "summary": "docs_audit via llm"})
+    assert state["last_execution"]["verification_ok"] is None
+    panel = format_agent_context_panel(
+        {"active_goal": {}, "last_execution": state["last_execution"]}
+    )
+    assert "verification_ok=n/a" in panel
+    assert "docs_audit via llm" in panel
+
+    store_last_execution(
+        state, {"ok": True, "summary": "apply", "verification": {"ok": True}}
+    )
+    assert state["last_execution"]["verification_ok"] is True
 
     active = format_agent_context_panel(
         {

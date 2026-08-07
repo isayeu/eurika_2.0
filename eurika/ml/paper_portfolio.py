@@ -242,6 +242,9 @@ def recent_filled_exit_reasons(
             continue
         if str(row.get("kind") or "") == "exit_sample":
             continue
+        # Shadows never risked anything, so they must not trigger the SL-soft brake.
+        if row.get("shadow"):
+            continue
         reason = str(row.get("exit_reason") or "").strip().lower()
         if not reason or reason.startswith("cancel"):
             continue

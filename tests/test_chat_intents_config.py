@@ -32,6 +32,42 @@ def test_defaults_apply_for_arbitrary_project(tmp_path: Path) -> None:
     assert match_direct_intent(tmp_path, "что у нас дальше по развитию проекта?") == ("roadmap_next", None)
 
 
+def test_project_ls_does_not_match_inside_goals(tmp_path: Path) -> None:
+    """Space-padded « ls » must not fire on the letters inside «goals»."""
+    from eurika.api.chat_direct import resolve_direct_handler
+
+    backlog = (
+        "Дальше по бэклогу — мелкий chat UX / goals polish; Market только journal."
+    )
+    assert match_direct_intent(tmp_path, backlog) == ("roadmap_next", None)
+    assert resolve_direct_handler(tmp_path, backlog)[0] == "roadmap_next"
+    assert match_direct_intent(tmp_path, "выполни ls") == ("project_ls", "$ ls -la")
+    assert match_direct_intent(tmp_path, "ls") == ("project_ls", "$ ls -la")
+    assert match_direct_intent(tmp_path, "read goals.py") is None
+
+
+def test_continue_dev_beats_ml_vector_toggle(tmp_path: Path, monkeypatch) -> None:
+    """«приступай» is continue_dev — never soft-route to vector_intent_off."""
+    from eurika.api.chat_direct import resolve_direct_handler, _accept_soft_handler
+
+    assert match_direct_intent(tmp_path, "приступай") == ("continue_dev", None)
+    assert resolve_direct_handler(tmp_path, "приступай")[0] == "continue_dev"
+    assert resolve_direct_handler(tmp_path, "продолжай разработку")[0] == "continue_dev"
+    assert _accept_soft_handler("vector_intent_off", "приступай") is False
+    assert _accept_soft_handler("ml_intent_on", "приступай") is False
+
+    monkeypatch.setenv("EURIKA_USE_ML_INTENT", "1")
+
+    def _fake_ml(_root, _msg, **_kw):
+        return ("vector_intent_off", None)
+
+    monkeypatch.setattr("eurika.ml.intent_router.match_ml_intent", _fake_ml)
+    # Direct YAML still wins before ML.
+    assert resolve_direct_handler(tmp_path, "приступай")[0] == "continue_dev"
+    # If YAML missed, soft accept would still block the toggle.
+    assert _accept_soft_handler("vector_intent_off", "xyz") is False
+
+
 def test_defaults_skip_when_message_doesnt_match(tmp_path: Path) -> None:
     """Random messages stay unmatched (LLM/clarification path)."""
     assert match_direct_intent(tmp_path, "проанализируй код") is None
@@ -171,3 +207,42 @@ def test_user_yaml_overrides_intent_hints(tmp_path: Path) -> None:
     )
     clear_cache()
     assert "Custom hint" in get_intent_hints(tmp_path)
+
+
+def test_os_check_not_roadmap_verify(tmp_path: Path) -> None:
+    """«операционка» = host OS health; soft must not invent roadmap_verify."""
+    from eurika.api.chat_direct import (
+        _accept_soft_handler,
+        is_host_health_request,
+        is_os_env_check_request,
+        is_roadmap_verify_request,
+        resolve_direct_handler,
+    )
+
+    msg = "Можешь проверить мою операционку? Хорошо ли она настроена?"
+    assert is_host_health_request(msg) is True
+    assert is_os_env_check_request(msg) is False
+    assert is_roadmap_verify_request(msg) is False
+    assert _accept_soft_handler("roadmap_verify", msg) is False
+    assert resolve_direct_handler(tmp_path, msg)[0] == "host_health"
+    assert resolve_direct_handler(tmp_path, "проверь фазу 2.7")[0] == "roadmap_verify"
+    assert resolve_direct_handler(tmp_path, "проведи self-check")[0] == "self_check"
+    assert is_roadmap_verify_request("проверь фазу CR-B") is True
+
+
+def test_dir_contents_is_ls_not_show_file(tmp_path: Path) -> None:
+    """«содержимое каталога» → project_ls; soft must not invent show_file."""
+    from eurika.api.chat_direct import (
+        _accept_soft_handler,
+        is_ls_request,
+        is_show_file_request,
+        resolve_direct_handler,
+    )
+
+    msg = "покажи содержимое каталога проекта"
+    assert is_ls_request(msg) is True
+    assert is_show_file_request(msg) is False
+    assert _accept_soft_handler("show_file", msg) is False
+    assert resolve_direct_handler(tmp_path, msg) == ("project_ls", "$ ls -la")
+    assert is_show_file_request("покажи файл eurika/api/chat.py") is True
+    assert resolve_direct_handler(tmp_path, "покажи файл README.md")[0] == "show_file"

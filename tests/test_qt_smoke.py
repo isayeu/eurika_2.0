@@ -200,6 +200,43 @@ def test_terminal_view_prompt_history_and_append_preserves_partial() -> None:
     assert view.toPlainText().endswith("$ ")
 
 
+def test_chat_input_up_down_history() -> None:
+    """Chat compose: Up/Down recall prior prompts like Terminal."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
+    from PySide6.QtWidgets import QApplication
+    from qt_app.ui.main_window_helpers import ChatInputEdit
+
+    app = QApplication.instance() or QApplication([])
+    edit = ChatInputEdit()
+    edit.add_to_history("первый")
+    edit.add_to_history("второй")
+    edit.setPlainText("")
+
+    def _press(key: Qt.Key) -> None:
+        ev = QKeyEvent(QKeyEvent.Type.KeyPress, int(key), Qt.KeyboardModifier.NoModifier)
+        edit.keyPressEvent(ev)
+
+    _press(Qt.Key.Key_Up)
+    assert edit.toPlainText() == "второй"
+    _press(Qt.Key.Key_Up)
+    assert edit.toPlainText() == "первый"
+    _press(Qt.Key.Key_Down)
+    assert edit.toPlainText() == "второй"
+    _press(Qt.Key.Key_Down)
+    assert edit.toPlainText() == ""
+    # Multiline: Up on first line still browses; typing resets browse on next send path.
+    edit.add_to_history("аудит документации")
+    edit.setPlainText("")
+    _press(Qt.Key.Key_Up)
+    assert "аудит" in edit.toPlainText()
+    snap = edit.history_snapshot()
+    assert "аудит документации" in snap
+    edit2 = ChatInputEdit()
+    edit2.set_history(snap)
+    assert edit2.history_snapshot()[-1] == "аудит документации"
+
+
 def test_validate_project_root_rejects_empty() -> None:
     ok, msg = command_handlers.validate_project_root('')
     assert ok is False

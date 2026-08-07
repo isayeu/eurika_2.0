@@ -10,12 +10,19 @@ import random
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Sequence
 
+from eurika.ml.entry_cost import (
+    calibrate_cost_gate,
+    cost_gate_ok,
+    expansion_score,
+    load_cost_gate,
+)
 from eurika.ml.features import DEFAULT_WINDOW, feature_vector, features_dict, impulse_horizon
 from eurika.ml.exec_tf import (
     DEFAULT_EXEC_INTERVAL,
     DEFAULT_SL_PCT,
     DEFAULT_TP_PCT,
     exit_feature_vector,
+    interval_ms,
     main_horizon_to_exec,
     path_excursions,
     retro_exit_samples,
@@ -79,11 +86,59 @@ from eurika.ml.paper_trader import (
 DEFAULT_SYNC_LIMIT = 100
 DEFAULT_MAX_KEEP = 120
 DEFAULT_EXEC_SYNC_LIMIT = 180
-DEFAULT_EXEC_MAX_KEEP = 240
+DEFAULT_EXEC_MAX_KEEP = 360  # > 4h×1m horizon so entry@bar0 can still reach horizon exit
 DEFAULT_EXPLORE_RATE = 0.5
 DEFAULT_LIVE_HORIZON = 2
 # After this many live labels, explore auto-stops (0 = unlimited).
 DEFAULT_EXPLORE_LIVE_CAP = 80
+# Gate-rejected entries kept in flight; a stuck one must never grow the book.
+MAX_SHADOW_OPEN = 200
+# Planned hold × this → force close (entry scrolled out of 1m window otherwise
+# remapped to bar 0 and waited forever).
+MAX_HOLD_MULT = 3
+
+
+def planned_hold_ms(
+    pos: Mapping[str, Any],
+    *,
+    interval: str,
+    horizon: int,
+) -> int:
+    """How long the position was meant to live, in ms (exec horizon preferred)."""
+    pos_exec = str(pos.get("exec_interval") or "").strip()
+    h_exec = pos.get("horizon_exec")
+    if pos_exec and h_exec is not None:
+        try:
+            return max(1, int(h_exec)) * interval_ms(pos_exec)
+        except (TypeError, ValueError):
+            pass
+    h = max(1, int(pos.get("horizon") or horizon or 1))
+    return h * interval_ms(str(pos.get("interval") or interval))
+
+
+def stale_force_close_reason(
+    pos: Mapping[str, Any],
+    *,
+    now_ts_ms: int,
+    interval: str,
+    horizon: int,
+    candles_exec: Sequence[dict[str, Any]] | None = None,
+    hold_mult: int = MAX_HOLD_MULT,
+) -> str | None:
+    """Return ``stale`` / ``max_age`` when the open must be force-closed, else None."""
+    entry_ts = int(pos.get("ts") or 0)
+    if entry_ts <= 0 or now_ts_ms <= 0:
+        return None
+    age = int(now_ts_ms) - entry_ts
+    planned = planned_hold_ms(pos, interval=interval, horizon=horizon)
+    if age >= max(1, int(hold_mult)) * planned:
+        return "max_age"
+    if candles_exec:
+        first_ts = int(candles_exec[0].get("open_time") or 0)
+        # Entry left the retained exec window and the planned hold is already over.
+        if first_ts > 0 and entry_ts < first_ts and age >= planned:
+            return "stale"
+    return None
 
 
 def _fetch_futures_funding(
@@ -128,7 +183,12 @@ def _fetch_futures_funding(
 
 
 def count_live_labels(project_root: str | Path) -> int:
-    """How many live-tagged paper rows are on disk."""
+    """Labels that count toward the explore budget.
+
+    Live closes always count. Explore shadows count too: exploration buys
+    information without touching equity, but it still needs a cap so the
+    shadow book does not drown the journal in noise forever.
+    """
     path = paper_trades_path(project_root)
     if not path.is_file():
         return 0
@@ -142,7 +202,12 @@ def count_live_labels(project_root: str | Path) -> int:
                 row = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if isinstance(row, dict) and row.get("live"):
+            if not isinstance(row, dict):
+                continue
+            if row.get("live"):
+                n += 1
+                continue
+            if row.get("shadow") and "explore" in str(row.get("policy") or row.get("source") or ""):
                 n += 1
     except OSError:
         return 0
@@ -378,6 +443,37 @@ def save_open_positions(project_root: str | Path, positions: list[dict[str, Any]
     return path
 
 
+def shadow_open_path(project_root: str | Path) -> Path:
+    return ml_root(project_root) / "shadow_open.json"
+
+
+def load_shadow_positions(project_root: str | Path) -> list[dict[str, Any]]:
+    """Open shadow probes (cost-gate rejects and explore) — labels only, no money."""
+    path = shadow_open_path(project_root)
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    rows = data.get("positions") if isinstance(data, dict) else data
+    if not isinstance(rows, list):
+        return []
+    return [dict(r, shadow=True) for r in rows if isinstance(r, dict)]
+
+
+def save_shadow_positions(project_root: str | Path, positions: list[dict[str, Any]]) -> Path:
+    """Shadow book never touches equity or margin — it only feeds learning."""
+    path = shadow_open_path(project_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    trimmed = positions[-MAX_SHADOW_OPEN:] if len(positions) > MAX_SHADOW_OPEN else positions
+    path.write_text(
+        json.dumps({"positions": trimmed}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
 def _attach_size_fields(target: dict[str, Any], size: Mapping[str, Any]) -> None:
     target["margin_usdt"] = float(size.get("margin_usdt") or 0.0)
     target["notional_usdt"] = float(size.get("notional_usdt") or 0.0)
@@ -563,6 +659,29 @@ def _append_learn_events(events: list[dict[str, Any]], root: Path, *, epochs: in
             {
                 "kind": "learn",
                 "message": f"дообучение стиля входа пропущено: {trained_s.get('error')}",
+            }
+        )
+    gate = calibrate_cost_gate(root)
+    if gate.get("calibrated"):
+        events.append(
+            {
+                "kind": "learn",
+                "message": (
+                    f"стоимостные ворота: расширение ≥ {float(gate['expansion_min']):+.2f}, "
+                    f"ожидаемый эдж={100 * float(gate['expected_edge']):.3f}% "
+                    f"(×{float(gate['cost_mult']):.2f} комиссии, примеров={gate.get('samples')})"
+                ),
+            }
+        )
+    else:
+        events.append(
+            {
+                "kind": "learn",
+                "message": (
+                    "стоимостные ворота: калибровка не нашла порога, окупающего комиссию — "
+                    f"держим запасной ≥ {float(gate['expansion_min']):+.2f} "
+                    f"(просмотрено сделок: {gate.get('scanned')})"
+                ),
             }
         )
 
@@ -819,12 +938,19 @@ def run_live_tick(
             opens.append(pos)
         if pend.get("filled_positions"):
             save_open_positions(root, opens)
+    # Shadow entries ride the same resolution machinery, so their outcome is
+    # measured exactly like a real one — only money and cooldowns are skipped.
+    shadows = load_shadow_positions(root)
     still_open: list[dict[str, Any]] = []
+    still_shadow: list[dict[str, Any]] = []
     resolved = 0
+    shadow_resolved = 0
     waiting = 0
-    for pos in opens:
+    for pos in opens + shadows:
+        is_shadow = bool(pos.get("shadow"))
+        keep_open = still_shadow if is_shadow else still_open
         if str(pos.get("symbol") or "").upper() != sym or _pos_market(pos) != kind:
-            still_open.append(pos)
+            keep_open.append(pos)
             continue
         entry_ts = int(pos.get("ts") or 0)
         pos_h = max(1, int(pos.get("horizon") or h))
@@ -855,7 +981,32 @@ def run_live_tick(
         exit_reason = "horizon"
         bars_held_1m = 0
 
-        if pos_use_exec:
+        now_ts_ms = (
+            int(candles_exec[-1]["open_time"])
+            if (pos_use_exec and candles_exec)
+            else int(candles[-1]["open_time"])
+        )
+        stale_why = stale_force_close_reason(
+            pos,
+            now_ts_ms=now_ts_ms,
+            interval=iv,
+            horizon=h,
+            candles_exec=candles_exec if pos_use_exec else None,
+        )
+        if stale_why:
+            # Entry scrolled out of the 1m window or lived past N×horizon — free
+            # margin and write a label instead of waiting forever.
+            if pos_use_exec and candles_exec:
+                exit_px = float(candles_exec[-1]["close"])
+                exit_ts = int(candles_exec[-1]["open_time"])
+            else:
+                exit_px = float(candles[-1]["close"])
+                exit_ts = int(candles[-1]["open_time"])
+            exit_reason = stale_why
+            if entry <= 0:
+                entry = float(pos.get("entry") or exit_px)
+            bars_held_1m = max(0, int((int(exit_ts) - int(entry_ts)) // 60_000))
+        elif pos_use_exec:
             h_exec = max(
                 1,
                 int(pos.get("horizon_exec") or main_horizon_to_exec(pos_h, iv, pos_exec)),
@@ -912,7 +1063,9 @@ def run_live_tick(
                         elif entry_ts and exit_ts:
                             bars_held_1m = max(0, int((int(exit_ts) - int(entry_ts)) // 60_000))
                 if not closed_by_model:
-                    still_open.append(pos)
+                    keep_open.append(pos)
+                    if is_shadow:
+                        continue
                     waiting += 1
                     if (added > 0 or added_exec > 0) and sim:
                         events.append(
@@ -948,7 +1101,9 @@ def run_live_tick(
         else:
             idx = _candle_index_by_open_time(candles, entry_ts)
             if idx < 0 or idx + pos_h >= len(candles):
-                still_open.append(pos)
+                keep_open.append(pos)
+                if is_shadow:
+                    continue
                 waiting += 1
                 if added > 0:
                     age = len(candles) - 1 - idx if idx >= 0 else "?"
@@ -970,7 +1125,7 @@ def run_live_tick(
                 entry = float(pos.get("entry") or candles[idx]["close"])
 
         if entry <= 0 or exit_px is None or exit_ts is None:
-            still_open.append(pos)
+            keep_open.append(pos)
             continue
 
         fund_info: dict[str, Any] = {
@@ -1003,7 +1158,7 @@ def run_live_tick(
         notional_usdt = float(pos.get("notional_usdt") or 0.0)
         leverage = float(pos.get("leverage") or 1.0)
         pnl_usdt = 0.0
-        if notional_usdt > 0 or margin_usdt > 0:
+        if not is_shadow and (notional_usdt > 0 or margin_usdt > 0):
             closed_port = apply_close(
                 root,
                 margin_usdt=margin_usdt,
@@ -1032,7 +1187,9 @@ def run_live_tick(
             "features": pos.get("features") or {},
             "feature_vec": pos.get("feature_vec") or [],
             "policy": pos.get("source") or "live",
-            "live": True,
+            "live": not is_shadow,
+            "shadow": True if is_shadow else None,
+            "gate_expansion": pos.get("gate_expansion") if is_shadow else None,
             "exit_reason": exit_reason,
             "exec_interval": pos_exec or None,
             "tp_pct": pos.get("tp_pct"),
@@ -1045,7 +1202,7 @@ def run_live_tick(
             "margin_usdt": margin_usdt or None,
             "notional_usdt": notional_usdt or None,
             "leverage": leverage if notional_usdt > 0 else None,
-            "pnl_usdt": pnl_usdt if (notional_usdt > 0 or margin_usdt > 0) else None,
+            "pnl_usdt": pnl_usdt if (not is_shadow and (notional_usdt > 0 or margin_usdt > 0)) else None,
         }
         _append_paper_row(root, row)
         if pos_use_exec and candles_exec:
@@ -1110,6 +1267,11 @@ def run_live_tick(
                         }
                     ],
                 )
+        if is_shadow:
+            # Label recorded, exit/style samples collected — no money, no cooldown,
+            # and no journal line, or the feed would drown in trades we never took.
+            shadow_resolved += 1
+            continue
         resolved += 1
         outcome = "удача" if lab["correct"] else "неудача"
         pnl = "прибыль" if lab["edge"] > 0 else "убыток"
@@ -1120,6 +1282,8 @@ def run_live_tick(
             "horizon": "горизонт",
             "time_stop": "time-stop",
             "model": "модель",
+            "max_age": "max-age (N×горизонт)",
+            "stale": "stale (вход выпал из окна)",
         }.get(exit_reason, exit_reason)
         events.append(
             {
@@ -1192,6 +1356,8 @@ def run_live_tick(
             )
 
     save_open_positions(root, still_open)
+    if shadows or still_shadow:
+        save_shadow_positions(root, still_shadow)
 
     vec = feature_vector(candles, window=w)
     feat = features_dict(candles, window=w) or {}
@@ -1219,6 +1385,9 @@ def run_live_tick(
 
     has_open = any(
         str(p.get("symbol") or "").upper() == sym and _pos_market(p) == kind for p in still_open
+    )
+    has_shadow = any(
+        str(s.get("symbol") or "").upper() == sym and _pos_market(s) == kind for s in still_shadow
     )
     pending_here = [
         o
@@ -1327,6 +1496,8 @@ def run_live_tick(
     open_source = source
     explored = False
     logged_hold = False
+    # Side the cost gate refused; kept so it can still be shadowed for learning.
+    shadow_action = ""
     # Same-side pending blocks; opposite-side can flip after setup/cooldown pass.
     flip_candidate = bool(
         open_action in ("BUY", "SELL")
@@ -1344,21 +1515,25 @@ def run_live_tick(
         open_action == "HOLD"
         and not has_open
         and not has_pending
+        and not has_shadow
         and not already_this_bar
         and explore_eff
     ):
         _rng = rng if rng is not None else random
         do_explore = bool(explore_when_idle) or (_rng.random() < float(explore_rate))
         if do_explore:
-            open_action = pick_explore_action(pred, vec, rng=_rng)
+            # Explore buys labels, never sits the exam: paper equity must stay a
+            # clean scoreboard of the cost-gated policy. The probe is a shadow.
+            shadow_action = pick_explore_action(pred, vec, rng=_rng)
             open_source = f"explore/{source}"
+            open_action = "HOLD"
             explored = True
             events.append(
                 {
                     "kind": "explore",
                     "message": (
-                        f"{label}: модель сказала ДЕРЖАТЬ — исследование: "
-                        f"пробуем {_action_ru(open_action)} (чтобы копить метки)"
+                        f"{label}: модель сказала ДЕРЖАТЬ — исследование (тень): "
+                        f"пробуем {_action_ru(shadow_action)} (метка без риска для банка)"
                     ),
                 }
             )
@@ -1384,6 +1559,9 @@ def run_live_tick(
                 }
             )
             logged_hold = True
+    elif open_action == "HOLD" and has_shadow and not has_open:
+        # Shadow already measuring this symbol — stay quiet, live path stays free.
+        logged_hold = True
 
     if open_action in ("BUY", "SELL") and not has_open and not blocking_pending and not same_bar_block:
         cd_now = int(candles_exec[-1]["open_time"]) if (use_exec and candles_exec) else last_ts
@@ -1433,6 +1611,33 @@ def run_live_tick(
         logged_hold = True
         flip_candidate = False
         same_bar_block = already_this_bar
+
+    # Explore deliberately pays for information as a shadow, so it never reaches
+    # the cost gate — every live entry has to earn more than it costs.
+    if (
+        open_action in ("BUY", "SELL")
+        and not explored
+        and not has_open
+        and not blocking_pending
+        and not same_bar_block
+    ):
+        cost_ok, cost_why = cost_gate_ok(
+            feat if feat else vec,
+            fee=fee_for_market(kind),
+            gate=load_cost_gate(root),
+        )
+        if not cost_ok:
+            events.append(
+                {
+                    "kind": "hold",
+                    "message": f"{label}: {_action_ru(open_action)} отклонён — {cost_why}",
+                }
+            )
+            shadow_action = open_action
+            open_action = "HOLD"
+            logged_hold = True
+            flip_candidate = False
+            same_bar_block = already_this_bar
 
     # Opposite-side signal while pending: cancel old legs, then place new bracket.
     if (
@@ -1741,7 +1946,66 @@ def run_live_tick(
     elif open_action == "HOLD" and not logged_hold and not explored:
         events.append({"kind": "hold", "message": f"{label}: ДЕРЖАТЬ — бумажную сделку не открываем"})
 
-    if micro_train and resolved > 0:
+    # A refused entry still has to teach us something: track it as a shadow so
+    # the journal keeps learning about the regime the gate is filtering out.
+    # Without this the next calibration only ever sees trades the gate allowed,
+    # decides everything pays, and unlocks itself.
+    if shadow_action in ("BUY", "SELL"):
+        if any(
+            str(s.get("symbol") or "").upper() == sym and _pos_market(s) == kind
+            for s in still_shadow
+        ):
+            shadow_action = ""
+    if shadow_action in ("BUY", "SELL"):
+        s_levels = predict_levels(
+            root,
+            feat if feat else vec,
+            fallback_tp=tp,
+            fallback_sl=sl,
+            fallback_trail=trail,
+        )
+        s_trail = float(s_levels["trail_pct"]) * 0.75
+        if use_exec and candles_exec:
+            s_entry = float(candles_exec[-1]["close"])
+            s_entry_ts = int(candles_exec[-1]["open_time"])
+            s_exec_iv = exec_iv
+            s_h_exec = main_horizon_to_exec(h_eff, iv, exec_iv)
+        else:
+            s_entry = float(candles[-1]["close"])
+            s_entry_ts = last_ts
+            s_exec_iv = ""
+            s_h_exec = h_eff
+        still_shadow.append(
+            {
+                "ts": s_entry_ts,
+                "signal_ts": last_ts,
+                "signal_px": s_entry,
+                "symbol": sym,
+                "interval": iv,
+                "market": kind,
+                "action": shadow_action,
+                "entry": s_entry,
+                "horizon": h_eff,
+                "horizon_exec": s_h_exec if s_exec_iv else None,
+                "exec_interval": s_exec_iv or None,
+                "tp_pct": float(s_levels["tp_pct"]) if s_exec_iv else None,
+                "sl_pct": float(s_levels["sl_pct"]) if s_exec_iv else None,
+                "trail_pct": s_trail if s_exec_iv and s_trail > 0 else None,
+                "trail_extreme": s_entry if s_exec_iv and s_trail > 0 else None,
+                "levels_source": str(s_levels.get("source") or "fallback"),
+                # Market fill: no pending leg to wait for, so the measurement is
+                # conservative next to the OCO entries the live book prefers.
+                "entry_style": "market",
+                "features": feat,
+                "feature_vec": vec,
+                "source": open_source,
+                "gate_expansion": expansion_score(feat if feat else vec),
+                "shadow": True,
+            }
+        )
+        save_shadow_positions(root, still_shadow)
+
+    if micro_train and (resolved > 0 or shadow_resolved > 0):
         _append_learn_events(events, root, epochs=int(train_epochs))
 
     ms = model_status(root)
@@ -1750,6 +2014,8 @@ def run_live_tick(
         "events": events,
         "opens": len(still_open),
         "resolved": resolved,
+        "shadow_open": len(still_shadow),
+        "shadow_resolved": shadow_resolved,
         "suggestion": suggestion,
         "model": ms,
         "symbol": sym,

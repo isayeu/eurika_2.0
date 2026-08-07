@@ -54,6 +54,23 @@ def _emit(cmd: str, on_system_action) -> None:
         except Exception:
             pass
 
+_ENV_LOADED_ROOTS: set[str] = set()
+
+def _load_project_env_once(root: Path) -> None:
+    """Load LLM routing keys from the project .env once per root, like Qt / CLI do.
+
+    Routing keys only: the API must not switch feature flags for its caller.
+    """
+    key = str(root)
+    if key in _ENV_LOADED_ROOTS:
+        return
+    _ENV_LOADED_ROOTS.add(key)
+    try:
+        from eurika.utils.env import LLM_ROUTING_ENV_KEYS, load_project_dotenv
+        load_project_dotenv(root, keys=LLM_ROUTING_ENV_KEYS)
+    except Exception:
+        pass
+
 def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str, str]]]=None, on_system_action: Optional[Callable[[str], None]]=None, run_command_with_result: Optional[Callable[[str], tuple[str, int]]]=None) -> Dict[str, Any]:
     """
     Send user message through Eurika layer to LLM; return response.
@@ -67,6 +84,9 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     msg = (message or '').strip()
     if not msg:
         return {'text': '', 'error': 'message is empty'}
+    # Same LLM routing as the Qt / CLI entrypoints: without this the API path
+    # ignores OPENAI_* from the project .env and falls back to local Ollama.
+    _load_project_env_once(root)
     state = _load_dialog_state(root)
     # Confirm/deny pending scan typo before other intents («да» after scsn).
     pending_scan = state.get('pending_scan_confirm') if isinstance(state, dict) else None
@@ -121,7 +141,18 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     handler_id, emit_cmd = (None, None) if is_apply else _resolve_direct_handler(root, msg)
     if handler_id:
         _record_chat_metric(root, 'intent_match', handler=handler_id, message=msg[:240])
-    skip_emit = handler_id == 'release_check' and run_command_with_result is not None
+    # Handlers run the shell themselves and return terminal_* for Qt Terminal mirror.
+    skip_emit = handler_id in {
+        "release_check",
+        "self_check",
+        "host_health",
+        "scan",
+        "ritual",
+        "smoke_test",
+        "project_ls",
+        "project_tree",
+        "git_commit",
+    }
     if emit_cmd and '{' not in str(emit_cmd) and (not skip_emit):
         _emit(emit_cmd, on_system_action)
 
@@ -158,7 +189,13 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
             text = f'Коммит выполнен: {out}' if ok else f'Ошибка: {out}'
             _append_chat_history_safe(root, 'user', msg, None)
             _append_chat_history_safe(root, 'assistant', text, None)
-            return {'text': text, 'error': None if ok else out}
+            return {
+                'text': text,
+                'error': None if ok else out,
+                'terminal_cmd': f'$ git add -A && git commit -m {msg_commit!r}',
+                'terminal_output': out or '',
+                'terminal_exit_code': 0 if ok else 1,
+            }
         pending_plan = state.get('pending_plan') if isinstance(state, dict) else {}
         if isinstance(pending_plan, dict) and is_pending_plan_valid(pending_plan):
             user_token = _extract_confirmation_token(msg)
@@ -363,10 +400,23 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     rules_snippet = _load_eurika_rules_for_chat(root)
     intent_hints = _intent_hints_for_prompt(root)
     prompt = _build_chat_prompt(msg, context, history, rag_examples=rag_examples, save_target=save_target, knowledge_snippet=knowledge_snippet or None, feedback_snippet=feedback_snippet or None, rules_snippet=rules_snippet or None, intent_hints=intent_hints)
-    from eurika.reasoning.architect import call_llm_with_prompt
-    raw_text, err = call_llm_with_prompt(prompt, max_tokens=1024)
-    text = raw_text or ''
+    tool_loop = None
+    if save_target:
+        from eurika.reasoning.architect import call_llm_with_prompt
+        raw_text, err = call_llm_with_prompt(prompt, max_tokens=1024)
+        text = raw_text or ''
+    else:
+        # LLM decides whether facts about the host are needed, we run the
+        # read-only tool for it and it answers from the real output.
+        from eurika.api.chat_host_ops import run_llm_tool_loop
+        tool_loop, err = run_llm_tool_loop(prompt, max_iters=3, max_tokens=1024)
+        text = tool_loop.text
+        for cmd in tool_loop.commands:
+            _emit(f'$ {cmd}', on_system_action)
     if err:
+        from eurika.reasoning.architect import humanize_llm_error
+
+        err = humanize_llm_error(err)
         _append_chat_history_safe(root, 'user', msg, context)
         _append_chat_history_safe(root, 'assistant', f'[Error] {err}', None)
         return {'text': '', 'error': err}
@@ -388,4 +438,23 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     text = _enforce_eurika_persona(text or '')
     _append_chat_history_safe(root, 'user', msg, context)
     _append_chat_history_safe(root, 'assistant', text or '', None)
+    if tool_loop is not None and tool_loop.ran_tools:
+        _store_last_execution(
+            state,
+            {
+                'ok': tool_loop.exit_code == 0,
+                'summary': 'host_tools',
+                'artifacts_changed': [],
+                'host_cmds': list(tool_loop.commands),
+                'host_log': tool_loop.terminal_log,
+            },
+        )
+        _save_dialog_state(root, state)
+        return {
+            'text': text,
+            'error': None,
+            'terminal_cmd': '$ # host tools (read-only, LLM-chosen)',
+            'terminal_output': tool_loop.terminal_log,
+            'terminal_exit_code': int(tool_loop.exit_code),
+        }
     return {'text': text or '', 'error': None}

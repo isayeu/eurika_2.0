@@ -322,6 +322,11 @@ def match_ml_intent(
     if float(st.get("confidence") or 0.0) < float(min_confidence):
         return None
     msg = (message or "").lower()
+    # Guard: never let ML flip env flags or run ls / git push.
+    if str(handler).startswith(("ml_intent_", "vector_intent_")):
+        return None
+    if handler in {"project_ls", "git_push"}:
+        return None
     # Guard: do not let ML fire ritual/release/git on vague "статус ML" phrases.
     if handler == "ritual" and "ритуал" not in msg and "ritual" not in msg and "scan" not in msg:
         return None

@@ -97,7 +97,9 @@ def _build_dialog_page(main: MainWindow) -> QWidget:
     compose_layout.setSpacing(4)
 
     main.chat_input = ChatInputEdit()
-    main.chat_input.setPlaceholderText("Спроси агента… архитектура, план, Market (Ctrl+Enter)")
+    main.chat_input.setPlaceholderText(
+        "Спроси агента… @модуль/@smell · Ctrl+Enter · ↑/↓ история"
+    )
     main.chat_input.setMinimumHeight(72)
     main.chat_input.setMaximumHeight(140)
     compose_layout.addWidget(main.chat_input)
@@ -224,13 +226,13 @@ def _build_market_page(main: MainWindow) -> QWidget:
     main.market_explore_check = QCheckBox("Исследование")
     main.market_explore_check.setChecked(True)
     main.market_explore_check.setToolTip(
-        "Если модель говорит ДЕРЖАТЬ и нет открытой paper — всё равно пробуем BUY/SELL, чтобы копить метки"
+        "Если модель говорит ДЕРЖАТЬ — теневой BUY/SELL для меток (без риска для бумажного банка)"
     )
     main.market_explore_cap_spin = QSpinBox()
     main.market_explore_cap_spin.setRange(0, 5000)
     main.market_explore_cap_spin.setValue(80)
     main.market_explore_cap_spin.setToolTip(
-        "Лимит live-меток в текущей сессии исследования (после «Сброс счётчика»). 0 = без лимита"
+        "Лимит меток исследования в сессии (live + explore-тени). 0 = без лимита"
     )
     main.market_explore_cap_spin.setPrefix("до ")
     main.market_explore_cap_spin.setSuffix(" live")

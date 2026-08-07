@@ -40,3 +40,33 @@ def test_load_project_dotenv_loads_binance(tmp_path, monkeypatch: pytest.MonkeyP
     load_project_dotenv(tmp_path)
     assert os.environ["BINANCE_API_KEY"] == "project-binance-key"
     assert os.environ["BINANCE_API_SECRET"] == "project-binance-secret"
+
+
+def test_parse_env_file_and_chat_provider_key(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from eurika.utils.env import _parse_env_file
+
+    (tmp_path / ".env").write_text(
+        'OPENAI_API_KEY="groq-test-key"\nEURIKA_CHAT_PROVIDER=openai\n',
+        encoding="utf-8",
+    )
+    parsed = _parse_env_file(tmp_path / ".env")
+    assert parsed["OPENAI_API_KEY"] == "groq-test-key"
+    assert parsed["EURIKA_CHAT_PROVIDER"] == "openai"
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("EURIKA_CHAT_PROVIDER", raising=False)
+
+    # Force built-in path even if python-dotenv is installed.
+    import builtins
+
+    real_import = builtins.__import__
+
+    def _no_dotenv(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "dotenv" or (isinstance(name, str) and name.startswith("dotenv.")):
+            raise ImportError("blocked for test")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", _no_dotenv)
+    load_project_dotenv(tmp_path)
+    assert os.environ["OPENAI_API_KEY"] == "groq-test-key"
+    assert os.environ["EURIKA_CHAT_PROVIDER"] == "openai"

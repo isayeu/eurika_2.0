@@ -93,21 +93,21 @@ def _execute_save(root: Path, spec: TaskSpec) -> ExecutionReport:
     return ExecutionReport(ok=ok, summary='saved code file' if ok else 'save failed', applied_steps=['write file'] if ok else [], verification={'runner': 'file_ops', 'ok': ok}, artifacts_changed=[msg] if ok else [], error=None if ok else msg)
 
 def _execute_ui_tabs(_root: Path, _spec: TaskSpec) -> ExecutionReport:
-    return ExecutionReport(ok=True, summary='ui tabs fetched', verification={'runner': 'grounded', 'ok': True})
+    return ExecutionReport(ok=True, summary='ui tabs fetched')
 
 def _execute_project_ls(root: Path, _spec: TaskSpec) -> ExecutionReport:
     try:
         _ = sorted(root.iterdir())
     except OSError as exc:
         return ExecutionReport(ok=False, summary='ls failed', error=str(exc))
-    return ExecutionReport(ok=True, summary='root listing fetched', verification={'runner': 'grounded', 'ok': True})
+    return ExecutionReport(ok=True, summary='root listing fetched')
 
 def _execute_project_tree(root: Path, _spec: TaskSpec) -> ExecutionReport:
     try:
         _ = sorted(root.iterdir())
     except OSError as exc:
         return ExecutionReport(ok=False, summary='tree failed', error=str(exc))
-    return ExecutionReport(ok=True, summary='project tree fetched', verification={'runner': 'grounded', 'ok': True})
+    return ExecutionReport(ok=True, summary='project tree fetched')
 
 def _execute_run_tests(root: Path, spec: TaskSpec) -> ExecutionReport:
     target = (spec.target or '').strip()

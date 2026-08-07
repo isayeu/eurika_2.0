@@ -30,6 +30,21 @@ def normalize_intent_text(text: str) -> str:
     return s
 
 
+def _pattern_matches_message(pattern: str, msg_lower: str) -> bool:
+    """Substring match with token boundaries for space-padded / short patterns.
+
+    ``" ls "`` must not match inside ``goals`` after normalize strips spaces to ``ls``.
+    """
+    raw = pattern or ""
+    padded = raw[:1].isspace() or raw[-1:].isspace()
+    token = normalize_intent_text(raw)
+    if not token:
+        return False
+    if padded or len(token) <= 3:
+        return re.search(rf"(?<!\w){re.escape(token)}(?!\w)", msg_lower) is not None
+    return token in msg_lower
+
+
 def _load_user_yaml(root: Path) -> dict[str, Any]:
     """Load user YAML from .eurika/config/ or docs/chat_intents.example.yaml."""
     path = root / ".eurika" / "config" / "chat_intents.yaml"
@@ -129,7 +144,7 @@ def match_direct_intent(root: Path, message: str) -> Optional[tuple[str, Optiona
                 except re.error:
                     continue
             else:
-                if normalize_intent_text(pattern) in msg_lower:
+                if _pattern_matches_message(str(pattern), msg_lower):
                     emit = spec.get("emit_template") or spec.get("emit")
                     return (handler_id, emit)
 

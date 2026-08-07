@@ -42,8 +42,51 @@ def save_dialog_state(root: Path, state: Dict[str, Any]) -> None:
         pass
 
 def store_last_execution(state: Dict[str, Any], report: Dict[str, Any]) -> None:
-    """Store compact last execution block in dialog state."""
-    state['last_execution'] = {'ok': bool(report.get('ok')), 'summary': str(report.get('summary') or ''), 'verification_ok': bool((report.get('verification') or {}).get('ok')), 'artifacts_changed': list(report.get('artifacts_changed') or [])}
+    """Store compact last execution block in dialog state.
+
+    ``verification_ok`` is True/False only when ``report['verification']`` is present;
+    otherwise None (= N/A, e.g. docs_audit / list_docs — no patch verify step).
+    """
+    if "verification" in report:
+        ver_raw = report.get("verification")
+        if isinstance(ver_raw, dict):
+            verification_ok: bool | None = bool(ver_raw.get("ok"))
+        else:
+            verification_ok = bool(ver_raw)
+    else:
+        verification_ok = None
+    state["last_execution"] = {
+        "ok": bool(report.get("ok")),
+        "summary": str(report.get("summary") or ""),
+        "verification_ok": verification_ok,
+        "artifacts_changed": list(report.get("artifacts_changed") or []),
+    }
+    # Optional sticky context for multi-turn follow-ups after host tools.
+    for key in ("host_log", "host_cmds", "host_reply", "host_topic"):
+        if key in report and report.get(key) is not None:
+            state["last_execution"][key] = report.get(key)
+
+
+def _fmt_verification_ok(value: object) -> str:
+    if value is None:
+        return "n/a"
+    return str(bool(value) if not isinstance(value, bool) else value)
+
+
+_TRIVIAL_EXEC_NOTES: dict[str, str] = {
+    "root listing fetched": (
+        "Это был просто `ls` корня проекта — не шаг разработки. "
+        "Дальше: «приступай» (VISION A1) или новая задача."
+    ),
+    "project tree fetched": (
+        "Это был просмотр дерева проекта — код не менялся. "
+        "Дальше: «приступай» или конкретная задача."
+    ),
+    "ui tabs fetched": (
+        "Это был список вкладок UI — без правок. "
+        "Дальше: «приступай» или новая задача."
+    ),
+}
 
 
 def format_goal_reflection(state: Optional[Dict[str, Any]]) -> str:
@@ -60,43 +103,98 @@ def format_goal_reflection(state: Optional[Dict[str, Any]]) -> str:
         )
     goal = state.get("active_goal")
     last = state.get("last_execution")
-    goal_present = isinstance(goal, dict) and bool(goal)
-    last_present = isinstance(last, dict) and bool(last)
-    if not goal_present and not last_present:
+    goal_dict = goal if isinstance(goal, dict) and goal else None
+    last_dict = last if isinstance(last, dict) and last else None
+    if goal_dict is None and last_dict is None:
         return (
             "Пока нет итога: цель и last_execution сброшены. "
             "Сделай scan / ритуал / Apply или спроси «что дальше по развитию?»."
         )
     lines: List[str] = []
-    if goal_present:
-        intent = goal.get("intent") or "-"
-        target = str(goal.get("target") or "").strip()
+    if goal_dict is not None:
+        intent = goal_dict.get("intent") or "-"
+        target = str(goal_dict.get("target") or "").strip()
         head = f"Цель: intent={intent}"
         if target:
             head += f", target={target}"
-        source = goal.get("source")
+        source = goal_dict.get("source")
         if source:
             head += f", source={source}"
         lines.append(head)
     else:
         lines.append("Активной цели нет.")
-    if last_present:
-        ok = last.get("ok")
-        ver = last.get("verification_ok")
-        summary = str(last.get("summary") or "-").strip() or "-"
+    if last_dict is not None:
+        ok = last_dict.get("ok")
+        summary = str(last_dict.get("summary") or "-").strip() or "-"
+        ver_raw = last_dict.get("verification_ok")
+        # Stale dialog_state may still have verification_ok=True from old grounded reads.
+        if summary in _TRIVIAL_EXEC_NOTES:
+            ver = "n/a"
+        else:
+            ver = _fmt_verification_ok(ver_raw)
         lines.append(f"Итог: ok={ok}, verification_ok={ver}, summary={summary}")
-        changed = last.get("artifacts_changed") or []
+        changed = last_dict.get("artifacts_changed") or []
         if isinstance(changed, list) and changed:
             preview = ", ".join(str(x) for x in changed[:5])
             more = f" (+{len(changed) - 5})" if len(changed) > 5 else ""
             lines.append(f"Артефакты: {preview}{more}")
     else:
         lines.append("Last execution ещё не записан.")
-    if goal_present:
+    if goal_dict is not None:
         lines.append('Дальше: «сбрось цель» или «какая цель?» / новая задача.')
     else:
-        lines.append('Дальше: новая задача или «что дальше по развитию?»')
+        lines.append('Дальше: «приступай» / новая задача или «что дальше по развитию?»')
     return "\n".join(lines)
+
+
+def enrich_goal_reflection_with_llm(
+    facts: str,
+    state: Optional[Dict[str, Any]],
+    *,
+    use_llm: bool = True,
+) -> str:
+    """Append a short narrative under factual reflection.
+
+    Trivial grounded reads (ls/tree) get a fixed note — no LLM fluff.
+    Otherwise Groq/Ollama; on failure → facts only.
+    """
+    base = (facts or "").strip()
+    if not base:
+        return facts
+    if "Пока нет итога" in base:
+        return facts
+    last = state.get("last_execution") if isinstance(state, dict) else None
+    if not isinstance(last, dict) or not last:
+        return facts
+    summary = str(last.get("summary") or "").strip()
+    trivial = _TRIVIAL_EXEC_NOTES.get(summary)
+    if trivial:
+        return f"{base}\n\n**Кратко:**\n{trivial}"
+    if not use_llm:
+        return facts
+    prompt = (
+        "Ты Eurika. По фактам ниже дай краткий итог на русском.\n"
+        "Жёстко:\n"
+        "- Ровно 2–3 коротких предложения.\n"
+        "- Назови конкретный шаг из summary (scan / docs_audit / apply / …).\n"
+        "- Один следующий шаг: «приступай» (chat UX) или «сбрось цель» / новая задача.\n"
+        "- Запрещено: вода («система смогла», «корректная работа», «расширение возможностей», "
+        "«получение информации» без смысла), Market entry/HTF/explore/live.\n"
+        "- Не копируй строки ok=/verification_ok=.\n\n"
+        f"## Факты\n{base}\n"
+    )
+    try:
+        from eurika.reasoning.architect import call_llm_with_prompt
+
+        text, _err = call_llm_with_prompt(prompt, max_tokens=220)
+    except Exception:
+        return facts
+    if not text or not str(text).strip():
+        return facts
+    narrative = str(text).strip()
+    if len(narrative) > 900:
+        narrative = narrative[:900].rstrip() + "…"
+    return f"{base}\n\n**Кратко:**\n{narrative}"
 
 
 def format_goal_nudge(state: Optional[Dict[str, Any]]) -> str:
@@ -183,7 +281,7 @@ def format_dialog_goal_block(state: Optional[Dict[str, Any]]) -> str:
     if has_open_work and isinstance(last, dict) and last:
         lines.append(
             "Last execution: "
-            f"ok={last.get('ok')}, verification_ok={last.get('verification_ok')}, "
+            f"ok={last.get('ok')}, verification_ok={_fmt_verification_ok(last.get('verification_ok'))}, "
             f"summary={last.get('summary') or '-'}"
         )
     if not lines:
@@ -227,23 +325,23 @@ def format_agent_context_panel(
         state = {}
     lines: List[str] = []
     goal = state.get("active_goal")
-    goal_present = isinstance(goal, dict) and bool(goal)
-    if goal_present:
+    goal_dict = goal if isinstance(goal, dict) and goal else None
+    if goal_dict is not None:
         lines.append("Цель:")
-        intent = goal.get("intent", "-")
-        target = str(goal.get("target") or "").strip()
-        source = goal.get("source", "-")
+        intent = goal_dict.get("intent", "-")
+        target = str(goal_dict.get("target") or "").strip()
+        source = goal_dict.get("source", "-")
         if target:
             lines.append(f"- intent={intent}, target={target}, source={source}")
         else:
             lines.append(f"- intent={intent}, source={source}")
-        conf = goal.get("confidence")
+        conf = goal_dict.get("confidence")
         if conf is not None:
             lines.append(f"- confidence={conf}")
-        risk = goal.get("risk_level")
+        risk = goal_dict.get("risk_level")
         if risk:
             lines.append(f"- risk={risk}")
-        plan_steps = goal.get("plan_steps") or goal.get("steps") or []
+        plan_steps = goal_dict.get("plan_steps") or goal_dict.get("steps") or []
         if isinstance(plan_steps, list) and plan_steps:
             lines.append("- plan:")
             for step in plan_steps[:5]:
@@ -301,13 +399,13 @@ def format_agent_context_panel(
         lines.append("")
         lines.append("Итог (last_execution):")
         lines.append(
-            f"- ok={last.get('ok')}, verification_ok={last.get('verification_ok')}, "
+            f"- ok={last.get('ok')}, verification_ok={_fmt_verification_ok(last.get('verification_ok'))}, "
             f"summary={last.get('summary') or '-'}"
         )
         changed = last.get("artifacts_changed") or []
         if isinstance(changed, list) and changed:
             lines.append(f"- changed={', '.join(str(x) for x in changed[:6])}")
-        if not goal_present:
+        if goal_dict is None:
             lines.append("- chat: «что получилось?» / «сбрось цель»")
 
     pending_git = state.get("pending_git_commit")
@@ -316,7 +414,7 @@ def format_agent_context_panel(
         lines.append("Pending git commit:")
         lines.append(f"- message: {pending_git.get('message', '-')}")
 
-    has_substance = goal_present or (
+    has_substance = goal_dict is not None or (
         isinstance(pending, dict) and bool(pending)
     ) or (
         isinstance(pending_scan, dict) and bool(pending_scan.get("active"))

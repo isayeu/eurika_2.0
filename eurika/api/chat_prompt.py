@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from eurika.api.chat_host_ops import tool_protocol_instructions
+
 
 def knowledge_topics_for_chat(intent: str, scope: Optional[Dict[str, Any]]) -> List[str]:
     """Topics for Knowledge from intent and scope (ROADMAP 3.6.6)."""
@@ -176,6 +178,8 @@ def build_chat_prompt(
             "Never identify yourself as a base model. If asked who you are, answer that you are Eurika. "
             "You have context about the current project. Answer concisely and helpfully."
             + lang_rule
+            + " "
+            + tool_protocol_instructions()
         )
     context_block = f"\n\n[Project context]: {context}\n\n" if context else "\n\n"
     if rules_snippet:
@@ -200,6 +204,8 @@ def build_chat_prompt(
         )
     user_content = message
     if history:
-        hist_str = "\n".join((f"{h.get('role', 'user')}: {h.get('content', '')}" for h in history[-4:]))
+        hist_str = "\n".join(
+            (f"{h.get('role', 'user')}: {h.get('content', '')}" for h in history[-4:])
+        )
         user_content = f"[Previous messages]\n{hist_str}\n\nUser: {message}"
     return f"{system}{context_block}\nUser: {user_content}"
