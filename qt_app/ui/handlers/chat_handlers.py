@@ -174,94 +174,26 @@ def _apply_allowed_for_pending(
 
 
 def refresh_chat_goal_view(main: MainWindow) -> None:
+    from eurika.api.chat_context import format_agent_context_panel
     from eurika.api.task_executor import is_pending_plan_valid
 
     state = main._api.get_chat_dialog_state()
     state_dict: dict[str, Any] = state if isinstance(state, dict) else {}
-    raw_goal = state_dict.get("active_goal")
-    goal: dict[str, Any] = raw_goal if isinstance(raw_goal, dict) else {}
-    raw_pending = state_dict.get("pending_clarification")
-    pending: dict[str, Any] = raw_pending if isinstance(raw_pending, dict) else {}
     raw_pending_plan = state_dict.get("pending_plan")
     pending_plan: dict[str, Any] = (
         raw_pending_plan if isinstance(raw_pending_plan, dict) else {}
     )
-    raw_last_execution = state_dict.get("last_execution")
-    last_execution: dict[str, Any] = (
-        raw_last_execution if isinstance(raw_last_execution, dict) else {}
-    )
-    lines: list[str] = []
-    if goal:
-        lines.append("Current interpreted goal:")
-        intent = goal.get("intent", "-")
-        target = goal.get("target", "")
-        source = goal.get("source", "-")
-        confidence = goal.get("confidence")
-        risk_level = goal.get("risk_level")
-        if target:
-            lines.append(f"- intent={intent}, target={target}, source={source}")
-        else:
-            lines.append(f"- intent={intent}, source={source}")
-        if confidence is not None:
-            lines.append(f"- confidence={confidence}")
-        if risk_level:
-            lines.append(f"- risk={risk_level}")
-        plan_steps = goal.get("plan_steps") or []
-        if isinstance(plan_steps, list) and plan_steps:
-            lines.append("- plan:")
-            for step in plan_steps[:5]:
-                lines.append(f"  - {step}")
-    if pending:
-        original = str(pending.get("original", "")).strip()
-        lines.append("")
-        lines.append("Pending clarification:")
-        lines.append(f"- {(original[:180] if original else '(awaiting details)')}")
     plan_valid = bool(pending_plan) and is_pending_plan_valid(pending_plan)
     plan_stale = bool(pending_plan) and not plan_valid
     if plan_valid:
         main._pending_plan_token = str(pending_plan.get("token") or "")
-        lines.append("")
-        lines.append("Awaiting confirmation:")
-        pending_target = str(pending_plan.get("target") or "").strip()
-        if pending_target:
-            lines.append(
-                f"- intent={pending_plan.get('intent', '-')}, target={pending_target}, "
-                f"risk={pending_plan.get('risk_level', '-')}, token={pending_plan.get('token', '-')}"
-            )
-        else:
-            lines.append(
-                f"- intent={pending_plan.get('intent', '-')}, risk={pending_plan.get('risk_level', '-')}, "
-                f"token={pending_plan.get('token', '-')}"
-            )
-        steps = pending_plan.get("steps") or []
-        if isinstance(steps, list) and steps:
-            for step in steps[:4]:
-                lines.append(f"  - {step}")
-        lines.append("- Diff: авто-preview ниже; Apply — после просмотра Diff")
-    elif plan_stale:
-        lines.append("")
-        lines.append("Expired pending plan (Reject to clear):")
-        lines.append(
-            f"- intent={pending_plan.get('intent', '-')}, target={pending_plan.get('target', '-')}"
+    main.chat_goal_view.setPlainText(
+        format_agent_context_panel(
+            state_dict, plan_valid=plan_valid, plan_stale=plan_stale
         )
-    if last_execution:
-        lines.append("")
-        lines.append("Last execution:")
-        lines.append(
-            f"- ok={last_execution.get('ok')}, verification_ok={last_execution.get('verification_ok')}, summary={last_execution.get('summary', '-')}"
-        )
-        changed = last_execution.get("artifacts_changed") or []
-        if isinstance(changed, list) and changed:
-            lines.append(f"- changed={', '.join((str(x) for x in changed[:6]))}")
+    )
     raw_pending_git = state_dict.get("pending_git_commit")
     pending_git = raw_pending_git if isinstance(raw_pending_git, dict) else None
-    if isinstance(pending_git, dict) and pending_git.get("message"):
-        lines.append("")
-        lines.append("Pending git commit:")
-        lines.append(f"- message: {pending_git.get('message', '-')}")
-    if not lines:
-        lines.append("No active interpreted goal yet.")
-    main.chat_goal_view.setPlainText("\n".join(lines))
     has_pending_plan = plan_valid
     has_pending_git = isinstance(pending_git, dict) and bool(pending_git.get("message"))
     has_effective_pending = has_pending_plan or has_pending_git or main._pending_plan_fallback_active

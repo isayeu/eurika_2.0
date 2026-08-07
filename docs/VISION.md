@@ -40,7 +40,7 @@
 ## Backlog после окна (порядок)
 
 ### A. Продукт / UX
-1. **Chat-first оболочка** — частично ✅ (2026-08-03…06): Chat первая вкладка; подвкладка **Агент**; полоска режимов Агент/Market/Обучение + статус Market; панель **Контекст** + **авто-Diff** + **gate Apply после Diff**; Classic Terminal (inline `$`); intents **goal_status / clear_goal / goal_reflection** («что получилось?») + nudge после scan/ритуал/Apply. Дальше: nudges/goals глубже (C13) без большого рефактора вкладок.
+1. **Chat-first оболочка** — частично ✅ (2026-08-03…07): Chat первая вкладка; **Агент**; режимы Агент/Market/Обучение; панель **Контекст** (Цель / Pending Diff / Итог, RU) + авто-Diff + gate Apply; Classic Terminal; intents **goal_status / clear_goal / goal_reflection** + nudge. Дальше: мелкий UX без рефактора вкладок.
 2. ~~**Session digest «пока тебя не было»**~~ ✅ (2026-08-03) — при открытии Qt в ленту Market; Chat: «пока меня не было».
 
 ### B. Market paper (по статистике journal)

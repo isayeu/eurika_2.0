@@ -211,6 +211,119 @@ def release_active_goal_keep_execution(state: Dict[str, Any]) -> Dict[str, Any]:
     return state
 
 
+def format_agent_context_panel(
+    state: Optional[Dict[str, Any]],
+    *,
+    plan_valid: bool = False,
+    plan_stale: bool = False,
+) -> str:
+    """Text for Qt Agent «Контекст» panel (goal / pending / итог).
+
+    Shows last_execution even without active_goal (post-run release). Empty state
+    hints chat phrases for reflection / roadmap.
+    """
+    if not isinstance(state, dict):
+        state = {}
+    lines: List[str] = []
+    goal = state.get("active_goal")
+    goal_present = isinstance(goal, dict) and bool(goal)
+    if goal_present:
+        lines.append("Цель:")
+        intent = goal.get("intent", "-")
+        target = str(goal.get("target") or "").strip()
+        source = goal.get("source", "-")
+        if target:
+            lines.append(f"- intent={intent}, target={target}, source={source}")
+        else:
+            lines.append(f"- intent={intent}, source={source}")
+        conf = goal.get("confidence")
+        if conf is not None:
+            lines.append(f"- confidence={conf}")
+        risk = goal.get("risk_level")
+        if risk:
+            lines.append(f"- risk={risk}")
+        plan_steps = goal.get("plan_steps") or goal.get("steps") or []
+        if isinstance(plan_steps, list) and plan_steps:
+            lines.append("- plan:")
+            for step in plan_steps[:5]:
+                lines.append(f"  - {step}")
+    else:
+        lines.append("Цель: нет (отпущена или не задана)")
+
+    pending = state.get("pending_clarification")
+    if isinstance(pending, dict) and pending:
+        original = str(pending.get("original") or "").strip()
+        lines.append("")
+        lines.append("Ожидает уточнения:")
+        lines.append(f"- {(original[:180] if original else '(без текста)')}")
+
+    pending_plan = state.get("pending_plan")
+    if not isinstance(pending_plan, dict):
+        pending_plan = {}
+    if plan_valid and pending_plan:
+        lines.append("")
+        lines.append("Pending plan (нужен Apply после Diff):")
+        pending_target = str(pending_plan.get("target") or "").strip()
+        if pending_target:
+            lines.append(
+                f"- intent={pending_plan.get('intent', '-')}, target={pending_target}, "
+                f"risk={pending_plan.get('risk_level', '-')}, token={pending_plan.get('token', '-')}"
+            )
+        else:
+            lines.append(
+                f"- intent={pending_plan.get('intent', '-')}, "
+                f"risk={pending_plan.get('risk_level', '-')}, "
+                f"token={pending_plan.get('token', '-')}"
+            )
+        steps = pending_plan.get("steps") or []
+        if isinstance(steps, list) and steps:
+            for step in steps[:4]:
+                lines.append(f"  - {step}")
+        lines.append("- Diff: авто-preview ниже; Apply — после просмотра Diff")
+    elif plan_stale and pending_plan:
+        lines.append("")
+        lines.append("Expired pending plan (Reject to clear):")
+        lines.append(
+            f"- intent={pending_plan.get('intent', '-')}, "
+            f"target={pending_plan.get('target', '-')}"
+        )
+
+    last = state.get("last_execution")
+    if isinstance(last, dict) and last:
+        lines.append("")
+        lines.append("Итог (last_execution):")
+        lines.append(
+            f"- ok={last.get('ok')}, verification_ok={last.get('verification_ok')}, "
+            f"summary={last.get('summary') or '-'}"
+        )
+        changed = last.get("artifacts_changed") or []
+        if isinstance(changed, list) and changed:
+            lines.append(f"- changed={', '.join(str(x) for x in changed[:6])}")
+        if not goal_present:
+            lines.append("- chat: «что получилось?» / «сбрось цель»")
+
+    pending_git = state.get("pending_git_commit")
+    if isinstance(pending_git, dict) and pending_git.get("message"):
+        lines.append("")
+        lines.append("Pending git commit:")
+        lines.append(f"- message: {pending_git.get('message', '-')}")
+
+    has_substance = goal_present or (
+        isinstance(pending, dict) and bool(pending)
+    ) or plan_valid or plan_stale or (
+        isinstance(last, dict) and bool(last)
+    ) or (
+        isinstance(pending_git, dict) and bool(pending_git.get("message"))
+    )
+    if not has_substance:
+        return (
+            "Нет активной цели и итога.\n"
+            "Chat: «просканируй проект», «что получилось?», "
+            "«что дальше по развитию?», «сбрось цель»."
+        )
+    return "\n".join(lines)
+
+
 def _extracted_block_97(node, nid, details):
     fi = node.get('fan_in', 0)
     fo = node.get('fan_out', 0)

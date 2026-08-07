@@ -558,6 +558,46 @@ def test_goal_reflection_intent_and_nudge(tmp_path: Path, monkeypatch) -> None:
     assert "ritual completed" not in wiped
 
 
+def test_format_agent_context_panel_goal_release_and_empty() -> None:
+    from eurika.api.chat_context import format_agent_context_panel
+
+    empty = format_agent_context_panel({})
+    assert "Нет активной цели и итога" in empty
+    assert "что получилось?" in empty
+
+    released = format_agent_context_panel(
+        {
+            "active_goal": {},
+            "last_execution": {
+                "ok": True,
+                "summary": "eurika scan completed",
+                "verification_ok": False,
+            },
+        }
+    )
+    assert "Цель: нет" in released
+    assert "Итог (last_execution)" in released
+    assert "eurika scan completed" in released
+    assert "что получилось?" in released
+
+    active = format_agent_context_panel(
+        {
+            "active_goal": {"intent": "refactor", "target": "foo.py", "source": "chat"},
+            "pending_plan": {
+                "intent": "refactor",
+                "target": "foo.py",
+                "token": "abcd",
+                "risk_level": "low",
+                "steps": ["edit foo"],
+            },
+        },
+        plan_valid=True,
+    )
+    assert "intent=refactor" in active
+    assert "Pending plan" in active
+    assert "token=abcd" in active
+
+
 def test_llm_fallback_does_not_pin_answer_as_active_goal(tmp_path: Path, monkeypatch) -> None:
     """Free-form LLM answers must not stick as active_goal (e.g. «git push»)."""
     import json

@@ -164,7 +164,7 @@ def _build_dialog_page(main: MainWindow) -> QWidget:
     main.chat_goal_view = QTextEdit()
     main.chat_goal_view.setReadOnly(True)
     main.chat_goal_view.setPlaceholderText(
-        "Цель, pending-план и last run после запросов к агенту"
+        "Цель / pending Diff / итог — после scan, Apply или «что получилось?»"
     )
     context_layout.addWidget(main.chat_goal_view, 1)
 
