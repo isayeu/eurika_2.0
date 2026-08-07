@@ -476,10 +476,17 @@ def test_goal_status_and_clear_goal_intents(tmp_path: Path, monkeypatch) -> None
     after = json.loads((hist / "dialog_state.json").read_text(encoding="utf-8"))
     assert after.get("active_goal") == {}
     assert after.get("pending_clarification") == {}
+    assert after.get("last_execution") == {}
     empty = format_dialog_goal_block(after)
     assert empty == "Нет активной цели в контексте агента."
     assert "Last execution" not in empty
     assert "ritual" not in empty.lower()
+    # Reflection after clear must not resurrect stale last_execution.
+    reflected = chat_mod.chat_send(tmp_path, "что получилось?")
+    rtext = reflected.get("text") or ""
+    assert "сброшены" in rtext or "Пока нет итога" in rtext
+    assert "done" not in rtext
+    assert "refactor" not in rtext
 
 
 def test_goal_reflection_intent_and_nudge(tmp_path: Path, monkeypatch) -> None:
@@ -538,6 +545,17 @@ def test_goal_reflection_intent_and_nudge(tmp_path: Path, monkeypatch) -> None:
     # Empty
     empty = format_goal_reflection({})
     assert "Пока нет итога" in empty
+    assert "что дальше по развитию" in empty
+
+    # clear_goal wipes last_execution
+    from eurika.api.chat_context import clear_dialog_goals
+
+    st = dict(state)
+    clear_dialog_goals(st)
+    assert st.get("last_execution") == {}
+    wiped = format_goal_reflection(st)
+    assert "сброшены" in wiped or "Пока нет итога" in wiped
+    assert "ritual completed" not in wiped
 
 
 def test_llm_fallback_does_not_pin_answer_as_active_goal(tmp_path: Path, monkeypatch) -> None:

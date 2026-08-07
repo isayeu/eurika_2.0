@@ -51,15 +51,24 @@ def format_goal_reflection(state: Optional[Dict[str, Any]]) -> str:
 
     Unlike ``format_dialog_goal_block``, empty goal still surfaces last_execution —
     answer to «что получилось?» / «итог цели».
+    After ``clear_goal``, last_execution is wiped too — no stale итог.
     """
     if not isinstance(state, dict) or not state:
         return (
             "Пока нет итога: ни активной цели, ни last_execution. "
-            "Сначала scan / ритуал / Apply, потом спроси снова."
+            "Сначала scan / ритуал / Apply, или спроси «что дальше по развитию?»."
+        )
+    goal = state.get("active_goal")
+    last = state.get("last_execution")
+    goal_present = isinstance(goal, dict) and bool(goal)
+    last_present = isinstance(last, dict) and bool(last)
+    if not goal_present and not last_present:
+        return (
+            "Пока нет итога: цель и last_execution сброшены. "
+            "Сделай scan / ритуал / Apply или спроси «что дальше по развитию?»."
         )
     lines: List[str] = []
-    goal = state.get("active_goal")
-    if isinstance(goal, dict) and goal:
+    if goal_present:
         intent = goal.get("intent") or "-"
         target = str(goal.get("target") or "").strip()
         head = f"Цель: intent={intent}"
@@ -71,8 +80,7 @@ def format_goal_reflection(state: Optional[Dict[str, Any]]) -> str:
         lines.append(head)
     else:
         lines.append("Активной цели нет.")
-    last = state.get("last_execution")
-    if isinstance(last, dict) and last:
+    if last_present:
         ok = last.get("ok")
         ver = last.get("verification_ok")
         summary = str(last.get("summary") or "-").strip() or "-"
@@ -84,7 +92,10 @@ def format_goal_reflection(state: Optional[Dict[str, Any]]) -> str:
             lines.append(f"Артефакты: {preview}{more}")
     else:
         lines.append("Last execution ещё не записан.")
-    lines.append('Дальше: «сбрось цель» или «какая цель?» / новая задача.')
+    if goal_present:
+        lines.append('Дальше: «сбрось цель» или «какая цель?» / новая задача.')
+    else:
+        lines.append('Дальше: новая задача или «что дальше по развитию?»')
     return "\n".join(lines)
 
 
@@ -183,9 +194,20 @@ def format_dialog_goal_block(state: Optional[Dict[str, Any]]) -> str:
 
 
 def clear_dialog_goals(state: Dict[str, Any]) -> Dict[str, Any]:
-    """Clear active goal and pending clarification (HITL pending_plan untouched)."""
+    """Clear active goal, pending clarification, and last_execution.
+
+    HITL pending_plan / pending_git_commit untouched. Wiping last_execution avoids
+    stale «что получилось?» after explicit reset.
+    """
     state["active_goal"] = {}
     state["pending_clarification"] = {}
+    state["last_execution"] = {}
+    return state
+
+
+def release_active_goal_keep_execution(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Drop sticky active_goal after a finished run; keep last_execution for reflection."""
+    state["active_goal"] = {}
     return state
 
 

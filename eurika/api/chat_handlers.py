@@ -10,6 +10,7 @@ from .chat_context import (
     format_dialog_goal_block,
     format_goal_reflection,
     load_dialog_state,
+    release_active_goal_keep_execution,
     save_dialog_state,
     store_last_execution,
 )
@@ -134,8 +135,10 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         # Scan itself is not always an active_goal — pin a light goal for nudge/reflection.
         if not (isinstance(state.get('active_goal'), dict) and state.get('active_goal')):
             state['active_goal'] = {'intent': 'scan', 'source': 'chat_direct', 'target': '.'}
-            save_dialog_state(root, state)
         text = append_goal_nudge(text, state)
+        # Keep last_execution for «что получилось?»; don't sticky-pin scan as active goal.
+        release_active_goal_keep_execution(state)
+        save_dialog_state(root, state)
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None if ok else excerpt}
@@ -172,9 +175,11 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         if isinstance(state, dict):
             state['active_goal'] = {}
             state['pending_clarification'] = {}
+            state['last_execution'] = {}
         text = (
-            'Сбросил активную цель и ожидание уточнения. '
-            'Pending Apply/Reject (plan/git) не трогал — для них «отклонить».'
+            'Сбросил активную цель, ожидание уточнения и last_execution. '
+            'Pending Apply/Reject (plan/git) не трогал — для них «отклонить». '
+            'Дальше: новая задача или «что дальше по развитию?».'
         )
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
@@ -248,6 +253,8 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         if not ok:
             text = f'Ритуал выполнен с ошибками:\n\n```\n{output}\n```'
         text = append_goal_nudge(text, state)
+        release_active_goal_keep_execution(state)
+        save_dialog_state(root, state)
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None if ok else output}
@@ -278,6 +285,9 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             excerpt = output[-6000:].strip() if output.strip() else '(вывод пуст)'
             text = f'{summary}\n\n```\n{excerpt}\n```'
         text = append_goal_nudge(text, state)
+        if isinstance(state.get('active_goal'), dict) and state.get('active_goal'):
+            release_active_goal_keep_execution(state)
+            save_dialog_state(root, state)
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         result: Dict[str, Any] = {'text': text, 'error': None}

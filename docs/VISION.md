@@ -56,7 +56,7 @@
 ### C. Agent / платформа
 11. **Plugin hooks** `after_*` — `routeCRM/plugins` + R5.
 12. **Telegram-канал** к тому же агенту (`eurika` v1 `telegram_bot`).
-13. ~~**Goals / reflection / nudges (v1)**~~ частично ✅ — `goal_status` / `clear_goal` / `goal_reflection` («что получилось?») + nudge после scan/ritual/Apply; deeper goals later.
+13. ~~**Goals / reflection / nudges (v1)**~~ частично ✅ — `goal_status` / `clear_goal` (чистит и last_execution) / `goal_reflection` + nudge; после scan/ritual/Apply цель отпускается, итог остаётся для «что получилось?».
 
 ### Не брать
 Live-ордера / ключи / freqtrade с prodg; indicator-правила «RSI→buy» / «памп→buy» как ML-логика; OPT/aviation/vpn как домен; третий ТФ как отдельный торговый движок.
