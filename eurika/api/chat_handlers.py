@@ -83,10 +83,18 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
     if handler_id == 'scan_suggest':
+        typo = (msg or '').strip()
+        state['pending_scan_confirm'] = {
+            'active': True,
+            'typo': typo,
+            'suggest': 'scan',
+        }
+        save_dialog_state(root, state)
         text = (
-            f'Похоже на опечатку рядом со **scan** («{(msg or "").strip()}»). '
+            f'Похоже на опечатку рядом со **scan** («{typo}»). '
             'Имел в виду «просканируй проект» / `scan`? '
-            'Напиши так — запущу `eurika scan .` (документацию не открываю).'
+            'Ответь **да** — запущу `eurika scan .`; **нет** — отменю '
+            '(документацию не открываю).'
         )
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
@@ -185,6 +193,7 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             state['active_goal'] = {}
             state['pending_clarification'] = {}
             state['last_execution'] = {}
+            state['pending_scan_confirm'] = {}
         text = (
             'Сбросил активную цель, ожидание уточнения и last_execution. '
             'Pending Apply/Reject (plan/git) не трогал — для них «отклонить». '

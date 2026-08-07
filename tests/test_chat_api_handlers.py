@@ -68,6 +68,31 @@ def test_chat_send_scan_typo_suggests_not_docs(tmp_path: Path, monkeypatch) -> N
     assert "просканируй" in text.lower() or "scan" in text.lower()
     assert "Найдено" not in text
     assert "CHANGELOG" not in text
+    # Pending confirm stored
+    import json
+
+    st = json.loads(
+        (tmp_path / ".eurika" / "chat_history" / "dialog_state.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert st.get("pending_scan_confirm", {}).get("active") is True
+
+    # «да» must run scan, not list_docs
+    monkeypatch.setattr(
+        "eurika.api.chat_tools.run_eurika_command",
+        lambda *_a, **_k: (True, "scan ok report"),
+    )
+    yes = chat_mod.chat_send(tmp_path, "да")
+    ytext = yes.get("text") or ""
+    assert "scan ok" in ytext or "eurika scan" in ytext.lower() or "Выполнил" in ytext
+    assert "CHANGELOG" not in ytext
+    st2 = json.loads(
+        (tmp_path / ".eurika" / "chat_history" / "dialog_state.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert not st2.get("pending_scan_confirm", {}).get("active")
 
 
 def test_chat_send_add_api_test_creates_file_if_missing(tmp_path: Path, monkeypatch) -> None:

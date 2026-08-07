@@ -202,6 +202,7 @@ def clear_dialog_goals(state: Dict[str, Any]) -> Dict[str, Any]:
     state["active_goal"] = {}
     state["pending_clarification"] = {}
     state["last_execution"] = {}
+    state["pending_scan_confirm"] = {}
     return state
 
 
@@ -257,6 +258,13 @@ def format_agent_context_panel(
         lines.append("Ожидает уточнения:")
         lines.append(f"- {(original[:180] if original else '(без текста)')}")
 
+    pending_scan = state.get("pending_scan_confirm")
+    if isinstance(pending_scan, dict) and pending_scan.get("active"):
+        typo = str(pending_scan.get("typo") or "").strip()
+        lines.append("")
+        lines.append("Ожидает подтверждения scan:")
+        lines.append(f"- typo={typo or '?'}; ответь «да» / «нет»")
+
     pending_plan = state.get("pending_plan")
     if not isinstance(pending_plan, dict):
         pending_plan = {}
@@ -310,6 +318,8 @@ def format_agent_context_panel(
 
     has_substance = goal_present or (
         isinstance(pending, dict) and bool(pending)
+    ) or (
+        isinstance(pending_scan, dict) and bool(pending_scan.get("active"))
     ) or plan_valid or plan_stale or (
         isinstance(last, dict) and bool(last)
     ) or (

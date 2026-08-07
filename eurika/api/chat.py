@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from eurika.api.task_executor import build_task_spec, execute_spec, has_capability, is_pending_plan_valid, make_pending_plan
 from .chat_context import build_chat_context as _build_chat_context, load_dialog_state as _load_dialog_state, load_user_context as _load_user_context, save_dialog_state as _save_dialog_state, save_user_context as _save_user_context, store_last_execution as _store_last_execution, append_goal_nudge as _append_goal_nudge, release_active_goal_keep_execution as _release_active_goal_keep_execution
-from .chat_direct import extract_confirmation_token as _extract_confirmation_token, is_apply_confirmation as _is_apply_confirmation, is_reject_confirmation as _is_reject_confirmation, resolve_direct_handler as _resolve_direct_handler, run_eurika_fix as _run_eurika_fix
+from .chat_direct import extract_confirmation_token as _extract_confirmation_token, is_apply_confirmation as _is_apply_confirmation, is_reject_confirmation as _is_reject_confirmation, is_short_affirmation as _is_short_affirmation, is_short_negation as _is_short_negation, resolve_direct_handler as _resolve_direct_handler, run_eurika_fix as _run_eurika_fix
 from .chat_prompt import build_chat_prompt as _build_chat_prompt, fetch_knowledge_for_chat as _fetch_knowledge_for_chat, intent_hints_for_prompt as _intent_hints_for_prompt, knowledge_topics_for_chat as _knowledge_topics_for_chat, load_chat_feedback_for_prompt as _load_chat_feedback_for_prompt, load_eurika_rules_for_chat as _load_eurika_rules_for_chat
 from .chat_handlers import run_direct_handlers as _run_direct_handlers
 from .chat_metrics import record_chat_metric as _record_chat_metric
@@ -68,6 +68,36 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     if not msg:
         return {'text': '', 'error': 'message is empty'}
     state = _load_dialog_state(root)
+    # Confirm/deny pending scan typo before other intents («да» after scsn).
+    pending_scan = state.get('pending_scan_confirm') if isinstance(state, dict) else None
+    if isinstance(pending_scan, dict) and pending_scan.get('active'):
+        if _is_short_affirmation(msg):
+            state['pending_scan_confirm'] = {}
+            _save_dialog_state(root, state)
+            handler_id, emit_cmd = 'scan', '$ eurika scan .'
+            _record_chat_metric(root, 'intent_match', handler='scan', message=msg[:240])
+            if emit_cmd:
+                _emit(emit_cmd, on_system_action)
+
+            def _emit_one_scan(cmd: str) -> None:
+                _emit(cmd, on_system_action)
+
+            direct_result = _run_direct_handlers(
+                handler_id, root, 'scan', state, emit_cmd, _emit_one_scan,
+                _append_chat_history_safe, run_command_with_result,
+            )
+            if direct_result is not None:
+                return direct_result
+        if _is_short_negation(msg) or _is_reject_confirmation(msg):
+            state['pending_scan_confirm'] = {}
+            _save_dialog_state(root, state)
+            text = 'Ок, scan не запускаю. Можешь написать «просканируй проект» позже.'
+            _append_chat_history_safe(root, 'user', msg, None)
+            _append_chat_history_safe(root, 'assistant', text, None)
+            return {'text': text, 'error': None}
+        # Unrelated follow-up: drop sticky confirm and continue normally.
+        state['pending_scan_confirm'] = {}
+        _save_dialog_state(root, state)
     # HITL confirmations must beat vector/ML fuzzy intents (e.g. «отклонить» → show_report).
     if _is_reject_confirmation(msg):
         pending_plan = state.get('pending_plan') if isinstance(state, dict) else {}

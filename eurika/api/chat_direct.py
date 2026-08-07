@@ -87,6 +87,29 @@ def is_reject_confirmation(message: str) -> bool:
     return any(m in msg for m in markers)
 
 
+def is_short_affirmation(message: str) -> bool:
+    """Yes/да after a pending clarify (e.g. scan typo suggest)."""
+    raw = (message or "").strip()
+    if not raw or len(raw) > 40:
+        return False
+    msg = _norm_msg(raw)
+    if re.match(r"^(да|ага|угу|ок|okay|ok|yes|y|конечно|верно|точно)[.!…]*$", msg):
+        return True
+    # Also accept repeating the intended skill.
+    if is_scan_request(raw) or re.match(r"^(просканируй|сканируй)[.!…]*$", msg):
+        return True
+    return False
+
+
+def is_short_negation(message: str) -> bool:
+    """No/нет to dismiss a pending clarify without HITL reject markers only."""
+    raw = (message or "").strip()
+    if not raw or len(raw) > 24:
+        return False
+    msg = _norm_msg(raw)
+    return bool(re.match(r"^(нет|не|no|n|Nope)[.!…]*$", msg, re.IGNORECASE))
+
+
 def apply_add_empty_tab_after_chat(root: Path) -> tuple[bool, str]:
     """Apply deterministic edit: add `New Tab` after Chat in Qt UI."""
     target = root / "qt_app" / "ui" / "main_window.py"
