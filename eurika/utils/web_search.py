@@ -54,7 +54,8 @@ def extract_web_search_query(message: str) -> str:
     if not msg:
         return ""
     patterns = (
-        r"^(?:найди|поищи|search|find)\s+(?:в\s+)?(?:интернете|internet|web|google)\s*(?:про|о|about|for)?\s*(.+)$",
+        # Allow «поищи в интернете, какие…» / «…интернете: …» / «…про …».
+        r"^(?:найди|поищи|search|find)\s+(?:в\s+)?(?:интернете|internet|web|google)\s*[,:;]?\s*(?:про|о|about|for)?\s*(.+)$",
         r"^(?:погугли|загугли|google)\s+(.+)$",
         r"^web\s+search\s+(.+)$",
         r"^search\s+the\s+web\s+(?:for\s+)?(.+)$",
@@ -65,7 +66,8 @@ def extract_web_search_query(message: str) -> str:
         m = re.match(pat, lowered, flags=re.IGNORECASE)
         if m:
             # Preserve original casing from tail of message where possible.
-            tail = msg[m.start(1) :].strip(" ?!.")
+            tail = msg[m.start(1) :].strip()
+            tail = tail.lstrip(" \t,;:.—–-?!.").rstrip(" ?!.")
             return tail
     return msg.strip(" ?!.")
 

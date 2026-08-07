@@ -20,6 +20,11 @@ def test_extract_web_search_query_strips_prefix() -> None:
     assert extract_web_search_query("найди в интернете про Kivy Builder") == "Kivy Builder"
     assert extract_web_search_query("погугли sqlite WAL mode") == "sqlite WAL mode"
     assert extract_web_search_query("web search python 3.14 release") == "python 3.14 release"
+    assert (
+        extract_web_search_query("поищи в интернете, какие API LLM сейчас доступны бесплатно")
+        == "какие API LLM сейчас доступны бесплатно"
+    )
+    assert extract_web_search_query("поищи в интернете: groq vs cerebras") == "groq vs cerebras"
 
 
 def test_resolve_provider_prefers_tavily_key(monkeypatch) -> None:
