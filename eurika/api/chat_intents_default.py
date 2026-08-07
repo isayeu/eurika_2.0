@@ -217,6 +217,11 @@ DEFAULT_CONFIG: Dict[str, Any] = {
                 "eurika scan",
                 "run scan",
             ],
+            "exact": [
+                "scan",
+                "скан",
+                "сканируй",
+            ],
             # Skip when user is using run_command/show syntax that just *mentions* scan.
             "exclude": [
                 "дерево",

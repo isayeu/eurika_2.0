@@ -201,6 +201,9 @@ def _accept_soft_handler(handler_id: Optional[str], msg: str) -> bool:
         return False
     if handler_id == "git_commit" and not is_git_commit_request(msg):
         return False
+    # Soft/vector must not map scan typos (scsn) to unrelated skills like list_docs.
+    if looks_like_scan_typo(msg) and handler_id != "scan":
+        return False
     return True
 
 
@@ -229,6 +232,9 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
         return ("project_tree", "$ eurika project-tree .")
     if is_scan_request(msg):
         return ("scan", "$ eurika scan .")
+    # Typo near scan/скан → clarify (before ML/vector can invent list_docs).
+    if looks_like_scan_typo(msg):
+        return ("scan_suggest", None)
     if is_saved_file_path_request(msg):
         return ("saved_file_path", None)
     if is_show_report_request(msg):
@@ -862,6 +868,9 @@ def is_scan_request(message: str) -> bool:
         for marker in ("выполни команд", "выполнить команд", "execute command", "run command")
     ):
         return False
+    # Bare tokens (English/Russian) — common dogfood shortcuts.
+    if re.match(r"^(scan|скан|сканируй)[.!?…]*$", msg):
+        return True
     keywords = (
         "просканируй",
         "прогони scan",
@@ -871,6 +880,44 @@ def is_scan_request(message: str) -> bool:
         "run scan",
     )
     return any(k in msg for k in keywords)
+
+
+def _levenshtein(a: str, b: str) -> int:
+    if a == b:
+        return 0
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            ins = cur[j - 1] + 1
+            delete = prev[j] + 1
+            sub = prev[j - 1] + (ca != cb)
+            cur.append(min(ins, delete, sub))
+        prev = cur
+    return prev[-1]
+
+
+def looks_like_scan_typo(message: str) -> bool:
+    """Single-token near-miss for scan/скан (e.g. scsn) — suggest, don't run wrong skill."""
+    raw = (message or "").strip()
+    if not raw or len(raw) > 24 or " " in raw or "\n" in raw:
+        return False
+    msg = _norm_msg(raw)
+    if not msg or is_scan_request(msg):
+        return False
+    # Strip trailing punctuation for distance check.
+    token = re.sub(r"[.!?…]+$", "", msg)
+    if len(token) < 3 or len(token) > 12:
+        return False
+    for canon in ("scan", "скан"):
+        dist = _levenshtein(token, canon)
+        if 1 <= dist <= 2 and abs(len(token) - len(canon)) <= 2:
+            return True
+    return False
 
 
 def is_tree_request(message: str) -> bool:

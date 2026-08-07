@@ -82,6 +82,15 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
+    if handler_id == 'scan_suggest':
+        text = (
+            f'Похоже на опечатку рядом со **scan** («{(msg or "").strip()}»). '
+            'Имел в виду «просканируй проект» / `scan`? '
+            'Напиши так — запущу `eurika scan .` (документацию не открываю).'
+        )
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
     if handler_id == 'web_search':
         from eurika.utils.web_search import (
             extract_web_search_query,

@@ -27,6 +27,49 @@ def test_chat_send_add_module_test_creates_test_file(tmp_path: Path, monkeypatch
     assert "test_module_imports" in content
 
 
+def test_scan_and_scan_typo_guard() -> None:
+    from eurika.api.chat_direct import (
+        _accept_soft_handler,
+        is_scan_request,
+        looks_like_scan_typo,
+        resolve_direct_handler,
+    )
+
+    root = Path(".")
+    assert is_scan_request("scan")
+    assert is_scan_request("Scan")
+    assert is_scan_request("скан")
+    assert is_scan_request("просканируй проект")
+    assert resolve_direct_handler(root, "scan")[0] == "scan"
+    assert looks_like_scan_typo("scsn")
+    assert looks_like_scan_typo("scn")
+    assert looks_like_scan_typo("sacn")
+    assert not looks_like_scan_typo("scan")
+    assert not looks_like_scan_typo("документы")
+    assert resolve_direct_handler(root, "scsn")[0] == "scan_suggest"
+    assert _accept_soft_handler("list_docs", "scsn") is False
+    assert _accept_soft_handler("scan", "scsn") is True
+
+
+def test_chat_send_scan_typo_suggests_not_docs(tmp_path: Path, monkeypatch) -> None:
+    import eurika.api.chat as chat_mod
+
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("LLM should not run")),
+    )
+    monkeypatch.setattr(
+        "eurika.ml.intent_router.match_ml_intent",
+        lambda *_a, **_k: ("list_docs", None),
+    )
+    out = chat_mod.chat_send(tmp_path, "scsn")
+    text = out.get("text") or ""
+    assert out.get("error") is None
+    assert "просканируй" in text.lower() or "scan" in text.lower()
+    assert "Найдено" not in text
+    assert "CHANGELOG" not in text
+
+
 def test_chat_send_add_api_test_creates_file_if_missing(tmp_path: Path, monkeypatch) -> None:
     """CR-B1: when tests/test_api_serve.py missing, create it and add test — доступ везде."""
     import eurika.api.chat as chat_mod
