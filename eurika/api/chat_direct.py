@@ -644,21 +644,155 @@ Reply with ONLY the commit message (1-2 lines), no quotes, no explanation. Conve
         return None
 
 
-def propose_commit_message_from_status(status_out: str) -> str:
-    """Derive a simple commit message from git status output."""
-    lines = [line.strip() for line in (status_out or "").splitlines() if line.strip()]
-    if not lines:
-        return "Update project"
-    files = []
-    for line in lines:
-        parts = line.split()
+def _paths_from_git_status(status_out: str) -> list[str]:
+    """Best-effort path list from ``git status --short`` (or porcelain-ish) text."""
+    files: list[str] = []
+    for line in (status_out or "").splitlines():
+        raw = line.strip()
+        if not raw:
+            continue
+        # short: " M path", "?? path", "R  old -> new"
+        if " -> " in raw:
+            files.append(raw.split(" -> ", 1)[-1].strip())
+            continue
+        parts = raw.split(maxsplit=1)
+        if len(parts) >= 2 and re.match(r"^[?AMDRCU ]{1,2}$", parts[0].replace("?", "?")):
+            # XY path — XY may be "M", "??", "AM"
+            path = parts[1].strip()
+            if path:
+                files.append(path)
+            continue
+        parts = raw.split()
         if len(parts) >= 2:
             files.append(parts[-1])
+    # dedupe preserve order
+    seen: set[str] = set()
+    out: list[str] = []
+    for p in files:
+        if p not in seen:
+            seen.add(p)
+            out.append(p)
+    return out
+
+
+def _paths_from_git_diff(diff_out: str) -> list[str]:
+    files: list[str] = []
+    for line in (diff_out or "").splitlines():
+        if line.startswith("+++ b/"):
+            p = line[6:].strip()
+            if p and p != "/dev/null":
+                files.append(p)
+        elif line.startswith("diff --git "):
+            m = re.search(r" b/(.+)$", line)
+            if m:
+                files.append(m.group(1).strip())
+    seen: set[str] = set()
+    out: list[str] = []
+    for p in files:
+        if p not in seen:
+            seen.add(p)
+            out.append(p)
+    return out
+
+
+def _added_symbols_from_diff(diff_out: str, *, limit: int = 5) -> list[str]:
+    """Names from newly added def/class lines; prefer public APIs over ``_helpers``."""
+    public: list[str] = []
+    private: list[str] = []
+    for line in (diff_out or "").splitlines():
+        if not line.startswith("+") or line.startswith("+++"):
+            continue
+        body = line[1:].strip()
+        m = re.match(
+            r"^(?:async\s+)?def\s+([A-Za-z_][\w]*)|"
+            r"^class\s+([A-Za-z_][\w]*)",
+            body,
+        )
+        if not m:
+            continue
+        name = m.group(1) or m.group(2)
+        if not name:
+            continue
+        bucket = private if name.startswith("_") else public
+        if name not in bucket:
+            bucket.append(name)
+    # Prefer propose_/format_/handle_/is_/build_ among public
+    def _rank(n: str) -> tuple[int, str]:
+        for i, pref in enumerate(("propose_", "format_", "handle_", "build_", "is_", "get_")):
+            if n.startswith(pref):
+                return (i, n)
+        return (50, n)
+
+    public_sorted = sorted(public, key=_rank)
+    ordered = public_sorted + private
+    return ordered[:limit]
+
+
+def _common_path_prefix(paths: list[str]) -> str:
+    """Shared directory prefix for changed paths (at most 3 segments)."""
+    if not paths:
+        return ""
+    parts_list = [Path(p).as_posix().split("/") for p in paths]
+    prefix: list[str] = []
+    for bits in zip(*parts_list):
+        if len(set(bits)) != 1:
+            break
+        prefix.append(bits[0])
+    if len(paths) == 1:
+        return "/".join(prefix[:-1][:3]) if len(prefix) > 1 else ""
+    if prefix and "." in prefix[-1]:
+        prefix = prefix[:-1]
+    return "/".join(prefix[:3])
+
+
+def propose_commit_message_from_status(status_out: str, diff_out: str = "") -> str:
+    """Derive a concise commit message from git status and optional diff.
+
+    Avoids weak «Update N files» — prefers area + filenames / new symbols.
+    """
+    files = _paths_from_git_status(status_out)
+    if not files:
+        files = _paths_from_git_diff(diff_out)
     if not files:
         return "Update project"
+
+    symbols = _added_symbols_from_diff(diff_out)
+    names = [Path(f).name for f in files]
+    area = _common_path_prefix(files)
+
+    docs_only = all(
+        f.endswith(".md") or f.startswith("docs/") or "/docs/" in f.replace("\\", "/")
+        for f in files
+    )
+    tests_only = all(
+        "test" in Path(f).name.lower() or "/tests/" in f.replace("\\", "/")
+        for f in files
+    )
+
     if len(files) == 1:
-        return f"Update {Path(files[0]).name}"
-    return f"Update {len(files)} files"
+        name = names[0]
+        if symbols:
+            return f"Update {name}: add {symbols[0]}"
+        if docs_only:
+            return f"Update docs: {name}"
+        return f"Update {name}"
+
+    heads = ", ".join(names[:3])
+    more = f" (+{len(files) - 3})" if len(files) > 3 else ""
+
+    if symbols:
+        sym = symbols[0]
+        if area:
+            return f"Update {area}: add {sym}"
+        return f"Add {sym} ({heads}{more})"
+
+    if docs_only:
+        return f"Update docs ({heads}{more})"
+    if tests_only:
+        return f"Update tests ({heads}{more})"
+    if area:
+        return f"Update {area} ({heads}{more})"
+    return f"Update {heads}{more}"
 
 
 def is_project_overview_request(message: str) -> bool:

@@ -549,9 +549,9 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
                 minimal = msg.strip().lower() in ('собери коммит', 'сделай коммит', 'commit', 'коммит') or len(msg.strip()) < 20
                 if not minimal:
                     inferred = infer_commit_message_via_llm(msg, status_out, diff_out[:1500] if diff_out else '')
-                    proposed = inferred if inferred else propose_commit_message_from_status(status_out)
+                    proposed = inferred if inferred else propose_commit_message_from_status(status_out, diff_out or '')
                 else:
-                    proposed = propose_commit_message_from_status(status_out)
+                    proposed = propose_commit_message_from_status(status_out, diff_out or '')
             token = secrets.token_hex(4)
             state['pending_git_commit'] = {'message': proposed, 'token': token}
             save_dialog_state(root, state)

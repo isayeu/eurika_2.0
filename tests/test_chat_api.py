@@ -17,6 +17,55 @@ def test_extract_commit_message_from_request_regex() -> None:
     assert extract_commit_message_from_request("собери коммит") is None
 
 
+def test_propose_commit_message_from_status_uses_diff_not_file_count() -> None:
+    from eurika.api.chat_direct import propose_commit_message_from_status
+
+    status = "\n".join(
+        [
+            " M docs/CHAT.md",
+            " M docs/VISION.md",
+            " M eurika/api/chat_context.py",
+            " M qt_app/ui/handlers/chat_handlers.py",
+            " M qt_app/ui/tabs/chat_tab.py",
+            " M tests/test_chat_api_handlers.py",
+        ]
+    )
+    diff = """diff --git a/eurika/api/chat_context.py b/eurika/api/chat_context.py
++++ b/eurika/api/chat_context.py
+@@ -1,0 +1,5 @@
++def format_agent_context_panel(state):
++    return "x"
+"""
+    msg = propose_commit_message_from_status(status, diff)
+    assert "Update 6 files" not in msg
+    assert "format_agent_context_panel" in msg or "eurika/api" in msg or "chat_context" in msg
+    assert "_paths_from_git_status" not in msg or "propose_commit" in msg
+
+    # Prefer public propose_* over private _paths_* helpers in the same diff.
+    helper_diff = """
++def _paths_from_git_status(status_out: str) -> list[str]:
++    return []
++def propose_commit_message_from_status(status_out: str, diff_out: str = "") -> str:
++    return "x"
+"""
+    ranked = propose_commit_message_from_status(
+        " M eurika/api/chat_direct.py", helper_diff
+    )
+    assert "propose_commit_message_from_status" in ranked
+    assert not ranked.startswith("Add _paths_from_git_status")
+
+    docs = propose_commit_message_from_status(" M docs/CHAT.md\n M docs/VISION.md", "")
+    assert docs.startswith("Update docs")
+    assert "Update 2 files" not in docs
+
+    single = propose_commit_message_from_status(
+        " M eurika/api/chat_direct.py",
+        "+def propose_commit_message_from_status(status_out, diff_out=''):\n+    pass\n",
+    )
+    assert "propose_commit_message_from_status" in single
+    assert single.startswith("Update ")
+
+
 def test_chat_send_git_commit_uses_llm_when_user_gives_context(tmp_path: Path, monkeypatch) -> None:
     """When user gives context (not just 'собери коммит'), LLM infers commit message (ROADMAP 3.6.8)."""
     import subprocess
