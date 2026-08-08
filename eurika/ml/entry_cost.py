@@ -158,6 +158,22 @@ def _gross_edge(row: Mapping[str, Any]) -> float | None:
 
 
 def _row_fee(row: Mapping[str, Any]) -> float:
+    # B13 back-compat: rows written before per-side accounting used 0.1% spot
+    # and 0.08% futures as if each were the whole round trip. Reinterpret those
+    # known legacy defaults for calibration without rewriting journal history.
+    if not row.get("fee_source") and row.get("market") is not None:
+        from eurika.ml.market_store import normalize_market
+        from eurika.ml.paper_trader import fee_for_market
+
+        kind = normalize_market(row.get("market"))
+        try:
+            legacy = abs(float(row.get("fee")))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            legacy = 0.0
+        if (kind == "spot" and abs(legacy - 0.001) < 1e-12) or (
+            kind == "futures" and abs(legacy - 0.0008) < 1e-12
+        ):
+            return fee_for_market(kind)
     try:
         return abs(float(row.get("fee")))  # type: ignore[arg-type]
     except (TypeError, ValueError):

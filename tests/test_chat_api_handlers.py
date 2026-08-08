@@ -415,23 +415,35 @@ def test_chat_send_rewrites_model_identity_leak(tmp_path: Path, monkeypatch) -> 
     assert "Я Qwen" not in text
 
 
-def test_chat_send_ls_request_returns_real_listing_without_llm(tmp_path: Path, monkeypatch) -> None:
-    """ls request should return actual root listing and skip LLM path."""
+def test_chat_send_ls_request_uses_tool_loop(tmp_path: Path, monkeypatch) -> None:
+    """ls phrase → LLM tool-loop with real listing (not template / HITL)."""
     import eurika.api.chat as chat_mod
+    from eurika.api.chat_host_ops import HostCommandResult
 
     (tmp_path / "a.py").write_text("x=1\n", encoding="utf-8")
     (tmp_path / "docs").mkdir()
     (tmp_path / "README.md").write_text("# hi\n", encoding="utf-8")
-    monkeypatch.setattr(
-        "eurika.reasoning.architect.call_llm_with_prompt",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
-    )
+    calls = {"n": 0}
+
+    def _llm(prompt, max_tokens=1024):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return ("```eurika-cmds\nls -la\n```", None)
+        return ("В корне: a.py, docs/, README.md.", None)
+
+    def _run(cmd, **_kw):
+        assert "ls" in cmd
+        return HostCommandResult(0, "a.py\ndocs/\nREADME.md\n")
+
+    monkeypatch.setattr("eurika.reasoning.architect.call_llm_with_prompt", _llm)
+    monkeypatch.setattr("eurika.api.chat_host_ops.run_host_command_with_privilege", _run)
     out = chat_mod.chat_send(tmp_path, "ты можешь выполнить команду ls в корне своего проекта?")
     text = out.get("text") or ""
     assert out.get("error") is None
     assert "a.py" in text
-    assert "docs/" in text
+    assert "docs" in text
     assert "README.md" in text
+    assert calls["n"] >= 2
 
 
 def test_chat_send_question_like_message_goes_to_llm_not_ritual(tmp_path: Path, monkeypatch) -> None:
@@ -466,7 +478,7 @@ def test_chat_send_ritual_request_runs_scan_doctor_report_snapshot(tmp_path: Pat
 
 
 def test_chat_send_git_commit_request_returns_real_status_without_llm(tmp_path: Path, monkeypatch) -> None:
-    """Git commit request should return real git status/diff and skip LLM (ROADMAP 3.6.8 Phase 1)."""
+    """«собери коммит» stays HITL git_commit (status+diff + применяй)."""
     import subprocess
     import eurika.api.chat as chat_mod
 
@@ -481,6 +493,46 @@ def test_chat_send_git_commit_request_returns_real_status_without_llm(tmp_path: 
     assert out.get("error") is None
     assert "git status" in text.lower() or "status" in text.lower()
     assert "применяй" in text or "Нет изменений" in text
+
+
+def test_git_status_phrase_uses_tool_loop(tmp_path: Path, monkeypatch) -> None:
+    """«покажи git status» → LLM tool-loop, not commit HITL."""
+    import subprocess
+    import eurika.api.chat as chat_mod
+    from eurika.api.chat_direct import (
+        is_git_commit_request,
+        is_git_status_request,
+        resolve_direct_handler,
+    )
+    from eurika.api.chat_host_ops import HostCommandResult
+
+    assert is_git_status_request("покажи git status") is True
+    assert is_git_commit_request("покажи git status") is False
+    assert resolve_direct_handler(tmp_path, "покажи git status")[0] is None
+    assert resolve_direct_handler(tmp_path, "git status")[0] == "host_shell"
+    assert resolve_direct_handler(tmp_path, "собери коммит")[0] == "git_commit"
+
+    subprocess.run(["git", "init"], cwd=str(tmp_path), capture_output=True, check=True)
+    (tmp_path / "x.py").write_text("a=1\n", encoding="utf-8")
+    calls = {"n": 0}
+
+    def _llm(prompt, max_tokens=1024):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return ("```eurika-cmds\ngit status\n```", None)
+        return ("В репозитории есть незакоммиченный x.py.", None)
+
+    def _run(cmd, **_kw):
+        assert "git" in cmd and "status" in cmd
+        return HostCommandResult(0, "?? x.py\n")
+
+    monkeypatch.setattr("eurika.reasoning.architect.call_llm_with_prompt", _llm)
+    monkeypatch.setattr("eurika.api.chat_host_ops.run_host_command_with_privilege", _run)
+    out = chat_mod.chat_send(tmp_path, "покажи git status")
+    assert out.get("error") is None
+    assert "x.py" in (out.get("text") or "")
+    assert calls["n"] >= 2
+    assert "применяй" not in (out.get("text") or "").lower()
 
 
 def test_git_commit_message_with_apply_word_does_not_hijack_confirmation() -> None:
@@ -782,25 +834,35 @@ def test_chat_send_git_commit_apply_executes_real_commit(tmp_path: Path, monkeyp
     assert "Update" in r.stdout or "y.py" in r.stdout
 
 
-def test_chat_send_tree_request_returns_real_tree_without_llm(tmp_path: Path, monkeypatch) -> None:
-    """Tree request should return factual structure from filesystem."""
+def test_chat_send_tree_request_uses_tool_loop(tmp_path: Path, monkeypatch) -> None:
+    """Tree request → LLM tool-loop with factual structure."""
     import eurika.api.chat as chat_mod
+    from eurika.api.chat_host_ops import HostCommandResult
 
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "main.py").write_text("print('ok')\n", encoding="utf-8")
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "test_main.py").write_text("def test_x():\n    pass\n", encoding="utf-8")
-    monkeypatch.setattr(
-        "eurika.reasoning.architect.call_llm_with_prompt",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
-    )
+    calls = {"n": 0}
+
+    def _llm(prompt, max_tokens=1024):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return ("```eurika-cmds\nfind . -maxdepth 3 | head -n 200\n```", None)
+        return ("Структура: src/main.py, tests/test_main.py.", None)
+
+    def _run(cmd, **_kw):
+        return HostCommandResult(0, "./src\n./src/main.py\n./tests\n./tests/test_main.py\n")
+
+    monkeypatch.setattr("eurika.reasoning.architect.call_llm_with_prompt", _llm)
+    monkeypatch.setattr("eurika.api.chat_host_ops.run_host_command_with_privilege", _run)
     out = chat_mod.chat_send(tmp_path, "а конкретно сейчас фактическую полную структуру?")
     text = out.get("text") or ""
     assert out.get("error") is None
-    assert "src/" in text
+    assert "src" in text
     assert "main.py" in text
-    assert "tests/" in text
-    assert "test_main.py" in text
+    assert "tests" in text
+    assert calls["n"] >= 2
 
 
 def test_chat_send_project_overview_without_llm(tmp_path: Path, monkeypatch) -> None:

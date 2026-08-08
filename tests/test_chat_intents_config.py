@@ -230,8 +230,8 @@ def test_os_check_not_roadmap_verify(tmp_path: Path) -> None:
     assert is_roadmap_verify_request("проверь фазу CR-B") is True
 
 
-def test_dir_contents_is_ls_not_show_file(tmp_path: Path) -> None:
-    """«содержимое каталога» → project_ls; soft must not invent show_file."""
+def test_dir_contents_goes_to_llm_not_show_file(tmp_path: Path) -> None:
+    """«содержимое каталога» → LLM tool-loop; soft must not invent show_file."""
     from eurika.api.chat_direct import (
         _accept_soft_handler,
         is_ls_request,
@@ -243,6 +243,29 @@ def test_dir_contents_is_ls_not_show_file(tmp_path: Path) -> None:
     assert is_ls_request(msg) is True
     assert is_show_file_request(msg) is False
     assert _accept_soft_handler("show_file", msg) is False
-    assert resolve_direct_handler(tmp_path, msg) == ("project_ls", "$ ls -la")
+    assert _accept_soft_handler("project_ls", msg) is False
+    assert resolve_direct_handler(tmp_path, msg)[0] is None
     assert is_show_file_request("покажи файл eurika/api/chat.py") is True
     assert resolve_direct_handler(tmp_path, "покажи файл README.md")[0] == "show_file"
+
+
+def test_bare_ls_still_host_shell(tmp_path: Path) -> None:
+    from eurika.api.chat_direct import resolve_direct_handler
+
+    assert resolve_direct_handler(tmp_path, "ls")[0] == "host_shell"
+    assert resolve_direct_handler(tmp_path, "ls -la")[0] == "host_shell"
+    assert resolve_direct_handler(tmp_path, "покажи дерево проекта")[0] is None
+
+
+def test_git_status_not_commit_handler(tmp_path: Path) -> None:
+    from eurika.api.chat_direct import (
+        is_git_commit_request,
+        is_git_status_request,
+        resolve_direct_handler,
+    )
+
+    assert is_git_status_request("git diff") is True
+    assert is_git_commit_request("git diff") is False
+    assert resolve_direct_handler(tmp_path, "git diff")[0] == "host_shell"
+    assert resolve_direct_handler(tmp_path, "покажи diff")[0] is None
+    assert resolve_direct_handler(tmp_path, "собери коммит")[0] == "git_commit"

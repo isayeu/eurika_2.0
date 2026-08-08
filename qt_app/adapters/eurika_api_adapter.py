@@ -30,6 +30,7 @@ from eurika.api import (
 )
 from eurika.api import get_suggest_plan_data as _get_suggest_plan_data
 from eurika.api.chat import chat_send as _chat_send, save_chat_feedback as _save_chat_feedback
+from eurika.api.chat_host_ops import PrivilegePrompt
 
 
 class EurikaApiAdapter:
@@ -176,6 +177,7 @@ class EurikaApiAdapter:
         openai_base_url: str = "",
         on_system_action: Callable[[str], None] | None = None,
         run_command_with_result: Callable[[str], tuple[str, int]] | None = None,
+        privilege_prompt: PrivilegePrompt | None = None,
     ) -> dict[str, Any]:
         with self._temporary_llm_env(
             provider=provider,
@@ -190,6 +192,7 @@ class EurikaApiAdapter:
                 history,
                 on_system_action=on_system_action,
                 run_command_with_result=run_command_with_result,
+                privilege_prompt=privilege_prompt,
             )
 
     def save_chat_feedback(

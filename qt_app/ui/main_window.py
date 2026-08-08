@@ -44,7 +44,7 @@ from .handlers import (
     notes_handlers,
     ollama_handlers,
 )
-from .main_window_helpers import ChatWorker, default_start_directory
+from .main_window_helpers import ChatWorker, HostPrivilegeBridge, default_start_directory
 from .main_window_chat_attrs import ChatTabAttrs, TerminalTabAttrs
 from .main_window_models_attrs import ModelsTabAttrs
 from .main_window_shell_attrs import (
@@ -83,6 +83,8 @@ class MainWindow(
         self._pending_operations: list[dict[str, Any]] = []
         self._chat_history: list[dict[str, str]] = []
         self._chat_worker: ChatWorker | None = None
+        self._chat_block_payloads: dict[str, str] = {}
+        self._host_privilege_bridge: HostPrivilegeBridge | None = None
         self._chat_cancelled = False
         self._pending_plan_token = ''
         self._pending_plan_fallback_active = False
@@ -244,6 +246,9 @@ class MainWindow(
                 lambda: chat_handlers.focus_approvals_mode(self)
             )
         self.chat_clear_btn.clicked.connect(lambda: chat_handlers.clear_chat_session(self))
+        self.chat_transcript.anchorClicked.connect(
+            lambda url: chat_handlers.on_chat_anchor_clicked(self, url)
+        )
         self.chat_apply_btn.clicked.connect(lambda: chat_handlers.apply_pending_chat_plan(self))
         self.chat_reject_btn.clicked.connect(lambda: chat_handlers.reject_pending_chat_plan(self))
         self.chat_diff_btn.clicked.connect(lambda: chat_handlers.preview_pending_chat_plan(self))
@@ -505,6 +510,26 @@ class MainWindow(
             return installed
         return (self.chat_ollama_model.currentText() or '').strip()
 
+    @staticmethod
+    def _force_stop_qthread(worker: Any, *, soft_ms: int = 600, hard_ms: int = 400) -> None:
+        """Stop a QThread on shutdown. LLM/network work ignores soft cancel — terminate after short wait."""
+        if worker is None:
+            return
+        try:
+            if not worker.isRunning():
+                return
+            cancel = getattr(worker, "cancel", None)
+            if callable(cancel):
+                cancel()
+            else:
+                worker.requestInterruption()
+            if worker.wait(soft_ms):
+                return
+            worker.terminate()
+            worker.wait(hard_ms)
+        except RuntimeError:
+            pass
+
     def closeEvent(self, event: QCloseEvent) -> None:
         """Ensure background workers/processes are terminated before window closes."""
         self._is_closing = True
@@ -513,29 +538,20 @@ class MainWindow(
         timer = getattr(self, "_market_timer", None)
         if timer is not None and timer.isActive():
             timer.stop()
+        # Chat first: default LLM timeout is ~120s; without terminate the process stays alive after the window closes.
+        self._force_stop_qthread(self._chat_worker, soft_ms=400, hard_ms=400)
+        self._chat_worker = None
         # MarketTickWorker is a QThread child of MainWindow — must finish before destroy
         # or Qt aborts: "QThread: Destroyed while thread is still running".
         market_worker = getattr(self, "_market_tick_worker", None)
-        if market_worker is not None:
-            try:
-                if market_worker.isRunning():
-                    market_worker.requestInterruption()
-                    if not market_worker.wait(8000):
-                        market_worker.terminate()
-                        market_worker.wait(1500)
-            except RuntimeError:
-                pass
-            self._market_tick_worker = None
-            self._market_tick_busy = False
-        self._command_service.shutdown(timeout_ms=1200)
+        self._force_stop_qthread(market_worker, soft_ms=1200, hard_ms=500)
+        self._market_tick_worker = None
+        self._market_tick_busy = False
+        self._command_service.shutdown(timeout_ms=800)
         if self._terminal_process is not None:
-            ollama_handlers.shutdown_qprocess(self._terminal_process)
-        ollama_handlers.shutdown_qprocess(self._ollama_task_process)
-        ollama_handlers.shutdown_qprocess(self._ollama_process)
-        if self._chat_worker is not None and self._chat_worker.isRunning():
-            self._chat_worker.requestInterruption()
-            self._chat_worker.wait(1500)
-        self._chat_worker = None
+            ollama_handlers.shutdown_qprocess(self._terminal_process, timeout_ms=800)
+        ollama_handlers.shutdown_qprocess(self._ollama_task_process, timeout_ms=800)
+        ollama_handlers.shutdown_qprocess(self._ollama_process, timeout_ms=800)
         if self._graph_web_view is not None:
             try:
                 self._graph_web_view.setHtml('<!DOCTYPE html><html><body></body></html>', 'about:blank')

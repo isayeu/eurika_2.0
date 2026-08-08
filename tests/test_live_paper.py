@@ -237,6 +237,10 @@ def test_shadow_entry_becomes_a_label_without_touching_money(
     assert row["pnl_usdt"] is None
     assert row["feature_vec"]
     assert row["edge"] is not None
+    assert row["fee"] == pytest.approx(0.002)
+    assert row["fee_source"] == "maker_taker"
+    assert row["entry_liquidity"] == "taker"
+    assert row["exit_liquidity"] == "taker"
     assert lp.load_open_positions(tmp_path) == []
     assert float(ensure_portfolio(tmp_path)["equity_usdt"]) == equity_before
 
@@ -1101,6 +1105,8 @@ def test_sl_exit_registers_reentry_cooldown(tmp_path: Path, monkeypatch: pytest.
                 "features": {},
                 "feature_vec": [0.0] * 12,
                 "source": "model/soft",
+                "entry_style": "oco",
+                "fill_leg": "limit",
                 "margin_usdt": 10.0,
                 "notional_usdt": 10.0,
                 "leverage": 1.0,
@@ -1130,6 +1136,20 @@ def test_sl_exit_registers_reentry_cooldown(tmp_path: Path, monkeypatch: pytest.
 
     trades = load_paper_trades(root)
     assert trades[-1].get("exit_reason") == "sl"
+    assert trades[-1]["fee_source"] == "maker_taker"
+    assert trades[-1]["entry_liquidity"] == "maker"
+    assert trades[-1]["exit_liquidity"] == "taker"
+    assert trades[-1]["entry_fee"] == pytest.approx(0.001)
+    assert trades[-1]["exit_fee"] == pytest.approx(0.001)
+    assert trades[-1]["fee"] == pytest.approx(0.002)
+    assert trades[-1]["fill_leg"] == "limit"
+    outcome = next(e for e in r["events"] if e.get("kind") == "outcome")
+    assert outcome["fee"] == pytest.approx(0.002)
+    assert outcome["fee_source"] == "maker_taker"
+    assert outcome["entry_liquidity"] == "maker"
+    assert outcome["exit_liquidity"] == "taker"
+    assert outcome["entry_style"] == "oco"
+    assert outcome["fill_leg"] == "limit"
     cd = lp.reentry_cooldown_active(
         root,
         symbol="BTCUSDT",
@@ -1307,3 +1327,180 @@ def test_live_tick_force_closes_max_age_open(
     assert trade["exit_reason"] == "max_age"
     assert abs(float(trade["exit"]) - 101.0) < 1e-9
     assert any("max-age" in str(e.get("message") or "") for e in r["events"])
+
+def test_shadow_gate_reject_uses_pending_oco_with_exec_tf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B12: cost-gate reject places a shadow OCO pending, not an instant market fill."""
+    from eurika.ml import entry_cost
+    from eurika.ml.paper_orders import load_pending_orders
+
+    monkeypatch.setattr(lp, "DEFAULT_EXEC_INTERVAL", "1m")
+    monkeypatch.setattr(lp, "cost_gate_ok", entry_cost.cost_gate_ok)
+    t0 = 1_700_000_000_000
+    main = []
+    px = 100.0
+    for i in range(36):
+        o = px
+        px = px * (1.01 if i % 2 == 0 else 0.995)
+        main.append(
+            {
+                "open_time": t0 + i * 900_000,
+                "open": o,
+                "high": max(o, px) * 1.001,
+                "low": min(o, px) * 0.999,
+                "close": px,
+                "volume": 5.0,
+            }
+        )
+    ms.save_candles(tmp_path, main, symbol="BTCUSDT", interval="15m", market="spot")
+    m1 = []
+    for i in range(30):
+        c = 100.0 + i * 0.01
+        m1.append(
+            {
+                "open_time": t0 + i * 60_000,
+                "open": c,
+                "high": c * 1.001,
+                "low": c * 0.999,
+                "close": c,
+                "volume": 1.0,
+            }
+        )
+    ms.save_candles(tmp_path, m1, symbol="BTCUSDT", interval="1m", market="spot")
+    monkeypatch.setattr(
+        "eurika.ml.live_paper.predict_action",
+        lambda root, vec: {
+            "action": "BUY",
+            "source": "model",
+            "probs": {"HOLD": 0.20, "BUY": 0.70, "SELL": 0.10},
+        },
+    )
+    monkeypatch.setattr(
+        "eurika.ml.live_paper.predict_entry_style",
+        lambda *a, **k: {
+            "style": "oco",
+            "source": "model",
+            "probs": {"market": 0.1, "limit": 0.1, "stop": 0.1, "oco": 0.7},
+        },
+    )
+
+    r = lp.run_live_tick(
+        tmp_path,
+        symbol="BTCUSDT",
+        interval="15m",
+        window=16,
+        horizon=2,
+        market="spot",
+        exec_interval="1m",
+        micro_train=False,
+        explore=False,
+        fetch=lambda *a, **k: {"ok": True, "candles": [], "error": None},
+    )
+    assert r["ok"] is True
+    assert lp.load_open_positions(tmp_path) == []
+    assert lp.load_shadow_positions(tmp_path) == []
+    pend = load_pending_orders(tmp_path)
+    assert len(pend) == 1
+    assert pend[0].get("shadow") is True
+    assert pend[0].get("entry_style") == "oco"
+    assert pend[0].get("limit_px") is not None
+    assert pend[0].get("stop_px") is not None
+    assert not pend[0].get("margin_usdt")
+    assert "не окупает комиссию" in " ".join(str(e.get("message") or "") for e in r["events"])
+
+
+def test_shadow_pending_does_not_block_live_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Shadow OCO pending must not reserve risk or block the live book."""
+    from eurika.ml.paper_orders import build_pending_order, load_pending_orders, save_pending_orders
+
+    monkeypatch.setattr(lp, "DEFAULT_EXEC_INTERVAL", "1m")
+    t0 = 1_700_000_000_000
+    main = []
+    px = 100.0
+    for i in range(36):
+        o = px
+        px = px * (1.01 if i % 2 == 0 else 0.995)
+        main.append(
+            {
+                "open_time": t0 + i * 900_000,
+                "open": o,
+                "high": max(o, px) * 1.001,
+                "low": min(o, px) * 0.999,
+                "close": px,
+                "volume": 5.0,
+            }
+        )
+    ms.save_candles(tmp_path, main, symbol="BTCUSDT", interval="15m", market="spot")
+    m1 = [
+        {
+            "open_time": t0 + i * 60_000,
+            "open": 100.0,
+            "high": 100.1,
+            "low": 99.9,
+            "close": 100.0,
+            "volume": 1.0,
+        }
+        for i in range(30)
+    ]
+    ms.save_candles(tmp_path, m1, symbol="BTCUSDT", interval="1m", market="spot")
+    save_pending_orders(
+        tmp_path,
+        [
+            build_pending_order(
+                symbol="BTCUSDT",
+                market="spot",
+                action="BUY",
+                signal_px=100.0,
+                signal_ts=t0 + 28 * 60_000,  # near last 1m bar — avoid expire on same tick
+                interval="15m",
+                entry_style="oco",
+                horizon=2,
+                horizon_exec=30,
+                exec_interval="1m",
+                tp_pct=0.01,
+                sl_pct=0.01,
+                shadow=True,
+                gate_expansion=0.3,
+            )
+        ],
+    )
+    gate_path = tmp_path / ".eurika" / "ml" / "weights" / "entry_cost_gate.json"
+    gate_path.parent.mkdir(parents=True, exist_ok=True)
+    gate_path.write_text('{"expansion_min": -9.0, "cost_mult": 1.5}', encoding="utf-8")
+    monkeypatch.setattr(
+        "eurika.ml.live_paper.predict_action",
+        lambda root, vec: {
+            "action": "BUY",
+            "source": "model",
+            "probs": {"HOLD": 0.20, "BUY": 0.70, "SELL": 0.10},
+        },
+    )
+    monkeypatch.setattr(
+        "eurika.ml.live_paper.predict_entry_style",
+        lambda *a, **k: {
+            "style": "market",
+            "source": "heuristic",
+            "probs": {"market": 1.0, "limit": 0.0, "stop": 0.0, "oco": 0.0},
+        },
+    )
+
+    r = lp.run_live_tick(
+        tmp_path,
+        symbol="BTCUSDT",
+        interval="15m",
+        window=16,
+        horizon=2,
+        market="spot",
+        exec_interval="1m",
+        micro_train=False,
+        explore=False,
+        fetch=lambda *a, **k: {"ok": True, "candles": [], "error": None},
+    )
+    assert r["ok"] is True
+    opens = lp.load_open_positions(tmp_path)
+    assert len(opens) == 1
+    assert opens[0].get("shadow") is not True
+    assert any(o.get("shadow") for o in load_pending_orders(tmp_path))

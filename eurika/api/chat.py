@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from eurika.api.task_executor import build_task_spec, execute_spec, has_capability, is_pending_plan_valid, make_pending_plan
+from eurika.api.chat_host_ops import PrivilegePrompt
 from .chat_context import build_chat_context as _build_chat_context, load_dialog_state as _load_dialog_state, load_user_context as _load_user_context, save_dialog_state as _save_dialog_state, save_user_context as _save_user_context, store_last_execution as _store_last_execution, append_goal_nudge as _append_goal_nudge, release_active_goal_keep_execution as _release_active_goal_keep_execution
 from .chat_direct import extract_confirmation_token as _extract_confirmation_token, is_apply_confirmation as _is_apply_confirmation, is_reject_confirmation as _is_reject_confirmation, is_short_affirmation as _is_short_affirmation, is_short_negation as _is_short_negation, resolve_direct_handler as _resolve_direct_handler, run_eurika_fix as _run_eurika_fix
 from .chat_prompt import build_chat_prompt as _build_chat_prompt, fetch_knowledge_for_chat as _fetch_knowledge_for_chat, intent_hints_for_prompt as _intent_hints_for_prompt, knowledge_topics_for_chat as _knowledge_topics_for_chat, load_chat_feedback_for_prompt as _load_chat_feedback_for_prompt, load_eurika_rules_for_chat as _load_eurika_rules_for_chat
@@ -71,7 +72,7 @@ def _load_project_env_once(root: Path) -> None:
     except Exception:
         pass
 
-def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str, str]]]=None, on_system_action: Optional[Callable[[str], None]]=None, run_command_with_result: Optional[Callable[[str], tuple[str, int]]]=None) -> Dict[str, Any]:
+def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str, str]]]=None, on_system_action: Optional[Callable[[str], None]]=None, run_command_with_result: Optional[Callable[[str], tuple[str, int]]]=None, privilege_prompt: Optional[PrivilegePrompt]=None) -> Dict[str, Any]:
     """
     Send user message through Eurika layer to LLM; return response.
 
@@ -79,6 +80,8 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     ROADMAP 3.5.11.B: RAG from past exchanges.
     ROADMAP 3.5.11.C: intent refactor -> run eurika fix; intent save -> extract code, write file.
     on_system_action: optional callback for actions (e.g. for Terminal tab: rm, touch, eurika fix).
+    privilege_prompt: optional (cmd, hint) -> (action, password) where action is
+        password | continue | skip — used when host tools need sudo.
     """
     root = Path(project_root).resolve()
     msg = (message or '').strip()
@@ -105,6 +108,7 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
             direct_result = _run_direct_handlers(
                 handler_id, root, 'scan', state, emit_cmd, _emit_one_scan,
                 _append_chat_history_safe, run_command_with_result,
+                privilege_prompt=privilege_prompt,
             )
             if direct_result is not None:
                 return direct_result
@@ -146,6 +150,7 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         "release_check",
         "self_check",
         "host_health",
+        "host_shell",
         "scan",
         "ritual",
         "smoke_test",
@@ -160,7 +165,17 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         _emit(cmd, on_system_action)
 
     if not is_apply:
-        direct_result = _run_direct_handlers(handler_id, root, msg, state, emit_cmd, _emit_one, _append_chat_history_safe, run_command_with_result)
+        direct_result = _run_direct_handlers(
+            handler_id,
+            root,
+            msg,
+            state,
+            emit_cmd,
+            _emit_one,
+            _append_chat_history_safe,
+            run_command_with_result,
+            privilege_prompt=privilege_prompt,
+        )
         if direct_result is not None:
             return direct_result
     intent, target = (None, None)
@@ -176,6 +191,16 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         interpretation = interpret_task(effective_msg, history=history)
         intent = interpretation.intent
         target = interpretation.target
+    except Exception:
+        pass
+    # A1: ls/tree/git-status facts must not become HITL run_command — LLM tool-loop.
+    try:
+        from eurika.api.chat_direct import is_git_status_request, is_ls_request, is_tree_request
+
+        if is_ls_request(msg) or is_tree_request(msg) or is_git_status_request(msg):
+            intent = None
+            interpretation = None
+            target = None
     except Exception:
         pass
     if _is_apply_confirmation(msg):
@@ -399,7 +424,25 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     feedback_snippet = _load_chat_feedback_for_prompt(root)
     rules_snippet = _load_eurika_rules_for_chat(root)
     intent_hints = _intent_hints_for_prompt(root)
-    prompt = _build_chat_prompt(msg, context, history, rag_examples=rag_examples, save_target=save_target, knowledge_snippet=knowledge_snippet or None, feedback_snippet=feedback_snippet or None, rules_snippet=rules_snippet or None, intent_hints=intent_hints)
+    tool_experience = ''
+    try:
+        from eurika.api.chat_host_ops import load_tool_turn_experience
+
+        tool_experience = load_tool_turn_experience(root, message=msg) or ''
+    except Exception:
+        pass
+    prompt = _build_chat_prompt(
+        msg,
+        context,
+        history,
+        rag_examples=rag_examples,
+        save_target=save_target,
+        knowledge_snippet=knowledge_snippet or None,
+        feedback_snippet=feedback_snippet or None,
+        rules_snippet=rules_snippet or None,
+        intent_hints=intent_hints,
+        tool_experience=tool_experience or None,
+    )
     tool_loop = None
     if save_target:
         from eurika.reasoning.architect import call_llm_with_prompt
@@ -409,7 +452,13 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         # LLM decides whether facts about the host are needed, we run the
         # read-only tool for it and it answers from the real output.
         from eurika.api.chat_host_ops import run_llm_tool_loop
-        tool_loop, err = run_llm_tool_loop(prompt, max_iters=3, max_tokens=1024)
+        tool_loop, err = run_llm_tool_loop(
+            prompt,
+            max_iters=3,
+            max_tokens=1024,
+            privilege_prompt=privilege_prompt,
+            cwd=str(root),
+        )
         text = tool_loop.text
         for cmd in tool_loop.commands:
             _emit(f'$ {cmd}', on_system_action)
@@ -436,9 +485,27 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         except Exception:
             pass
     text = _enforce_eurika_persona(text or '')
+    # Groq→Ollama footers are appended inside the LLM call; unwrap path fences
+    # again so Copy/Run chips do not wrap a plain pwd result.
+    from eurika.api.chat_host_ops import unwrap_fact_code_fence
+
+    text = unwrap_fact_code_fence(text)
     _append_chat_history_safe(root, 'user', msg, context)
     _append_chat_history_safe(root, 'assistant', text or '', None)
     if tool_loop is not None and tool_loop.ran_tools:
+        try:
+            from eurika.api.chat_host_ops import record_tool_turn
+
+            record_tool_turn(
+                root,
+                message=msg,
+                commands=list(tool_loop.commands),
+                exit_code=int(tool_loop.exit_code),
+                ok=tool_loop.exit_code == 0,
+                answer=text or '',
+            )
+        except Exception:
+            pass
         _store_last_execution(
             state,
             {
@@ -453,7 +520,7 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         return {
             'text': text,
             'error': None,
-            'terminal_cmd': '$ # host tools (read-only, LLM-chosen)',
+            'terminal_cmd': '$ # host tools (LLM-chosen)',
             'terminal_output': tool_loop.terminal_log,
             'terminal_exit_code': int(tool_loop.exit_code),
         }

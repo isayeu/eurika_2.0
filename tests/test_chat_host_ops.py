@@ -1,13 +1,16 @@
-"""Tests: agent tool-loop (LLM decides → read-only tool runs → LLM answers)."""
+"""Tests: agent tool-loop (LLM decides → host tools run → LLM answers)."""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from eurika.api.chat_direct import resolve_direct_handler
 from eurika.api.chat_host_ops import (
     extract_eurika_cmds,
+    has_tool_call,
     is_safe_host_command,
+    run_host_command,
     run_llm_tool_loop,
     strip_tool_calls,
     tool_protocol_instructions,
@@ -40,7 +43,6 @@ def test_loop_runs_tool_and_answers_from_output() -> None:
     assert result.commands == ["echo hello-device"]
     assert "hello-device" in result.terminal_log
     assert result.text == "Последним подключено hello-device."
-    # The second call must contain the real command output, not a template.
     assert "hello-device" in call.prompts[1]
 
 
@@ -53,25 +55,148 @@ def test_loop_answers_without_tools_when_not_needed() -> None:
     assert result.terminal_log == ""
 
 
-def test_loop_never_leaves_command_block_in_answer() -> None:
+def test_loop_never_leaves_protocol_block_in_answer() -> None:
     call = _scripted(
         "```eurika-cmds\necho one\n```",
         "Ответ без блоков.",
     )
     result, _ = run_llm_tool_loop("q", call=call)
     assert "eurika-cmds" not in result.text
-    assert "```" not in result.text
 
 
-def test_loop_feeds_back_rejected_commands_instead_of_giving_up() -> None:
+def test_unwrap_bash_fence_path_to_prose() -> None:
+    from eurika.api.chat_host_ops import unwrap_fact_code_fence
+
+    assert unwrap_fact_code_fence("```bash\n/home/andrei\n```") == "Текущий каталог: /home/andrei"
+    # Command examples must keep the fence (Copy/Run in chat).
+    assert unwrap_fact_code_fence("```bash\npwd\n```") == "```bash\npwd\n```"
+    assert unwrap_fact_code_fence("```bash\nls -la\n```") == "```bash\nls -la\n```"
+    with_footer = (
+        "```code\n/mnt/storage/project/eurika_2.0.Qt\n```\n\n—\n"
+        "Лимит Groq достигнут. Пока отвечаю через локальный Ollama."
+    )
+    out = unwrap_fact_code_fence(with_footer)
+    assert out.startswith("Текущий каталог: /mnt/storage/project/eurika_2.0.Qt")
+    assert "Лимит Groq" in out
+    assert "```" not in out.split("—")[0]
+
+
+def test_pwd_uses_project_cwd(tmp_path) -> None:
+    from eurika.api.chat_host_ops import run_host_command
+
+    r = run_host_command("pwd", cwd=str(tmp_path))
+    assert r.exit_code == 0
+    assert str(tmp_path.resolve()) in r.output
+
+
+def test_ordinary_bash_fence_is_not_a_tool_call() -> None:
+    """UI Copy/Run examples must not be auto-executed or stripped."""
+    text = "Пример:\n```bash\npwd\n```\n"
+    assert extract_eurika_cmds(text) == []
+    assert "```bash" in strip_tool_calls(text)
+
+
+def test_malformed_code_fence_with_eurika_header_is_tool_call() -> None:
+    """Ollama often emits ```code / eurika-cmds: / pwd instead of ```eurika-cmds."""
+    text = "```code\neurika-cmds:\npwd\n```"
+    assert extract_eurika_cmds(text) == ["pwd"]
+    assert strip_tool_calls(text) == ""
+
+
+def test_malformed_bare_header_is_tool_call() -> None:
+    text = "eurika-cmds:\npwd\n"
+    assert extract_eurika_cmds(text) == ["pwd"]
+    assert "pwd" not in strip_tool_calls(text)
+
+
+def test_pwd_and_pipes_are_allowed() -> None:
+    assert is_safe_host_command("pwd") is True
+    assert extract_eurika_cmds("```eurika-cmds\npwd\nls -la | head\n```") == [
+        "pwd",
+        "ls -la | head",
+    ]
+    result = run_host_command("pwd")
+    assert result.exit_code == 0
+    assert result.output.strip()
+
+
+def test_loop_runs_pwd_without_allowlist_rejection() -> None:
     call = _scripted(
-        "```eurika-cmds\nsudo rm -rf /\n```",
-        "```eurika-cmds\necho safe\n```",
+        "```eurika-cmds\npwd\n```",
+        "Текущий каталог получен.",
+    )
+    result, err = run_llm_tool_loop("pwd", call=call)
+    assert err is None
+    assert result.commands == ["pwd"]
+    assert "allowlist" not in (call.prompts[1] if len(call.prompts) > 1 else "")
+
+
+def test_fake_allowlist_answer_triggers_recovery() -> None:
+    """History-poisoned models that invent the old allowlist get one recovery pass."""
+    call = _scripted(
+        "Команды вне allowlist. Разрешены только следующие команды:\namixer\nbluetoothctl\n",
+        "```eurika-cmds\npwd\n```",
+        "Каталог получен.",
+    )
+    result, err = run_llm_tool_loop("какой сейчас pwd?", call=call)
+    assert err is None
+    assert result.commands == ["pwd"]
+    assert "allowlist" not in result.text.lower()
+    assert "Каталог" in result.text
+
+
+def test_empty_tool_block_asks_for_real_commands() -> None:
+    call = _scripted(
+        "```eurika-cmds\n\n```",
+        "```eurika-cmds\necho ok\n```",
         "Готово.",
     )
     result, _ = run_llm_tool_loop("q", call=call)
-    assert result.commands == ["echo safe"]
-    assert "allowlist" in call.prompts[1]
+    assert "пуст" in call.prompts[1].lower() or "не содержит" in call.prompts[1].lower()
+    assert "echo ok" in result.commands
+
+
+def test_privilege_prompt_password_path(monkeypatch) -> None:
+    from eurika.api import chat_host_ops as hop
+
+    calls: list[tuple[str, bool]] = []
+
+    def _fake_run(cmd, *, password=None, use_sudo=False, timeout=60.0, cwd=None):
+        calls.append((cmd, use_sudo))
+        if use_sudo:
+            return hop.HostCommandResult(0, "secret-ok", used_sudo=True)
+        return hop.HostCommandResult(1, "Permission denied", used_sudo=False)
+
+    monkeypatch.setattr(hop, "run_host_command", _fake_run)
+
+    def _ask(_cmd: str, _hint: str):
+        return "password", "secret"
+
+    result = hop.run_host_command_with_privilege(
+        "cat /etc/shadow",
+        privilege_prompt=_ask,
+    )
+    assert result.exit_code == 0
+    assert result.used_sudo is True
+    assert calls[-1][1] is True
+
+
+def test_privilege_prompt_continue_without_sudo(monkeypatch) -> None:
+    from eurika.api import chat_host_ops as hop
+
+    def _fake_run(cmd, *, password=None, use_sudo=False, timeout=60.0, cwd=None):
+        return hop.HostCommandResult(1, "Permission denied", used_sudo=False)
+
+    monkeypatch.setattr(hop, "run_host_command", _fake_run)
+
+    def _ask(_cmd: str, _hint: str):
+        return "continue", ""
+
+    result = hop.run_host_command_with_privilege(
+        "cat /root/x",
+        privilege_prompt=_ask,
+    )
+    assert "без sudo" in result.output.lower() or "continued" in result.privilege_note
 
 
 def test_loop_stops_asking_for_tools_on_last_iteration() -> None:
@@ -98,61 +223,113 @@ def test_pack_observations_keeps_command_heads() -> None:
 
 def test_loop_reports_llm_error() -> None:
     def _call(prompt: str, max_tokens: int):
-        return None, "llm down"
+        return None, "boom"
 
     result, err = run_llm_tool_loop("q", call=_call)
-    assert err == "llm down"
+    assert err == "boom"
     assert result.text == ""
 
 
-def test_python_code_block_is_not_a_tool_call() -> None:
-    text = "Вот код:\n```python\nprint('test')\n```"
-    assert extract_eurika_cmds(text) == []
-    assert strip_tool_calls(text) == text
-
-
-def test_extract_strips_pipes_and_unsafe() -> None:
-    text = "```bash\nlspci | grep VGA\nnvidia-smi\nrm -rf /\n```"
-    cmds = extract_eurika_cmds(text)
-    assert "lspci" in cmds
-    assert "nvidia-smi" in cmds
-    assert all("|" not in c for c in cmds)
-    assert "rm -rf /" not in cmds
-
-
-def test_protocol_says_run_it_yourself() -> None:
+def test_tool_protocol_has_no_allowlist_dump() -> None:
     text = tool_protocol_instructions()
-    assert "проверь" not in text.lower()
     assert "eurika-cmds" in text
+    assert "Разрешённые бинарники" not in text
+    assert "бинарного allowlist НЕТ" in text
+    assert "корень текущего проекта" in text or "cwd" in text.lower()
+    assert "ls" in text
+    assert "format_market_learning_block" in text
+    assert "eurika scan" in text
+    assert "запахи кода" in text
+    # Mentions retired names only as forbidden-to-invent examples, not as a grant list.
+    assert "Разрешены только" not in text
 
 
-def test_host_question_is_not_routed_to_a_domain_handler(tmp_path: Path) -> None:
-    """No keyword routing: host questions reach the LLM tool-loop, not a canned handler."""
-    for msg in (
-        "какое последнее устройство было подключено к ноутбуку?",
-        "как проверить какая видеокарта работает? (арчлинукс)",
-        "я подключил блютус колонку, проверь она нормально подключилась?",
-    ):
-        assert resolve_direct_handler(tmp_path, msg) == (None, None)
+def test_soft_scan_not_invented_for_ml_training_question() -> None:
+    from eurika.api.chat_direct import _accept_soft_handler, resolve_direct_handler
+    from pathlib import Path
+
+    msg = "как успехи обучения ML в проекте?"
+    assert _accept_soft_handler("scan", msg) is False
+    assert _accept_soft_handler("list_docs", msg) is False
+    assert _accept_soft_handler("scan", "scsn") is True
+    assert resolve_direct_handler(Path("."), msg)[0] is None
 
 
-def test_operacionka_stays_host_health(tmp_path: Path) -> None:
-    assert resolve_direct_handler(tmp_path, "проверь операционку")[0] == "host_health"
+def test_record_and_load_tool_turn_experience(tmp_path: Path) -> None:
+    from eurika.api.chat_host_ops import (
+        infer_tool_turn_hint,
+        load_tool_turn_experience,
+        record_tool_turn,
+    )
+
+    record_tool_turn(
+        tmp_path,
+        message="покажи содержимое каталога",
+        commands=["ls -la"],
+        exit_code=0,
+        ok=True,
+    )
+    record_tool_turn(
+        tmp_path,
+        message="fail case",
+        commands=["false"],
+        exit_code=1,
+        ok=False,
+    )
+    ml_cmd = (
+        'python -c "from pathlib import Path; from eurika.ml.learning_status '
+        'import format_market_learning_block; print(format_market_learning_block(Path(\'.\')))"'
+    )
+    record_tool_turn(
+        tmp_path,
+        message="как успехи обучения ML?",
+        commands=[ml_cmd],
+        exit_code=0,
+        ok=True,
+        answer="Entry acc 0.57, equity 987",
+    )
+    # Noise: recent unrelated turn should not beat ML when query is about training.
+    record_tool_turn(
+        tmp_path,
+        message="покажи git status",
+        commands=["git status"],
+        exit_code=0,
+        ok=True,
+    )
+    path = tmp_path / ".eurika" / "chat_tool_turns.jsonl"
+    assert path.is_file()
+    rows = [json.loads(ln) for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    ml_row = next(r for r in rows if "format_market_learning_block" in str(r.get("commands")))
+    assert "market ML" in (ml_row.get("outcome_hint") or "")
+    assert "не eurika scan" in (ml_row.get("outcome_hint") or "")
+
+    snippet = load_tool_turn_experience(tmp_path, message="успехи обучения ML в проекте")
+    assert "format_market_learning_block" in snippet
+    assert "содержимое" in load_tool_turn_experience(tmp_path, message="содержимое каталога")
+    assert "false" not in snippet
+    assert infer_tool_turn_hint("x", [ml_cmd]).startswith("успехи")
+    proto = tool_protocol_instructions(snippet)
+    assert "Опыт tool-loop" in proto or "опыт tool-loop" in proto.lower()
 
 
-def test_persona_keeps_ollama_in_rate_limit_footer() -> None:
-    from eurika.api.chat_utils import enforce_eurika_persona
+def test_bare_shell_sudo_whoami_not_list_docs() -> None:
+    from pathlib import Path
 
-    text = "Ответ.\n\n—\nЛимит Groq достигнут. Пока отвечаю через локальный Ollama."
-    out = enforce_eurika_persona(text)
-    assert "Ollama" in out
-    assert "локальный Eurika" not in out
-    assert enforce_eurika_persona("I am Qwen") == "I am Eurika"
+    from eurika.api.chat_direct import is_bare_shell_request, resolve_direct_handler
+
+    assert is_bare_shell_request("sudo whoami") is True
+    assert is_bare_shell_request("pwd") is True
+    assert is_bare_shell_request("delete") is False
+    assert is_bare_shell_request("remember my name") is False
+    assert is_bare_shell_request("какой сейчас pwd?") is False
+    assert is_bare_shell_request("покажи пример в блоке bash: pwd") is False
+    handler, _ = resolve_direct_handler(Path("."), "sudo whoami")
+    assert handler == "host_shell"
 
 
-def test_safe_allowlist_is_sandbox_only() -> None:
-    assert is_safe_host_command("lspci") is True
-    assert is_safe_host_command("nvidia-smi") is True
-    assert is_safe_host_command("rm -rf /") is False
-    assert is_safe_host_command("cat /etc/shadow") is False
-    assert is_safe_host_command("systemctl restart bluetooth") is False
+def test_host_facts_still_go_to_llm_not_direct(tmp_path: Path) -> None:
+    """Regression: host questions must not be captured by hardcoded handlers."""
+    handler, _cmd = resolve_direct_handler(tmp_path, "какое устройство подключалось последним?")
+    assert handler is None
+    handler, _cmd = resolve_direct_handler(tmp_path, "что за блютуз колонка у меня?")
+    assert handler is None

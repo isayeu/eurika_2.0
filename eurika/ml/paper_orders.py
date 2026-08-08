@@ -206,6 +206,53 @@ def save_pending_orders(project_root: str | Path, orders: list[dict[str, Any]]) 
     return path
 
 
+def _is_shadow_order(order: Mapping[str, Any] | None) -> bool:
+    return bool(order and order.get("shadow"))
+
+
+def _pending_cancel_row(
+    order: Mapping[str, Any],
+    *,
+    reason: str,
+    exit_ts: int,
+) -> dict[str, Any]:
+    """Training row for an unfilled pending cancel (live or shadow)."""
+    is_shadow = _is_shadow_order(order)
+    place_ts = int(order.get("ts") or order.get("signal_ts") or 0)
+    reason_s = str(reason or "cancel")
+    if not reason_s.startswith("cancel_"):
+        reason_s = f"cancel_{reason_s}"
+    row: dict[str, Any] = {
+        "ts": place_ts,
+        "exit_ts": int(exit_ts),
+        "symbol": order.get("symbol"),
+        "interval": order.get("interval"),
+        "market": normalize_market(order.get("market")),
+        "action": order.get("action"),
+        "entry": float(order.get("signal_px") or 0.0),
+        "exit": float(order.get("signal_px") or 0.0),
+        "ret": 0.0,
+        "edge": 0.0,
+        "correct": False,
+        "horizon": order.get("horizon"),
+        "features": order.get("features") or {},
+        "feature_vec": order.get("feature_vec") or [],
+        "policy": order.get("source") or "live",
+        "live": not is_shadow,
+        "exit_reason": reason_s,
+        "entry_style": order.get("entry_style"),
+        "pending_cancelled": True,
+        "mfe_pct": 0.0,
+        "mae_pct": 0.0,
+        "entry_timing_score": -1.0,
+    }
+    if is_shadow:
+        row["shadow"] = True
+        if order.get("gate_expansion") is not None:
+            row["gate_expansion"] = order.get("gate_expansion")
+    return row
+
+
 def build_pending_order(
     *,
     symbol: str,
@@ -227,6 +274,8 @@ def build_pending_order(
     features: Optional[dict[str, Any]] = None,
     feature_vec: Optional[list[float]] = None,
     source: str = "live",
+    shadow: bool = False,
+    gate_expansion: float | None = None,
 ) -> dict[str, Any]:
     """Create a pending (or immediately fillable market) paper order."""
     act = (action or "").upper()
@@ -252,7 +301,7 @@ def build_pending_order(
         stop_px = px * (1.0 - stop_off) if style in ("stop", "oco") else None
         invalidate_px = px * (1.0 + inv) if inv > 0 else None  # rally against short
 
-    return {
+    order: dict[str, Any] = {
         "id": str(uuid.uuid4())[:12],
         "status": "pending",
         "entry_style": style if style != "market" else "market",
@@ -278,6 +327,11 @@ def build_pending_order(
         "feature_vec": list(feature_vec or []),
         "source": source,
     }
+    if shadow:
+        order["shadow"] = True
+        if gate_expansion is not None:
+            order["gate_expansion"] = float(gate_expansion)
+    return order
 
 
 def _filled_position_from_order(order: dict[str, Any], *, entry: float, entry_ts: int) -> dict[str, Any]:
@@ -307,9 +361,14 @@ def _filled_position_from_order(order: dict[str, Any], *, entry: float, entry_ts
         "source": order.get("source") or "live",
         "levels_source": order.get("levels_source"),
     }
-    for key in ("margin_usdt", "notional_usdt", "leverage"):
-        if order.get(key) is not None:
-            pos[key] = order.get(key)
+    if _is_shadow_order(order):
+        pos["shadow"] = True
+        if order.get("gate_expansion") is not None:
+            pos["gate_expansion"] = order.get("gate_expansion")
+    else:
+        for key in ("margin_usdt", "notional_usdt", "leverage"):
+            if order.get(key) is not None:
+                pos[key] = order.get(key)
     return pos
 
 
@@ -404,8 +463,12 @@ def cancel_pending_orders_for_symbol(
     reason: str = "cancel",
     append_cancel_row: Any = None,
     only_actions: Sequence[str] | None = None,
+    shadow_only: bool | None = None,
 ) -> dict[str, Any]:
-    """Cancel pending orders for one symbol/market. Returns {cancelled, events, orders_left}."""
+    """Cancel pending orders for one symbol/market. Returns {cancelled, events, orders_left}.
+
+    ``shadow_only``: None = all; True = only shadow pendings; False = only live.
+    """
     sym = (symbol or "").strip().upper()
     kind = normalize_market(market)
     reason_s = str(reason or "cancel")
@@ -423,48 +486,27 @@ def cancel_pending_orders_for_symbol(
             continue
         if str(order.get("status") or "pending") != "pending":
             continue
+        if shadow_only is not None and _is_shadow_order(order) != bool(shadow_only):
+            kept.append(order)
+            continue
         act = str(order.get("action") or "").upper()
         if allow is not None and act not in allow:
             kept.append(order)
             continue
         cancelled_n += 1
+        shadow_tag = " тень" if _is_shadow_order(order) else ""
         events.append(
             {
                 "kind": "skip",
                 "message": (
-                    f"{sym}{' fut' if kind == 'futures' else ''} "
+                    f"{sym}{' fut' if kind == 'futures' else ''}{shadow_tag} "
                     f"pending {order.get('entry_style')} {act} отменён ({reason_s})"
                 ),
             }
         )
         if append_cancel_row is not None:
             place_ts = int(order.get("ts") or order.get("signal_ts") or 0)
-            append_cancel_row(
-                {
-                    "ts": place_ts,
-                    "exit_ts": place_ts,
-                    "symbol": sym,
-                    "interval": order.get("interval"),
-                    "market": kind,
-                    "action": act,
-                    "entry": float(order.get("signal_px") or 0.0),
-                    "exit": float(order.get("signal_px") or 0.0),
-                    "ret": 0.0,
-                    "edge": 0.0,
-                    "correct": False,
-                    "horizon": order.get("horizon"),
-                    "features": order.get("features") or {},
-                    "feature_vec": order.get("feature_vec") or [],
-                    "policy": order.get("source") or "live",
-                    "live": True,
-                    "exit_reason": f"cancel_{reason_s}",
-                    "entry_style": order.get("entry_style"),
-                    "pending_cancelled": True,
-                    "mfe_pct": 0.0,
-                    "mae_pct": 0.0,
-                    "entry_timing_score": -1.0,
-                }
-            )
+            append_cancel_row(_pending_cancel_row(order, reason=reason_s, exit_ts=place_ts))
     if cancelled_n:
         save_pending_orders(project_root, kept)
     return {"cancelled": cancelled_n, "events": events, "orders_left": len(kept)}
@@ -480,8 +522,9 @@ def process_pending_orders(
 ) -> dict[str, Any]:
     """Advance pendings for symbol/market on exec candles.
 
-    On fill, remaining pendings for the same symbol/market are cancelled
-    (``sibling_fill``) — bracket / multi-leg safety.
+    On fill, remaining pendings for the same symbol/market **and same shadow flag**
+    are cancelled (``sibling_fill``) — bracket / multi-leg safety. Live and shadow
+    books do not cancel each other.
 
     ``append_cancel_row(row)`` optional callback to log cancelled attempts for learning.
     Returns {events, filled_positions, cancelled, pending_left}.
@@ -529,11 +572,12 @@ def process_pending_orders(
                 pos = result.get("position")
                 if pos:
                     filled.append(pos)
+                shadow_tag = " тень" if _is_shadow_order(order) else ""
                 events.append(
                     {
-                        "kind": "paper",
+                        "kind": "paper" if not _is_shadow_order(order) else "info",
                         "message": (
-                            f"{sym}{' fut' if kind == 'futures' else ''} "
+                            f"{sym}{' fut' if kind == 'futures' else ''}{shadow_tag} "
                             f"вход {order.get('entry_style')}→{result.get('reason')} "
                             f"{order.get('action')} @ {float(result['entry']):.4f} "
                             f"(pending {order.get('id')})"
@@ -545,11 +589,12 @@ def process_pending_orders(
             if st == "cancelled":
                 cancelled_n += 1
                 reason = str(result.get("reason") or "cancel")
+                shadow_tag = " тень" if _is_shadow_order(order) else ""
                 events.append(
                     {
                         "kind": "skip",
                         "message": (
-                            f"{sym}{' fut' if kind == 'futures' else ''} "
+                            f"{sym}{' fut' if kind == 'futures' else ''}{shadow_tag} "
                             f"pending {order.get('entry_style')} {order.get('action')} "
                             f"отменён ({reason})"
                         ),
@@ -557,45 +602,33 @@ def process_pending_orders(
                 )
                 if append_cancel_row is not None:
                     append_cancel_row(
-                        {
-                            "ts": place_ts,
-                            "exit_ts": int(bar.get("open_time") or 0),
-                            "symbol": sym,
-                            "interval": order.get("interval"),
-                            "market": kind,
-                            "action": order.get("action"),
-                            "entry": float(order.get("signal_px") or 0.0),
-                            "exit": float(order.get("signal_px") or 0.0),
-                            "ret": 0.0,
-                            "edge": 0.0,
-                            "correct": False,
-                            "horizon": order.get("horizon"),
-                            "features": order.get("features") or {},
-                            "feature_vec": order.get("feature_vec") or [],
-                            "policy": order.get("source") or "live",
-                            "live": True,
-                            "exit_reason": f"cancel_{reason}",
-                            "entry_style": order.get("entry_style"),
-                            "pending_cancelled": True,
-                            "mfe_pct": 0.0,
-                            "mae_pct": 0.0,
-                            "entry_timing_score": -1.0,
-                        }
+                        _pending_cancel_row(
+                            order,
+                            reason=reason,
+                            exit_ts=int(bar.get("open_time") or 0),
+                        )
                     )
                 done = True
                 break
         if not done:
             still.append(order)
 
-    # Bracket safety: one fill cancels other legs / sibling pendings on this pair.
+    # Bracket safety: one fill cancels other legs / sibling pendings on this pair
+    # within the same book (live↔live or shadow↔shadow only).
     if filled and still:
+        filled_flags = {_is_shadow_order(p) for p in filled}
+        survivors: list[dict[str, Any]] = []
         for order in list(still):
+            if _is_shadow_order(order) not in filled_flags:
+                survivors.append(order)
+                continue
             cancelled_n += 1
+            shadow_tag = " тень" if _is_shadow_order(order) else ""
             events.append(
                 {
                     "kind": "skip",
                     "message": (
-                        f"{sym}{' fut' if kind == 'futures' else ''} "
+                        f"{sym}{' fut' if kind == 'futures' else ''}{shadow_tag} "
                         f"pending {order.get('entry_style')} {order.get('action')} "
                         f"отменён (sibling_fill)"
                     ),
@@ -604,32 +637,9 @@ def process_pending_orders(
             if append_cancel_row is not None:
                 place_ts = int(order.get("ts") or order.get("signal_ts") or 0)
                 append_cancel_row(
-                    {
-                        "ts": place_ts,
-                        "exit_ts": place_ts,
-                        "symbol": sym,
-                        "interval": order.get("interval"),
-                        "market": kind,
-                        "action": order.get("action"),
-                        "entry": float(order.get("signal_px") or 0.0),
-                        "exit": float(order.get("signal_px") or 0.0),
-                        "ret": 0.0,
-                        "edge": 0.0,
-                        "correct": False,
-                        "horizon": order.get("horizon"),
-                        "features": order.get("features") or {},
-                        "feature_vec": order.get("feature_vec") or [],
-                        "policy": order.get("source") or "live",
-                        "live": True,
-                        "exit_reason": "cancel_sibling_fill",
-                        "entry_style": order.get("entry_style"),
-                        "pending_cancelled": True,
-                        "mfe_pct": 0.0,
-                        "mae_pct": 0.0,
-                        "entry_timing_score": -1.0,
-                    }
+                    _pending_cancel_row(order, reason="sibling_fill", exit_ts=place_ts)
                 )
-        still = []
+        still = survivors
         changed = True
 
     final = others + still

@@ -70,10 +70,50 @@ def _extracted_block_134(emit_cmd, run_command_with_result):
     terminal_cmd, _out, _code = _run_emit_with_result(emit_cmd, run_command_with_result)
     return terminal_cmd
 
-def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: Dict[str, Any], emit_cmd: Optional[str], emit: Callable[[str], None], append_safe: Callable[[Path, str, str, Optional[str]], None], run_command_with_result: Optional[Callable[[str], tuple[str, int]]]) -> Optional[Dict[str, Any]]:
+def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: Dict[str, Any], emit_cmd: Optional[str], emit: Callable[[str], None], append_safe: Callable[[Path, str, str, Optional[str]], None], run_command_with_result: Optional[Callable[[str], tuple[str, int]]], privilege_prompt: Optional[Any] = None) -> Optional[Dict[str, Any]]:
     """Execute direct handler; return result dict if handled, else None."""
     if not handler_id:
         return None
+    if handler_id == 'host_shell':
+        from eurika.api.chat_direct import is_bare_shell_request
+        from eurika.api.chat_host_ops import run_host_command_with_privilege
+
+        if not is_bare_shell_request(msg):
+            return None
+        lines = [
+            ln.strip().lstrip("$ ").strip()
+            for ln in (msg or "").splitlines()
+            if ln.strip() and not ln.strip().startswith("#")
+        ]
+        log_parts: list[str] = []
+        worst = 0
+        for cmd in lines[:5]:
+            emit(f"$ {cmd}")
+            result = run_host_command_with_privilege(
+                cmd,
+                privilege_prompt=privilege_prompt,
+                timeout=60.0,
+                cwd=str(root),
+            )
+            display = cmd
+            if result.used_sudo and not cmd.lower().startswith("sudo "):
+                display = f"sudo {cmd}"
+            block = f"$ {display}\n{result.output}"
+            if result.privilege_note:
+                block += f"\n[{result.privilege_note}]"
+            log_parts.append(block)
+            if result.exit_code not in (0, 127) and worst == 0:
+                worst = int(result.exit_code)
+        text = "\n\n".join(log_parts) if log_parts else "(empty)"
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {
+            'text': text,
+            'error': None,
+            'terminal_cmd': f"$ {lines[0]}" if lines else "$ # host shell",
+            'terminal_output': "\n\n".join(log_parts),
+            'terminal_exit_code': int(worst),
+        }
     if handler_id == 'identity':
         text = (
             'Я Eurika — локальный архитектурный coding-ассистент этого проекта. '

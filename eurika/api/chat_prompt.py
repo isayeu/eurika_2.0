@@ -157,6 +157,7 @@ def build_chat_prompt(
     feedback_snippet: Optional[str] = None,
     rules_snippet: Optional[str] = None,
     intent_hints: Optional[str] = None,
+    tool_experience: Optional[str] = None,
 ) -> str:
     """Build system + user prompt for chat."""
     if save_target:
@@ -179,16 +180,18 @@ def build_chat_prompt(
             "You have context about the current project. Answer concisely and helpfully."
             + lang_rule
             + " "
-            + tool_protocol_instructions()
+            + tool_protocol_instructions(tool_experience)
         )
     context_block = f"\n\n[Project context]: {context}\n\n" if context else "\n\n"
     if rules_snippet:
         context_block += f"\n[Eurika Rules — следуй этим правилам]\n{rules_snippet}\n\n"
-    default_hints = """- Commit / коммит → «собери коммит»: git status+diff, затем «применяй».
+    default_hints = """- Commit / коммит → «собери коммит»: status+diff + предложение, затем «применяй».
+- Git status/diff (без коммита) → ```eurika-cmds``` (`git status`, `git diff`); не угадывай.
 - Ritual → eurika scan . → eurika doctor . → eurika report-snapshot . → eurika fix .
 - Report → «покажи отчёт» shows eurika doctor report.
 - Refactor → «рефактори» + path, or eurika fix .
-- List files → «выполни ls» or «покажи структуру проекта»."""
+- List files / дерево → через ```eurika-cmds``` (ls -la, find/tree); не угадывай список.
+- Успехи обучения market ML → format_market_learning_block / weights meta (не eurika scan)."""
     hints = intent_hints if intent_hints is not None else default_hints
     context_block += f"\n[Intent interpretation]\n{hints}\n\n"
     if feedback_snippet:

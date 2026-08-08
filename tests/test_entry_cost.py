@@ -60,6 +60,14 @@ def test_gate_stays_open_when_features_are_unusable() -> None:
     assert why == ""
 
 
+def test_legacy_fee_defaults_are_reinterpreted_per_side() -> None:
+    assert ec._row_fee({"market": "spot", "fee": 0.001}) == 0.002
+    assert ec._row_fee({"market": "futures", "fee": 0.0008}) == 0.001
+    # Explicit/new rows and synthetic rows retain their recorded total.
+    assert ec._row_fee({"market": "spot", "fee": 0.001, "fee_source": "override"}) == 0.001
+    assert ec._row_fee({"fee": 0.0009}) == 0.0009
+
+
 def test_calibration_picks_lowest_threshold_that_pays_the_fee(tmp_path: Path) -> None:
     # Flat market: edge below the fee. Expanding market: edge well above it.
     rows = [_row(vol_z=-1.0, atr_burst=-1.0, ret=0.0002) for _ in range(200)]

@@ -25,9 +25,16 @@ from eurika.ml.market_store import (
 
 ACTIONS = ("HOLD", "BUY", "SELL")
 DEFAULT_HORIZON = 4
-# Round-trip taker-ish paper fees (subtracted once from directional return).
-DEFAULT_FEE_SPOT = 0.001  # ~0.1% RT (legacy paper default)
-DEFAULT_FEE_FUTURES = 0.0008  # ~0.04%×2 USDT-M taker
+# Binance-like paper commission per executed side. Spot's standard tier is
+# 0.1% on both maker and taker; USDT-M futures defaults are 0.02% / 0.05%.
+SPOT_MAKER_FEE = 0.001
+SPOT_TAKER_FEE = 0.001
+FUTURES_MAKER_FEE = 0.0002
+FUTURES_TAKER_FEE = 0.0005
+# Conservative round-trip defaults for decisions made before fill/exit style
+# is known. ``label_trade`` still accepts one total fee for back-compat.
+DEFAULT_FEE_SPOT = SPOT_TAKER_FEE * 2.0
+DEFAULT_FEE_FUTURES = FUTURES_TAKER_FEE * 2.0
 DEFAULT_FEE = DEFAULT_FEE_SPOT
 DEFAULT_THR = 0.0
 
@@ -37,12 +44,59 @@ def paper_trades_path(project_root: str | Path) -> Path:
 
 
 def fee_for_market(market: str | None) -> float:
-    """Spot vs futures commission for paper edge/PnL."""
+    """Conservative taker+taker round-trip fee for gates/backfills."""
     from eurika.ml.market_store import normalize_market
 
     if normalize_market(market) == "futures":
         return float(DEFAULT_FEE_FUTURES)
     return float(DEFAULT_FEE_SPOT)
+
+
+def fee_rate_for_liquidity(market: str | None, liquidity: str) -> float:
+    """Commission for one executed side."""
+    from eurika.ml.market_store import normalize_market
+
+    maker = str(liquidity or "").strip().lower() == "maker"
+    if normalize_market(market) == "futures":
+        return float(FUTURES_MAKER_FEE if maker else FUTURES_TAKER_FEE)
+    return float(SPOT_MAKER_FEE if maker else SPOT_TAKER_FEE)
+
+
+def entry_liquidity(entry_style: str | None, fill_leg: str | None = None) -> str:
+    """Infer entry liquidity from the simulated fill, conservatively if legacy."""
+    leg = str(fill_leg or "").strip().lower()
+    if leg == "limit":
+        return "maker"
+    if leg in ("market", "stop"):
+        return "taker"
+    # Legacy limit rows have no fill_leg; OCO without its filled leg is unknown.
+    return "maker" if str(entry_style or "").strip().lower() == "limit" else "taker"
+
+
+def exit_liquidity(exit_reason: str | None) -> str:
+    """Paper TP is resting liquidity; reactive/time exits cross the spread."""
+    return "maker" if str(exit_reason or "").strip().lower() == "tp" else "taker"
+
+
+def commission_breakdown(
+    market: str | None,
+    *,
+    entry_style: str | None = None,
+    fill_leg: str | None = None,
+    exit_reason: str | None = None,
+) -> dict[str, Any]:
+    """Return per-side liquidity and total commission for a completed trade."""
+    entry_kind = entry_liquidity(entry_style, fill_leg)
+    exit_kind = exit_liquidity(exit_reason)
+    entry_fee = fee_rate_for_liquidity(market, entry_kind)
+    exit_fee = fee_rate_for_liquidity(market, exit_kind)
+    return {
+        "entry_liquidity": entry_kind,
+        "exit_liquidity": exit_kind,
+        "entry_fee": entry_fee,
+        "exit_fee": exit_fee,
+        "fee": entry_fee + exit_fee,
+    }
 
 
 def funding_edge_delta(
@@ -211,7 +265,7 @@ def run_paper_backfill(
     interval: str = DEFAULT_INTERVAL,
     window: int = DEFAULT_WINDOW,
     horizon: int = DEFAULT_HORIZON,
-    fee: float = DEFAULT_FEE,
+    fee: float | None = None,
     thr: float = DEFAULT_THR,
     policy: Optional[Callable[[Sequence[float]], str]] = None,
     append: bool = True,
@@ -222,6 +276,7 @@ def run_paper_backfill(
     from eurika.ml.market_store import normalize_market
 
     kind = normalize_market(market)
+    fee_use = float(fee) if fee is not None else fee_for_market(kind)
     candles = load_candles(project_root, symbol, interval, market=kind)
     w = max(8, int(window))
     h = max(1, int(horizon))
@@ -256,7 +311,7 @@ def run_paper_backfill(
             continue
         entry = float(candles[i]["close"])
         exit_px = float(candles[i + h_eff]["close"])
-        lab = label_trade(entry, exit_px, action, fee=fee, thr=thr)
+        lab = label_trade(entry, exit_px, action, fee=fee_use, thr=thr)
         rows.append(
             {
                 "ts": int(candles[i]["open_time"]),
@@ -271,7 +326,8 @@ def run_paper_backfill(
                 "edge": lab["edge"],
                 "correct": lab["correct"],
                 "horizon": h_eff,
-                "fee": fee,
+                "fee": fee_use,
+                "fee_source": "override" if fee is not None else "market_taker_roundtrip",
                 "features": feat,
                 "feature_vec": vec,
                 "policy": "momentum" if policy is None else "custom",

@@ -18,7 +18,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "version": 1,
     "vector_min_similarity": 0.72,
     "intent_hints": (
-        "- Принцип: вопрос → LLM; «проверь»/go-ahead → safe allowlist cmds → снова LLM. "
+        "- Принцип: вопрос → LLM; факты о хосте → eurika-cmds → снова LLM (sudo через UI). "
         "Без доменных intent-списков (bluetooth/gpu/…).\n"
         "- Команды: «покажи структуру», «сколько файлов?», «что за проект?», «что дальше по развитию?», «покажи отчёт».\n"
         "- Продолжение: «приступай» / «продолжай» — следующий шаг VISION (chat UX), не toggle ML.\n"
@@ -29,7 +29,10 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "- Скан: «просканируй проект» (eurika scan .).\n"
         "- Ритуал: «проведи ритуал» (scan → doctor → report-snapshot).\n"
         "- Smoke: «проведи smoke test» (torch + Qt smoke).\n"
-        "- Коммит: «собери коммит», подтверждение «применяй»."
+        "- Коммит: «собери коммит», подтверждение «применяй». "
+        "Статус/diff без коммита — через eurika-cmds (не HITL).\n"
+        "- Успехи обучения market ML — через `.eurika/ml/` "
+        "(format_market_learning_block / meta.json), не через `eurika scan`."
     ),
     "intents": {
         "identity": {

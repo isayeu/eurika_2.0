@@ -128,19 +128,62 @@ def test_format_self_check_os_focus_skips_architecture_noise() -> None:
 
 
 def test_chat_ls_mirrors_terminal(tmp_path: Path, monkeypatch) -> None:
+    """Bare ``ls`` → host_shell; output mirrored to Terminal fields."""
     import eurika.api.chat as chat_mod
+    from eurika.api.chat_host_ops import HostCommandResult
 
     (tmp_path / "a.py").write_text("x=1\n", encoding="utf-8")
 
-    def _run(cmd: str) -> tuple[str, int]:
-        assert cmd.strip().startswith("ls")
-        return ("-rw-r--r-- a.py\n", 0)
+    def _fake_run(cmd, **_kw):
+        assert "ls" in cmd
+        return HostCommandResult(0, "-rw-r--r-- a.py\n")
 
+    monkeypatch.setattr(
+        "eurika.api.chat_host_ops.run_host_command_with_privilege",
+        _fake_run,
+    )
     monkeypatch.setattr(
         "eurika.reasoning.architect.call_llm_with_prompt",
         lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("no llm")),
     )
-    out = chat_mod.chat_send(tmp_path, "выполни ls", run_command_with_result=_run)
+    out = chat_mod.chat_send(tmp_path, "ls")
     assert "a.py" in (out.get("text") or "") or "a.py" in (out.get("terminal_output") or "")
-    assert out.get("terminal_cmd") == "$ ls -la"
+    assert "ls" in (out.get("terminal_cmd") or "")
     assert out.get("terminal_exit_code") == 0
+
+
+def test_chat_ls_phrase_uses_tool_loop(tmp_path: Path, monkeypatch) -> None:
+    """Russian ls phrase → LLM tool-loop, not project_ls template."""
+    import eurika.api.chat as chat_mod
+    from eurika.api.chat_host_ops import HostCommandResult
+
+    (tmp_path / "a.py").write_text("x=1\n", encoding="utf-8")
+    calls = {"n": 0}
+
+    def _llm(prompt, max_tokens=1024):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return ("```eurika-cmds\nls -la\n```", None)
+        return ("В корне есть a.py.", None)
+
+    def _fake_run(cmd, **_kw):
+        assert "ls" in cmd
+        return HostCommandResult(0, "-rw-r--r-- a.py\n")
+
+    monkeypatch.setattr("eurika.reasoning.architect.call_llm_with_prompt", _llm)
+    monkeypatch.setattr(
+        "eurika.api.chat_host_ops.run_host_command_with_privilege",
+        _fake_run,
+    )
+    out = chat_mod.chat_send(tmp_path, "выполни ls")
+    assert out.get("error") is None
+    assert "a.py" in (out.get("text") or "")
+    assert calls["n"] >= 2
+    turns = tmp_path / ".eurika" / "chat_tool_turns.jsonl"
+    assert turns.is_file()
+    line = turns.read_text(encoding="utf-8").strip().splitlines()[-1]
+    import json
+
+    row = json.loads(line)
+    assert row.get("event") == "tool_turn"
+    assert any("ls" in str(c) for c in row.get("commands") or [])

@@ -7,7 +7,7 @@ from typing import Any
 
 from eurika.ml.features import DEFAULT_WINDOW
 from eurika.ml.market_store import DEFAULT_INTERVAL, DEFAULT_SYMBOL
-from eurika.ml.paper_trader import DEFAULT_FEE, DEFAULT_HORIZON, DEFAULT_THR
+from eurika.ml.paper_trader import DEFAULT_HORIZON, DEFAULT_THR, fee_for_market
 from eurika.utils.env import load_project_dotenv
 
 
@@ -65,7 +65,8 @@ def _cmd_paper(args: Any, root: Any) -> int:
     market = normalize_market(getattr(args, "market", None) or "spot")
     window = int(getattr(args, "window", DEFAULT_WINDOW) or DEFAULT_WINDOW)
     horizon = int(getattr(args, "horizon", DEFAULT_HORIZON) or DEFAULT_HORIZON)
-    fee = float(getattr(args, "fee", DEFAULT_FEE) if getattr(args, "fee", None) is not None else DEFAULT_FEE)
+    raw_fee = getattr(args, "fee", None)
+    fee = float(raw_fee) if raw_fee is not None else fee_for_market(market)
     thr = float(getattr(args, "thr", DEFAULT_THR) if getattr(args, "thr", None) is not None else DEFAULT_THR)
     append = not bool(getattr(args, "replace", False))
     use_model = bool(getattr(args, "use_model", False))

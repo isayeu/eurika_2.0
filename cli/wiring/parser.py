@@ -251,7 +251,12 @@ def _add_ml_market_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     paper_p.add_argument("--window", type=int, default=32, help="Feature window bars (default: 32)")
     paper_p.add_argument("--horizon", type=int, default=4, help="Label horizon bars (default: 4)")
-    paper_p.add_argument("--fee", type=float, default=0.001, help="Round-trip fee rate (default: 0.001)")
+    paper_p.add_argument(
+        "--fee",
+        type=float,
+        default=None,
+        help="Override total round-trip fee (default: market maker/taker schedule)",
+    )
     paper_p.add_argument("--thr", type=float, default=0.0, help="Edge threshold for correct (default: 0)")
     paper_p.add_argument("--replace", action="store_true", help="Overwrite paper_trades.jsonl instead of append")
     paper_p.add_argument("--use-model", action="store_true", help="Use trained weights for actions (else momentum)")

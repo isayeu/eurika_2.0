@@ -1,15 +1,16 @@
 """Chat preferences, send, apply/reject handlers. ROADMAP 3.1-arch.3."""
 from __future__ import annotations
 
-import html
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QInputDialog, QMessageBox
 
-from ..main_window_helpers import ChatWorker
+from ..chat_markdown import format_chat_line_html, parse_chat_action_url, shell_command_from_block
+from ..main_window_helpers import ChatWorker, HostPrivilegeBridge, privilege_prompt_from_bridge
 from ..tabs import terminal_tab
 
 if TYPE_CHECKING:
@@ -435,14 +436,79 @@ def current_chat_openai_base_url(main: MainWindow) -> str:
     return resolve_preset_base_url(current_chat_api_preset_id(main))
 
 
-def _format_chat_line(role: str, text: str, *, is_error: bool = False) -> str:
-    """Format chat line with bold colored role label. Preserve newlines for QTextEdit Rich Text."""
-    escaped = html.escape(text).replace("\n", "<br>")
-    if role == "user":
-        label = '<b><span style="color:#1e40af">You</span></b>'
-    else:
-        label = '<b><span style="color:#15803d">Eurika</span></b>' if not is_error else '<b><span style="color:#b91c1c">Eurika</span></b>'
-    return f"{label}: {escaped}"
+def _chat_block_payloads(main: "MainWindow") -> dict[str, str]:
+    store = getattr(main, "_chat_block_payloads", None)
+    if not isinstance(store, dict):
+        store = {}
+        main._chat_block_payloads = store
+    return store
+
+
+def _format_chat_line(
+    main: "MainWindow",
+    role: str,
+    text: str,
+    *,
+    is_error: bool = False,
+) -> str:
+    """Format chat line: role label + light markdown (fenced code frames, Copy/Run)."""
+    return format_chat_line_html(
+        role,
+        text,
+        is_error=is_error,
+        payloads=_chat_block_payloads(main),
+    )
+
+
+def _flash_chat_chip_status(main: "MainWindow", message: str) -> None:
+    """Brief non-blocking status for Copy/Run (does not fight active typing)."""
+    if getattr(main, "_chat_worker", None) is not None:
+        main.status_label.setText(message)
+        return
+    label = getattr(main, "chat_typing_label", None)
+    if label is None:
+        main.status_label.setText(message)
+        return
+    label.setText(message)
+    label.setVisible(True)
+
+    def _hide() -> None:
+        if getattr(main, "_chat_worker", None) is not None:
+            return
+        label.clear()
+        label.setVisible(False)
+
+    QTimer.singleShot(1600, _hide)
+
+
+def on_chat_anchor_clicked(main: "MainWindow", url: QUrl) -> None:
+    """Handle eurika-chat://copy|run/<id> chips inside the transcript."""
+    parsed = parse_chat_action_url(url.toString())
+    if not parsed:
+        return
+    action, block_id = parsed
+    payloads = _chat_block_payloads(main)
+    code = payloads.get(block_id)
+    if code is None:
+        _flash_chat_chip_status(main, "блок кода устарел — очистите чат или дождитесь нового ответа")
+        return
+    if action == "copy":
+        QGuiApplication.clipboard().setText(code)
+        _flash_chat_chip_status(main, "скопировано в буфер")
+        return
+    if action == "run":
+        cmd = shell_command_from_block(code)
+        if not cmd:
+            _flash_chat_chip_status(main, "пустая команда")
+            return
+        if hasattr(main, "terminal_tab_index"):
+            main.tabs.setCurrentIndex(main.terminal_tab_index)
+        started = terminal_tab.execute_command_from_chat(main, cmd)
+        if started:
+            _flash_chat_chip_status(main, f"запуск в Terminal: {cmd[:80]}")
+        else:
+            _flash_chat_chip_status(main, "Terminal занят — дождитесь завершения")
+        return
 
 
 def _scroll_transcript_to_bottom(main: "MainWindow") -> None:
@@ -490,12 +556,16 @@ def dispatch_chat_message(main: MainWindow, message: str) -> None:
     ollama_model = main.chat_ollama_model.currentText().strip()
     timeout_sec = main.chat_timeout_spin.value()
     openai_base_url = current_chat_openai_base_url(main)
-    main.chat_transcript.append(_format_chat_line("user", message))
+    main.chat_transcript.append(_format_chat_line(main, "user", message))
     main._chat_history.append({"role": "user", "content": message})
     main.chat_input.clear()
     main._chat_cancelled = False
     _set_chat_busy(main, busy=True)
     main.status_label.setText("State: chat-running")
+    bridge = getattr(main, "_host_privilege_bridge", None)
+    if bridge is None:
+        bridge = HostPrivilegeBridge(main)
+        main._host_privilege_bridge = bridge
     worker = ChatWorker(
         api=main._api,
         message=message,
@@ -506,6 +576,7 @@ def dispatch_chat_message(main: MainWindow, message: str) -> None:
         timeout_sec=timeout_sec,
         openai_base_url=openai_base_url,
         run_command_with_result=lambda cmd: _run_command_subprocess(cmd, str(main._api._root())),
+        privilege_prompt=privilege_prompt_from_bridge(bridge),
     )
     main._chat_worker = worker
     worker.finished_payload.connect(lambda p: on_chat_result(main, p))
@@ -693,7 +764,7 @@ def on_chat_result(main: MainWindow, payload: dict[str, Any]) -> None:
     err = payload.get("error")
     # Prefer structured chat text over dumping raw tool output as [error].
     if err and not text:
-        main.chat_transcript.append(_format_chat_line("assistant", f"[error]: {err}", is_error=True))
+        main.chat_transcript.append(_format_chat_line(main, "assistant", f"[error]: {err}", is_error=True))
         return
     if err and text:
         # Keep a short note; do not replace the expert reply with a raw dump.
@@ -701,13 +772,13 @@ def on_chat_result(main: MainWindow, payload: dict[str, Any]) -> None:
         if len(err_s) > 280:
             err_s = err_s[:240] + "…"
         main.chat_transcript.append(
-            _format_chat_line("assistant", f"[note]: {err_s}", is_error=True)
+            _format_chat_line(main, "assistant", f"[note]: {err_s}", is_error=True)
         )
     if not text:
-        main.chat_transcript.append(_format_chat_line("assistant", "(empty response)"))
+        main.chat_transcript.append(_format_chat_line(main, "assistant", "(empty response)"))
         refresh_chat_goal_view(main)
         return
-    main.chat_transcript.append(_format_chat_line("assistant", text))
+    main.chat_transcript.append(_format_chat_line(main, "assistant", text))
     main._chat_history.append({"role": "assistant", "content": text})
     main.chat_feedback_helpful_btn.setEnabled(True)
     main.chat_feedback_not_btn.setEnabled(True)
@@ -719,7 +790,7 @@ def on_chat_result(main: MainWindow, payload: dict[str, Any]) -> None:
 def on_chat_error(main: MainWindow, error: str) -> None:
     if getattr(main, "_chat_cancelled", False):
         return
-    main.chat_transcript.append(_format_chat_line("assistant", f"[exception]: {error}", is_error=True))
+    main.chat_transcript.append(_format_chat_line(main, "assistant", f"[exception]: {error}", is_error=True))
     refresh_chat_goal_view(main)
 
 
@@ -740,6 +811,7 @@ def activate_pending_controls_from_response(main: MainWindow, text: str) -> None
     refresh_chat_goal_view(main)
     main.chat_transcript.append(
         _format_chat_line(
+            main,
             "assistant",
             "Доступны действия: [Reject] сразу; [Apply] после Diff в панели Контекст.",
         )
@@ -773,6 +845,7 @@ def on_chat_finished(main: MainWindow) -> None:
     if cancelled:
         main.chat_transcript.append(
             _format_chat_line(
+                main,
                 "assistant",
                 "[отменено] Запрос прерван. Ollama может ещё завершить процесс в фоне.",
             )
@@ -784,6 +857,7 @@ def on_chat_finished(main: MainWindow) -> None:
 def clear_chat_session(main: MainWindow) -> None:
     main._chat_history.clear()
     main.chat_transcript.clear()
+    main._chat_block_payloads = {}
     main.chat_feedback_helpful_btn.setEnabled(False)
     main.chat_feedback_not_btn.setEnabled(False)
     refresh_chat_goal_view(main)

@@ -76,6 +76,7 @@ from eurika.ml.market_store import (
 )
 from eurika.ml.paper_trader import (
     DEFAULT_THR,
+    commission_breakdown,
     fee_for_market,
     resolve_funding_edge,
     label_trade,
@@ -495,6 +496,8 @@ def _portfolio_for_sizing(project_root: str | Path) -> dict[str, Any]:
     for o in load_pending_orders(project_root):
         if str(o.get("status") or "pending") != "pending":
             continue
+        if o.get("shadow"):
+            continue  # shadow pendings never reserve live margin
         try:
             used += max(0.0, float(o.get("margin_usdt") or 0.0))
         except (TypeError, ValueError):
@@ -816,7 +819,8 @@ def run_live_tick(
     iv = (interval or DEFAULT_INTERVAL).strip()
     kind = normalize_market(market)
     label = _sym_label(sym, kind)
-    fee_use = float(fee) if fee is not None else fee_for_market(kind)
+    fee_override = float(fee) if fee is not None else None
+    gate_fee = fee_override if fee_override is not None else fee_for_market(kind)
     w = max(8, int(window))
     h = max(1, int(horizon))
     if exec_interval is None:
@@ -923,6 +927,8 @@ def run_live_tick(
         }
 
     opens = load_open_positions(root)
+    # Shadow book loads before pending fills so OCO/limit fills can land here.
+    shadows = load_shadow_positions(root)
 
     # Fill / cancel pending entries on 1m before resolving opens.
     if use_exec and candles_exec:
@@ -934,13 +940,21 @@ def run_live_tick(
             append_cancel_row=lambda row: _append_paper_row(root, row),
         )
         events.extend(pend.get("events") or [])
+        live_filled = False
+        shadow_filled = False
         for pos in pend.get("filled_positions") or []:
-            opens.append(pos)
-        if pend.get("filled_positions"):
+            if pos.get("shadow"):
+                shadows.append(pos)
+                shadow_filled = True
+            else:
+                opens.append(pos)
+                live_filled = True
+        if live_filled:
             save_open_positions(root, opens)
+        if shadow_filled:
+            save_shadow_positions(root, shadows)
     # Shadow entries ride the same resolution machinery, so their outcome is
     # measured exactly like a real one — only money and cooldowns are skipped.
-    shadows = load_shadow_positions(root)
     still_open: list[dict[str, Any]] = []
     still_shadow: list[dict[str, Any]] = []
     resolved = 0
@@ -957,6 +971,20 @@ def run_live_tick(
         entry = float(pos.get("entry") or 0.0)
         action = str(pos.get("action") or "").upper()
         pos_exec = str(pos.get("exec_interval") or "").strip()
+        # Model exits cross the spread, so use the entry fill + taker exit cost
+        # when deciding whether unrealized edge is worth banking.
+        pos_fee_taker = (
+            fee_override
+            if fee_override is not None
+            else float(
+                commission_breakdown(
+                    kind,
+                    entry_style=pos.get("entry_style"),
+                    fill_leg=pos.get("fill_leg"),
+                    exit_reason="model",
+                )["fee"]
+            )
+        )
         # Legacy opens (до dual-TF): подключить 1m TP/SL/trail на текущем тике.
         if use_exec and candles_exec and not pos_exec:
             pos["exec_interval"] = exec_iv
@@ -1040,7 +1068,7 @@ def run_live_tick(
                     horizon_exec=h_exec,
                     tp_pct=pos_tp,
                     sl_pct=pos_sl,
-                    fee=fee_use,
+                    fee=pos_fee_taker,
                 )
                 if evec is not None:
                     unreal = float(evec[1])
@@ -1145,7 +1173,14 @@ def run_live_tick(
                 last_funding_rate=raw_f.get("last_funding_rate"),
             )
         fund = float(fund_info.get("funding") or 0.0)
-        lab = label_trade(entry, exit_px, action, fee=fee_use, thr=thr, funding=fund)
+        commission = commission_breakdown(
+            kind,
+            entry_style=pos.get("entry_style"),
+            fill_leg=pos.get("fill_leg"),
+            exit_reason=exit_reason,
+        )
+        trade_fee = fee_override if fee_override is not None else float(commission["fee"])
+        lab = label_trade(entry, exit_px, action, fee=trade_fee, thr=thr, funding=fund)
         path_candles = candles_exec if pos_use_exec else candles
         exc = path_excursions(
             path_candles,
@@ -1179,7 +1214,12 @@ def run_live_tick(
             "edge": lab["edge"],
             "correct": lab["correct"],
             "horizon": pos_h,
-            "fee": fee_use,
+            "fee": trade_fee,
+            "fee_source": "override" if fee_override is not None else "maker_taker",
+            "entry_fee": None if fee_override is not None else commission["entry_fee"],
+            "exit_fee": None if fee_override is not None else commission["exit_fee"],
+            "entry_liquidity": commission["entry_liquidity"],
+            "exit_liquidity": commission["exit_liquidity"],
             "funding": fund if abs(fund) > 1e-15 else None,
             "funding_source": fund_info.get("source") if kind == "futures" else None,
             "funding_rate": fund_info.get("last_funding_rate") if kind == "futures" else None,
@@ -1196,6 +1236,7 @@ def run_live_tick(
             "sl_pct": pos.get("sl_pct"),
             "trail_pct": pos.get("trail_pct"),
             "entry_style": pos.get("entry_style") or "market",
+            "fill_leg": pos.get("fill_leg"),
             "mfe_pct": exc.get("mfe_pct"),
             "mae_pct": exc.get("mae_pct"),
             "entry_timing_score": exc.get("entry_timing_score"),
@@ -1218,7 +1259,10 @@ def run_live_tick(
                 ),
                 tp_pct=float(pos.get("tp_pct") or 0.0),
                 sl_pct=float(pos.get("sl_pct") or 0.0),
-                fee=fee_use,
+                # Every retro candidate is a possible model CLOSE, so train on
+                # the same taker-exit cost used by online exit inference. The
+                # final realized trade may have exited by maker TP instead.
+                fee=pos_fee_taker,
                 meta={"symbol": sym, "market": kind, "interval": iv},
             )
             append_exit_samples(root, samples)
@@ -1294,7 +1338,8 @@ def run_live_tick(
                     f"вход={entry:.4f}, выход={exit_px:.4f}, причина={reason_ru}, "
                     f"MFE={float(exc.get('mfe_pct') or 0):+.3%}"
                     + (
-                        f", fee={fee_use:.4%}"
+                        f", fee={trade_fee:.4%}"
+                        f"[{commission['entry_liquidity']}+{commission['exit_liquidity']}]"
                         + (
                             f", fund={fund:+.4%}[{fund_info.get('source')}]"
                             if kind == "futures"
@@ -1306,6 +1351,14 @@ def run_live_tick(
                 "correct": lab["correct"],
                 "edge": lab["edge"],
                 "pnl_usdt": pnl_usdt if (notional_usdt > 0 or margin_usdt > 0) else None,
+                "fee": trade_fee,
+                "fee_source": "override" if fee_override is not None else "maker_taker",
+                "entry_fee": None if fee_override is not None else commission["entry_fee"],
+                "exit_fee": None if fee_override is not None else commission["exit_fee"],
+                "entry_liquidity": commission["entry_liquidity"],
+                "exit_liquidity": commission["exit_liquidity"],
+                "entry_style": pos.get("entry_style") or "market",
+                "fill_leg": pos.get("fill_leg"),
                 "reason": exit_reason,
                 "exit_reason": exit_reason,
                 "bar_ts": int(exit_ts) if exit_ts is not None else None,
@@ -1389,15 +1442,20 @@ def run_live_tick(
     has_shadow = any(
         str(s.get("symbol") or "").upper() == sym and _pos_market(s) == kind for s in still_shadow
     )
-    pending_here = [
+    all_pending_here = [
         o
         for o in load_pending_orders(root)
         if str(o.get("symbol") or "").upper() == sym
         and _pos_market(o) == kind
         and str(o.get("status") or "pending") == "pending"
     ]
+    # Live book must not see shadow pendings as blockers (and vice versa).
+    pending_here = [o for o in all_pending_here if not o.get("shadow")]
+    shadow_pending_here = [o for o in all_pending_here if o.get("shadow")]
     has_pending = bool(pending_here)
+    has_shadow_pending = bool(shadow_pending_here)
     pend_sides = {str(o.get("action") or "").upper() for o in pending_here}
+    shadow_pend_sides = {str(o.get("action") or "").upper() for o in shadow_pending_here}
     # Waiting on an open paper: no analysis/skip spam — wait/outcome already cover it.
     if has_open and waiting > 0 and resolved == 0:
         ms = model_status(root)
@@ -1489,6 +1547,7 @@ def run_live_tick(
         int(o.get("signal_ts") or o.get("ts") or 0) == last_ts
         and str(o.get("symbol") or "").upper() == sym
         and _pos_market(o) == kind
+        and not o.get("shadow")
         for o in load_pending_orders(root)
     )
 
@@ -1516,6 +1575,7 @@ def run_live_tick(
         and not has_open
         and not has_pending
         and not has_shadow
+        and not has_shadow_pending
         and not already_this_bar
         and explore_eff
     ):
@@ -1623,7 +1683,7 @@ def run_live_tick(
     ):
         cost_ok, cost_why = cost_gate_ok(
             feat if feat else vec,
-            fee=fee_for_market(kind),
+            fee=gate_fee,
             gate=load_cost_gate(root),
         )
         if not cost_ok:
@@ -1652,6 +1712,7 @@ def run_live_tick(
             market=kind,
             reason="side_flip",
             append_cancel_row=lambda row: _append_paper_row(root, row),
+            shadow_only=False,
         )
         events.extend(flip.get("events") or [])
         if int(flip.get("cancelled") or 0) > 0:
@@ -1950,12 +2011,28 @@ def run_live_tick(
     # the journal keeps learning about the regime the gate is filtering out.
     # Without this the next calibration only ever sees trades the gate allowed,
     # decides everything pays, and unlocks itself.
+    # B12: shadow uses the same style/pending/OCO path as the live book.
     if shadow_action in ("BUY", "SELL"):
-        if any(
+        if has_shadow or any(
             str(s.get("symbol") or "").upper() == sym and _pos_market(s) == kind
             for s in still_shadow
         ):
             shadow_action = ""
+        elif has_shadow_pending and shadow_action in shadow_pend_sides:
+            shadow_action = ""
+        elif has_shadow_pending and shadow_pend_sides and shadow_action not in shadow_pend_sides:
+            flip_s = cancel_pending_orders_for_symbol(
+                root,
+                symbol=sym,
+                market=kind,
+                reason="side_flip",
+                append_cancel_row=lambda row: _append_paper_row(root, row),
+                shadow_only=True,
+            )
+            events.extend(flip_s.get("events") or [])
+            has_shadow_pending = False
+            shadow_pending_here = []
+            shadow_pend_sides = set()
     if shadow_action in ("BUY", "SELL"):
         s_levels = predict_levels(
             root,
@@ -1965,45 +2042,96 @@ def run_live_tick(
             fallback_trail=trail,
         )
         s_trail = float(s_levels["trail_pct"]) * 0.75
+        s_tp = float(s_levels["tp_pct"])
+        s_sl = float(s_levels["sl_pct"])
+        s_levels_src = str(s_levels.get("source") or "fallback")
+        s_gate_exp = expansion_score(feat if feat else vec)
+        s_style_pred = predict_entry_style(root, feat if feat else vec, rng=rng)
+        s_entry_style = str(s_style_pred.get("style") or "market")
+        s_style_src = str(s_style_pred.get("source") or "heuristic")
+        # Soft shadows (rare) get the same OCO bracket preference as live soft.
+        if "soft" in str(open_source) and s_entry_style in ("market", "limit"):
+            s_entry_style = "oco"
+            s_style_src = f"{s_style_src}/soft_bracket"
         if use_exec and candles_exec:
-            s_entry = float(candles_exec[-1]["close"])
-            s_entry_ts = int(candles_exec[-1]["open_time"])
+            s_signal_px = float(candles_exec[-1]["close"])
+            s_signal_ts = int(candles_exec[-1]["open_time"])
             s_exec_iv = exec_iv
             s_h_exec = main_horizon_to_exec(h_eff, iv, exec_iv)
         else:
-            s_entry = float(candles[-1]["close"])
-            s_entry_ts = last_ts
+            s_signal_px = float(candles[-1]["close"])
+            s_signal_ts = last_ts
             s_exec_iv = ""
             s_h_exec = h_eff
-        still_shadow.append(
-            {
-                "ts": s_entry_ts,
-                "signal_ts": last_ts,
-                "signal_px": s_entry,
-                "symbol": sym,
-                "interval": iv,
-                "market": kind,
-                "action": shadow_action,
-                "entry": s_entry,
-                "horizon": h_eff,
-                "horizon_exec": s_h_exec if s_exec_iv else None,
-                "exec_interval": s_exec_iv or None,
-                "tp_pct": float(s_levels["tp_pct"]) if s_exec_iv else None,
-                "sl_pct": float(s_levels["sl_pct"]) if s_exec_iv else None,
-                "trail_pct": s_trail if s_exec_iv and s_trail > 0 else None,
-                "trail_extreme": s_entry if s_exec_iv and s_trail > 0 else None,
-                "levels_source": str(s_levels.get("source") or "fallback"),
-                # Market fill: no pending leg to wait for, so the measurement is
-                # conservative next to the OCO entries the live book prefers.
-                "entry_style": "market",
-                "features": feat,
-                "feature_vec": vec,
-                "source": open_source,
-                "gate_expansion": expansion_score(feat if feat else vec),
-                "shadow": True,
-            }
-        )
-        save_shadow_positions(root, still_shadow)
+            s_entry_style = "market"
+
+        if s_entry_style == "market" or not s_exec_iv:
+            still_shadow.append(
+                {
+                    "ts": s_signal_ts,
+                    "signal_ts": last_ts,
+                    "signal_px": s_signal_px,
+                    "symbol": sym,
+                    "interval": iv,
+                    "market": kind,
+                    "action": shadow_action,
+                    "entry": s_signal_px,
+                    "horizon": h_eff,
+                    "horizon_exec": s_h_exec if s_exec_iv else None,
+                    "exec_interval": s_exec_iv or None,
+                    "tp_pct": s_tp if s_exec_iv else None,
+                    "sl_pct": s_sl if s_exec_iv else None,
+                    "trail_pct": s_trail if s_exec_iv and s_trail > 0 else None,
+                    "trail_extreme": s_signal_px if s_exec_iv and s_trail > 0 else None,
+                    "levels_source": s_levels_src,
+                    "entry_style": "market",
+                    "style_source": s_style_src,
+                    "features": feat,
+                    "feature_vec": vec,
+                    "source": open_source,
+                    "gate_expansion": s_gate_exp,
+                    "shadow": True,
+                }
+            )
+            save_shadow_positions(root, still_shadow)
+        else:
+            s_order = build_pending_order(
+                symbol=sym,
+                market=kind,
+                action=shadow_action,
+                signal_px=s_signal_px,
+                signal_ts=s_signal_ts,
+                interval=iv,
+                entry_style=s_entry_style,
+                horizon=h_eff,
+                horizon_exec=s_h_exec,
+                exec_interval=s_exec_iv,
+                tp_pct=s_tp,
+                sl_pct=s_sl,
+                trail_pct=s_trail,
+                features=feat,
+                feature_vec=vec,
+                source=open_source,
+                shadow=True,
+                gate_expansion=s_gate_exp,
+            )
+            s_order["signal_ts"] = last_ts
+            s_order["main_signal_ts"] = last_ts
+            s_order["levels_source"] = s_levels_src
+            s_order["style_source"] = s_style_src
+            pend_all = load_pending_orders(root)
+            pend_all.append(s_order)
+            save_pending_orders(root, pend_all)
+            events.append(
+                {
+                    "kind": "info",
+                    "message": (
+                        f"{label} тень pending {_action_ru(shadow_action)} "
+                        f"стиль={s_entry_style} @ signal={s_signal_px:.4f} "
+                        f"(id={s_order.get('id')}) — метка без риска для банка"
+                    ),
+                }
+            )
 
     if micro_train and (resolved > 0 or shadow_resolved > 0):
         _append_learn_events(events, root, epochs=int(train_epochs))

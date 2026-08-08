@@ -6,7 +6,7 @@
 
 | Вкладка | Назначение |
 |---------|------------|
-| **Chat** (первая) | Chat-first: подвкладки **Агент** / **Market**. На Агенте — полоска режимов (Агент / Market / Обучение), статус paper и справа панель **Контекст** (goal/pending/last run, **авто-Diff**, Apply после Diff, Terminal / Approvals). Market: Live paper, Spot\|Futures\|Both, тикеры, исследование, 15m/1h, лента. Без live-ордеров. См. [CHAT.md](CHAT.md) |
+| **Chat** (первая) | Chat-first: подвкладки **Агент** / **Market**. На Агенте — полоска режимов (Агент / Market / Обучение), статус paper и справа панель **Контекст** (goal/pending/last run, **авто-Diff**, Apply после Diff, Terminal / Approvals). Транскрипт: лёгкий markdown — **рамки кода** с **Copy**; для `bash`/`sh` ещё **Run** → вкладка Terminal. Market: Live paper, Spot\|Futures\|Both, тикеры, исследование, 15m/1h, лента. Без live-ордеров. См. [CHAT.md](CHAT.md) |
 | **Terminal** | Классический экран: ввод после `$ ` (Enter = Run), Stop/Clear сверху; вывод Commands + shell |
 | **Models** | Подвкладки **LLM** / **ML**. LLM: Ollama, GPU, chat provider. ML: PyTorch + **Market learning**. См. [CHAT.md](CHAT.md) / [HARDWARE.md](HARDWARE.md) |
 | **Commands** | scan/doctor/fix/cycle/explain/…, Run/Stop; Quality: Ruff, Mypy, Release check |

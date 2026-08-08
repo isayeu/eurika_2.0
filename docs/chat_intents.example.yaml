@@ -29,6 +29,7 @@ vector_min_similarity: 0.72
 # Подсказки для LLM (русский). Используется в промпте, если задано.
 intent_hints: |
   - Коммит → «собери коммит»: git status+diff, затем «применяй».
+  - Git status/diff без коммита → eurika-cmds (не HITL).
   - Ритуал → «проведи ритуал» или «прогони scan doctor»: eurika scan . → doctor . → report-snapshot . → fix .
   - Отчёт → «покажи отчёт»: отображение doctor report.
   - Рефакторинг → «рефактори» + путь, или eurika fix .
@@ -260,10 +261,6 @@ intents:
       - "commit changes"
       - "commit the changes"
       - "git commit"
-      - "git status"
-      - "git diff"
-      - "покажи status"
-      - "покажи diff"
     vector_exemplars:
       - "собери коммит"
       - "сделай коммит"
@@ -271,7 +268,6 @@ intents:
       - "создай коммит"
       - "сделай commit"
       - "commit the changes"
-      - "покажи git status"
     emit: null
 
   project_ls:

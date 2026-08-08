@@ -360,3 +360,99 @@ def test_sibling_fill_cancels_other_pending(tmp_path: Path) -> None:
     assert out["pending_left"] == 0
     assert any(r.get("exit_reason") == "cancel_sibling_fill" for r in cancels)
     assert load_pending_orders(tmp_path) == []
+
+
+def test_sibling_fill_does_not_cross_live_and_shadow_books(tmp_path: Path) -> None:
+    """A live fill must not cancel a shadow pending on the same symbol."""
+    t0 = 1_700_000_000_000
+    live = build_pending_order(
+        symbol="BTCUSDT",
+        market="spot",
+        action="BUY",
+        signal_px=100.0,
+        signal_ts=t0,
+        interval="15m",
+        entry_style="limit",
+        horizon=2,
+        horizon_exec=20,
+        exec_interval="1m",
+        tp_pct=0.01,
+        sl_pct=0.01,
+        limit_offset_pct=0.002,
+        invalidate_pct=0.05,
+    )
+    shadow = build_pending_order(
+        symbol="BTCUSDT",
+        market="spot",
+        action="SELL",
+        signal_px=100.0,
+        signal_ts=t0,
+        interval="15m",
+        entry_style="limit",
+        horizon=2,
+        horizon_exec=20,
+        exec_interval="1m",
+        tp_pct=0.01,
+        sl_pct=0.01,
+        limit_offset_pct=0.002,
+        invalidate_pct=0.05,
+        shadow=True,
+        gate_expansion=0.4,
+    )
+    save_pending_orders(tmp_path, [live, shadow])
+    candles = [
+        _bar(t0, c=100.0),
+        _bar(t0 + 60_000, h=100.0, l=99.7, c=99.85),  # fills live BUY limit
+    ]
+    cancels: list[dict] = []
+    out = process_pending_orders(
+        tmp_path,
+        symbol="BTCUSDT",
+        market="spot",
+        candles_exec=candles,
+        append_cancel_row=cancels.append,
+    )
+    assert len(out["filled_positions"]) == 1
+    assert out["filled_positions"][0].get("shadow") is not True
+    left = load_pending_orders(tmp_path)
+    assert len(left) == 1
+    assert left[0].get("shadow") is True
+    assert not any(r.get("exit_reason") == "cancel_sibling_fill" for r in cancels)
+
+
+def test_shadow_pending_cancel_row_is_not_live(tmp_path: Path) -> None:
+    from eurika.ml.paper_orders import cancel_pending_orders_for_symbol
+
+    t0 = 1_700_000_000_000
+    order = build_pending_order(
+        symbol="ETHUSDT",
+        market="spot",
+        action="BUY",
+        signal_px=50.0,
+        signal_ts=t0,
+        interval="15m",
+        entry_style="oco",
+        horizon=2,
+        horizon_exec=20,
+        exec_interval="1m",
+        tp_pct=0.01,
+        sl_pct=0.01,
+        shadow=True,
+        gate_expansion=0.55,
+    )
+    save_pending_orders(tmp_path, [order])
+    cancels: list[dict] = []
+    cancel_pending_orders_for_symbol(
+        tmp_path,
+        symbol="ETHUSDT",
+        market="spot",
+        reason="side_flip",
+        append_cancel_row=cancels.append,
+        shadow_only=True,
+    )
+    assert len(cancels) == 1
+    assert cancels[0]["live"] is False
+    assert cancels[0]["shadow"] is True
+    assert cancels[0]["exit_reason"] == "cancel_side_flip"
+    assert cancels[0]["gate_expansion"] == pytest.approx(0.55)
+    assert load_pending_orders(tmp_path) == []

@@ -162,6 +162,142 @@ _QUESTION_START = re.compile(
     re.IGNORECASE,
 )
 
+
+_SHELL_FIRST_TOKENS = frozenset(
+    {
+        "sudo",
+        "pwd",
+        "ls",
+        "ll",
+        "cd",
+        "cat",
+        "head",
+        "tail",
+        "whoami",
+        "id",
+        "uname",
+        "hostname",
+        "hostnamectl",
+        "df",
+        "du",
+        "free",
+        "ps",
+        "top",
+        "htop",
+        "echo",
+        "printf",
+        "grep",
+        "rg",
+        "find",
+        "which",
+        "whereis",
+        "env",
+        "printenv",
+        "export",
+        "date",
+        "git",
+        "python",
+        "python3",
+        "pip",
+        "pip3",
+        "npm",
+        "node",
+        "cargo",
+        "make",
+        "cmake",
+        "docker",
+        "systemctl",
+        "journalctl",
+        "ip",
+        "ss",
+        "curl",
+        "wget",
+        "chmod",
+        "chown",
+        "mkdir",
+        "rm",
+        "rmdir",
+        "cp",
+        "mv",
+        "touch",
+        "ln",
+        "tar",
+        "zip",
+        "unzip",
+        "mount",
+        "umount",
+        "ping",
+        "nvidia-smi",
+        "lspci",
+        "lsusb",
+        "lsblk",
+        "true",
+        "false",
+        "test",
+        "bash",
+        "sh",
+        "zsh",
+        "eurika",
+        "wc",
+        "sort",
+        "uniq",
+        "tee",
+        "xargs",
+        "sed",
+        "awk",
+    }
+)
+
+
+def is_bare_shell_request(message: str) -> bool:
+    """True when the user pasted a shell command (not Russian prose / chat question).
+
+    Examples: ``pwd``, ``sudo whoami``, ``ls -la``. Counter-examples: «какой pwd?»,
+    «покажи пример в блоке bash: pwd», ``remember my name``, ``please refactor``.
+    """
+    s = (message or "").strip()
+    if not s or len(s) > 400:
+        return False
+    if re.search(r"[а-яА-ЯёЁ]{3,}", s):
+        return False
+    if _QUESTION_START.search(s) or is_llm_directive_message(s):
+        return False
+    lines = [
+        ln.strip().lstrip("$ ").strip()
+        for ln in s.splitlines()
+        if ln.strip() and not ln.strip().startswith("#")
+    ]
+    if not lines or len(lines) > 5:
+        return False
+    for ln in lines:
+        if len(ln) > 240:
+            return False
+        parts = ln.split()
+        if not parts:
+            return False
+        first = parts[0]
+        if first == "sudo":
+            if len(parts) < 2:
+                return False
+            # ``sudo -u root whoami`` — skip flags until a token.
+            idx = 1
+            while idx < len(parts) and parts[idx].startswith("-"):
+                # sudo -u NAME CMD
+                if parts[idx] in {"-u", "-g", "-h", "-p"} and idx + 1 < len(parts):
+                    idx += 2
+                else:
+                    idx += 1
+            if idx >= len(parts):
+                return False
+            first = parts[idx]
+        if "/" in first or first.startswith("./") or first.startswith("~/"):
+            continue
+        if first in _SHELL_FIRST_TOKENS:
+            continue
+        return False
+    return True
+
+
 # Free-form LLM instructions must not be fuzzy-mapped to project_overview/ritual/etc.
 _LLM_DIRECTIVE = re.compile(
     r"(?:"
@@ -237,17 +373,22 @@ def _accept_soft_handler(handler_id: Optional[str], msg: str) -> bool:
     """Reject soft matches that need hard lexical cues (e.g. web_search)."""
     if not handler_id:
         return False
+    # Bare shell lines (``sudo whoami``, ``pwd``) must not become list_docs via fuzzy ML.
+    if is_bare_shell_request(msg):
+        return False
     # Env toggles / ls must never come from ML or vector fuzzy match.
     if handler_id.startswith(("ml_intent_", "vector_intent_")):
         return False
-    if handler_id in {"project_ls", "git_push"}:
+    if handler_id in {"project_ls", "project_tree", "git_push"}:
         return False
     if handler_id == "web_search" and not looks_like_web_search_request(msg):
         return False
-    # Soft/vector must not invent release_check / ritual without explicit cues.
+    # Soft/vector must not invent release_check / ritual / scan without explicit cues.
     if handler_id == "release_check" and not is_release_check_request(msg):
         return False
     if handler_id == "ritual" and not is_ritual_request(msg):
+        return False
+    if handler_id == "scan" and not is_scan_request(msg) and not looks_like_scan_typo(msg):
         return False
     if handler_id == "roadmap_verify" and not is_roadmap_verify_request(msg):
         return False
@@ -261,6 +402,20 @@ def _accept_soft_handler(handler_id: Optional[str], msg: str) -> bool:
     # Soft/vector must never invent goal/docs rituals without lexical cues.
     if handler_id in {"goal_reflection", "goal_status", "clear_goal", "continue_dev", "docs_audit"}:
         return False
+    if handler_id == "list_docs":
+        n = _norm_msg(msg)
+        if not any(
+            x in n
+            for x in (
+                "документ",
+                "docs",
+                "readme",
+                "правил",
+                "documentation",
+                "документац",
+            )
+        ):
+            return False
     if handler_id == "project_overview" and not is_project_overview_request(msg):
         return False
     if handler_id == "market_ml_scope" and not looks_like_market_ml_scope_request(msg):
@@ -293,6 +448,10 @@ def _accept_soft_handler(handler_id: Optional[str], msg: str) -> bool:
     return True
 
 
+# Read-only project facts go through LLM tool-loop (eurika-cmds), not templates.
+_LLM_TOOL_LOOP_FACTS = frozenset({"project_ls", "project_tree"})
+
+
 def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optional[str]]:
     """Resolve direct handler from config or legacy. Returns (handler_id, emit_cmd)."""
     from eurika.api.chat_intents_config import match_direct_intent
@@ -302,7 +461,14 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
         return (None, None)
     matched = match_direct_intent(root, msg)
     if matched:
-        return matched
+        hid = matched[0]
+        # YAML may still list status phrases under git_commit — demote those.
+        if hid in _LLM_TOOL_LOOP_FACTS:
+            pass
+        elif hid == "git_commit" and not is_git_commit_request(msg):
+            pass
+        else:
+            return matched
     # Factual handlers before soft-match — otherwise "что за проект?" goes to LLM.
     if is_identity_question(msg):
         return ("identity", None)
@@ -312,10 +478,8 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
         return ("project_overview", None)
     if is_file_recount_request(msg):
         return ("file_recount", None)
-    if is_ls_request(msg):
-        return ("project_ls", "$ ls -la")
-    if is_tree_request(msg):
-        return ("project_tree", "$ eurika project-tree .")
+    # project_ls / project_tree: demoted to LLM + eurika-cmds (A1 chat-first).
+    # Bare ``ls`` / ``ls -la`` still hit host_shell via is_bare_shell_request below.
     if is_scan_request(msg):
         return ("scan", "$ eurika scan .")
     # Typo near scan/скан → clarify (before ML/vector can invent list_docs).
@@ -351,6 +515,9 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
     raw = (msg or "").strip()
     if _QUESTION_START.search(raw) or is_llm_directive_message(raw):
         return (None, None)
+    # User pasted a shell command — run it (sudo → privilege dialog), do not fuzzy-route.
+    if is_bare_shell_request(raw):
+        return ("host_shell", None)
     # CR-G3: optional ML intent router (YAML/factual already tried)
     try:
         from eurika.ml.intent_router import match_ml_intent
@@ -790,7 +957,11 @@ def is_git_push_request(message: str) -> bool:
 
 
 def is_git_commit_request(message: str) -> bool:
-    """Detect request for git status/diff/commit."""
+    """Detect request to prepare/create a commit (HITL → ``применяй``).
+
+    Read-only ``git status`` / ``git diff`` are *not* commit requests — they go
+    to the LLM tool-loop (or bare ``host_shell``).
+    """
     msg = _norm_msg(message)
     if not msg:
         return False
@@ -805,10 +976,6 @@ def is_git_commit_request(message: str) -> bool:
         "commit changes",
         "commit the changes",
         "git commit",
-        "git status",
-        "git diff",
-        "покажи status",
-        "покажи diff",
     )
     if any(k in msg for k in keywords):
         return True
@@ -816,6 +983,31 @@ def is_git_commit_request(message: str) -> bool:
         return True
     return False
 
+
+def is_git_status_request(message: str) -> bool:
+    """Detect read-only git status/diff (A1: LLM tool-loop, not commit HITL)."""
+    if is_git_commit_request(message) or is_git_push_request(message):
+        return False
+    msg = _norm_msg(message)
+    if not msg:
+        return False
+    keywords = (
+        "git status",
+        "git diff",
+        "покажи status",
+        "покажи diff",
+        "покажи git status",
+        "покажи git diff",
+        "статус репозитория",
+        "статус git",
+        "git статус",
+        "что изменено в git",
+        "какие изменения в git",
+        "show git status",
+        "show git diff",
+        "repository status",
+    )
+    return any(k in msg for k in keywords)
 
 def extract_commit_message_from_request(message: str) -> Optional[str]:
     """Extract explicit commit message from user message."""

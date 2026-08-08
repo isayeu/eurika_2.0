@@ -47,6 +47,34 @@ def test_fee_for_market_and_funding() -> None:
     assert pt.fee_for_market("spot") == pt.DEFAULT_FEE_SPOT
     assert pt.fee_for_market("futures") == pt.DEFAULT_FEE_FUTURES
     assert pt.DEFAULT_FEE_FUTURES < pt.DEFAULT_FEE_SPOT
+    assert pt.DEFAULT_FEE_SPOT == pytest.approx(0.002)
+    assert pt.DEFAULT_FEE_FUTURES == pytest.approx(0.001)
+    spot = pt.commission_breakdown(
+        "spot", entry_style="market", exit_reason="model"
+    )
+    assert spot == {
+        "entry_liquidity": "taker",
+        "exit_liquidity": "taker",
+        "entry_fee": pytest.approx(0.001),
+        "exit_fee": pytest.approx(0.001),
+        "fee": pytest.approx(0.002),
+    }
+    fut_maker = pt.commission_breakdown(
+        "futures", entry_style="oco", fill_leg="limit", exit_reason="tp"
+    )
+    assert fut_maker["entry_liquidity"] == "maker"
+    assert fut_maker["exit_liquidity"] == "maker"
+    assert fut_maker["fee"] == pytest.approx(0.0004)
+    fut_model = pt.commission_breakdown(
+        "futures", entry_style="oco", fill_leg="limit", exit_reason="model"
+    )
+    assert fut_model["fee"] == pytest.approx(0.0007)
+    fut_stop = pt.commission_breakdown(
+        "futures", entry_style="oco", fill_leg="stop", exit_reason="sl"
+    )
+    assert fut_stop["fee"] == pytest.approx(0.001)
+    # Legacy OCO rows lack the filled leg: charge taker rather than assume maker.
+    assert pt.entry_liquidity("oco", None) == "taker"
     assert pt.funding_edge_delta(480, "BUY", rate_8h=None) == 0.0
     assert pt.funding_edge_delta(480, "BUY", rate_8h=0.0001) < 0
     assert pt.funding_edge_delta(480, "SELL", rate_8h=0.0001) > 0

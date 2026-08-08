@@ -3,11 +3,21 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any
+from typing import Any, Callable
 
-from PySide6.QtCore import QPoint, Qt, QThread, Signal
+from eurika.api.chat_host_ops import PrivilegeAction, PrivilegePrompt
+from PySide6.QtCore import QObject, QPoint, Qt, QThread, Signal, Slot
 from PySide6.QtGui import QKeyEvent, QTextCursor
-from PySide6.QtWidgets import QAbstractItemView, QLineEdit, QListWidget, QListWidgetItem, QTextEdit, QWidget
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QInputDialog,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QTextEdit,
+    QWidget,
+)
 
 _ANSI_STRIP_RE = re.compile(
     '\\x1b\\[[0-?]*[ -/]*[@-~]|\\x1b\\][^\\x07\\x1b]*(?:\\x07|\\x1b\\\\)|'
@@ -17,6 +27,78 @@ _ANSI_STRIP_RE = re.compile(
 _OLLAMA_PULL_PCT_RE = re.compile(r'(\d+)\s*%')
 _OLLAMA_PULL_MB_GB_RE = re.compile(r'(\d+)\s*MB\s*/\s*([\d.]+)\s*GB')
 _TUI_COMMANDS = frozenset(('htop', 'top', 'vim', 'vi', 'nano', 'less', 'more', 'watch', 'mc'))
+
+
+class HostPrivilegeBridge(QObject):
+    """Main-thread sudo / continue / skip prompts for the chat tool-loop."""
+
+    @Slot(str, str, result=str)
+    def ask(self, cmd: str, hint: str) -> str:
+        """Return ``password\\n…``, ``continue``, or ``skip`` (BlockingQueuedConnection-safe)."""
+        raw_parent = self.parent()
+        parent = raw_parent if isinstance(raw_parent, QWidget) else None
+        box = QMessageBox(parent)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Нужны права")
+        body = (hint or "").strip() or "Команде могут понадобиться права администратора."
+        cmd_s = (cmd or "").strip()
+        if cmd_s:
+            body = f"{body}\n\n$ {cmd_s}"
+        box.setText(body)
+        box.setInformativeText(
+            "Ввести пароль sudo, продолжить без пароля (с ограничениями) или пропустить команду?"
+        )
+        btn_password = box.addButton("Ввести пароль", QMessageBox.ButtonRole.AcceptRole)
+        btn_continue = box.addButton("Без пароля", QMessageBox.ButtonRole.ActionRole)
+        btn_skip = box.addButton("Пропустить", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(btn_password)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is btn_skip:
+            return "skip"
+        if clicked is btn_continue:
+            return "continue"
+        pwd, ok = QInputDialog.getText(
+            parent,
+            "Пароль sudo",
+            f"Пароль для:\n$ {cmd_s}" if cmd_s else "Пароль sudo:",
+            QLineEdit.EchoMode.Password,
+        )
+        if not ok:
+            return "skip"
+        return "password\n" + str(pwd)
+
+
+def privilege_prompt_from_bridge(bridge: HostPrivilegeBridge) -> PrivilegePrompt:
+    """Build a worker-safe privilege_prompt callable bound to ``bridge``."""
+
+    def _prompt(cmd: str, hint: str) -> tuple[PrivilegeAction, str]:
+        from PySide6.QtCore import Q_ARG, Q_RETURN_ARG, QMetaObject
+
+        # Tool-loop may run off the GUI thread — marshal the dialog.
+        raw: Any = "continue"
+        try:
+            if QThread.currentThread() is bridge.thread():
+                raw = bridge.ask(cmd, hint)
+            else:
+                raw = QMetaObject.invokeMethod(
+                    bridge,
+                    "ask",
+                    Qt.ConnectionType.BlockingQueuedConnection,
+                    Q_RETURN_ARG(str),
+                    Q_ARG(str, cmd),
+                    Q_ARG(str, hint),
+                )
+        except Exception:
+            raw = "continue"
+        text = raw if isinstance(raw, str) else "continue"
+        if text.startswith("password\n"):
+            return "password", text.split("\n", 1)[1]
+        if text == "skip":
+            return "skip", ""
+        return "continue", ""
+
+    return _prompt
 
 
 def create_graph_page(view: Any, explain_callback: Any) -> Any:
@@ -684,6 +766,7 @@ class ChatWorker(QThread):
         timeout_sec: int,
         openai_base_url: str = "",
         run_command_with_result: Any = None,
+        privilege_prompt: Any = None,
     ) -> None:
         super().__init__()
         self._api = api
@@ -695,6 +778,7 @@ class ChatWorker(QThread):
         self._timeout_sec = timeout_sec
         self._openai_base_url = openai_base_url
         self._run_command_with_result = run_command_with_result
+        self._privilege_prompt = privilege_prompt
         self._cancelled = False
 
     def cancel(self) -> None:
@@ -720,6 +804,7 @@ class ChatWorker(QThread):
                 openai_base_url=self._openai_base_url,
                 on_system_action=_on_action,
                 run_command_with_result=self._run_command_with_result,
+                privilege_prompt=self._privilege_prompt,
             )
             if self._is_cancelled():
                 self.cancelled.emit()

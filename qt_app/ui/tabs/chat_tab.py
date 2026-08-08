@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QSplitter,
     QTabWidget,
+    QTextBrowser,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -86,10 +87,12 @@ def _build_dialog_page(main: MainWindow) -> QWidget:
 
     layout.addWidget(_build_mode_strip(main))
 
-    main.chat_transcript = QTextEdit()
+    main.chat_transcript = QTextBrowser()
     main.chat_transcript.setReadOnly(True)
-    main.chat_transcript.setAcceptRichText(True)
+    main.chat_transcript.setOpenExternalLinks(False)
+    main.chat_transcript.setOpenLinks(False)
     main.chat_transcript.setPlaceholderText("Dialog with Eurika…")
+    main._chat_block_payloads = {}
 
     compose = QWidget()
     compose_layout = QVBoxLayout(compose)

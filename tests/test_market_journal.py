@@ -48,12 +48,28 @@ def test_journal_fields_from_event() -> None:
             "symbol": "ETHUSDT",
             "market": "futures",
             "edge": -0.01,
+            "fee": 0.0007,
+            "fee_source": "maker_taker",
+            "entry_fee": 0.0002,
+            "exit_fee": 0.0005,
+            "entry_liquidity": "maker",
+            "exit_liquidity": "taker",
+            "entry_style": "oco",
+            "fill_leg": "limit",
         }
     )
     assert fields["reason"] == "sl"
     assert fields["bar_ts"] == 99
     assert fields["symbol"] == "ETHUSDT"
     assert fields["market"] == "futures"
+    assert fields["fee"] == 0.0007
+    assert fields["fee_source"] == "maker_taker"
+    assert fields["entry_fee"] == 0.0002
+    assert fields["exit_fee"] == 0.0005
+    assert fields["entry_liquidity"] == "maker"
+    assert fields["exit_liquidity"] == "taker"
+    assert fields["entry_style"] == "oco"
+    assert fields["fill_leg"] == "limit"
 
     fields2 = mj.journal_fields_from_event(
         {"reason": "pending", "bar_ts": 1, "symbol": "BTCUSDT", "utc_hour": 8}

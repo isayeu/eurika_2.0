@@ -13,12 +13,14 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSpinBox,
     QTabWidget,
+    QTextBrowser,
     QTextEdit,
     QWidget,
 )
 
 from qt_app.ui.main_window_helpers import (
     ChatInputEdit,
+    HostPrivilegeBridge,
     TerminalInputShim,
     TerminalLineEdit,
     TerminalRunShim,
@@ -41,7 +43,9 @@ class ChatTabAttrs:
     chat_diff_view: QTextEdit
     chat_focus_terminal_btn: QPushButton
     chat_focus_approvals_btn: QPushButton
-    chat_transcript: QTextEdit
+    chat_transcript: QTextBrowser
+    _chat_block_payloads: dict[str, str]
+    _host_privilege_bridge: HostPrivilegeBridge | None
     chat_input: ChatInputEdit
     chat_pending_label: QLabel
     chat_typing_label: QLabel
