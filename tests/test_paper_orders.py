@@ -420,6 +420,41 @@ def test_sibling_fill_does_not_cross_live_and_shadow_books(tmp_path: Path) -> No
     assert not any(r.get("exit_reason") == "cancel_sibling_fill" for r in cancels)
 
 
+def test_scrolled_out_pending_is_cancelled_as_stale(tmp_path: Path) -> None:
+    t0 = 1_700_000_000_000
+    order = build_pending_order(
+        symbol="BTCUSDT",
+        market="spot",
+        action="BUY",
+        signal_px=100.0,
+        signal_ts=t0,
+        interval="15m",
+        entry_style="limit",
+        horizon=2,
+        horizon_exec=20,
+        exec_interval="1m",
+        tp_pct=0.01,
+        sl_pct=0.01,
+    )
+    save_pending_orders(tmp_path, [order])
+    candles = [_bar(t0 + i * 60_000, c=100.0) for i in range(30, 35)]
+    cancels: list[dict] = []
+
+    out = process_pending_orders(
+        tmp_path,
+        symbol="BTCUSDT",
+        market="spot",
+        candles_exec=candles,
+        append_cancel_row=cancels.append,
+    )
+
+    assert out["pending_left"] == 0
+    assert out["cancelled"] == 1
+    assert cancels[0]["exit_reason"] == "cancel_stale"
+    assert cancels[0]["exit_ts"] == candles[-1]["open_time"]
+    assert load_pending_orders(tmp_path) == []
+
+
 def test_shadow_pending_cancel_row_is_not_live(tmp_path: Path) -> None:
     from eurika.ml.paper_orders import cancel_pending_orders_for_symbol
 

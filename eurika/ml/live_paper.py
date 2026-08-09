@@ -676,6 +676,17 @@ def _append_learn_events(events: list[dict[str, Any]], root: Path, *, epochs: in
                 ),
             }
         )
+    elif gate.get("retained_previous"):
+        events.append(
+            {
+                "kind": "learn",
+                "message": (
+                    "стоимостные ворота: нового доказанного порога нет — "
+                    f"сохраняем предыдущий ≥ {float(gate['expansion_min']):+.2f} "
+                    f"(просмотрено сделок: {gate.get('scanned')})"
+                ),
+            }
+        )
     else:
         events.append(
             {
@@ -687,6 +698,22 @@ def _append_learn_events(events: list[dict[str, Any]], root: Path, *, epochs: in
                 ),
             }
         )
+
+
+def _append_shadow_outcome_summary(events: list[dict[str, Any]], count: int) -> None:
+    """Make shadow-triggered training visible without posing as a live PnL outcome."""
+    if count <= 0:
+        return
+    events.append(
+        {
+            "kind": "shadow_outcome",
+            "message": (
+                f"закрыто теневых сделок: {count} — "
+                "метки записаны, запускаем дообучение"
+            ),
+            "shadow_resolved": count,
+        }
+    )
 
 
 def _append_paper_row(project_root: str | Path, row: dict[str, Any]) -> None:
@@ -710,6 +737,7 @@ _KIND_RU = {
     "hold": "ожидание",
     "wait": "горизонт",
     "outcome": "итог",
+    "shadow_outcome": "итог тени",
     "learn": "обучение",
     "explore": "исследование",
     "skip": "пропуск",
@@ -2134,6 +2162,7 @@ def run_live_tick(
             )
 
     if micro_train and (resolved > 0 or shadow_resolved > 0):
+        _append_shadow_outcome_summary(events, shadow_resolved)
         _append_learn_events(events, root, epochs=int(train_epochs))
 
     ms = model_status(root)
@@ -2248,6 +2277,7 @@ def run_live_universe_tick(
 
     events: list[dict[str, Any]] = []
     total_resolved = 0
+    total_shadow_resolved = 0
     last_suggestion: dict[str, Any] | None = None
     last_ok = True
     last_error: str | None = None
@@ -2271,7 +2301,7 @@ def run_live_universe_tick(
         return fetch_spot if fetch_spot is not None else fetch
 
     def _run_one(sym: str, kind: str, *, allow_open: bool) -> None:
-        nonlocal total_resolved, opens_count, idle_waits, last_suggestion, last_ok, last_error
+        nonlocal total_resolved, total_shadow_resolved, opens_count, idle_waits, last_suggestion, last_ok, last_error
         one = run_live_tick(
             project_root,
             symbol=sym,
@@ -2300,6 +2330,7 @@ def run_live_universe_tick(
         for ev in one.get("events") or []:
             events.append(ev)
         total_resolved += int(one.get("resolved") or 0)
+        total_shadow_resolved += int(one.get("shadow_resolved") or 0)
         opens_count = int(one.get("opens") or opens_count)
         if one.get("idle_wait"):
             idle_waits += 1
@@ -2326,10 +2357,21 @@ def run_live_universe_tick(
     for sym, mk in jobs:
         _run_one(sym, mk, allow_open=True)
 
-    if micro_train and total_resolved > 0:
+    if micro_train and (total_resolved > 0 or total_shadow_resolved > 0):
+        _append_shadow_outcome_summary(events, total_shadow_resolved)
         _append_learn_events(events, Path(project_root).resolve(), epochs=int(train_epochs))
 
-    interesting = {"sync", "outcome", "paper", "explore", "learn", "error", "hold", "wait"}
+    interesting = {
+        "sync",
+        "outcome",
+        "shadow_outcome",
+        "paper",
+        "explore",
+        "learn",
+        "error",
+        "hold",
+        "wait",
+    }
     has_interesting = any(e.get("kind") in interesting for e in events)
     if has_interesting:
         mk_s = "+".join(market_kinds)
@@ -2356,6 +2398,7 @@ def run_live_universe_tick(
         "events": events,
         "opens": opens_count,
         "resolved": total_resolved,
+        "shadow_resolved": total_shadow_resolved,
         "suggestion": last_suggestion,
         "model": ms,
         "symbols": spot_syms,

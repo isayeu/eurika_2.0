@@ -74,8 +74,17 @@ def _execute_refactor(root: Path, spec: TaskSpec) -> ExecutionReport:
     return ExecutionReport(ok=res.returncode == 0, summary='ran eurika fix' + (' (dry-run)' if dry_run else ''), applied_steps=['eurika fix'], verification=verify, artifacts_changed=[], error=None if res.returncode == 0 else f'fix exit {res.returncode}')
 
 def _execute_create(root: Path, spec: TaskSpec) -> ExecutionReport:
-    ok, msg = safe_create_empty_file(root, spec.target)
-    return ExecutionReport(ok=ok, summary='created empty file' if ok else 'create failed', applied_steps=['create file'] if ok else [], verification={'runner': 'file_ops', 'ok': ok}, artifacts_changed=[msg] if ok else [], error=None if ok else msg)
+    content = spec.entities.get('content')
+    if content is None:
+        ok, msg = safe_create_empty_file(root, spec.target)
+        summary = 'created empty file' if ok else 'create failed'
+    else:
+        path = (root / spec.target).resolve()
+        if within_root(root, path) and path.exists():
+            return ExecutionReport(ok=False, summary='create failed', verification={'runner': 'file_ops', 'ok': False}, error=f'file already exists: {spec.target}')
+        ok, msg = safe_write_file(root, spec.target, str(content))
+        summary = 'created file with content' if ok else 'create failed'
+    return ExecutionReport(ok=ok, summary=summary, applied_steps=['create file'] if ok else [], verification={'runner': 'file_ops', 'ok': ok}, artifacts_changed=[msg] if ok else [], error=None if ok else msg)
 
 def _execute_delete(root: Path, spec: TaskSpec) -> ExecutionReport:
     ok, msg = safe_delete_file(root, spec.target)
@@ -114,9 +123,11 @@ def _execute_run_tests(root: Path, spec: TaskSpec) -> ExecutionReport:
     args = ['-q']
     if target:
         args.append(target)
-    verify = run_pytest(root, args, timeout=300)
-    summary = 'tests passed' if verify.get('ok') else 'tests failed'
-    return ExecutionReport(ok=bool(verify.get('ok')), summary=summary, applied_steps=['run pytest'], verification=verify, artifacts_changed=[], error=None if verify.get('ok') else 'pytest returned non-zero')
+    verify = run_pytest(root, args, timeout=300 if target else 900)
+    timed_out = verify.get('error') == 'timeout'
+    summary = 'tests passed' if verify.get('ok') else ('tests timed out' if timed_out else 'tests failed')
+    error = None if verify.get('ok') else ('pytest timed out' if timed_out else 'pytest returned non-zero')
+    return ExecutionReport(ok=bool(verify.get('ok')), summary=summary, applied_steps=['run pytest'], verification=verify, artifacts_changed=[], error=error)
 
 def _execute_run_lint(root: Path, _spec: TaskSpec) -> ExecutionReport:
     """Run best-effort lint command from known toolchain."""

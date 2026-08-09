@@ -1,0 +1,90 @@
+{
+  "name": "eurika-local-agent",
+  "displayName": "Eurika Local Agent",
+  "description": "Local coding agent for VS Code and VSCodium",
+  "version": "0.1.0",
+  "publisher": "eurika",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Machine Learning", "Other"],
+  "activationEvents": [
+    "onView:eurika.chat",
+    "onCommand:eurika.explain",
+    "onCommand:eurika.fix",
+    "onCommand:eurika.generateTests"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "eurika.explain", "title": "Eurika: Explain Selection" },
+      { "command": "eurika.fix", "title": "Eurika: Fix Selection or Diagnostics" },
+      { "command": "eurika.generateTests", "title": "Eurika: Generate Tests" },
+      { "command": "eurika.restartBackend", "title": "Eurika: Restart Backend" },
+      { "command": "eurika.restoreCheckpoint", "title": "Eurika: Restore Last Checkpoint" }
+    ],
+    "menus": {
+      "editor/context": [
+        { "command": "eurika.explain", "group": "eurika@1", "when": "editorHasSelection" },
+        { "command": "eurika.fix", "group": "eurika@2" },
+        { "command": "eurika.generateTests", "group": "eurika@3" }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "eurika", "title": "Eurika", "icon": "media/eurika.svg" }
+      ]
+    },
+    "views": {
+      "eurika": [
+        { "type": "webview", "id": "eurika.chat", "name": "Chat" }
+      ]
+    },
+    "configuration": {
+      "title": "Eurika",
+      "properties": {
+        "eurika.backend.command": {
+          "type": "string",
+          "default": "python",
+          "description": "Python executable or backend launcher."
+        },
+        "eurika.backend.args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["-m", "eurika.agent.stdio"],
+          "description": "Arguments passed to the backend launcher."
+        },
+        "eurika.backend.cwd": {
+          "type": "string",
+          "default": "",
+          "description": "Backend working directory; defaults to the workspace root."
+        },
+        "eurika.context.maxBytes": {
+          "type": "number",
+          "default": 200000,
+          "minimum": 10000,
+          "description": "Maximum bytes of editor and mention context per request."
+        },
+        "eurika.tools.allowTerminal": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow the backend to request terminal commands after confirmation."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "clean": "rm -rf dist out",
+    "build": "node esbuild.mjs && tsc -p tsconfig.test.json",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test": "npm run build && node --test out/test/*.test.js",
+    "vscode:prepublish": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.0"
+  }
+}

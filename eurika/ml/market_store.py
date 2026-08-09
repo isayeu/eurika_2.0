@@ -161,7 +161,10 @@ def sync_klines(
     existing = load_candles(project_root, symbol, interval, market=kind)
     start_time: Optional[int] = None
     if existing:
-        start_time = int(existing[-1]["open_time"]) + 1
+        # Refetch the latest candle: Binance returns the current in-progress
+        # kline, whose OHLCV keeps changing until close. Starting after it
+        # would freeze the first partial snapshot permanently.
+        start_time = int(existing[-1]["open_time"])
     result = fetch(symbol, interval=interval, limit=limit, start_time=start_time)
     if not result.get("ok"):
         # First sync / gap: retry without startTime for a full window

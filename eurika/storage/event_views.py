@@ -59,6 +59,8 @@ def _is_strong_refactor_code_smell_success(op: Dict[str, Any]) -> bool:
 def _resolve_learning_outcome(op: Dict[str, Any], verify_success: Optional[bool]) -> str:
     """Resolve per-operation learning outcome for aggregation."""
     outcome = str(op.get("execution_outcome") or "").strip()
+    if outcome == "human_rejected":
+        return outcome
     if outcome in {"not_applied", "verify_success", "verify_fail"}:
         return outcome
     if op.get("applied") is False:
@@ -180,6 +182,9 @@ class LearningView:
         stats: Dict[str, Dict[str, Any]] = {}
         for r in records:
             for op in r.operations:
+                outcome = _resolve_learning_outcome(op, r.verify_success)
+                if outcome == "human_rejected":
+                    continue
                 kind = op.get("kind", "unknown")
                 by_kind = stats.setdefault(
                     kind,
@@ -195,7 +200,6 @@ class LearningView:
                 )
                 by_kind["total"] += 1
                 by_kind["last_ts"] = max(by_kind.get("last_ts", 0.0), r.timestamp)
-                outcome = _resolve_learning_outcome(op, r.verify_success)
                 if outcome == "verify_success":
                     by_kind["verify_success"] += 1
                     if _is_strong_refactor_code_smell_success(op):
@@ -213,6 +217,9 @@ class LearningView:
         stats: Dict[str, Dict[str, Any]] = {}
         for r in records:
             for op in r.operations:
+                outcome = _resolve_learning_outcome(op, r.verify_success)
+                if outcome == "human_rejected":
+                    continue
                 kind = op.get("kind", "unknown")
                 smell = op.get("smell_type") or "unknown"
                 key = f"{smell}{sep}{kind}"
@@ -230,7 +237,6 @@ class LearningView:
                 )
                 by_key["total"] += 1
                 by_key["last_ts"] = max(by_key.get("last_ts", 0.0), r.timestamp)
-                outcome = _resolve_learning_outcome(op, r.verify_success)
                 if outcome == "verify_success":
                     by_key["verify_success"] += 1
                     if _is_strong_refactor_code_smell_success(op):

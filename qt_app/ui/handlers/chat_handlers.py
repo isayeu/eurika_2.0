@@ -76,6 +76,33 @@ def _save_chat_prompt_history(main: "MainWindow") -> None:
         pass
 
 
+def _restore_chat_session(main: "MainWindow") -> None:
+    """Restore recent project-local conversation after launch/root change."""
+    try:
+        root = str(main._settings.get_project_root() or "").strip()
+    except Exception:
+        root = ""
+    root_key = str(Path(root).resolve()) if root else ""
+    if getattr(main, "_chat_history_root", None) == root_key:
+        return
+    main._chat_history_root = root_key
+    main._chat_history.clear()
+    main.chat_transcript.clear()
+    main._chat_block_payloads = {}
+    if not root_key:
+        return
+    from eurika.api.chat import load_chat_history
+
+    restored = load_chat_history(Path(root_key), limit=80)
+    main._chat_history.extend(restored)
+    for item in restored:
+        main.chat_transcript.append(
+            _format_chat_line(main, item["role"], item["content"])
+        )
+    if restored:
+        _scroll_transcript_to_bottom(main)
+
+
 def refresh_chat_mention_candidates(main: "MainWindow") -> None:
     """Reload @-mention catalog from project self_map (Cursor-like autocomplete)."""
     if not hasattr(main, "chat_input") or not hasattr(main.chat_input, "refresh_mentions_from_root"):
@@ -125,6 +152,7 @@ def load_chat_preferences(main: MainWindow) -> None:
         timeout = 120
     # Prompt ↑/↓ history (project-local; fallback qt_settings).
     _load_chat_prompt_history(main, data)
+    _restore_chat_session(main)
     refresh_chat_mention_candidates(main)
     main.chat_timeout_spin.setValue(min(9999, max(0, timeout)))
     main.ollama_hsa_edit.setText(str(data.get("ollama_hsa_override_gfx", "")))
@@ -569,7 +597,8 @@ def dispatch_chat_message(main: MainWindow, message: str) -> None:
     worker = ChatWorker(
         api=main._api,
         message=message,
-        history=list(main._chat_history),
+        # The current message is already passed separately to chat_send.
+        history=list(main._chat_history[:-1]),
         provider=provider,
         openai_model=openai_model,
         ollama_model=ollama_model,
@@ -855,6 +884,12 @@ def on_chat_finished(main: MainWindow) -> None:
 
 
 def clear_chat_session(main: MainWindow) -> None:
+    try:
+        from eurika.api.chat import clear_chat_history
+
+        clear_chat_history(main._api._root())
+    except Exception:
+        pass
     main._chat_history.clear()
     main.chat_transcript.clear()
     main._chat_block_payloads = {}

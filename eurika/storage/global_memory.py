@@ -80,6 +80,8 @@ def _process_learn_event(
     ts = getattr(event, "timestamp", 0.0) or 0.0
     result = getattr(event, "result", None)
     for op in ops:
+        if str(op.get("execution_outcome") or "") == "human_rejected":
+            continue
         kind = op.get("kind", "unknown")
         smell = op.get("smell_type") or "unknown"
         key = f"{smell}{sep}{kind}"
@@ -95,7 +97,10 @@ def _process_learn_event(
             by_key["fail"] += 1
 
 
-def aggregate_global_by_smell_action() -> Dict[str, Dict[str, Any]]:
+def aggregate_global_by_smell_action(
+    *,
+    exclude_project_root: Optional[Path] = None,
+) -> Dict[str, Dict[str, Any]]:
     """Aggregate learning from global store by smell|action. Returns {} if disabled or empty."""
     path = _global_events_path()
     if path is None or not path.exists():
@@ -106,6 +111,13 @@ def aggregate_global_by_smell_action() -> Dict[str, Dict[str, Any]]:
         store = EventStore(storage_path=path)
         stats: Dict[str, Dict[str, Any]] = {}
         for e in store.by_type("learn"):
+            event_root = str((getattr(e, "input", None) or {}).get("project_root") or "")
+            if (
+                exclude_project_root is not None
+                and event_root
+                and Path(event_root).resolve() == Path(exclude_project_root).resolve()
+            ):
+                continue
             _process_learn_event(stats, e)
         return stats
     except Exception:
@@ -123,7 +135,9 @@ def get_merged_learning_stats(project_root: Path) -> Dict[str, Dict[str, Any]]:
         local = ProjectMemory(project_root).learning.aggregate_by_smell_action()
     except Exception:
         pass
-    global_stats = aggregate_global_by_smell_action()
+    global_stats = aggregate_global_by_smell_action(
+        exclude_project_root=Path(project_root).resolve(),
+    )
     return merge_learning_stats(local, global_stats)
 
 

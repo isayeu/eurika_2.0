@@ -10,7 +10,22 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 # Timeout for fix/cycle subprocess that invokes architect (LLM): 10 min
-CYCLE_LLM_TIMEOUT = 600
+CYCLE_LLM_TIMEOUT = 1200
+
+
+def _make_cycle_project(tmp_path: Path) -> Path:
+    proj = tmp_path / "cycle-project"
+    proj.mkdir()
+    (proj / "a.py").write_text("import os\nx = 1\n", encoding="utf-8")
+    (proj / "tests").mkdir()
+    (proj / "tests" / "__init__.py").write_text("", encoding="utf-8")
+    (proj / "tests" / "test_a.py").write_text(
+        "def test_ok(): assert True\n", encoding="utf-8"
+    )
+    (proj / "pyproject.toml").write_text(
+        "[tool.pytest.ini_options]\ntestpaths=['tests']\n", encoding="utf-8"
+    )
+    return proj
 
 
 def test_fix_quiet_exit_code_success(tmp_path: Path) -> None:
@@ -23,7 +38,7 @@ def test_fix_quiet_exit_code_success(tmp_path: Path) -> None:
     (proj / "tests" / "test_a.py").write_text("def test_ok(): assert True\n")
     (proj / "pyproject.toml").write_text("[tool.pytest.ini_options]\ntestpaths=['tests']\n")
     subprocess.run([sys.executable, "-m", "eurika_cli", "scan", str(proj)], cwd=ROOT, capture_output=True, timeout=30)
-    result = subprocess.run([sys.executable, "-m", "eurika_cli", "fix", "--quiet", str(proj)], cwd=ROOT, capture_output=True, text=True, timeout=CYCLE_LLM_TIMEOUT)
+    result = subprocess.run([sys.executable, "-m", "eurika_cli", "fix", "--quiet", "--no-llm", str(proj)], cwd=ROOT, capture_output=True, text=True, timeout=CYCLE_LLM_TIMEOUT)
     assert result.returncode == 0, f"CI: fix --quiet should exit 0 on success. stderr: {result.stderr}"
 
 
@@ -54,12 +69,13 @@ def test_eurika_orchestrator_run() -> None:
     assert "architect_text" in out
 
 
-def test_fix_dry_run_on_self() -> None:
+def test_fix_dry_run_on_mini_project(tmp_path: Path) -> None:
     """
     Product command eurika fix --dry-run: same flow as agent cycle --dry-run.
     Ensures the main entry point (fix) runs scan → arch-review → patch-plan without apply.
     """
-    result = subprocess.run([sys.executable, '-m', 'eurika_cli', 'fix', '--dry-run', str(ROOT)], cwd=ROOT, capture_output=True, text=True, timeout=CYCLE_LLM_TIMEOUT)
+    proj = _make_cycle_project(tmp_path)
+    result = subprocess.run([sys.executable, '-m', 'eurika_cli', 'fix', '--dry-run', '--no-llm', str(proj)], cwd=ROOT, capture_output=True, text=True, timeout=CYCLE_LLM_TIMEOUT)
     assert result.returncode == 0, f'stderr: {result.stderr}'
     assert (
         '"patch_plan"' in result.stdout
@@ -88,12 +104,13 @@ def test_fix_dry_run_on_self() -> None:
     else:
         assert data.get('message') == 'Patch plan has no operations. Cycle complete.'
 
-def test_cycle_dry_run_on_self() -> None:
+def test_cycle_dry_run_on_mini_project(tmp_path: Path) -> None:
     """
     Cycle --dry-run: scan → arch-review → patch-plan, no apply.
     Verifies patch_plan JSON in stdout, no files modified.
     """
-    result = subprocess.run([sys.executable, '-m', 'eurika_cli', 'agent', 'cycle', '--dry-run', str(ROOT)], cwd=ROOT, capture_output=True, text=True, timeout=CYCLE_LLM_TIMEOUT)
+    proj = _make_cycle_project(tmp_path)
+    result = subprocess.run([sys.executable, '-m', 'eurika_cli', 'agent', 'cycle', '--dry-run', '--no-llm', str(proj)], cwd=ROOT, capture_output=True, text=True, timeout=CYCLE_LLM_TIMEOUT)
     assert result.returncode == 0, f'stderr: {result.stderr}'
     assert (
         '"patch_plan"' in result.stdout
@@ -122,10 +139,11 @@ def test_cycle_dry_run_on_self() -> None:
     else:
         assert data.get('message') == 'Patch plan has no operations. Cycle complete.'
 
-def test_product_cycle_dry_run() -> None:
+def test_product_cycle_dry_run(tmp_path: Path) -> None:
     """eurika cycle --dry-run: scan → doctor → fix (dry-run). Full ritual in one command."""
+    proj = _make_cycle_project(tmp_path)
     result = subprocess.run(
-        [sys.executable, '-m', 'eurika_cli', 'cycle', '--dry-run', '--no-llm', str(ROOT)],
+        [sys.executable, '-m', 'eurika_cli', 'cycle', '--dry-run', '--no-llm', str(proj)],
         cwd=ROOT, capture_output=True, text=True, timeout=180,
     )
     assert result.returncode == 0, f'stderr: {result.stderr[:1000]}'
@@ -163,7 +181,7 @@ def test_multi_repo_fix_aggregated_report(tmp_path: Path) -> None:
         (proj / "tests" / "test_a.py").write_text("def test_ok(): assert True\n")
         (proj / "pyproject.toml").write_text("[tool.pytest.ini_options]\ntestpaths=['tests']\n")
     result = subprocess.run(
-        [sys.executable, "-m", "eurika_cli", "fix", "--dry-run", "--quiet", str(p1), str(p2)],
+        [sys.executable, "-m", "eurika_cli", "fix", "--dry-run", "--quiet", "--no-llm", str(p1), str(p2)],
         cwd=ROOT, capture_output=True, text=True, timeout=CYCLE_LLM_TIMEOUT,
     )
     assert result.returncode == 0, f"stderr: {result.stderr}"

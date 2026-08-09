@@ -106,6 +106,13 @@ def match_fuzzy_intent(root: Path, message: str, *, min_similarity: Optional[flo
     """
     if not _use_vector_intent():
         return None
+    root = Path(root)
+    has_project_config = (
+        (root / '.eurika' / 'config' / 'chat_intents.yaml').is_file()
+        or (root / 'docs' / 'chat_intents.example.yaml').is_file()
+    )
+    if not has_project_config:
+        return None
     cfg = None
     try:
         from eurika.api.chat_intents_config import _load_config

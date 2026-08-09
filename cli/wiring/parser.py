@@ -72,7 +72,7 @@ def _add_product_commands(subparsers: argparse._SubParsersAction) -> None:
     doctor_parser.add_argument("--runtime-mode", choices=["assist", "hybrid", "auto"], default="assist", help="Agent runtime mode (default: assist)")
 
     fix_parser = subparsers.add_parser("fix", help="Full cycle: scan → plan → patch → verify (3.0.1: multi-repo)")
-    _add_fix_cycle_common_args(fix_parser, include_no_llm=False)
+    _add_fix_cycle_common_args(fix_parser, include_no_llm=True)
 
     cycle_parser = subparsers.add_parser("cycle", help="Full ritual: scan → doctor → fix (3.0.1: multi-repo)")
     _add_fix_cycle_common_args(cycle_parser, include_no_llm=True)
@@ -359,6 +359,7 @@ def _add_agent_cycle_command(agent_subparsers: argparse._SubParsersAction) -> No
     p.add_argument("--window", type=int, default=5, help="History window for arch-review (default: 5)")
     p.add_argument("--dry-run", action="store_true", help="Run scan → arch-review → patch-plan only; do not apply or verify")
     p.add_argument("--quiet", "-q", action="store_true", help="Suppress scan/arch output; only final report JSON to stdout")
+    p.add_argument("--no-llm", action="store_true", help="Architect: use template only (no API call)")
     p.add_argument("--runtime-mode", choices=["assist", "hybrid", "auto"], default="assist", help="Agent runtime mode (default: assist)")
     p.add_argument("--non-interactive", action="store_true", help="Do not prompt for approvals in hybrid mode")
     p.add_argument("--session-id", type=str, default=None, help="Session key for reusing approval/rejection memory")

@@ -16,6 +16,15 @@ def test_smoke_intent_matches(tmp_path: Path) -> None:
     assert match_direct_intent(tmp_path, "run smoke test") == ("smoke_test", None)
 
 
+def test_specific_test_path_is_not_routed_to_smoke(tmp_path: Path) -> None:
+    from eurika.api.chat_direct import resolve_direct_handler
+
+    clear_cache()
+    assert resolve_direct_handler(
+        tmp_path, "запусти тест tests/test_plugin_hook_orchestration.py"
+    ) == (None, None)
+
+
 def test_self_check_intent_matches(tmp_path: Path) -> None:
     clear_cache()
     assert match_direct_intent(tmp_path, "проведи self-check") == (

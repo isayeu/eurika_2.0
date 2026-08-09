@@ -55,10 +55,17 @@ def run_fix_scan_stage(path: Path, quiet: bool, run_scan: Any) -> bool:
     if not quiet:
         _LOG.info("--- Step 1/4: scan ---")
         _LOG.info("eurika fix: scan -> diagnose -> plan -> patch -> verify")
+    def _scan() -> Any:
+        try:
+            return run_scan(path, scan_reason="cycle_initial")
+        except TypeError as exc:
+            if "scan_reason" not in str(exc):
+                raise
+            return run_scan(path)
     if quiet:
         with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-            return run_scan(path) == 0
-    return run_scan(path) == 0
+            return _scan() == 0
+    return _scan() == 0
 
 
 _CODE_SMELL_KINDS = frozenset((
@@ -517,6 +524,21 @@ def prepare_fix_cycle_operations(
     patch_plan = dict(patch_plan, operations=operations)  # type: ignore[arg-type]
     if context_sources:
         patch_plan["context_sources"] = context_sources  # type: ignore[assignment]
+    from eurika.plugins import dispatch_project_hooks
+
+    plan_hooks = dispatch_project_hooks(
+        path,
+        "after_plan",
+        payload={
+            "patch_plan": patch_plan,
+            "operations_count": len(operations),
+            "policy_decisions": policy_decisions,
+            "critic_decisions": critic_decisions,
+        },
+        metadata={"runtime_mode": runtime_mode, "session_id": session_id},
+    )
+    if plan_hooks:
+        result.output["plugin_hooks"] = list(result.output.get("plugin_hooks") or []) + plan_hooks
     if not operations:
         early_dict = {
             "return_code": 0,
@@ -528,6 +550,7 @@ def prepare_fix_cycle_operations(
                 "campaign_skipped": len(campaign_skipped),
                 "session_skipped": len(session_skipped),
                 "llm_hint_runtime": result.output.get("llm_hint_runtime"),
+                "plugin_hooks": result.output.get("plugin_hooks", []),
             },
             "operations": [],
             "modified": [],

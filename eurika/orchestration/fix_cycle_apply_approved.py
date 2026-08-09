@@ -11,12 +11,13 @@ from .pipeline_model import PipelineStage, attach_pipeline_trace
 
 def run_apply_approved_path(path: Path, *, session_id: str | None, quiet: bool, verify_cmd: str | None, verify_timeout: int | None, run_params: dict[str, Any] | None = None, deps: FixCycleDeps, execute_fix_apply_stage: Callable[..., tuple[FixReport, list[str], bool]], build_fix_cycle_result: Callable[[FixReport, list[OperationRecord], list[str], bool, Any], dict[str, Any]], attach_fix_telemetry: Callable[[FixReport, list[OperationRecord]], None]) -> dict[str, Any]:
     """Handle --apply-approved: load approved ops, filter, execute apply stage."""
-    from .team_mode import clear_pending_plan_after_apply, load_approved_operations, reset_approvals_after_rollback
+    from .team_mode import clear_pending_plan_after_apply, load_approved_operations, record_team_rejections, reset_approvals_after_rollback
     approved, payload = load_approved_operations(path)
     if not payload:
         rep: FixReport = {'error': 'No pending plan. Run eurika fix . --team-mode first.'}
         attach_pipeline_trace(rep, [])
         return with_cycle_state({'return_code': 1, 'report': rep, 'operations': [], 'modified': [], 'verify_success': False, 'agent_result': None}, is_error=True)
+    record_team_rejections(path, payload)
     if not approved:
         clear_pending_plan_after_apply(path)
         report: FixReport = {

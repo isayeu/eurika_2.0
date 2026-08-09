@@ -48,6 +48,7 @@ full = [
 
 [project.scripts]
 eurika = "eurika_cli:main"
+eurika-agent = "eurika.agent.stdio:main"
 eurika-qt = "qt_app.main:main"
 
 [tool.setuptools]

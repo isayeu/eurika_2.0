@@ -4,6 +4,43 @@ import json as _json
 from pathlib import Path
 
 
+def test_chat_create_with_content_waits_for_apply_and_writes_exact_file(tmp_path: Path, monkeypatch) -> None:
+    import eurika.api.chat as chat_mod
+    from eurika.api.diff_api import preview_chat_pending_plan
+
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    request = (
+        'Создай .eurika/plugins.toml со следующим содержимым. '
+        'Покажи Diff и жди Apply:\n'
+        '[[hooks]]\n'
+        'event = "after_scan"\n'
+        'entry_point = "tests.fixtures.eurika_hook_example:capture"\n'
+    )
+
+    first = chat_mod.chat_send(tmp_path, request)
+    assert first.get("error") is None
+    assert "Подтверди выполнение" in (first.get("text") or "")
+    target = tmp_path / ".eurika" / "plugins.toml"
+    assert not target.exists()
+
+    state_path = tmp_path / ".eurika" / "chat_history" / "dialog_state.json"
+    pending = _json.loads(state_path.read_text(encoding="utf-8"))["pending_plan"]
+    preview = preview_chat_pending_plan(tmp_path, pending)
+    assert preview.get("error") is None
+    assert 'event = "after_scan"' in (preview.get("unified_diff") or "")
+
+    applied = chat_mod.chat_send(tmp_path, "применяй")
+    assert applied.get("error") is None
+    assert target.read_text(encoding="utf-8") == (
+        '[[hooks]]\n'
+        'event = "after_scan"\n'
+        'entry_point = "tests.fixtures.eurika_hook_example:capture"\n'
+    )
+
+
 def test_chat_send_add_empty_tab_request_returns_task_understanding(tmp_path: Path, monkeypatch) -> None:
     """Add-empty-tab request should return deterministic task understanding (no LLM)."""
     import eurika.api.chat as chat_mod

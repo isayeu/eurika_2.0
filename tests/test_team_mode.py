@@ -12,6 +12,7 @@ from eurika.orchestration.team_mode import (
     has_pending_plan,
     load_approved_operations,
     load_pending_plan,
+    record_team_rejections,
     save_pending_plan,
     update_team_decisions,
 )
@@ -71,6 +72,7 @@ def test_update_team_decisions(tmp_path: Path) -> None:
     ])
     assert ok
     data = load_pending_plan(tmp_path)
+    assert data is not None
     assert data["operations"][0]["team_decision"] == "approve"
     assert data["operations"][0]["approved_by"] == "ui"
     assert data["operations"][1]["team_decision"] == "reject"
@@ -89,12 +91,48 @@ def test_update_team_decisions_supports_approval_state(tmp_path: Path) -> None:
     )
     assert ok
     data = load_pending_plan(tmp_path)
+    assert data is not None
     assert data["operations"][0]["approval_state"] == "approved"
     assert data["operations"][0]["team_decision"] == "approve"
     approved, _ = load_approved_operations(tmp_path)
     assert len(approved) == 1
     assert approved[0]["approval_state"] == "approved"
     assert approved[0]["decision_source"] == "team"
+
+
+def test_record_team_rejections_creates_deduplicated_learning_outcome(tmp_path: Path) -> None:
+    from eurika.storage import (
+        ProjectMemory,
+        get_recent_human_rejected_proposal_hashes,
+    )
+
+    plan = {"project_root": str(tmp_path), "operations": []}
+    ops = [
+        {"target_file": "a.py", "kind": "extract_block_to_helper"},
+        {"target_file": "b.py", "kind": "remove_unused_import"},
+    ]
+    decs = [{"index": 1, "decision": "review"}, {"index": 2, "decision": "allow"}]
+    save_pending_plan(tmp_path, plan, ops, decs)
+    ok, _ = update_team_decisions(
+        tmp_path,
+        [
+            {"team_decision": "reject"},
+            {"team_decision": "approve", "approved_by": "ui"},
+        ],
+    )
+    assert ok
+
+    assert record_team_rejections(tmp_path) == 1
+    assert record_team_rejections(tmp_path) == 0
+
+    events = ProjectMemory(tmp_path).events.recent_events(limit=10, types=("learn",))
+    rejects = [event for event in events if event.output.get("failure_reason") == "human_rejected"]
+    assert len(rejects) == 1
+    assert rejects[0].result is False
+    assert rejects[0].input["operations"][0]["target_file"] == "a.py"
+    assert rejects[0].input["operations"][0]["decision_source"] == "team"
+    proposal_hash = rejects[0].input["operations"][0]["proposal_hash"]
+    assert proposal_hash in get_recent_human_rejected_proposal_hashes(tmp_path)
 
 
 def test_clear_pending_plan_after_apply_removes_approve_reject(tmp_path: Path) -> None:

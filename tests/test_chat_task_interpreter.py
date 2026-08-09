@@ -109,6 +109,13 @@ def test_interpret_task_detects_run_tests_intent() -> None:
     assert out.requires_confirmation is False
 
 
+def test_interpret_task_detects_singular_run_test_intent() -> None:
+    out = interpret_task("запусти тест tests/test_plugin_hook_orchestration.py")
+    assert out.intent == "run_tests"
+    assert out.target == "tests/test_plugin_hook_orchestration.py"
+    assert out.requires_confirmation is False
+
+
 def test_interpret_task_detects_run_lint_intent() -> None:
     out = interpret_task("запусти линтер")
     assert out.intent == "run_lint"

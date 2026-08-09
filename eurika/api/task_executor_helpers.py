@@ -112,10 +112,33 @@ def run_pytest(root: Path, args: List[str], timeout: int = 180) -> Dict[str, Any
         result = subprocess.run(
             cmd, cwd=str(root), capture_output=True, text=True, timeout=timeout
         )
-    except subprocess.TimeoutExpired:
-        return {"ok": False, "runner": "pytest", "error": "timeout"}
+    except subprocess.TimeoutExpired as exc:
+        def _timeout_text(value: str | bytes | None) -> str:
+            if isinstance(value, bytes):
+                return value.decode(errors="replace")
+            return str(value or "")
+
+        output = (_timeout_text(exc.stdout) + _timeout_text(exc.stderr)).strip()
+        if output:
+            output += "\n"
+        output += f"pytest timed out after {timeout}s"
+        return {
+            "ok": False,
+            "runner": "pytest",
+            "command": cmd,
+            "exit_code": 124,
+            "output": output[:4000],
+            "error": "timeout",
+        }
     except Exception as exc:  # pragma: no cover
-        return {"ok": False, "runner": "pytest", "error": str(exc)}
+        return {
+            "ok": False,
+            "runner": "pytest",
+            "command": cmd,
+            "exit_code": 1,
+            "output": str(exc),
+            "error": str(exc),
+        }
     out = ((result.stdout or "") + (result.stderr or "")).strip()
     passed_with_post_crash = (
         result.returncode != 0
@@ -125,6 +148,7 @@ def run_pytest(root: Path, args: List[str], timeout: int = 180) -> Dict[str, Any
     return {
         "ok": (result.returncode == 0) or passed_with_post_crash,
         "runner": "pytest",
+        "command": cmd,
         "exit_code": result.returncode,
         "output": out[:4000],
         "warning": (

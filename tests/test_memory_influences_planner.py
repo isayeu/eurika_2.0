@@ -115,6 +115,34 @@ def test_failure_event_enriched_with_goal_id_plan_hash(tmp_path: Path) -> None:
     assert e["kind"] in ("split_module", "extract_class")
 
 
+def test_human_reject_filters_exact_proposal_but_allows_revision() -> None:
+    from eurika.reasoning.planner.patch_ops import _exclude_human_rejected_proposals
+    from eurika.storage import proposal_hash_from_op
+    from patch_plan import PatchOperation
+
+    rejected = PatchOperation(
+        target_file="a.py",
+        kind="extract_block_to_helper",
+        description="extract",
+        diff="old proposal",
+        params={"block_start_line": 10},
+    )
+    revised = PatchOperation(
+        target_file="a.py",
+        kind="extract_block_to_helper",
+        description="extract",
+        diff="better proposal",
+        params={"block_start_line": 20},
+    )
+
+    kept = _exclude_human_rejected_proposals(
+        [rejected, revised],
+        frozenset({proposal_hash_from_op(rejected)}),
+    )
+
+    assert kept == [revised]
+
+
 def test_planner_reverses_order_when_plan_hash_failed(tmp_path: Path) -> None:
     """When plan_hash failed recently, planner reverses order (strategy variation)."""
     from architecture_planner import build_patch_plan

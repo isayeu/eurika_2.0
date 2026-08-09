@@ -84,7 +84,7 @@
 ## Backlog после окна (порядок)
 
 ### A. Продукт / UX
-1. **Chat-first оболочка** — частично ✅: **agent tool-loop**; **ls/tree** и **git status/diff** (read-only) через `eurika-cmds`; коммит — HITL «применяй»; опыт tool-turns в `.eurika/chat_tool_turns.jsonl` (**outcome_hint** + отбор по релевантности сообщения); **политика хардкода** зафиксирована. Дальше: scan в том же цикле по желанию; дальше накапливать phrase/tool опыт вместо YAML-доменов.
+1. ~~**Chat-first coding-оболочка**~~ ✅ (2026-08-08, local core v1): основным coding UI стало расширение VS Code/VSCodium `vscode-extension/`; Python backend `eurika.agent` работает по versioned streaming JSON-RPC/stdio с cancellation, structured `search/read/edit/terminal/diagnostics/tests/git_diff`, preview/Apply/Reject, checkpoints и scoped rules. Qt остаётся для Market/Approvals/ops. Старый текстовый `eurika-cmds` сохраняется только для совместимости, но не является основным coding loop. Release/eval gate: `docs/LOCAL_CODING_AGENT_RELEASE.md`.
 2. ~~**Session digest «пока тебя не было»**~~ ✅ (2026-08-03) — при открытии Qt в ленту Market; Chat: «пока меня не было».
 
 ### B. Market paper (по статистике journal)
@@ -102,9 +102,10 @@
 14. ~~**Зависшие открытые позиции**~~ ✅ (2026-08-07) — причина: `find_entry_index` при входе старше окна 1m ставил индекс 0 → горизонт никогда не истекал. Фикс: scrolled-out → −1; страховка `max_age` (N×горизонт, N=3) / `stale` (вход выпал из окна после planned hold); `DEFAULT_EXEC_MAX_KEEP` 360.
 15. **Метки всё ещё частично свои же** — политика входа учится на исходах, отобранных `soft_entry`; теневые входы снимают цензуру ворот, но не эту. Мера: доля меток, пришедших не от собственного решения.
 16. Позже: walk-forward; impulse-путь на 1m-фичах при сильном burst/break; полный режимный фильтр по часу (сейчас тег + soft-cap 07–09).
+17. **Аудит технических признаков, не indicator-rules:** после стабилизации журнала провести ablation/walk-forward для RSI/MACD/SMA/Bollinger/volume и их динамики, оценивая только прирост out-of-sample net edge после комиссий. При необходимости добавить нормированный stochastic `%K` как непрерывный признак положения в диапазоне — только если он даёт независимый прирост относительно уже имеющихся `dist_to_low/high`; не вводить правила вида `RSI < 30 → BUY` или «выход за Bollinger → возврат».
 
 ### C. Agent / платформа
-11. **Plugin hooks** `after_*` — `routeCRM/plugins` + R5.
+11. ~~**Plugin hooks** `after_*`~~ ✅ (2026-08-08, v1) — versioned JSON-safe immutable `HookContext`; canonical `after_scan/plan/apply/verify` (не CLI/Qt wrappers); конфиг `.eurika/plugins.toml` / `pyproject`; ordered + dedupe + fail-open; результаты в `report.plugin_hooks` и `.eurika/events.json`. Trusted in-process plugins, не sandbox.
 12. **Telegram-канал** к тому же агенту (`eurika` v1 `telegram_bot`).
 13. ~~**Goals / reflection / nudges (v1)**~~ частично ✅ — `goal_status` / `clear_goal` (чистит и last_execution) / `goal_reflection` + nudge; после scan/ritual/Apply цель отпускается, итог остаётся для «что получилось?».
 

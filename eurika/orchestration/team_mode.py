@@ -99,6 +99,71 @@ def load_approved_operations(project_root: Path) -> tuple[list[dict[str, Any]], 
     return approved, data
 
 
+def record_team_rejections(
+    project_root: Path,
+    payload: dict[str, Any] | None = None,
+) -> int:
+    """Record final human rejects as deduplicated learning outcomes."""
+    path = _pending_path(project_root)
+    data = payload if isinstance(payload, dict) else load_json_safe(path)
+    if not isinstance(data, dict):
+        return 0
+    operations = data.get("operations")
+    if not isinstance(operations, list):
+        return 0
+
+    recorded = 0
+    from eurika.storage.experience_store import proposal_hash_from_op, record_outcome
+
+    for op in operations:
+        if not isinstance(op, dict):
+            continue
+        decision = str(op.get("team_decision") or "").lower()
+        state = str(op.get("approval_state") or "").lower()
+        if decision != "reject" and state != "rejected":
+            continue
+        if op.get("human_rejection_recorded"):
+            continue
+        target = str(op.get("target_file") or "")
+        kind = str(op.get("kind") or "")
+        learning_op = {
+            "target_file": target,
+            "kind": kind,
+            "smell_type": op.get("smell_type"),
+            "description": op.get("description"),
+            "approval_state": "rejected",
+            "decision_source": "team",
+            "execution_outcome": "human_rejected",
+            "rejection_reason": "human_rejected",
+            "proposal_hash": proposal_hash_from_op(op),
+        }
+        try:
+            record_outcome(
+                Path(project_root).resolve(),
+                [target] if target else [],
+                [learning_op],
+                ["human_rejected"],
+                False,
+                failure_reason="human_rejected",
+                context="team_approval",
+            )
+        except Exception:
+            continue
+        op["human_rejection_recorded"] = True
+        recorded += 1
+
+    if recorded:
+        data["operations"] = operations
+        patch_plan = data.get("patch_plan")
+        if isinstance(patch_plan, dict):
+            data["patch_plan"] = dict(patch_plan, operations=operations)
+        try:
+            path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        except OSError:
+            pass
+    return recorded
+
+
 def has_pending_plan(project_root: Path) -> bool:
     """True if pending plan exists."""
     return _pending_path(project_root).exists()

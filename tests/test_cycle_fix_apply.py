@@ -449,6 +449,37 @@ def test_fix_apply_approved_missing_pending_plan_returns_error(tmp_path: Path) -
     assert "No pending plan" in ((out.get("report") or {}).get("error") or "")
 
 
+def test_fix_apply_approved_records_final_team_rejections(tmp_path: Path) -> None:
+    from eurika.orchestration.entry import run_cycle
+    from eurika.orchestration.team_mode import (
+        has_pending_plan,
+        save_pending_plan,
+        update_team_decisions,
+    )
+    from eurika.storage import ProjectMemory
+
+    operation = {"target_file": "a.py", "kind": "extract_block_to_helper"}
+    save_pending_plan(
+        tmp_path,
+        {"project_root": str(tmp_path), "operations": [operation]},
+        [operation],
+        [{"index": 1, "decision": "review"}],
+    )
+    ok, _ = update_team_decisions(tmp_path, [{"team_decision": "reject"}])
+    assert ok
+
+    out = run_cycle(tmp_path, mode="fix", apply_approved=True, quiet=True)
+
+    assert out.get("return_code") == 0
+    assert not has_pending_plan(tmp_path)
+    events = ProjectMemory(tmp_path).events.recent_events(limit=10, types=("learn",))
+    assert any(
+        event.result is False
+        and event.output.get("failure_reason") == "human_rejected"
+        for event in events
+    )
+
+
 def test_fix_apply_approved_invalid_pending_plan_returns_error(tmp_path: Path) -> None:
     """--apply-approved should fail predictably when pending_plan.json is invalid JSON."""
     from eurika.orchestration.entry import run_cycle

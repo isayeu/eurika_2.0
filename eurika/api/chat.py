@@ -1,6 +1,8 @@
 """Chat endpoint for UI (ROADMAP 3.5.11.A, 3.5.11.B, 3.5.11.C). P0.4: split into chat_*, chat_direct."""
 from __future__ import annotations
 import json
+import shlex
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -14,6 +16,25 @@ from .chat_metrics import record_chat_metric as _record_chat_metric
 from .chat_utils import enforce_eurika_persona as _enforce_eurika_persona, format_execution_report as _format_execution_report, grounded_ui_tabs_text as _grounded_ui_tabs_text, infer_default_save_target as _infer_default_save_target, safe_create_empty_file as _safe_create_empty_file, safe_delete_file as _safe_delete_file, safe_write_file as _safe_write_file
 DEFAULT_SAVE_TARGET = 'app.py'
 
+
+def _terminal_fields_for_report(report: Dict[str, Any]) -> Dict[str, Any]:
+    """Expose executor command/output so Qt can mirror it in Terminal."""
+    verification = report.get('verification')
+    if not isinstance(verification, dict):
+        return {}
+    command = verification.get('command')
+    if isinstance(command, list) and command:
+        command_text = shlex.join(str(part) for part in command)
+    elif isinstance(command, str) and command.strip():
+        command_text = command.strip()
+    else:
+        return {}
+    return {
+        'terminal_cmd': f'$ {command_text}',
+        'terminal_output': str(verification.get('output') or verification.get('error') or ''),
+        'terminal_exit_code': int(verification.get('exit_code') or 0),
+    }
+
 def append_chat_history(project_root: Path, role: str, content: str, context_snapshot: Optional[str]=None) -> None:
     """Append one message to .eurika/chat_history/chat.jsonl (ROADMAP 3.5.11.A.3)."""
     root = Path(project_root).resolve()
@@ -23,6 +44,41 @@ def append_chat_history(project_root: Path, role: str, content: str, context_sna
     record = {'ts': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'), 'role': role, 'content': content[:10000], 'context_snapshot': context_snapshot[:500] if context_snapshot else None}
     with open(log_path, 'a', encoding='utf-8') as f:
         f.write(json.dumps(record, ensure_ascii=False) + '\n')
+
+def load_chat_history(project_root: Path, limit: int = 80) -> List[Dict[str, str]]:
+    """Load recent valid user/assistant messages for UI and LLM context."""
+    if limit <= 0:
+        return []
+    path = Path(project_root).resolve() / '.eurika' / 'chat_history' / 'chat.jsonl'
+    if not path.is_file():
+        return []
+    recent: deque[Dict[str, str]] = deque(maxlen=limit)
+    try:
+        with path.open('r', encoding='utf-8') as stream:
+            for line in stream:
+                try:
+                    record = json.loads(line)
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    continue
+                if not isinstance(record, dict):
+                    continue
+                role = str(record.get('role') or '').strip().lower()
+                content = str(record.get('content') or '').strip()
+                if role in {'user', 'assistant'} and content:
+                    recent.append({'role': role, 'content': content})
+    except OSError:
+        return []
+    return list(recent)
+
+
+def clear_chat_history(project_root: Path) -> None:
+    """Clear persisted conversation while keeping prompt recall separate."""
+    path = Path(project_root).resolve() / '.eurika' / 'chat_history' / 'chat.jsonl'
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
 
 def _append_chat_history_safe(project_root: Path, role: str, content: str, context_snapshot: Optional[str]=None) -> None:
     """Best-effort history append: never break chat flow on write errors."""
@@ -197,7 +253,9 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     try:
         from eurika.api.chat_direct import is_git_status_request, is_ls_request, is_tree_request
 
-        if is_ls_request(msg) or is_tree_request(msg) or is_git_status_request(msg):
+        if intent in {None, 'run_command'} and (
+            is_ls_request(msg) or is_tree_request(msg) or is_git_status_request(msg)
+        ):
             intent = None
             interpretation = None
             target = None
@@ -256,7 +314,9 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
             _save_dialog_state(root, state)
             _append_chat_history_safe(root, 'user', msg, None)
             _append_chat_history_safe(root, 'assistant', text, None)
-            return {'text': text, 'error': None}
+            result = {'text': text, 'error': None}
+            result.update(_terminal_fields_for_report(report))
+            return result
     if intent == 'ui_tabs':
         report_obj = execute_spec(root, build_task_spec(intent='ui_tabs', message=msg))
         report = {'ok': report_obj.ok, 'summary': report_obj.summary, 'applied_steps': report_obj.applied_steps, 'skipped_steps': report_obj.skipped_steps, 'verification': report_obj.verification, 'artifacts_changed': report_obj.artifacts_changed, 'error': report_obj.error}
@@ -304,7 +364,9 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         _save_dialog_state(root, state)
         _append_chat_history_safe(root, 'user', msg, None)
         _append_chat_history_safe(root, 'assistant', text, None)
-        return {'text': text, 'error': None}
+        result = {'text': text, 'error': None}
+        result.update(_terminal_fields_for_report(report))
+        return result
     if intent == 'refactor':
         dry = 'dry-run' in msg.lower() or 'dry run' in msg.lower() or 'без применения' in msg.lower()
         _emit(f"$ eurika fix . {('--dry-run' if dry else '')}".strip(), on_system_action)

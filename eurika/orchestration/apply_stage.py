@@ -20,7 +20,7 @@ def build_fix_dry_run_result(path: Path, patch_plan: PatchPlan, operations: list
     op_results = []
     for idx, op in enumerate(operations, start=1):
         op_results.append({'index': idx, 'target_file': op.get('target_file'), 'kind': op.get('kind'), 'approval_state': op.get('approval_state', 'approved'), 'critic_verdict': op.get('critic_verdict', 'allow'), 'applied': False, 'skipped_reason': 'dry_run'})
-    report = {'dry_run': True, 'patch_plan': patch_plan, 'modified': [], 'verify': {'success': None}, 'operation_explanations': expls, 'operation_results': op_results, 'policy_decisions': result.output.get('policy_decisions', []), 'critic_decisions': result.output.get('critic_decisions', []), 'context_sources': result.output.get('context_sources'), 'llm_hint_runtime': result.output.get('llm_hint_runtime')}
+    report = {'dry_run': True, 'patch_plan': patch_plan, 'modified': [], 'verify': {'success': None}, 'operation_explanations': expls, 'operation_results': op_results, 'policy_decisions': result.output.get('policy_decisions', []), 'critic_decisions': result.output.get('critic_decisions', []), 'context_sources': result.output.get('context_sources'), 'llm_hint_runtime': result.output.get('llm_hint_runtime'), 'plugin_hooks': result.output.get('plugin_hooks', [])}
     if run_params:
         report['run_params'] = run_params
     try:
@@ -64,7 +64,12 @@ def enrich_report_with_rescan(path: Path, report: FixReport, rescan_before: Path
     if not quiet:
         _LOG.info('--- Step 4/4: rescan (compare before/after) ---')
     with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-        run_scan(path)
+        try:
+            run_scan(path, scan_reason='post_apply')
+        except TypeError as exc:
+            if 'scan_reason' not in str(exc):
+                raise
+            run_scan(path)
     self_map_after = path / 'self_map.json'
     if not self_map_after.exists():
         return
@@ -265,7 +270,25 @@ def execute_fix_apply_stage(path: Path, patch_plan: PatchPlan, operations: list[
         checkpoint_id = None
     from patch_engine_verify_patch import get_verify_timeout
     resolved_timeout = get_verify_timeout(path, override=verify_timeout)
-    report = apply_and_verify(path, patch_plan, backup=True, verify=True, verify_timeout=resolved_timeout, verify_cmd=verify_cmd, auto_rollback=True)
+    from eurika.plugins import dispatch_project_hooks
+    plugin_hooks = list((result.output or {}).get('plugin_hooks') or [])
+
+    def _after_apply(applied_report: dict[str, Any]) -> None:
+        rows = dispatch_project_hooks(
+            path,
+            'after_apply',
+            payload={
+                'modified': applied_report.get('modified', []),
+                'skipped': applied_report.get('skipped', []),
+                'errors': applied_report.get('errors', []),
+                'run_id': applied_report.get('run_id'),
+            },
+            status='error' if applied_report.get('errors') else 'ok',
+            metadata={'session_id': session_id},
+        )
+        plugin_hooks.extend(rows)
+
+    report = apply_and_verify(path, patch_plan, backup=True, verify=True, verify_timeout=resolved_timeout, verify_cmd=verify_cmd, auto_rollback=True, on_after_apply=_after_apply)
     report['simulation'] = simulation
     report['risk_report'] = risk_report.to_dict()
     verify_outcome = report['verify'].get('success')
@@ -313,6 +336,23 @@ def execute_fix_apply_stage(path: Path, patch_plan: PatchPlan, operations: list[
                 report['campaign_checkpoint'] = {'checkpoint_id': checkpoint_id, 'status': cp.get('status'), 'run_ids': cp.get('run_ids', []), 'reused': bool(cp.get('reused'))}
         except Exception:
             pass
+    plugin_hooks.extend(
+        dispatch_project_hooks(
+            path,
+            'after_verify',
+            payload={
+                'verify': report.get('verify', {}),
+                'rollback': report.get('rollback'),
+                'verify_metrics': report.get('verify_metrics'),
+                'modified': modified,
+                'run_id': report.get('run_id'),
+            },
+            status='ok' if verify_success is True else 'error',
+            metadata={'session_id': session_id},
+        )
+    )
+    if plugin_hooks:
+        report['plugin_hooks'] = plugin_hooks
     append_fix_cycle_memory(path, result, operations, report, verify_success)
     write_fix_report(path, report, quiet)
     return (report, modified, verify_success)

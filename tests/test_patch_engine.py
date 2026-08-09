@@ -34,6 +34,32 @@ def test_apply_and_verify_no_verify(tmp_path: Path) -> None:
     assert report['verify']['success'] is None
     assert report['verify_duration_ms'] == 0
 
+
+def test_after_apply_callback_runs_before_verify(tmp_path: Path) -> None:
+    (tmp_path / "a.py").write_text("pass\n", encoding="utf-8")
+    plan = {
+        "operations": [
+            {
+                "target_file": "a.py",
+                "diff": "# hook\n",
+                "smell_type": "hub",
+                "kind": "split",
+            }
+        ]
+    }
+    seen = []
+    report = apply_and_verify(
+        tmp_path,
+        plan,
+        backup=False,
+        verify=False,
+        on_after_apply=lambda applied: seen.append(
+            {"modified": list(applied.get("modified") or []), "has_verify": "verify" in applied}
+        ),
+    )
+    assert seen == [{"modified": ["a.py"], "has_verify": False}]
+    assert report["verify"]["success"] is None
+
 def test_rollback_restores_files(tmp_path: Path) -> None:
     """rollback restores from .eurika_backups/<run_id>."""
     backup_dir = tmp_path / '.eurika_backups' / '20250101_120000'

@@ -62,6 +62,24 @@ def test_detect_intent_create_english() -> None:
     assert intent == 'create'
     assert 'bar' in (target or '')
 
+
+def test_interpret_create_with_explicit_content() -> None:
+    from eurika.api.chat_intent import interpret_task
+
+    out = interpret_task(
+        'Создай .eurika/plugins.toml со следующим содержимым. '
+        'Покажи Diff и жди Apply:\n'
+        '[[hooks]]\n'
+        'event = "after_scan"\n'
+    )
+
+    assert out.intent == 'create'
+    assert out.target == '.eurika/plugins.toml'
+    assert out.requires_confirmation is True
+    assert out.entities['content'] == '[[hooks]]\nevent = "after_scan"\n'
+    assert 'show diff and wait for Apply' in out.plan_steps
+
+
 def test_detect_intent_remember() -> None:
     from eurika.api.chat_intent import detect_intent
     intent, target = detect_intent('Меня зовут Андрей, запомни это')

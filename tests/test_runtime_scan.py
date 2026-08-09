@@ -32,6 +32,35 @@ def test_run_scan_on_minimal_project(tmp_path: Path):
     assert (project_root / ".eurika" / "observations.json").exists()
 
 
+def test_run_scan_dispatches_canonical_after_scan(tmp_path: Path) -> None:
+    from tests.fixtures import eurika_hook_example as example
+
+    example.reset()
+    project_root = tmp_path / "proj"
+    project_root.mkdir()
+    (project_root / "main.py").write_text("x = 1\n", encoding="utf-8")
+    (project_root / ".eurika").mkdir()
+    (project_root / ".eurika" / "plugins.toml").write_text(
+        "\n".join(
+            [
+                "[[hooks]]",
+                'event = "after_scan"',
+                'entry_point = "tests.fixtures.eurika_hook_example:capture"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with redirect_stdout(io.StringIO()):
+        assert run_scan(project_root, scan_reason="cycle_initial") == 0
+
+    assert len(example.EVENTS) == 1
+    row = example.EVENTS[0]
+    assert row["event"] == "after_scan"
+    assert row["metadata"]["scan_reason"] == "cycle_initial"
+    assert row["payload"]["artifacts"] == ("self_map.json",)
+
+
 def test_scan_excludes_venv_and_node_modules(tmp_path: Path):
     """venv, .venv, node_modules are excluded from scan."""
     proj = tmp_path / "proj"

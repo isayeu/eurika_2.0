@@ -239,22 +239,41 @@ def calibrate_cost_gate(
         chosen, expected, used = threshold, _mean_edge(tail), len(tail)
         break
 
+    path = cost_gate_path(project_root)
+    retained_previous = False
+    retained_threshold: float | None = None
+    if chosen is None and path.is_file():
+        try:
+            previous = json.loads(path.read_text(encoding="utf-8"))
+            retained_threshold = float(previous["expansion_min"])
+            retained_previous = True
+        except (KeyError, OSError, TypeError, ValueError):
+            retained_threshold = None
+
     out: dict[str, Any] = {
         "version": 1,
         "expansion_features": list(EXPANSION_FEATURES),
         "cost_mult": float(cost_mult),
-        "expansion_min": float(chosen if chosen is not None else DEFAULT_EXPANSION_MIN),
+        "expansion_min": float(
+            chosen
+            if chosen is not None
+            else (
+                retained_threshold
+                if retained_threshold is not None
+                else DEFAULT_EXPANSION_MIN
+            )
+        ),
         "expected_edge": float(expected),
         "samples": int(used),
         "scanned": int(len(samples)),
         "calibrated": chosen is not None,
+        "retained_previous": retained_previous,
         "note": (
             "expansion = min(vol_z, atr_burst); open only when the expected gross "
             "edge covers cost_mult x fee"
         ),
     }
     if write:
-        path = cost_gate_path(project_root)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
     return out

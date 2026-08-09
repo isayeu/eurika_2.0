@@ -124,6 +124,34 @@ def detect_intent(message: str) -> Tuple[Optional[str], Optional[str]]:
     return (None, None)
 
 
+def _extract_create_content(message: str) -> tuple[str, str] | None:
+    """Extract an explicit file body from a create-file request."""
+    text = str(message or "")
+    intent, target = detect_intent(text)
+    if intent != "create" or not target:
+        return None
+    marker = re.search(
+        r"(?:со\s+следующим\s+содержимым|с\s+содержимым|"
+        r"with\s+(?:the\s+)?following\s+content|with\s+content)",
+        text,
+        re.IGNORECASE,
+    )
+    if marker is None:
+        return None
+    remainder = text[marker.end() :]
+    fenced = re.search(r"```(?:[a-zA-Z0-9_+-]+)?[ \t]*\r?\n(.*?)```", remainder, re.DOTALL)
+    if fenced is not None:
+        content = fenced.group(1).strip("\r\n")
+    else:
+        body_start = re.search(r":\s*\r?\n", remainder)
+        if body_start is None:
+            return None
+        content = remainder[body_start.end() :].strip("\r\n")
+    if not content:
+        return None
+    return target, content + "\n"
+
+
 def interpret_task(message: str, history: Optional[List[Dict[str, str]]] = None) -> TaskInterpretation:
     """Interpret user request with confidence and clarification hints."""
     msg_raw = (message or "").strip()
@@ -178,6 +206,26 @@ def interpret_task(message: str, history: Optional[List[Dict[str, str]]] = None)
                 f"apply patch in `{target}`",
                 "run verify tests",
                 "rollback if verify fails",
+            ],
+        )
+
+    create_with_content = _extract_create_content(msg_raw)
+    if create_with_content is not None:
+        target, content = create_with_content
+        return TaskInterpretation(
+            intent="create",
+            target=target,
+            confidence=0.98,
+            goal=sectioned.get("goal", ""),
+            constraints=sectioned.get("constraints", ""),
+            actions=sectioned.get("actions_lines", []),
+            risk_level="medium",
+            requires_confirmation=True,
+            entities={"content": content},
+            plan_steps=[
+                f"validate path `{target}`",
+                f"create `{target}` with provided content",
+                "show diff and wait for Apply",
             ],
         )
 

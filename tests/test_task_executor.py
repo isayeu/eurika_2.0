@@ -107,7 +107,7 @@ def test_execute_run_tests_uses_pytest_and_returns_status(tmp_path: Path) -> Non
     (tests_dir / "test_ok.py").write_text("def test_ok():\n    assert True\n", encoding="utf-8")
     spec = build_task_spec(intent="run_tests", target="tests/test_ok.py")
     report = execute_spec(tmp_path, spec)
-    assert report.summary in {"tests passed", "tests failed"}
+    assert report.summary in {"tests passed", "tests failed", "tests timed out"}
     assert isinstance(report.verification, dict)
     assert report.verification.get("runner") == "pytest"
 
@@ -225,6 +225,23 @@ def test_run_pytest_accepts_passed_with_bus_error(tmp_path: Path, monkeypatch) -
     out = exec_mod._run_pytest(tmp_path, ["-q"], timeout=5)
     assert out.get("ok") is True
     assert "bus error" in str(out.get("warning") or "").lower()
+
+
+def test_run_pytest_timeout_keeps_terminal_diagnostics(tmp_path: Path, monkeypatch) -> None:
+    def _timeout(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired(
+            cmd=["python", "-m", "pytest", "-q"],
+            timeout=5,
+            output="tests/test_slow.py .",
+        )
+
+    monkeypatch.setattr(subprocess, "run", _timeout)
+    out = exec_mod._run_pytest(tmp_path, ["-q"], timeout=5)
+
+    assert out.get("ok") is False
+    assert out.get("exit_code") == 124
+    assert out.get("command")
+    assert "timed out after 5s" in str(out.get("output") or "")
 
 
 def test_execute_code_edit_patch_dry_run_does_not_write(tmp_path: Path) -> None:

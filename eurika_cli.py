@@ -6,7 +6,6 @@ All command logic lives in cli.handlers.
 """
 
 import argparse
-import os
 import sys
 from pathlib import Path
 

@@ -121,6 +121,36 @@ def test_calibration_falls_back_when_nothing_covers_the_fee(tmp_path: Path) -> N
     out = ec.calibrate_cost_gate(tmp_path, rows=rows, min_samples=40)
     assert out["calibrated"] is False
     assert out["expansion_min"] == ec.DEFAULT_EXPANSION_MIN
+    assert out["retained_previous"] is False
+
+
+def test_failed_recalibration_preserves_previous_stricter_gate(tmp_path: Path) -> None:
+    path = ec.cost_gate_path(tmp_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "expansion_min": 1.0,
+                "expected_edge": 0.002,
+                "cost_mult": 1.5,
+                "samples": 80,
+                "calibrated": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    losing = [
+        _row(vol_z=v / 10.0, atr_burst=v / 10.0, ret=0.0001)
+        for v in range(-60, 60)
+    ]
+
+    out = ec.calibrate_cost_gate(tmp_path, rows=losing, min_samples=40)
+
+    assert out["calibrated"] is False
+    assert out["retained_previous"] is True
+    assert out["expansion_min"] == 1.0
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    assert saved["expansion_min"] == 1.0
 
 
 def test_calibration_ignores_cancelled_rows(tmp_path: Path) -> None:

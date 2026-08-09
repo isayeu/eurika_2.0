@@ -13,7 +13,13 @@ from report.ux import format_observation, format_observation_md, should_use_colo
 _LOG = get_logger("scan")
 
 
-def run_scan(path: Path, *, format: str = "text", color: Optional[bool] = None) -> int:
+def run_scan(
+    path: Path,
+    *,
+    format: str = "text",
+    color: Optional[bool] = None,
+    scan_reason: str = "standalone",
+) -> int:
     """Scan project, log report, update architecture artifacts and memory."""
     use_color = should_use_color(color)
     analyzer = CodeAwareness(path)
@@ -30,4 +36,15 @@ def run_scan(path: Path, *, format: str = "text", color: Optional[bool] = None) 
     print(arch_report)
     memory = ProjectMemory(path)
     memory.record_scan(observation)
+    from eurika.plugins import dispatch_project_hooks
+
+    dispatch_project_hooks(
+        path,
+        "after_scan",
+        payload={
+            "observation": observation,
+            "artifacts": ["self_map.json"],
+        },
+        metadata={"scan_reason": str(scan_reason or "standalone")},
+    )
     return 0

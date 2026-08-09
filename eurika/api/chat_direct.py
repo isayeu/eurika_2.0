@@ -454,10 +454,20 @@ _LLM_TOOL_LOOP_FACTS = frozenset({"project_ls", "project_tree"})
 
 def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optional[str]]:
     """Resolve direct handler from config or legacy. Returns (handler_id, emit_cmd)."""
+    from eurika.api.chat_intent_detectors import detect_run
     from eurika.api.chat_intents_config import match_direct_intent
 
     # Never fuzzy-route HITL confirmations (vector may map «отклонить» → show_report).
     if is_reject_confirmation(msg) or is_apply_confirmation(msg):
+        return (None, None)
+    # Explicit commit requests must beat incidental ROADMAP/phase text supplied
+    # as the desired commit-message context.
+    if is_git_commit_request(msg):
+        return ("git_commit", None)
+    # A concrete test request belongs to the run_tests executor. Without this
+    # guard the vector matcher may turn an arbitrary test path into qt smoke.
+    detected_run = detect_run(msg, msg.lower())
+    if detected_run is not None and detected_run[0] == "run_tests":
         return (None, None)
     matched = match_direct_intent(root, msg)
     if matched:

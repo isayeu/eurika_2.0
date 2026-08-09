@@ -115,7 +115,7 @@ def detect_refactor(msg_raw: str, msg: str) -> Optional[Tuple[str, str]]:
 def detect_run(msg_raw: str, msg: str) -> Optional[Tuple[str, str]]:
     """Detect run_tests, run_lint, run_command intents."""
     test_run = re.search(
-        r"(?:запусти|прогони|проверь|run)\s+(?:тесты|tests?)\s*([a-zA-Z0-9_./\\:-]+)?",
+        r"(?:запусти|прогони|проверь|run)\s+(?:тест(?:ы)?|tests?)\s*([a-zA-Z0-9_./\\:-]+)?",
         msg_raw, re.IGNORECASE,
     )
     if test_run:

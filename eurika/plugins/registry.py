@@ -9,8 +9,8 @@ from typing import Any, Callable, List
 from eurika.smells.detector import ArchSmell
 
 
-def _load_entry_point(entry_point: str) -> Callable[[Path], List[ArchSmell]] | None:
-    """Load callable from 'module:attr' string. Returns None on error."""
+def _load_entry_point(entry_point: str) -> Callable[..., Any] | None:
+    """Load an untyped callable from ``module:attr``; callers define its contract."""
     if ":" not in entry_point:
         return None
     module_name, attr_name = entry_point.strip().rsplit(":", 1)

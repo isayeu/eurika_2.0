@@ -149,6 +149,7 @@ class MarketTickWorker(QThread):
 _KIND_META: dict[str, tuple[str, str]] = {
     "error": ("ошибка", "#b91c1c"),
     "outcome": ("итог", "#0f766e"),
+    "shadow_outcome": ("итог тени", "#7c3aed"),
     "paper": ("сделка", "#1d4ed8"),
     "explore": ("исследование", "#a16207"),
     "analysis": ("анализ", "#0f766e"),

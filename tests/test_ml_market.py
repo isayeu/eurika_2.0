@@ -342,15 +342,21 @@ def test_predict_levels_heuristic_and_train(tmp_path: Path) -> None:
 def test_market_store_merge_and_sync(tmp_path: Path) -> None:
     candles = _synthetic_candles(20)
     ms.save_candles(tmp_path, candles[:10], symbol="BTCUSDT", interval="1h")
+    seen_start: list[int | None] = []
 
     def fake_fetch(symbol, *, interval="1h", limit=500, start_time=None, end_time=None, timeout=10.0):
-        return {"ok": True, "candles": candles[10:], "error": None}
+        seen_start.append(start_time)
+        refreshed = dict(candles[9])
+        refreshed["close"] = float(refreshed["close"]) + 1.0
+        return {"ok": True, "candles": [refreshed, *candles[10:]], "error": None}
 
     out = ms.sync_klines(tmp_path, symbol="BTCUSDT", interval="1h", fetch=fake_fetch)
     assert out["ok"] is True
     assert out["total"] == 20
+    assert seen_start == [candles[9]["open_time"]]
     loaded = ms.load_candles(tmp_path, "BTCUSDT", "1h")
     assert len(loaded) == 20
+    assert loaded[9]["close"] == candles[9]["close"] + 1.0
 
 
 def test_paper_backfill_writes_labels(tmp_path: Path) -> None:

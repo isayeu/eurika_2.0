@@ -53,6 +53,32 @@ def test_append_chat_history_stores_none_context_when_empty(tmp_path: Path) -> N
     assert payload.get("context_snapshot") is None
 
 
+def test_load_chat_history_restores_recent_valid_messages(tmp_path: Path) -> None:
+    from eurika.api.chat import append_chat_history, load_chat_history
+
+    append_chat_history(tmp_path, "user", "first")
+    append_chat_history(tmp_path, "assistant", "second")
+    path = tmp_path / ".eurika" / "chat_history" / "chat.jsonl"
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write("{broken\n")
+        stream.write(json.dumps({"role": "system", "content": "ignore"}) + "\n")
+    append_chat_history(tmp_path, "user", "third")
+
+    assert load_chat_history(tmp_path, limit=2) == [
+        {"role": "assistant", "content": "second"},
+        {"role": "user", "content": "third"},
+    ]
+
+
+def test_clear_chat_history_removes_persisted_conversation(tmp_path: Path) -> None:
+    from eurika.api.chat import append_chat_history, clear_chat_history, load_chat_history
+
+    append_chat_history(tmp_path, "user", "hello")
+    clear_chat_history(tmp_path)
+
+    assert load_chat_history(tmp_path) == []
+
+
 def test_chat_send_works_with_preexisting_corrupted_chat_jsonl(tmp_path: Path, monkeypatch) -> None:
     """chat_send should remain functional even when chat.jsonl has corrupted prior lines."""
     import eurika.api.chat as chat_mod

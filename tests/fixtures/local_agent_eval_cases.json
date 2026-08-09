@@ -1,0 +1,37 @@
+[
+  {
+    "id": "project-question",
+    "prompt": "Where is the local agent handshake implemented?",
+    "requiredTools": ["search", "read"],
+    "requiresApproval": false,
+    "success": "Answer cites the implementation file and does not mutate the workspace."
+  },
+  {
+    "id": "symbol-retrieval",
+    "prompt": "Find the LocalAgentRuntime definition and summarize its public RPC methods.",
+    "requiredTools": ["search", "read"],
+    "requiresApproval": false,
+    "success": "Symbol-mode search finds LocalAgentRuntime and the answer matches the source."
+  },
+  {
+    "id": "focused-fix",
+    "prompt": "Fix a unique incorrect literal in one Python file and verify syntax.",
+    "requiredTools": ["read", "edit", "diagnostics"],
+    "requiresApproval": true,
+    "success": "The exact edit is previewed, approved explicitly, and diagnostics are clean."
+  },
+  {
+    "id": "multi-file-change",
+    "prompt": "Update an API and its focused test in two files.",
+    "requiredTools": ["search", "read", "edit", "tests"],
+    "requiresApproval": true,
+    "success": "Both files are independently reviewable and focused tests pass after approval."
+  },
+  {
+    "id": "rollback-conflict",
+    "prompt": "Apply a change, modify it manually, then restore the checkpoint.",
+    "requiredTools": ["edit"],
+    "requiresApproval": true,
+    "success": "Restore refuses to overwrite the later manual change and reports a conflict."
+  }
+]

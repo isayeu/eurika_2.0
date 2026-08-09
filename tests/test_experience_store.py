@@ -5,7 +5,15 @@ from pathlib import Path
 
 import pytest
 
-from eurika.storage import ExperienceStore, get_statistics, record_outcome
+from eurika.storage import (
+    ExperienceStore,
+    get_kind_plan_failure_counts,
+    get_recent_failed_plan_hashes,
+    get_recent_human_rejected_proposal_hashes,
+    get_statistics,
+    proposal_hash_from_op,
+    record_outcome,
+)
 
 
 def _isolate_global_store(tmp_path: Path) -> None:
@@ -33,6 +41,47 @@ def test_record_outcome_empty_operations_noop(tmp_path: Path) -> None:
         record_outcome(tmp_path, [], [], [], True)
         store = ExperienceStore(tmp_path)
         assert store.get_statistics() == {}
+    finally:
+        _restore_global_store()
+
+
+def test_proposal_hash_distinguishes_revised_transformation() -> None:
+    base = {
+        "target_file": "a.py",
+        "kind": "extract_block_to_helper",
+        "params": {"block_start_line": 10},
+        "diff": "extract block",
+    }
+    revised = dict(base, params={"block_start_line": 20})
+
+    assert proposal_hash_from_op(base) != proposal_hash_from_op(revised)
+
+
+def test_human_rejected_proposal_hash_view(tmp_path: Path) -> None:
+    from eurika.storage import ProjectMemory
+
+    operation = {
+        "target_file": "a.py",
+        "kind": "extract_block_to_helper",
+        "params": {"block_start_line": 10},
+        "diff": "extract block",
+    }
+    fingerprint = proposal_hash_from_op(operation)
+    operation["proposal_hash"] = fingerprint
+    _disable_global_store()
+    try:
+        record_outcome(
+            tmp_path,
+            ["a.py"],
+            [operation],
+            ["human_rejected"],
+            False,
+            failure_reason="human_rejected",
+        )
+        assert fingerprint in get_recent_human_rejected_proposal_hashes(tmp_path)
+        assert not get_recent_failed_plan_hashes(tmp_path)
+        assert not get_kind_plan_failure_counts(tmp_path)
+        assert ProjectMemory(tmp_path).learning.aggregate_by_smell_action() == {}
     finally:
         _restore_global_store()
 

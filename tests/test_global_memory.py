@@ -62,6 +62,64 @@ def test_append_and_aggregate_global(tmp_path: Path) -> None:
     finally:
         del os.environ['EURIKA_GLOBAL_MEMORY']
 
+
+def test_merged_stats_do_not_double_count_current_project(tmp_path: Path) -> None:
+    from eurika.storage import record_outcome
+    from eurika.storage.global_memory import get_merged_learning_stats
+
+    global_root = tmp_path / "global"
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    os.environ["EURIKA_GLOBAL_MEMORY"] = str(global_root)
+    try:
+        record_outcome(
+            project_root,
+            modules=["a.py"],
+            operations=[
+                {
+                    "target_file": "a.py",
+                    "kind": "split_module",
+                    "smell_type": "god_module",
+                }
+            ],
+            risks=[],
+            verify_success=True,
+        )
+
+        stats = get_merged_learning_stats(project_root)
+        assert stats["god_module|split_module"]["total"] == 1
+        assert stats["god_module|split_module"]["success"] == 1
+    finally:
+        del os.environ["EURIKA_GLOBAL_MEMORY"]
+
+
+def test_global_stats_ignore_human_rejections(tmp_path: Path) -> None:
+    from eurika.storage.global_memory import (
+        aggregate_global_by_smell_action,
+        append_learn_to_global,
+    )
+
+    os.environ["EURIKA_GLOBAL_MEMORY"] = str(tmp_path / "global")
+    try:
+        append_learn_to_global(
+            project_root=Path("/other/project"),
+            modules=["a.py"],
+            operations=[
+                {
+                    "target_file": "a.py",
+                    "kind": "split_module",
+                    "smell_type": "god_module",
+                    "execution_outcome": "human_rejected",
+                }
+            ],
+            risks=["human_rejected"],
+            verify_success=False,
+        )
+        assert aggregate_global_by_smell_action() == {}
+    finally:
+        del os.environ["EURIKA_GLOBAL_MEMORY"]
+
+
 def test_append_noop_when_disabled(tmp_path: Path) -> None:
     """append_learn_to_global is no-op when global memory disabled."""
     from eurika.storage.global_memory import append_learn_to_global, aggregate_global_by_smell_action

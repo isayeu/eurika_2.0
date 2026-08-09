@@ -164,7 +164,7 @@ def _run_full_cycle_scan(path: Path, quiet: bool) -> dict[str, Any] | None:
 
     if not quiet:
         _LOG.info("eurika cycle: scan -> doctor -> fix")
-    if run_scan(path) != 0:
+    if run_scan(path, scan_reason="cycle_initial") != 0:
         return with_cycle_state(
             {
                 "return_code": 1,

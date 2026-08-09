@@ -460,6 +460,49 @@ def test_universe_tick_two_symbols(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert "analysis" not in [e["kind"] for e in r2["events"]]
 
 
+def test_universe_shadow_resolution_triggers_micro_train(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    trained: list[tuple[Path, int]] = []
+
+    monkeypatch.setattr(
+        lp,
+        "run_live_tick",
+        lambda *args, **kwargs: {
+            "ok": True,
+            "events": [],
+            "opens": 0,
+            "resolved": 0,
+            "shadow_resolved": 1,
+            "suggestion": None,
+            "error": None,
+        },
+    )
+    monkeypatch.setattr(
+        lp,
+        "_append_learn_events",
+        lambda events, root, *, epochs: trained.append((root, epochs)),
+    )
+
+    out = lp.run_live_universe_tick(
+        tmp_path,
+        symbols=["ETHUSDT"],
+        micro_train=True,
+        train_epochs=3,
+        explore=False,
+    )
+
+    assert out["resolved"] == 0
+    assert out["shadow_resolved"] == 1
+    assert trained == [(tmp_path.resolve(), 3)]
+    shadow_summary = next(
+        event for event in out["events"] if event.get("kind") == "shadow_outcome"
+    )
+    assert shadow_summary["shadow_resolved"] == 1
+    assert "запускаем дообучение" in shadow_summary["message"]
+
+
 def test_universe_resolves_orphan_without_reopen(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     batch = _candles(40)
     ms.save_candles(tmp_path, batch[:36], symbol="ETHUSDT", interval="15m")

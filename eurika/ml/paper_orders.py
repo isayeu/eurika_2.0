@@ -548,6 +548,29 @@ def process_pending_orders(
         place_ts = int(order.get("ts") or order.get("signal_ts") or 0)
         idx = find_entry_index(candles_exec, place_ts)
         if idx < 0 or not candles_exec:
+            # If placement predates the retained execution window, this order
+            # can never be simulated again. Resolve it as stale instead of
+            # retaining it forever.
+            if candles_exec and place_ts < int(candles_exec[0].get("open_time") or 0):
+                cancelled_n += 1
+                exit_ts = int(candles_exec[-1].get("open_time") or place_ts)
+                shadow_tag = " тень" if _is_shadow_order(order) else ""
+                events.append(
+                    {
+                        "kind": "skip",
+                        "message": (
+                            f"{sym}{' fut' if kind == 'futures' else ''}{shadow_tag} "
+                            f"pending {order.get('entry_style')} {order.get('action')} "
+                            "отменён (stale)"
+                        ),
+                    }
+                )
+                if append_cancel_row is not None:
+                    append_cancel_row(
+                        _pending_cancel_row(order, reason="stale", exit_ts=exit_ts)
+                    )
+                changed = True
+                continue
             still.append(order)
             continue
         last_seen = int(order.get("last_seen_ts") or place_ts)

@@ -5,6 +5,36 @@ from __future__ import annotations
 from pathlib import Path
 
 
+def test_chat_specific_pytest_returns_terminal_mirror(tmp_path: Path, monkeypatch) -> None:
+    import eurika.api.chat as chat_mod
+    from eurika.api.task_executor_types import ExecutionReport
+
+    monkeypatch.setattr(
+        chat_mod,
+        "execute_spec",
+        lambda _root, _spec: ExecutionReport(
+            ok=True,
+            summary="tests passed",
+            applied_steps=["run pytest"],
+            verification={
+                "ok": True,
+                "runner": "pytest",
+                "command": ["python", "-m", "pytest", "-q", "tests/test_plugin_hook_orchestration.py"],
+                "exit_code": 0,
+                "output": ".... [100%]",
+            },
+        ),
+    )
+
+    out = chat_mod.chat_send(
+        tmp_path, "запусти тест tests/test_plugin_hook_orchestration.py"
+    )
+
+    assert "tests/test_plugin_hook_orchestration.py" in (out.get("terminal_cmd") or "")
+    assert out.get("terminal_output") == ".... [100%]"
+    assert out.get("terminal_exit_code") == 0
+
+
 def test_chat_scan_returns_terminal_mirror(tmp_path: Path, monkeypatch) -> None:
     import eurika.api.chat as chat_mod
 

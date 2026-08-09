@@ -1,5 +1,6 @@
 """Tests for eurika.reasoning.architect (ROADMAP §7 — мини-AI)."""
 
+import os
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -174,6 +175,7 @@ def test_llm_interpret_falls_back_to_ollama_on_primary_error() -> None:
     summary = {"system": {"modules": 1, "dependencies": 0, "cycles": 0}, "maturity": "low"}
     history = {"trends": {}, "regressions": []}
     with (
+        patch.dict(os.environ, {"OPENAI_API_KEY": "", "OPENAI_BASE_URL": ""}),
         patch(
             "eurika.reasoning.architect._call_ollama_cli",
             return_value=(None, "cli down"),
@@ -198,6 +200,7 @@ def test_llm_interpret_reports_both_primary_and_fallback_errors() -> None:
     summary = {"system": {"modules": 1, "dependencies": 0, "cycles": 0}, "maturity": "low"}
     history = {"trends": {}, "regressions": []}
     with (
+        patch.dict(os.environ, {"OPENAI_API_KEY": "", "OPENAI_BASE_URL": ""}),
         patch(
             "eurika.reasoning.architect._call_ollama_cli",
             return_value=(None, "cli down"),
@@ -224,6 +227,7 @@ def test_llm_interpret_falls_back_to_ollama_cli_on_http_errors() -> None:
     summary = {"system": {"modules": 1, "dependencies": 0, "cycles": 0}, "maturity": "low"}
     history = {"trends": {}, "regressions": []}
     with (
+        patch.dict(os.environ, {"OPENAI_API_KEY": "", "OPENAI_BASE_URL": ""}),
         patch(
             "eurika.reasoning.architect._call_ollama_cli",
             return_value=("cli fallback ok", None),

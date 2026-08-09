@@ -8,6 +8,7 @@ record_outcome — только запись, без обновления Energy
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -32,6 +33,22 @@ def plan_hash_from_ops(ops: List[Any]) -> str:
         elif isinstance(o, dict):
             dict_ops.append(o)
     return _plan_hash_from_operations(dict_ops)
+
+
+def proposal_hash_from_op(operation: Any) -> str:
+    """Fingerprint one concrete proposal, including transformation details."""
+    if isinstance(operation, dict):
+        get = operation.get
+    else:
+        get = lambda key, default=None: getattr(operation, key, default)
+    payload = {
+        "target_file": str(get("target_file", "") or ""),
+        "kind": str(get("kind", "") or ""),
+        "params": get("params"),
+        "diff": str(get("diff", "") or ""),
+    }
+    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str, separators=(",", ":"))
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
 def _goal_id_from_operations(operations: List[Dict[str, Any]]) -> str:
@@ -73,6 +90,11 @@ def record_outcome(
     from .global_memory import append_learn_to_global
     from .memory import ProjectMemory
 
+    if failure_reason == "human_rejected":
+        operations = [
+            {**op, "execution_outcome": op.get("execution_outcome") or "human_rejected"}
+            for op in operations
+        ]
     if goal_id is None:
         goal_id = _goal_id_from_operations(operations)
     if plan_hash is None and verify_success is False:
@@ -165,7 +187,7 @@ def get_recent_failed_plan_hashes(project_root: Path, limit: int = 10) -> frozen
     return frozenset(
         h for e in enriched
         for h in (e.get("plan_hash") or "",)
-        if h
+        if h and e.get("failure_reason") != "human_rejected"
     )
 
 
@@ -175,8 +197,38 @@ def get_recent_failed_kind_plan_pairs(project_root: Path, limit: int = 15) -> fr
     return frozenset(
         (e.get("kind") or "", e.get("plan_hash") or "")
         for e in enriched
-        if (e.get("plan_hash") or "") and (e.get("kind") or "")
+        if (
+            e.get("failure_reason") != "human_rejected"
+            and (e.get("plan_hash") or "")
+            and (e.get("kind") or "")
+        )
     )
+
+
+def get_recent_human_rejected_proposal_hashes(
+    project_root: Path,
+    limit: int = 50,
+) -> frozenset[str]:
+    """Concrete proposal fingerprints explicitly rejected by a reviewer."""
+    from .memory import ProjectMemory
+
+    events = ProjectMemory(project_root).events.recent_events(
+        limit=min(500, max(limit * 3, limit)),
+        types=("learn",),
+    )
+    hashes: list[str] = []
+    for event in events:
+        if event.result is not False:
+            continue
+        if (event.output or {}).get("failure_reason") != "human_rejected":
+            continue
+        for op in (event.input or {}).get("operations", []):
+            fingerprint = str(op.get("proposal_hash") or "")
+            if fingerprint:
+                hashes.append(fingerprint)
+                if len(hashes) >= limit:
+                    return frozenset(hashes)
+    return frozenset(hashes)
 
 
 def get_plan_hash_failure_counts(project_root: Path, limit: int = 20) -> dict[str, int]:
@@ -184,7 +236,11 @@ def get_plan_hash_failure_counts(project_root: Path, limit: int = 20) -> dict[st
     from collections import Counter
 
     enriched = get_recent_failures_enriched(project_root, limit=limit)
-    ph_list = [e.get("plan_hash") or "" for e in enriched if e.get("plan_hash")]
+    ph_list = [
+        e.get("plan_hash") or ""
+        for e in enriched
+        if e.get("failure_reason") != "human_rejected" and e.get("plan_hash")
+    ]
     return dict(Counter(ph_list))
 
 
@@ -199,6 +255,8 @@ def get_kind_plan_failure_counts(project_root: Path, limit: int = 20) -> dict[tu
     pairs: list[tuple[str, str]] = []
     for e in events:
         if e.result is not False:
+            continue
+        if (e.output or {}).get("failure_reason") == "human_rejected":
             continue
         ph = (e.output or {}).get("plan_hash") or ""
         if not ph:

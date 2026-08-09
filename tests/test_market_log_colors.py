@@ -31,6 +31,14 @@ def test_format_outcome_success_vs_fail() -> None:
     assert "#b91c1c" in bad
 
 
+def test_format_shadow_outcome_has_distinct_badge() -> None:
+    line = mh._format_market_line(
+        "закрыто теневых сделок: 2 — метки записаны, запускаем дообучение",
+        kind="shadow_outcome",
+    )
+    assert 'color:#7c3aed">итог тени</span>' in line
+
+
 def test_format_error_and_paper() -> None:
     err = mh._format_market_line("сеть недоступна", is_error=True)
     assert "ошибка" in err and "#b91c1c" in err

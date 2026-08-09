@@ -2,7 +2,7 @@
 
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from patch_engine_apply_patch import apply_patch
 from patch_engine_apply_and_verify_helpers import (
@@ -61,6 +61,7 @@ def apply_and_verify(
     verify_cmd: Optional[str] = None,
     auto_rollback: bool = True,
     retry_on_import_error: bool = True,
+    on_after_apply: Callable[[Dict[str, Any]], Any] | None = None,
 ) -> Dict[str, Any]:
     """
     Apply a patch plan and optionally run verify command. On verify failure, optionally
@@ -83,6 +84,11 @@ def apply_and_verify(
     """
     root = Path(project_root).resolve()
     report = apply_patch(root, plan, backup=backup)
+    if on_after_apply is not None:
+        try:
+            on_after_apply(report)
+        except BaseException:
+            pass  # Observers must never prevent verify/rollback.
     if not verify:
         report.setdefault("verify", {"success": None, "returncode": None, "stdout": "", "stderr": ""})
         report["verify_duration_ms"] = 0

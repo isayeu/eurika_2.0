@@ -15,7 +15,9 @@ from eurika.storage import (
     get_recent_failures,
     get_recent_failed_kind_plan_pairs,
     get_recent_failed_plan_hashes,
+    get_recent_human_rejected_proposal_hashes,
     plan_hash_from_ops,
+    proposal_hash_from_op,
 )
 from eurika.reasoning.planner.energy_ranking import estimated_delta_for_op
 from eurika.reasoning.planner.heuristics import (
@@ -102,6 +104,20 @@ def _is_extracted_module_name(path_like: str) -> bool:
     stem = p.stem.lower()
     return stem.endswith('_extracted')
 
+
+def _exclude_human_rejected_proposals(
+    operations: List[PatchOperation],
+    rejected_hashes: frozenset[str],
+) -> List[PatchOperation]:
+    """Drop only exact rejected proposals; revised params/diffs remain eligible."""
+    if not rejected_hashes:
+        return operations
+    return [
+        op for op in operations
+        if proposal_hash_from_op(op) not in rejected_hashes
+    ]
+
+
 def build_patch_operations(project_root: str, summary: Dict[str, Any], smells: List[ArchSmell], priorities: List[Dict[str, Any]], smells_by_node: Dict[str, List[ArchSmell]], *, learning_stats: Optional[Dict[str, Dict[str, Any]]]=None, graph: Optional['ProjectGraph']=None, self_map: Optional[Dict[str, Any]]=None, oss_patterns: Optional[Dict[str, Any]]=None) -> List[PatchOperation]:
     """Build patch operations from diagnostics input. ROADMAP 3.0.5.4: oss_patterns enriches hints."""
     operations: List[PatchOperation] = []
@@ -126,6 +142,11 @@ def build_patch_operations(project_root: str, summary: Dict[str, Any], smells: L
             )
         )
     operations = apply_smell_action_filters(project_root, operations, learning_stats)
+    rejected_proposals = get_recent_human_rejected_proposal_hashes(
+        Path(project_root),
+        limit=50,
+    )
+    operations = _exclude_human_rejected_proposals(operations, rejected_proposals)
     recent_failures = get_recent_failures(Path(project_root), limit=5)
     failed_plans = get_recent_failed_plan_hashes(Path(project_root), limit=10)
     failed_kind_plan_pairs = get_recent_failed_kind_plan_pairs(Path(project_root), limit=15)
