@@ -247,6 +247,26 @@ def test_llm_interpret_falls_back_to_ollama_cli_on_http_errors() -> None:
     assert "Recent refactoring events" not in cli_prompt
 
 
+def test_call_ollama_cli_skips_agent_sized_prompts() -> None:
+    huge = "x" * 12_001
+    with patch("subprocess.run") as run_mock:
+        text, reason = _call_ollama_cli("qwen2.5-coder:7b", huge)
+    assert text is None
+    assert reason is not None
+    assert "CLI skipped" in reason
+    assert run_mock.call_count == 0
+
+
+def test_humanize_llm_error_compact_cloudflare_block() -> None:
+    from eurika.reasoning.architect import humanize_llm_error
+
+    dump = "<html>Error 1010 Cloudflare Ray ID: abc cf-ray</html> " + ("x" * 4000)
+    text = humanize_llm_error(dump)
+    assert "Groq" in text
+    assert "VPN" in text
+    assert "x" * 100 not in text
+
+
 def test_call_ollama_cli_connection_error_requires_manual_start() -> None:
     """On connection error, _call_ollama_cli should not auto-start daemon."""
     first = type("R", (), {"returncode": 1, "stderr": "Error: could not connect to ollama server", "stdout": ""})()
@@ -466,3 +486,44 @@ def test_rate_limit_without_ollama_returns_friendly_error(monkeypatch) -> None:
     assert "Лимит Groq достигнут" in err
     assert "5 мин" in err or "~5 мин" in err
     assert "Ollama" in err
+
+
+def test_message_text_reads_gpt_oss_reasoning() -> None:
+    from types import SimpleNamespace
+
+    from eurika.reasoning.architect import _chat_create_kwargs, _message_text, _uses_completion_tokens
+
+    assert _uses_completion_tokens("openai/gpt-oss-120b")
+    assert not _uses_completion_tokens("llama-3.3-70b-versatile")
+    kwargs = _chat_create_kwargs("openai/gpt-oss-120b", [{"role": "user", "content": "hi"}], 64, 20.0)
+    assert "max_completion_tokens" in kwargs
+    assert "max_tokens" not in kwargs
+    empty = SimpleNamespace(content=None, reasoning="handshake lives in stdio initialize")
+    assert "stdio initialize" in _message_text(empty)
+    listed = SimpleNamespace(content=[{"type": "text", "text": "ok"}], reasoning=None)
+    assert _message_text(listed) == "ok"
+
+
+def test_call_llm_architect_uses_completion_tokens_for_gpt_oss() -> None:
+    from types import SimpleNamespace
+
+    from eurika.reasoning.architect import _call_llm_architect
+
+    captured: dict[str, object] = {}
+
+    class _Completions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content=None, reasoning="from reasoning"))]
+            )
+
+    class _Client:
+        chat = SimpleNamespace(completions=_Completions())
+
+    text, err = _call_llm_architect(_Client(), "openai/gpt-oss-120b", "ping", max_tokens=32, timeout_sec=5)
+    assert err is None
+    assert text == "from reasoning"
+    assert captured.get("max_completion_tokens") == 32
+    assert "max_tokens" not in captured
+

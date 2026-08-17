@@ -32,9 +32,12 @@ export class EditManager implements vscode.TextDocumentContentProvider, vscode.D
     this.registration = vscode.workspace.registerTextDocumentContentProvider("eurika-preview", this);
   }
 
-  async stage(edits: ProposedEdit[]): Promise<{ transactionId: string; files: string[] }> {
+  async stage(
+    edits: ProposedEdit[],
+    transactionId?: string,
+  ): Promise<{ transactionId: string; files: string[] }> {
     if (!vscode.workspace.isTrusted) throw new Error("Workspace trust is required for edits");
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const id = transactionId ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const files = new Map<string, ProposedFile>();
     for (const edit of edits) {
       const uri = resolveWorkspaceUri(edit.uri ?? edit.path ?? "");

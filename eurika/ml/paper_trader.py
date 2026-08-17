@@ -21,6 +21,7 @@ from eurika.ml.market_store import (
     DEFAULT_SYMBOL,
     load_candles,
     ml_root,
+    read_jsonl_rows,
 )
 
 ACTIONS = ("HOLD", "BUY", "SELL")
@@ -358,28 +359,24 @@ def run_paper_backfill(
 
 
 def load_paper_trades(project_root: str | Path) -> list[dict[str, Any]]:
-    path = paper_trades_path(project_root)
-    if not path.is_file():
-        return []
-    out: list[dict[str, Any]] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(row, dict):
-            out.append(row)
-    return out
+    return read_jsonl_rows(paper_trades_path(project_root))
+
+
+def is_executed_trade(row: Mapping[str, Any]) -> bool:
+    """Return False for unfilled pending-order outcomes kept for style learning."""
+    if row.get("executed") is False or row.get("filled") is False:
+        return False
+    if row.get("pending_cancelled"):
+        return False
+    return not str(row.get("exit_reason") or "").startswith("cancel")
 
 
 def paper_status(project_root: str | Path) -> dict[str, Any]:
     all_rows = load_paper_trades(project_root)
+    executed = [r for r in all_rows if is_executed_trade(r)]
     # Shadow rows are labels, not trades — counted apart so the status stays
     # a picture of what the book actually did.
-    rows = [r for r in all_rows if not r.get("shadow")]
+    rows = [r for r in executed if not r.get("shadow")]
     correct = sum(1 for r in rows if r.get("correct"))
     buys = sum(1 for r in rows if r.get("action") == "BUY")
     sells = sum(1 for r in rows if r.get("action") == "SELL")
@@ -391,5 +388,6 @@ def paper_status(project_root: str | Path) -> dict[str, Any]:
         "buys": buys,
         "sells": sells,
         "accuracy": (correct / len(rows)) if rows else None,
-        "shadow_count": len(all_rows) - len(rows),
+        "shadow_count": sum(1 for r in executed if r.get("shadow")),
+        "cancelled_count": len(all_rows) - len(executed),
     }

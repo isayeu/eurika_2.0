@@ -249,6 +249,34 @@ def test_dir_contents_goes_to_llm_not_show_file(tmp_path: Path) -> None:
     assert resolve_direct_handler(tmp_path, "покажи файл README.md")[0] == "show_file"
 
 
+def test_soft_vector_must_not_invent_identity_or_file_recount(tmp_path: Path, monkeypatch) -> None:
+    """Polygon/code questions must not fuzzy-map to identity or file_recount."""
+    from eurika.api.chat_direct import _accept_soft_handler, resolve_direct_handler
+
+    poly = "По файлу eurika/polygon/extractable_block.py: что вернёт polygon_extractable_block(5)?"
+    numbers = "polygon_refactor_code_smell_try_except([1, 2, 3]) — два числа."
+    assert _accept_soft_handler("identity", poly) is False
+    assert _accept_soft_handler("file_recount", numbers) is False
+    assert _accept_soft_handler("greeting", poly) is False
+    assert _accept_soft_handler("capabilities", poly) is False
+    assert resolve_direct_handler(tmp_path, "ты кто?")[0] == "identity"
+    assert resolve_direct_handler(tmp_path, "сколько файлов?")[0] == "file_recount"
+
+    monkeypatch.setenv("EURIKA_USE_VECTOR_INTENT", "1")
+
+    def _fake_identity(_root, _msg, **_kw):
+        return ("identity", None, 0.99)
+
+    monkeypatch.setattr("eurika.api.chat_vector.match_fuzzy_intent", _fake_identity)
+    assert resolve_direct_handler(tmp_path, poly)[0] is None
+
+    def _fake_recount(_root, _msg, **_kw):
+        return ("file_recount", None, 0.99)
+
+    monkeypatch.setattr("eurika.api.chat_vector.match_fuzzy_intent", _fake_recount)
+    assert resolve_direct_handler(tmp_path, numbers)[0] is None
+
+
 def test_bare_ls_still_host_shell(tmp_path: Path) -> None:
     from eurika.api.chat_direct import resolve_direct_handler
 

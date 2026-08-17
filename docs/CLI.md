@@ -434,6 +434,8 @@ HTTP-сервер JSON API (`/api/*`) для интеграций и UI-клие
 - `GET /api/graph` — dependency graph (nodes=modules, edges=imports) for UI
 - `GET /api/operational_metrics?window=10` — apply-rate, rollback-rate, median verify time (from patch events)
 - `GET /api/pending_plan` — pending plan for approve UI (team-mode)
+- `GET /api/market` — paper Market panel
+- `GET /api/learning` — paper learning snapshot
 - `GET /api/knowledge?topic=...&online=0` — Knowledge Layer query (см. examples/knowledge/)
 - `GET /api/metrics` — MetricVector + Energy (ROADMAP §5.7 Execution Model)
 - `POST /api/approve` — save approve/reject decisions (body: `{ operations: [...] }`)
@@ -442,6 +444,24 @@ HTTP-сервер JSON API (`/api/*`) для интеграций и UI-клие
 eurika serve .
 eurika serve . --port 9000
 ```
+
+**Loopback gateway (global Eurika):** Qt and Desktop also start an authenticated
+JSON API on `127.0.0.1:18765` (token in `.eurika/agent_http.json`). This is the
+same core `/api/*` as `eurika serve`, plus Desktop agent `/rpc` and `/chat`.
+
+```bash
+python -m eurika.agent.http_client health
+python -m eurika.agent.http_client market
+python -m eurika.agent.http_client learning
+python -m eurika.agent.http_client chat "Что за проект?"
+python -m eurika.agent.http_client exec "eurika scan ."
+python -m eurika.agent.http_client get /api/summary
+python -m eurika.agent.http_client agent-chat "Где handshake локального агента?"
+python -m eurika.agent.http_client rpc panel/state '{"panel":"market"}'
+```
+
+`chat` = Qt/`chat_send`. `agent-chat` = Desktop coding loop. `EURIKA_AGENT_HTTP=0`
+disables the gateway. Edits still require explicit approval.
 
 ---
 

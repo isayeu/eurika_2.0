@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from eurika.ml import entry_cost as ec
 from eurika.ml.features import FEATURE_NAMES
 
@@ -16,15 +18,26 @@ def _feat(*, vol_z: float, atr_burst: float) -> dict[str, float]:
     return base
 
 
-def _row(*, vol_z: float, atr_burst: float, ret: float, fee: float = 0.0009) -> dict:
+def _row(
+    *,
+    vol_z: float,
+    atr_burst: float,
+    ret: float,
+    fee: float = 0.0009,
+    market: str | None = None,
+) -> dict:
     feat = _feat(vol_z=vol_z, atr_burst=atr_burst)
-    return {
+    row = {
         "action": "BUY",
         "ret": ret,
         "fee": fee,
         "exit_reason": "model",
         "feature_vec": [feat[name] for name in FEATURE_NAMES],
     }
+    if market is not None:
+        row["market"] = market
+        row["fee_source"] = "market_taker_roundtrip"
+    return row
 
 
 def test_expansion_score_is_the_weaker_of_both_signals() -> None:
@@ -151,6 +164,89 @@ def test_failed_recalibration_preserves_previous_stricter_gate(tmp_path: Path) -
     assert out["expansion_min"] == 1.0
     saved = json.loads(path.read_text(encoding="utf-8"))
     assert saved["expansion_min"] == 1.0
+
+
+def test_retained_gate_reports_the_evidence_behind_the_threshold(tmp_path: Path) -> None:
+    """A held threshold must publish its own numbers, not an empty measurement."""
+    path = ec.cost_gate_path(tmp_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"expansion_min": 1.0}), encoding="utf-8")
+    # Rich above the retained gate, unprofitable below it, and too thin in the
+    # band just above to let recalibration confirm the threshold.
+    rows = [_row(vol_z=2.0, atr_burst=2.0, ret=0.02) for _ in range(60)]
+    rows += [_row(vol_z=-1.0, atr_burst=-1.0, ret=0.0001) for _ in range(60)]
+
+    out = ec.calibrate_cost_gate(tmp_path, rows=rows, min_samples=40, write=False)
+
+    assert out["calibrated"] is False
+    assert out["retained_previous"] is True
+    assert out["samples"] == 60
+    assert out["expected_edge"] > out["required_edge"] > 0
+    assert out["covers_cost"] is True
+
+
+def test_gate_below_its_cost_is_reported_as_not_covering(tmp_path: Path) -> None:
+    rows = [_row(vol_z=v / 10.0, atr_burst=v / 10.0, ret=0.0001) for v in range(-60, 60)]
+
+    out = ec.calibrate_cost_gate(tmp_path, rows=rows, min_samples=40, write=False)
+
+    assert out["covers_cost"] is False
+    assert out["samples"] > 0
+    assert out["expected_edge"] < out["required_edge"]
+
+
+def test_calibration_scoped_to_a_market_ignores_the_other_venues_fees(tmp_path: Path) -> None:
+    """Futures must not be held to a bar that spot's 2x fee sets.
+
+    Same setup on both venues: it pays on futures and loses on spot. Pooled,
+    the averages cancel and nothing clears the blended fee; scoped to futures,
+    the band pays for itself.
+    """
+    futures = [
+        _row(vol_z=0.9, atr_burst=0.8, ret=0.004, fee=0.001, market="futures")
+        for _ in range(60)
+    ]
+    spot = [
+        _row(vol_z=0.9, atr_burst=0.8, ret=-0.002, fee=0.002, market="spot")
+        for _ in range(60)
+    ]
+
+    pooled = ec.calibrate_cost_gate(tmp_path, rows=futures + spot, min_samples=40, write=False)
+    assert pooled["calibrated"] is False
+    assert pooled["scanned"] == 120
+    assert pooled["markets"] is None
+
+    scoped = ec.calibrate_cost_gate(
+        tmp_path, rows=futures + spot, markets=("futures",), min_samples=40, write=False
+    )
+    assert scoped["calibrated"] is True
+    assert scoped["expansion_min"] == 0.5
+    assert scoped["scanned"] == 60
+    assert scoped["markets"] == ["futures"]
+    # The bar it had to clear is futures' own fee, not the blended one.
+    assert scoped["required_edge"] == pytest.approx(1.5 * 0.001)
+
+
+def test_calibration_may_loosen_onto_a_band_it_has_evidence_for(tmp_path: Path) -> None:
+    """The sparse-band guard holds back tightening only.
+
+    Blocking a drop as well would pin the gate at whatever strictness it last
+    reached, starving the very label flow the guard exists to protect.
+    """
+    path = ec.cost_gate_path(tmp_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"expansion_min": 2.0}), encoding="utf-8")
+    # Above the current gate: rich, but its own admission band is too thin.
+    rows = [_row(vol_z=2.1, atr_burst=2.1, ret=0.02) for _ in range(36)]
+    rows += [_row(vol_z=3.0, atr_burst=3.0, ret=0.02) for _ in range(30)]
+    # Below it: shadow evidence from the refused region, and it pays.
+    rows += [_row(vol_z=0.6, atr_burst=0.6, ret=0.004) for _ in range(60)]
+
+    out = ec.calibrate_cost_gate(tmp_path, rows=rows, min_samples=40, write=False)
+
+    assert out["calibrated"] is True
+    assert out["retained_previous"] is False
+    assert out["expansion_min"] == 0.25
 
 
 def test_calibration_ignores_cancelled_rows(tmp_path: Path) -> None:

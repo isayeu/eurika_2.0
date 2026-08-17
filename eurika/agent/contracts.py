@@ -9,9 +9,82 @@ def _path_schema(description: str = "Workspace-relative path") -> dict[str, Any]
     return {"type": "string", "description": description}
 
 
+RPC_METHOD_CONTRACTS: dict[str, dict[str, Any]] = {
+    "session/history": {
+        "mutatesWorkspace": False,
+        "inputSchema": {
+            "type": "object",
+            "properties": {"limit": {"type": "integer", "minimum": 0, "maximum": 200}},
+        },
+    },
+    "session/clear": {
+        "mutatesWorkspace": False,
+        "inputSchema": {"type": "object"},
+    },
+    "proposal/prepare": {
+        "mutatesWorkspace": False,
+        "inputSchema": {"type": "object"},
+    },
+    "proposal/get": {
+        "mutatesWorkspace": False,
+        "inputSchema": {
+            "type": "object",
+            "required": ["proposalId"],
+            "properties": {
+                "proposalId": {"type": "string"},
+                "path": _path_schema(),
+            },
+        },
+    },
+    "proposal/apply": {
+        "mutatesWorkspace": True,
+        "requiresApproval": True,
+        "inputSchema": {
+            "type": "object",
+            "required": ["proposalId", "approval"],
+            "properties": {
+                "proposalId": {"type": "string"},
+                "paths": {"type": "array", "items": _path_schema()},
+                "approval": {"type": "boolean", "const": True},
+            },
+        },
+    },
+    "proposal/reject": {
+        "mutatesWorkspace": False,
+        "inputSchema": {
+            "type": "object",
+            "required": ["proposalId"],
+            "properties": {
+                "proposalId": {"type": "string"},
+                "paths": {"type": "array", "items": _path_schema()},
+            },
+        },
+    },
+    "checkpoint/list": {
+        "mutatesWorkspace": False,
+        "inputSchema": {"type": "object"},
+    },
+    "checkpoint/restore": {
+        "mutatesWorkspace": True,
+        "requiresApproval": True,
+        "inputSchema": {
+            "type": "object",
+            "required": ["approval"],
+            "properties": {
+                "checkpointId": {"type": "string"},
+                "approval": {"type": "boolean", "const": True},
+            },
+        },
+    },
+}
+
+
 TOOL_CONTRACTS: dict[str, dict[str, Any]] = {
     "search": {
-        "description": "Search ignore-aware workspace contents or symbol declarations.",
+        "description": (
+            "Search ignore-aware workspace contents or symbol declarations. "
+            "Matches are ranked so implementation files appear before docs and tests."
+        ),
         "mutatesWorkspace": False,
         "requiresApproval": False,
         "inputSchema": {
@@ -41,6 +114,15 @@ TOOL_CONTRACTS: dict[str, dict[str, Any]] = {
                 "endLine": {"type": "integer", "minimum": 1},
             },
         },
+    },
+    "market_status": {
+        "description": (
+            "Read the current Eurika paper-Market, portfolio, open-position, "
+            "PnL, and learning status from the stable product Market root."
+        ),
+        "mutatesWorkspace": False,
+        "requiresApproval": False,
+        "inputSchema": {"type": "object", "properties": {}},
     },
     "edit": {
         "description": "Write or replace text in one or more workspace files.",

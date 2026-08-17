@@ -98,7 +98,11 @@ def detect_save(msg_raw: str, msg: str) -> Optional[Tuple[str, str]]:
 
 
 def detect_refactor(msg_raw: str, msg: str) -> Optional[Tuple[str, str]]:
-    """Detect refactor intent."""
+    """Detect refactor intent.
+
+    ``refactor`` / ``рефактор`` must be their own tokens so polygon symbols like
+    ``polygon_refactor_code_smell_if_chain`` are not treated as ``eurika fix``.
+    """
     refactor_patterns = [
         r'(?:рефактори|рефактор|исправь|пофикси|улучши|refactor)\s+([a-zA-Z0-9_/.\-]+)',
         r'refactor\s+([a-zA-Z0-9_/.\-]+\.py)',
@@ -107,7 +111,13 @@ def detect_refactor(msg_raw: str, msg: str) -> Optional[Tuple[str, str]]:
         m = re.search(pat, msg_raw, re.IGNORECASE)
         if m:
             return ('refactor', m.group(1).strip())
-    if any((w in msg for w in ('рефактори', 'рефактор', 'исправь архитектуру', 'пофикси архитектуру', 'refactor'))):
+    if re.search(
+        r"(?<![\w])(?:рефактори(?:ть)?|рефактор|refactor(?:ing)?)(?![\w])",
+        msg,
+        re.IGNORECASE,
+    ):
+        return ('refactor', '.')
+    if "исправь архитектуру" in msg or "пофикси архитектуру" in msg:
         return ('refactor', '.')
     return None
 

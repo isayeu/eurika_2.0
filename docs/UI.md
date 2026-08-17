@@ -170,6 +170,8 @@ Evolution report: тренды (complexity, smells, centralization), регре�
 | GET /api/graph | Dependency graph (nodes, edges) |
 | GET /api/operational_metrics?window=10 | apply-rate, rollback-rate |
 | GET /api/pending_plan | Team-mode plan для approve UI |
+| GET /api/market | Paper Market (portfolio, opens, journal) |
+| GET /api/learning | Paper learning snapshot |
 | POST /api/approve | Сохранить approve/reject решения |
 | POST /api/exec | Выполнить whitelist-команду eurika |
 | POST /api/ask_architect | Architect interpretation |
@@ -180,6 +182,8 @@ Evolution report: тренды (complexity, smells, centralization), регре�
 curl http://127.0.0.1:8765/api/summary
 curl -X POST http://127.0.0.1:8765/api/exec -H "Content-Type: application/json" -d '{"command":"eurika scan ."}'
 ```
+
+Qt и Desktop поднимают тот же `/api/*` на `127.0.0.1:18765` с Bearer-токеном (`.eurika/agent_http.json`): `python -m eurika.agent.http_client`.
 
 ---
 

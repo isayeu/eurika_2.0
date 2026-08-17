@@ -379,6 +379,31 @@ def test_load_chat_feedback_injects_few_shot_into_prompt(tmp_path: Path) -> None
     assert "запусти проверку" in prompt or "eurika doctor" in prompt
 
 
+def test_load_chat_feedback_skips_unrelated_identity_for_polygon(tmp_path: Path) -> None:
+    """Identity few-shots must not leak into polygon/code questions."""
+    from eurika.api.chat import _load_chat_feedback_for_prompt, save_chat_feedback
+
+    save_chat_feedback(
+        tmp_path,
+        "ты кто?",
+        "Я Eurika — локальный ИИ-ассистент, разработанный Исаевым (ProDG).",
+        helpful=True,
+    )
+    save_chat_feedback(
+        tmp_path,
+        "Какая цель drill eurika/polygon/long_function.py?",
+        "DRILL_LONG_FUNCTION: extract_nested_function, семантика polygon_long_function()==55.",
+        helpful=True,
+    )
+    drill_q = "Объясни drill eurika/polygon/extractable_block.py: что возвращает polygon_extractable_block(5)?"
+    snippet = _load_chat_feedback_for_prompt(tmp_path, message=drill_q)
+    assert "Я Eurika" not in snippet
+    assert "ProDG" not in snippet
+    assert "long_function" in snippet or "extract_nested_function" in snippet
+    identity_q = _load_chat_feedback_for_prompt(tmp_path, message="ты кто?")
+    assert identity_q == ""
+
+
 def test_chat_send_identity_question_returns_eurika_persona(tmp_path: Path) -> None:
     """Identity question should be answered directly by Eurika persona."""
     from eurika.api.chat import chat_send
@@ -579,6 +604,7 @@ def test_goal_status_and_clear_goal_intents(tmp_path: Path, monkeypatch) -> None
 
     assert resolve_direct_handler(tmp_path, "какая цель?")[0] == "goal_status"
     assert resolve_direct_handler(tmp_path, "сбрось цель")[0] == "clear_goal"
+    assert resolve_direct_handler(tmp_path, "Какая цель drill eurika/polygon/long_function.py?")[0] is None
 
     status = chat_mod.chat_send(tmp_path, "какая цель?")
     text = status.get("text") or ""

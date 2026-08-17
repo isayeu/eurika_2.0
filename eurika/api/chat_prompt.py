@@ -6,7 +6,31 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from eurika.api.chat_host_ops import tool_protocol_instructions
+from eurika.api.chat_host_ops import (
+    _tokenize_for_tool_exp,
+    host_identity_prompt_facts,
+    market_learning_prompt_facts,
+    message_asks_market_learning,
+    tool_protocol_instructions,
+)
+
+# Product/persona tokens match almost every chat; they must not pull identity few-shots
+# into unrelated questions (e.g. polygon drills).
+_FEEDBACK_EXTRA_STOP = frozenset(
+    {
+        "eurika",
+        "ассистент",
+        "assistant",
+        "исаев",
+        "prodg",
+        "ты",
+        "кто",
+        "какая",
+        "какие",
+        "такой",
+        "такая",
+    }
+)
 
 
 def knowledge_topics_for_chat(intent: str, scope: Optional[Dict[str, Any]]) -> List[str]:
@@ -70,8 +94,43 @@ def fetch_knowledge_for_chat(root: Path, topics: List[str], max_chars: int = 800
     return snip[:max_chars] + ("..." if len(snip) > max_chars else "")
 
 
-def load_chat_feedback_for_prompt(root: Path, max_chars: int = 1200) -> str:
-    """Load few-shot examples from .eurika/chat_feedback.json (ROADMAP 3.6.8 Phase 4)."""
+def _feedback_query_tokens(message: str) -> set[str]:
+    return {t for t in _tokenize_for_tool_exp(message) if t not in _FEEDBACK_EXTRA_STOP}
+
+
+def _score_feedback_entry(entry: dict, query_tokens: set[str]) -> tuple[int, int]:
+    """Return (score, overlap_count). Unrelated identity/persona rows score 0."""
+    if not query_tokens:
+        return (0, 0)
+    hay = " ".join(
+        [
+            str(entry.get("user_message") or ""),
+            str(entry.get("assistant_message") or ""),
+            str(entry.get("clarification") or ""),
+        ]
+    )
+    hay_tokens = _feedback_query_tokens(hay)
+    overlap = query_tokens & hay_tokens
+    if not overlap:
+        return (0, 0)
+    score = 0
+    for tok in overlap:
+        score += 2 if len(tok) >= 5 else 1
+        if "/" in tok or tok.endswith(".py") or len(tok) >= 10:
+            score += 3
+    return (score, len(overlap))
+
+
+def load_chat_feedback_for_prompt(
+    root: Path,
+    max_chars: int = 1200,
+    message: str | None = None,
+) -> str:
+    """Load few-shot examples from .eurika/chat_feedback.json (ROADMAP 3.6.8 Phase 4).
+
+    When ``message`` is set, only examples that share distinctive tokens are injected.
+    Recency-only few-shots copy identity answers onto polygon/code questions.
+    """
     path = root / ".eurika" / "chat_feedback.json"
     if not path.exists():
         return ""
@@ -82,8 +141,27 @@ def load_chat_feedback_for_prompt(root: Path, max_chars: int = 1200) -> str:
             return ""
         neg = [e for e in entries if not e.get("helpful", True) and (e.get("clarification") or "").strip()]
         pos = [e for e in entries if e.get("helpful", True)]
-        ordered = neg[-5:] + pos[-5:]
-        ordered = ordered[-10:]
+        if message is not None:
+            query_tokens = _feedback_query_tokens(message)
+            if not query_tokens:
+                return ""
+            scored: List[tuple[int, int, int, dict]] = []
+            for idx, e in enumerate(entries):
+                if not isinstance(e, dict):
+                    continue
+                helpful = bool(e.get("helpful", True))
+                clarification = (e.get("clarification") or "").strip()
+                if not helpful and not clarification:
+                    continue
+                score, overlap = _score_feedback_entry(e, query_tokens)
+                if score <= 0 or overlap < 2:
+                    continue
+                scored.append((score, overlap, idx, e))
+            scored.sort(key=lambda t: (t[0], t[1], t[2]), reverse=True)
+            ordered = [e for _s, _o, _i, e in scored[:8]]
+        else:
+            ordered = neg[-5:] + pos[-5:]
+            ordered = ordered[-10:]
         lines: List[str] = []
         for e in ordered:
             user_msg = (e.get("user_message") or "")[:150].strip()
@@ -183,6 +261,8 @@ def build_chat_prompt(
             + tool_protocol_instructions(tool_experience)
         )
     context_block = f"\n\n[Project context]: {context}\n\n" if context else "\n\n"
+    if not save_target:
+        context_block += "\n" + host_identity_prompt_facts() + "\n\n"
     if rules_snippet:
         context_block += f"\n[Eurika Rules — следуй этим правилам]\n{rules_snippet}\n\n"
     default_hints = """- Commit / коммит → «собери коммит»: status+diff + предложение, затем «применяй».
@@ -191,9 +271,12 @@ def build_chat_prompt(
 - Report → «покажи отчёт» shows eurika doctor report.
 - Refactor → «рефактори» + path, or eurika fix .
 - List files / дерево → через ```eurika-cmds``` (ls -la, find/tree); не угадывай список.
-- Успехи обучения market ML → format_market_learning_block / weights meta (не eurika scan)."""
+- Живые факты о хосте (сеть, устройства, процессы) → ```eurika-cmds``` (nmcli/ip/ss); не советуй macOS/Activity Monitor.
+- Успехи обучения market ML → [Market facts] / format_market_learning_block; суди по вердикту/equity/edge, не accuracy (не eurika scan)."""
     hints = intent_hints if intent_hints is not None else default_hints
     context_block += f"\n[Intent interpretation]\n{hints}\n\n"
+    if not save_target and message_asks_market_learning(message):
+        context_block += "\n" + market_learning_prompt_facts() + "\n\n"
     if feedback_snippet:
         context_block += feedback_snippet
     if rag_examples:

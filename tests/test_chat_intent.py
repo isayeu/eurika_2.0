@@ -30,6 +30,19 @@ def test_detect_intent_refactor() -> None:
     assert intent == 'refactor'
     assert target
 
+
+def test_detect_intent_ignores_refactor_inside_polygon_symbol() -> None:
+    from eurika.api.chat_intent import detect_intent
+
+    intent, _target = detect_intent(
+        "polygon_refactor_code_smell_if_chain(99) в eurika/polygon — какая строка?"
+    )
+    assert intent != "refactor"
+    intent, _target = detect_intent(
+        "Прочитай eurika/polygon/refactor_code_smell_try_except.py: что вернут try_except([1,2,3])?"
+    )
+    assert intent != "refactor"
+
 def test_detect_intent_delete() -> None:
     from eurika.api.chat_intent import detect_intent
     intent, target = detect_intent('удали test_factorial.py')

@@ -10,8 +10,8 @@ from typing import Any
 from eurika.ml.live_paper import load_open_positions
 from eurika.ml.market_model import model_status
 from eurika.ml.market_store import market_status, ml_root, normalize_market
-from eurika.ml.paper_portfolio import ensure_portfolio, portfolio_status
-from eurika.ml.paper_trader import load_paper_trades, paper_status
+from eurika.ml.paper_portfolio import portfolio_status
+from eurika.ml.paper_trader import is_executed_trade, load_paper_trades, paper_status
 
 # How many opens / candle series to print in the human block (count is always full).
 _OPEN_LIST_LIMIT = 24
@@ -104,6 +104,90 @@ def _fmt_edge(val: float | None) -> str:
     return f"{val:+.3%}"
 
 
+def market_economic_verdict(st: dict[str, Any] | None) -> dict[str, Any]:
+    """Judge paper Market by bankroll/edge, not by classification accuracy.
+
+    Accuracy can be >0.5 while fees and sizing still drain equity. Chat and agents
+    must treat negative Δ equity / negative mean edge as a loss, never «неплохо».
+    """
+    data = st if isinstance(st, dict) else {}
+    bank = data.get("portfolio") or {}
+    pnl = data.get("pnl") or {}
+    pnl_live = pnl.get("live") or {}
+    equity_delta = bank.get("session_pnl_usdt")
+    if not isinstance(equity_delta, (int, float)):
+        eq = bank.get("equity_usdt")
+        start = bank.get("start_equity_usdt")
+        if isinstance(eq, (int, float)) and isinstance(start, (int, float)):
+            equity_delta = float(eq) - float(start)
+        else:
+            equity_delta = None
+    mean_edge = pnl_live.get("mean_edge")
+    if not isinstance(mean_edge, (int, float)):
+        mean_edge = (pnl.get("all") or {}).get("mean_edge")
+    edge_n = int(pnl_live.get("n") or pnl_live.get("edge_n") or 0)
+    if edge_n <= 0:
+        edge_n = int((pnl.get("all") or {}).get("n") or (pnl.get("all") or {}).get("edge_n") or 0)
+    sum_pnl = pnl_live.get("sum_pnl_usdt")
+    reasons: list[str] = []
+    losing = False
+    winning = False
+    if isinstance(equity_delta, (int, float)):
+        if float(equity_delta) <= -1.0:
+            losing = True
+            reasons.append(f"equity Δ={float(equity_delta):+.2f} USDT")
+        elif float(equity_delta) >= 1.0:
+            winning = True
+            reasons.append(f"equity Δ={float(equity_delta):+.2f} USDT")
+    if isinstance(mean_edge, (int, float)) and edge_n >= 20:
+        if float(mean_edge) < 0.0:
+            losing = True
+            reasons.append(f"net edge/сделку={float(mean_edge):+.3%} (n={edge_n})")
+        elif float(mean_edge) > 0.0 and not losing:
+            winning = True
+            reasons.append(f"net edge/сделку={float(mean_edge):+.3%} (n={edge_n})")
+    if isinstance(sum_pnl, (int, float)) and float(sum_pnl) <= -1.0:
+        losing = True
+        if not any(r.startswith("PnL") for r in reasons):
+            reasons.append(f"live PnL={float(sum_pnl):+.2f} USDT")
+    if losing:
+        label = "убыток"
+        tone = "loss"
+        next_step = (
+            "ждать: копить опыт под текущими воротами; "
+            "убыток экзамена ≠ сменить стратегию / новый entry / explore on"
+        )
+    elif winning:
+        label = "в плюсе"
+        tone = "gain"
+        next_step = "держать скелет; смотреть, устойчив ли плюс на 24ч/72ч"
+    else:
+        label = "около нуля / мало данных"
+        tone = "flat"
+        next_step = "ждать больше закрытий под воротами"
+        if not reasons:
+            reasons.append("недостаточно закрытых сделок или Δ≈0")
+    return {
+        "tone": tone,
+        "label": label,
+        "equity_delta_usdt": float(equity_delta) if isinstance(equity_delta, (int, float)) else None,
+        "mean_edge": float(mean_edge) if isinstance(mean_edge, (int, float)) else None,
+        "reasons": reasons,
+        "next_step": next_step,
+        "note": "accuracy ≠ прибыль; суди по equity/edge после fee",
+    }
+
+
+def format_market_verdict_line(st: dict[str, Any] | None) -> str:
+    v = market_economic_verdict(st)
+    why = "; ".join(str(r) for r in (v.get("reasons") or [])[:3]) or "n/a"
+    nxt = str(v.get("next_step") or "").strip()
+    line = f"  вердикт: {v.get('label')} — {why} ({v.get('note')})"
+    if nxt:
+        line += f"\n  дальше: {nxt}"
+    return line
+
+
 def market_learning_status(project_root: str | Path) -> dict[str, Any]:
     """Snapshot of paper learning progress under ``.eurika/ml/``."""
     root = Path(project_root).resolve()
@@ -112,14 +196,15 @@ def market_learning_status(project_root: str | Path) -> dict[str, Any]:
     market = market_status(root)
     opens = load_open_positions(root)
     rows = load_paper_trades(root)
-    live_rows = [r for r in rows if r.get("live")]
+    executed_rows = [r for r in rows if is_executed_trade(r)]
+    live_rows = [r for r in executed_rows if r.get("live")]
     live_spot = [r for r in live_rows if _market_bucket(r) == "spot"]
     live_fut = [r for r in live_rows if _market_bucket(r) == "futures"]
     open_spot = [p for p in opens if _market_bucket(p) == "spot"]
     open_fut = [p for p in opens if _market_bucket(p) == "futures"]
     live_correct = sum(1 for r in live_rows if r.get("correct"))
 
-    all_stats = _slice_stats(rows)
+    all_stats = _slice_stats(executed_rows)
     live_stats = _slice_stats(live_rows)
     live_spot_stats = _slice_stats(live_spot)
     live_fut_stats = _slice_stats(live_fut)
@@ -134,7 +219,6 @@ def market_learning_status(project_root: str | Path) -> dict[str, Any]:
     session_stats = _slice_stats(session_rows)
 
     try:
-        ensure_portfolio(root)
         bank = portfolio_status(root)
     except Exception:
         bank = {}
@@ -267,6 +351,7 @@ def format_market_learning_block(
 
     lines = [
         "MARKET LEARNING (paper)",
+        format_market_verdict_line(data),
         f"  сделки всего: {paper.get('count', 0)} (BUY={paper.get('buys', 0)} SELL={paper.get('sells', 0)})",
         f"  accuracy paper: {acc:.3f}" if isinstance(acc, float) else "  accuracy paper: n/a",
         (
@@ -277,8 +362,8 @@ def format_market_learning_block(
             f"{float(bank.get('max_margin_usdt') or 0):.1f}"
         ),
         (
-            f"  PnL Σ edge: всего={_fmt_edge(pnl_all.get('sum_edge'))} "
-            f"(n={pnl_all.get('n', 0)}) · live={_fmt_edge(pnl_live.get('sum_edge'))} "
+            f"  net edge/сделку: всего={_fmt_edge(pnl_all.get('mean_edge'))} "
+            f"(n={pnl_all.get('n', 0)}) · live={_fmt_edge(pnl_live.get('mean_edge'))} "
             f"(n={pnl_live.get('n', 0)})"
         ),
         (
@@ -342,7 +427,10 @@ def format_market_learning_block(
         )
     else:
         lines.append("  модель: весов нет")
-    lines.append("  note: без live-ордеров; Chat → Market для тиков; PnL = Σ edge (после fee)")
+    lines.append(
+        "  note: без live-ордеров; Chat → Market для тиков; "
+        "успех = equity/net edge после fee, не accuracy"
+    )
     return "\n".join(lines)
 
 
@@ -383,7 +471,7 @@ def format_market_situation_block(
     try:
         from eurika.ml.market_journal import load_market_journal
     except Exception:
-        load_market_journal = None  # type: ignore[assignment]
+        load_market_journal = None
 
     st = market_learning_status(root)
     bank = st.get("portfolio") or {}
@@ -478,6 +566,7 @@ def format_market_situation_block(
     edge_s = f"{float(se):+.2%}" if isinstance(se, (int, float)) else "n/a"
     usd_s = f"{float(su):+.2f}" if isinstance(su, (int, float)) else "n/a"
     lines.append(f"  live PnL: edge={edge_s} · USDT={usd_s}")
+    lines.append(format_market_verdict_line(st))
     if model.get("weights_exist"):
         lines.append(
             f"  entry MLP: samples={model.get('samples')} "
@@ -485,7 +574,7 @@ def format_market_situation_block(
         )
     lines.append(
         "  вывод: смотри смесь HOLD/BUY/SELL выше — это «что крутится» сейчас; "
-        "не per-ticker стратегия. Вопрос про устройство модели — отдельно "
-        "(«одна модель или на каждый тикер?»)."
+        "не per-ticker стратегия. Экономику суди по вердикту/equity, не по accuracy. "
+        "Вопрос про устройство модели — отдельно («одна модель или на каждый тикер?»)."
     )
     return "\n".join(lines)

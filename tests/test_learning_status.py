@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from eurika.ml import learning_status as ls
@@ -17,8 +18,51 @@ def test_market_learning_status_empty(tmp_path: Path) -> None:
     assert abs(float(st["portfolio"]["equity_usdt"]) - 1000.0) < 1e-9
     text = ls.format_market_learning_block(st)
     assert "MARKET LEARNING" in text
+    assert "вердикт:" in text
     assert "сделки всего: 0" in text
     assert "банк:" in text
+    assert not (tmp_path / ".eurika" / "ml" / "paper_portfolio.json").exists()
+
+
+def test_market_economic_verdict_loss_not_softened_by_accuracy(tmp_path: Path) -> None:
+    from eurika.ml.paper_portfolio import ensure_portfolio, save_portfolio
+
+    port = ensure_portfolio(tmp_path)
+    port["equity_usdt"] = 986.97
+    port["realized_pnl_usdt"] = -13.03
+    port["session_pnl_usdt"] = -13.03
+    save_portfolio(tmp_path, port)
+    path = paper_trades_path(tmp_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # High accuracy, negative edge — still a loss.
+    rows = []
+    for i in range(30):
+        correct = i % 3 != 0  # ~0.67 accuracy
+        rows.append(
+            {
+                "action": "BUY",
+                "correct": correct,
+                "live": True,
+                "market": "futures",
+                "edge": -0.0005,
+                "pnl_usdt": -0.4,
+                "exit_ts": 1000 + i,
+            }
+        )
+    path.write_text(
+        "\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n",
+        encoding="utf-8",
+    )
+    st = ls.market_learning_status(tmp_path)
+    verdict = ls.market_economic_verdict(st)
+    assert verdict["tone"] == "loss"
+    assert verdict["label"] == "убыток"
+    assert "ждать" in str(verdict.get("next_step") or "")
+    assert "explore" in str(verdict.get("next_step") or "")
+    text = ls.format_market_learning_block(st)
+    assert "вердикт: убыток" in text
+    assert "дальше:" in text
+    assert "accuracy ≠ прибыль" in text
 
 
 def test_market_learning_status_with_live_row(tmp_path: Path) -> None:
@@ -109,7 +153,7 @@ def test_live_split_spot_futures(tmp_path: Path) -> None:
     text = ls.format_market_learning_block(st)
     assert "spot=1" in text
     assert "fut=2" in text
-    assert "PnL Σ edge" in text
+    assert "net edge/сделку" in text
 
 
 def test_pnl_session_since_live_start(tmp_path: Path) -> None:

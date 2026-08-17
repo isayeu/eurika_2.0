@@ -27,10 +27,28 @@ from .protocol import (
 
 EventSink = Callable[[str, dict[str, Any]], None]
 _IGNORED_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "node_modules", "__pycache__", ".mypy_cache", ".pytest_cache"}
+_SEARCH_KIND_RANK = {"implementation": 0, "docs": 1, "test": 2}
 _SYMBOL_LINE = re.compile(
     r"^\s*(?:export\s+)?(?:default\s+)?(?:(?:async\s+)?def|class|function|"
     r"interface|type|enum|struct|trait|const|let|var)\s+([A-Za-z_$][\w$]*)"
 )
+
+
+def _search_source_kind(relative: str) -> str:
+    posix = relative.replace("\\", "/")
+    name = posix.rsplit("/", 1)[-1]
+    if (
+        posix == "tests"
+        or posix.startswith("tests/")
+        or "/tests/" in f"/{posix}/"
+        or name.startswith("test_")
+        or ".test." in name
+        or name.endswith("_test.py")
+    ):
+        return "test"
+    if posix.startswith("docs/") or posix.endswith(".md"):
+        return "docs"
+    return "implementation"
 
 
 class WorkspaceTools:
@@ -47,11 +65,16 @@ class WorkspaceTools:
         supplied = Path(raw)
         if supplied.is_absolute():
             raise RpcError(ERR_WORKSPACE_VIOLATION, "Paths must be workspace-relative", {"path": raw})
-        target = (self.root / supplied).resolve(strict=must_exist)
+        try:
+            target = (self.root / supplied).resolve(strict=False)
+        except OSError as exc:
+            raise RpcError(ERR_INVALID_PARAMS, f"Could not resolve path: {exc}", {"path": raw}) from exc
         try:
             target.relative_to(self.root)
         except ValueError as exc:
             raise RpcError(ERR_WORKSPACE_VIOLATION, "Path escapes workspace root", {"path": raw}) from exc
+        if must_exist and not target.exists():
+            raise RpcError(ERR_INVALID_PARAMS, "Path does not exist", {"path": raw})
         return target
 
     @staticmethod
@@ -79,6 +102,7 @@ class WorkspaceTools:
         handlers = {
             "search": self.search,
             "read": self.read,
+            "market_status": self.market_status,
             "edit": self.edit,
             "terminal": self.terminal,
             "diagnostics": self.diagnostics,
@@ -89,6 +113,37 @@ class WorkspaceTools:
         if handler is None:
             raise RpcError(ERR_INVALID_PARAMS, f"Unknown tool: {name}")
         return handler(args, cancel=cancel, emit=emit)
+
+    def market_status(
+        self,
+        _args: dict[str, Any],
+        *,
+        cancel: threading.Event,
+        emit: EventSink,
+    ) -> dict[str, Any]:
+        """Return factual paper-Market state without executing shell commands."""
+        self._check_cancel(cancel)
+        from eurika.ml.learning_status import (
+            format_market_situation_block,
+            market_economic_verdict,
+            market_learning_status,
+        )
+        from eurika.ml.root import resolve_market_root
+
+        root = resolve_market_root()
+        status = market_learning_status(root)
+        return {
+            "marketRoot": str(root),
+            "summary": format_market_situation_block(root),
+            "verdict": market_economic_verdict(status),
+            "paper": status.get("paper"),
+            "live": status.get("live"),
+            "portfolio": status.get("portfolio"),
+            "pnl": status.get("pnl"),
+            "opens": status.get("opens"),
+            "model": status.get("model"),
+            "market": status.get("market"),
+        }
 
     def search(self, args: dict[str, Any], *, cancel: threading.Event, emit: EventSink) -> dict[str, Any]:
         query = args.get("query")
@@ -106,6 +161,8 @@ class WorkspaceTools:
             raise RpcError(ERR_INVALID_PARAMS, f"Invalid search regex: {exc}") from exc
         glob_pattern = str(args.get("glob") or "*")
         results: list[dict[str, Any]] = []
+        gather_limit = min(max(limit * 8, limit), 1000)
+        scanned_all = True
         for path in self._search_files(scope):
             self._check_cancel(cancel)
             relative = path.relative_to(self.root).as_posix()
@@ -126,13 +183,26 @@ class WorkspaceTools:
                 match = pattern.search(candidate)
                 if match:
                     column = (symbol.start(1) if symbol else match.start()) + 1
-                    item = {"path": relative, "line": number, "column": column, "text": line[:1000]}
+                    item = {
+                        "path": relative,
+                        "line": number,
+                        "column": column,
+                        "text": line[:1000],
+                        "kind": _search_source_kind(relative),
+                    }
                     if symbol:
                         item["symbol"] = symbol.group(1)
                     results.append(item)
-                    if len(results) >= limit:
-                        return {"matches": results, "truncated": True}
-        return {"matches": results, "truncated": False}
+                    if len(results) >= gather_limit:
+                        scanned_all = False
+                        break
+            if not scanned_all:
+                break
+        results.sort(key=lambda item: (_SEARCH_KIND_RANK[item["kind"]], item["path"], item["line"]))
+        return {
+            "matches": results[:limit],
+            "truncated": (not scanned_all) or len(results) > limit,
+        }
 
     def _search_files(self, scope: Path) -> list[Path]:
         """Prefer Git's ignore engine, then fall back to a safe filesystem walk."""

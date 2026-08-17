@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -412,6 +413,30 @@ def test_reset_explore_counter_allows_explore_again(tmp_path: Path) -> None:
     assert gate2["total_live"] == 10
 
 
+def test_unfilled_cancellations_do_not_consume_explore_budget(tmp_path: Path) -> None:
+    from eurika.ml.paper_trader import paper_status, paper_trades_path
+
+    path = paper_trades_path(tmp_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        '{"live":true,"action":"BUY","pending_cancelled":true,'
+        '"executed":false,"exit_reason":"cancel_expire"}\n',
+        encoding="utf-8",
+    )
+
+    assert lp.count_live_labels(tmp_path) == 0
+    status = paper_status(tmp_path)
+    assert status["count"] == 0
+    assert status["cancelled_count"] == 1
+
+
+def test_explore_is_opt_in_for_live_entry_points() -> None:
+    import inspect
+
+    assert inspect.signature(lp.run_live_tick).parameters["explore"].default is False
+    assert inspect.signature(lp.run_live_universe_tick).parameters["explore"].default is False
+
+
 def test_universe_tick_two_symbols(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     for sym in ("ETHUSDT", "SOLUSDT"):
         ms.save_candles(tmp_path, _candles(40)[:36], symbol=sym, interval="15m")
@@ -464,7 +489,7 @@ def test_universe_shadow_resolution_triggers_micro_train(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    trained: list[tuple[Path, int]] = []
+    trained: list[tuple[Path, int, Any]] = []
 
     monkeypatch.setattr(
         lp,
@@ -482,7 +507,7 @@ def test_universe_shadow_resolution_triggers_micro_train(
     monkeypatch.setattr(
         lp,
         "_append_learn_events",
-        lambda events, root, *, epochs: trained.append((root, epochs)),
+        lambda events, root, *, epochs, markets=None: trained.append((root, epochs, markets)),
     )
 
     out = lp.run_live_universe_tick(
@@ -495,7 +520,8 @@ def test_universe_shadow_resolution_triggers_micro_train(
 
     assert out["resolved"] == 0
     assert out["shadow_resolved"] == 1
-    assert trained == [(tmp_path.resolve(), 3)]
+    # The gate is calibrated on the venues the tick actually traded.
+    assert trained == [(tmp_path.resolve(), 3, ("spot",))]
     shadow_summary = next(
         event for event in out["events"] if event.get("kind") == "shadow_outcome"
     )
@@ -573,6 +599,49 @@ def test_universe_resolves_orphan_without_reopen(tmp_path: Path, monkeypatch: py
     # ETH should be resolved and not re-opened; ADA may open via explore
     opens = lp.load_open_positions(tmp_path)
     assert all(str(p.get("symbol")).upper() != "ETHUSDT" for p in opens)
+
+
+def test_universe_includes_shadow_and_pending_only_orphans(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from eurika.ml.paper_orders import save_pending_orders
+
+    lp.save_shadow_positions(
+        tmp_path,
+        [{"symbol": "ETHUSDT", "market": "spot", "action": "BUY"}],
+    )
+    save_pending_orders(
+        tmp_path,
+        [{"symbol": "SOLUSDT", "market": "futures", "status": "pending"}],
+    )
+    calls: list[tuple[str, str, bool]] = []
+
+    def fake_tick(root, *, symbol, market, allow_open, **kwargs):
+        calls.append((symbol, market, allow_open))
+        return {
+            "ok": True,
+            "events": [],
+            "opens": 0,
+            "resolved": 0,
+            "shadow_resolved": 0,
+            "suggestion": None,
+            "error": None,
+        }
+
+    monkeypatch.setattr(lp, "run_live_tick", fake_tick)
+    result = lp.run_live_universe_tick(
+        tmp_path,
+        symbols=["ADAUSDT"],
+        futures_symbols=[],
+        markets=["spot"],
+        micro_train=False,
+        explore=False,
+    )
+
+    assert "ETHUSDT/spot" in result["orphans"]
+    assert "SOLUSDT/futures" in result["orphans"]
+    assert ("ETHUSDT", "spot", False) in calls
+    assert ("SOLUSDT", "futures", False) in calls
 
 
 def test_single_symbol_universe_still_resolves_balance_orphans(

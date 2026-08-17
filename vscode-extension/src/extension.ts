@@ -25,11 +25,16 @@ type PendingToolCall = {
   callId: string | number;
   tool: string;
   arguments?: Record<string, unknown>;
+  proposal?: {
+    proposalId: string;
+    files: Array<{ path: string; before?: string | null; after?: string | null }>;
+  };
 };
 type PendingContinuation = {
   call: PendingToolCall;
   applied: string[];
   rejected: string[];
+  fileMap: Map<string, string>;
 };
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -125,6 +130,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           },
           applied: [],
           rejected: [],
+          fileMap: new Map(proposal.files.map((file) => [file, file])),
         });
       }
       if (requestId !== undefined) backend.client.respond(requestId, result);
@@ -193,7 +199,39 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     const completed: Array<Record<string, unknown>> = [];
     for (const call of result?.pendingToolCalls ?? []) {
-      const toolResult = call.tool === "terminal" || call.tool === "tests"
+      let toolResult: unknown;
+      if (call.tool === "edit" && call.proposal) {
+        const previews = await Promise.all(
+          call.proposal.files.map(async (file) => {
+            const result = await backend.client.request<{
+              files: Array<{ path: string; after?: string | null }>;
+            }>("proposal/get", {
+              proposalId: call.proposal!.proposalId,
+              path: file.path,
+            });
+            return result.files[0];
+          }),
+        );
+        const staged = await edits.stage(
+          previews.map((file) => ({
+            path: file.path,
+            newText: file.after === null ? undefined : file.after,
+          })),
+          call.proposal.proposalId,
+        );
+        const fileMap = new Map(
+          staged.files.map((uri, index) => [uri, call.proposal!.files[index].path]),
+        );
+        view.post("proposal", staged);
+        pendingContinuations.set(staged.transactionId, {
+          call,
+          applied: [],
+          rejected: [],
+          fileMap,
+        });
+        toolResult = staged;
+      } else {
+        toolResult = call.tool === "terminal" || call.tool === "tests"
         ? await executeApprovedBackendTool(call)
         : await handleTool({
             call: {
@@ -202,6 +240,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
               arguments: call.arguments,
             },
           });
+      }
       if (
         !toolResult ||
         typeof toolResult !== "object" ||
@@ -286,13 +325,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       } else if (message.type === "openOutput") output.show();
       else if (message.type === "preview") await edits.preview(message.transactionId, message.file);
       else if (message.type === "apply") {
-        const outcome = await edits.apply(message.transactionId, message.files);
-        vscode.window.showInformationMessage("Eurika changes applied; checkpoint saved");
         const continuation = pendingContinuations.get(message.transactionId);
+        if (!continuation) throw new Error("Unknown core proposal");
+        const selectedUris = message.files ?? [...continuation.fileMap.keys()];
+        const paths = selectedUris.map((uri) => continuation.fileMap.get(uri)).filter(
+          (value): value is string => Boolean(value),
+        );
+        ensureNoDirtyDocuments(paths);
+        const outcome = await backend.client.request<{
+          applied: string[];
+          remaining: string[];
+        }>("proposal/apply", {
+          proposalId: message.transactionId,
+          paths,
+          approval: true,
+        });
+        edits.reject(message.transactionId, selectedUris);
+        vscode.window.showInformationMessage("Eurika changes applied; checkpoint saved");
         if (continuation) continuation.applied.push(...outcome.applied);
+        const remainingUris = [...continuation.fileMap].filter(([, path]) =>
+          outcome.remaining.includes(path)
+        ).map(([uri]) => uri);
         view.post("proposalUpdate", {
           transactionId: message.transactionId,
-          files: outcome.remaining,
+          files: remainingUris,
         });
         if (continuation && !outcome.remaining.length) {
           pendingContinuations.delete(message.transactionId);
@@ -303,12 +359,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           });
         }
       } else if (message.type === "reject") {
-        const outcome = edits.reject(message.transactionId, message.files);
         const continuation = pendingContinuations.get(message.transactionId);
+        if (!continuation) throw new Error("Unknown core proposal");
+        const selectedUris = message.files ?? [...continuation.fileMap.keys()];
+        const paths = selectedUris.map((uri) => continuation.fileMap.get(uri)).filter(
+          (value): value is string => Boolean(value),
+        );
+        const outcome = await backend.client.request<{
+          rejected: string[];
+          remaining: string[];
+        }>("proposal/reject", { proposalId: message.transactionId, paths });
+        edits.reject(message.transactionId, selectedUris);
         if (continuation) continuation.rejected.push(...outcome.rejected);
+        const remainingUris = [...continuation.fileMap].filter(([, path]) =>
+          outcome.remaining.includes(path)
+        ).map(([uri]) => uri);
         view.post("proposalUpdate", {
           transactionId: message.transactionId,
-          files: outcome.remaining,
+          files: remainingUris,
         });
         if (continuation && !outcome.remaining.length) {
           pendingContinuations.delete(message.transactionId);
@@ -374,7 +442,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       view.post("models", { models: backend.capabilities?.models ?? [], selected: session.model });
     }),
     vscode.commands.registerCommand("eurika.restoreCheckpoint", async () => {
-      const result = await edits.restore();
+      const listed = await backend.client.request<{
+        checkpoints: Array<{ id: string; paths: string[] }>;
+      }>("checkpoint/list", {});
+      const latest = listed.checkpoints.at(-1);
+      if (!latest) throw new Error("No Eurika checkpoint is available");
+      ensureNoDirtyDocuments(latest.paths);
+      const result = await backend.client.request<{ restored: string[]; conflicts: string[] }>(
+        "checkpoint/restore",
+        { checkpointId: latest.id, approval: true },
+      );
       const suffix = result.conflicts.length ? `; skipped ${result.conflicts.length} user-modified file(s)` : "";
       vscode.window.showInformationMessage(`Restored ${result.restored.length} file(s)${suffix}`);
     }),
@@ -415,4 +492,18 @@ export function deactivate(): void {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function ensureNoDirtyDocuments(paths: string[]): void {
+  const selected = new Set(paths);
+  const dirty = vscode.workspace.textDocuments.find(
+    (document) =>
+      document.isDirty &&
+      selected.has(vscode.workspace.asRelativePath(document.uri, false)),
+  );
+  if (dirty) {
+    throw new Error(
+      `Save or discard unsaved changes before applying: ${vscode.workspace.asRelativePath(dirty.uri, false)}`,
+    );
+  }
 }

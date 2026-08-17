@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from typing import Any
+
 from qt_app.ui.handlers import market_handlers as mh
 
 
@@ -44,3 +47,14 @@ def test_format_error_and_paper() -> None:
     assert "ошибка" in err and "#b91c1c" in err
     paper = mh._format_market_line("сделка: бумажная ПОКУПКА @ 1", kind="paper")
     assert 'color:#1d4ed8">сделка</span>' in paper
+
+
+def test_market_root_does_not_follow_opened_coding_workspace(tmp_path) -> None:
+    coding_workspace = tmp_path / "external-project"
+    coding_workspace.mkdir()
+    main: Any = SimpleNamespace(
+        _market_root=str(tmp_path / "eurika-product"),
+        root_edit=SimpleNamespace(text=lambda: str(coding_workspace)),
+    )
+
+    assert mh._project_root(main) == str(tmp_path / "eurika-product")

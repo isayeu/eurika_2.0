@@ -1,8 +1,8 @@
 # Eurika local coding agent: release gate
 
-The VS Code/VSCodium extension is the primary coding UI. The Qt application
-remains available for Market, Approvals, and operational panels; it is not the
-primary coding-agent transport.
+Eurika Desktop is the standalone primary coding UI. The VS Code/VSCodium
+extension is an optional adapter to the same Python core. Qt remains available
+during migration; it is not the primary coding-agent transport.
 
 ## Automated integration matrix
 
@@ -24,6 +24,20 @@ primary coding-agent transport.
 - Type safety and extension bundle:
   `npm --prefix vscode-extension run check` and
   `npm --prefix vscode-extension test`.
+- Cross-client manifests, core-owned proposals/checkpoints, and product panels:
+  `tests/test_local_agent_backend.py`.
+- Electron sandbox/preload boundary:
+  `npm --prefix eurika-desktop test`.
+- Standalone sidecar dogfood:
+  `npm --prefix eurika-desktop run dogfood`.
+  Covers workspace list, proposal apply, per-file apply of a two-file
+  change, clean checkpoint restore, restore conflict on a later user edit,
+  terminal/command refused without explicit approval, shared Approvals/
+  Commands/Market panel state, structured diagnostics after apply, and
+  cancellation of an in-flight terminal tool.
+- Desktop type safety and production bundle:
+  `npm --prefix eurika-desktop run check` and
+  `npm --prefix eurika-desktop run build`.
 
 ## Dogfood eval set
 
@@ -46,7 +60,7 @@ the Eurika output channel.
 
 ## Manual release checks
 
-Before packaging a VSIX:
+Before packaging Desktop or a VSIX:
 
 1. Ask a project question and verify a streamed, source-grounded answer.
 2. Cancel a slow request, restart the backend, and send another message.
@@ -58,6 +72,10 @@ Before packaging a VSIX:
 6. Confirm an untrusted workspace cannot start the backend or mutate files.
 7. Confirm terminal tools remain disabled by default and require explicit
    approval when enabled.
+8. Open Approvals, Commands, and Market in Desktop and verify they read the same
+   project state as Qt.
+9. Build Linux artifacts in an Ubuntu LTS image and launch them on the oldest
+   supported glibc baseline.
 
 Release is blocked by a hung process, an edit outside the workspace, an
 unreviewed mutation, lost user content during restore, or a claimed successful

@@ -21,14 +21,59 @@ _MAX_CMDS = 5
 _MAX_OUT = 4000
 _MAX_OBS = 8000
 _MAX_CMD_LEN = 2000
+_HOST_GREP_EXCLUDES = (
+    ".venv",
+    "venv",
+    "node_modules",
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    "__pycache__",
+    ".tox",
+    "dist",
+    "build",
+)
+_RECURSIVE_GREP = re.compile(r"(?:^|[\s;|&])grep\s+-[A-Za-z0-9]*[rR]|(?:^|[\s;|&])grep\s+[^\n]*--recursive\b")
 _GROUND_FACTS = (
     "Больше команд не запускай. Ответь пользователю ТОЛЬКО по фактам из "
-    "[Вывод выполненных команд] выше. Не выдумывай CPU/GPU, диски, вендоров и "
-    "устройства, которых нет в выводе. Если данных нет — так и скажи. "
-    "Ответ — обычным текстом (1–5 предложений), БЕЗ блоков ```bash``` / ```code``` "
-    "и без повторного eurika-cmds: не оформляй вывод команд как code fence."
+    "[Вывод выполненных команд], [Host identity] и [Market facts] выше (если есть). "
+    "Не выдумывай CPU/GPU, диски, вендоров, ОС, процессы и устройства, которых нет в выводе. "
+    "Не предполагай macOS/Windows и не советуй Activity Monitor / ifconfig, если этого "
+    "нет в выводе. Если в выводе есть nmcli/ip — назови конкретные линки "
+    "(SSID, ethernet, wg/VPN, IP, шлюз) словами из вывода; не пиши «несколько подключений». "
+    "ss/netstat/lsof — это порты/сокеты, не ответ про Wi‑Fi/VPN. "
+    "Не выдумывай имена вроде Eurika-server. Если данных нет — так и скажи. "
+    "На вопрос про соединения к сети начни с именованных линков из nmcli/ip "
+    "(SSID, VPN/wg, ethernet up/down, default route); не открывай фразой "
+    "«несколько подключений» и не считай localhost/loopback ответом про интернет. "
+    "Ответ — обычным текстом (1–5 предложений), БЕЗ блоков ```bash``` / ```code``` и без "
+    "повторного eurika-cmds: не оформляй вывод команд как code fence. "
+    "Если есть MARKET LEARNING / строка «вердикт:» — копируй экономический вердикт: "
+    "убыток/отрицательный equity Δ / отрицательный net edge = плохо для paper; "
+    "не говори «неплохо/хорошо/потенциал», подменяя убыток accuracy. Accuracy ≠ прибыль. "
+    "Если есть строка «дальше:» — копируй её: убыток при работающих воротах ≠ "
+    "«пересмотреть стратегию»."
 )
-# Canonical tool fence.
+
+_MARKET_LEARNING_CMD = (
+    'python -c "from eurika.ml.root import resolve_market_root; '
+    "from eurika.ml.learning_status import format_market_learning_block; "
+    'print(format_market_learning_block(resolve_market_root()))"'
+)
+
+_MARKET_ASK_RE = re.compile(
+    r"(?is)("
+    r"маркет|market|paper[\s_-]?trad|"
+    r"успех\w*.{0,40}(ml|мл|обучен|market|маркет)|"
+    r"(обучен|learning).{0,20}(ml|мл|market|маркет)|"
+    r"(разбор|аудит|статус|pnl|прибыл|убыт|equity|банк|стратег).{0,40}(маркет|market|paper|обучен|ml)|"
+    r"(маркет|market|paper).{0,40}(разбор|аудит|успех|статус|pnl|прибыл|убыт|стратег)"
+    r")"
+)
+_BARE_FILE_READ = re.compile(
+    r"^(?:sed\s+-n\s+'[0-9,]+p'|head(?:\s+-n)?\s+\d+|cat)\s+"
+    r"(?!/)(?!\.\./)([a-zA-Z0-9_./-]+\.py)\s*$"
+)
 _TOOL_FENCE = re.compile(
     r"```(?:eurika-cmds|eurika_cmds)[^\S\n]*\n(.*?)```",
     re.IGNORECASE | re.DOTALL,
@@ -49,6 +94,40 @@ _FAKE_ALLOWLIST = re.compile(
     r"allowlist|разрешенн\w+\s+allowlist|Разрешены только следующие команды|"
     r"вне\s+(?:разреш|read-only).*allowlist|amixer\s*\n\s*bluetoothctl",
     re.IGNORECASE,
+)
+# Tutorial instead of observation: tell the user how to check, often the wrong OS.
+_ADVICE_WITHOUT_TOOLS = re.compile(
+    r"activity\s*monitor|ifconfig\b|ipconfig\b|"
+    r"\bnetstat\b|"
+    r"lsof\s+-i|"
+    r"на macos|on macos|в macos|"
+    r"вы можете использовать|"
+    r"you can use (the )?(command|команд)",
+    re.IGNORECASE,
+)
+_ADVICE_NUDGE = (
+    "ОШИБКА: ты описал, КАК проверить хост, вместо того чтобы проверить. "
+    "Это Linux (см. [Host identity]). Не советуй Activity Monitor / ifconfig / "
+    "netstat пользователю и не проси его запускать команды. Выведи только блок "
+    "```eurika-cmds``` с командами (например: nmcli device status; "
+    "nmcli connection show --active; ip -br addr; ip route), по одной в строке."
+)
+_UPLINK_ASK_RE = re.compile(
+    r"(?is)("
+    r"соединен|подключен|wifi|wi-?fi|wlan|vpn|wireguard|"
+    r"к сети|сетев\w+\s+соедин|интерфейс"
+    r")"
+)
+_SOCKET_CMD_RE = re.compile(r"^(?:sudo\s+)?(?:netstat|ss|lsof)\b", re.IGNORECASE)
+_UPLINK_CMD_RE = re.compile(
+    r"^(?:sudo\s+)?(?:nmcli|ip\s+(?:-br\s+)?addr|ip\s+route|iw\s+dev)\b",
+    re.IGNORECASE,
+)
+_UPLINK_NUDGE = (
+    "ОШИБКА: ss/netstat/lsof показывают порты и сокеты, а не каналы выхода в сеть. "
+    "Для вопроса про текущие соединения хоста выведи только ```eurika-cmds``` с "
+    "`nmcli device status`, `nmcli connection show --active`, `ip -br addr`, `ip route` "
+    "(по одной в строке). Не повторяй ss/lsof/netstat."
 )
 
 PrivilegeAction = Literal["password", "continue", "skip"]
@@ -71,6 +150,17 @@ def is_safe_host_command(cmd: str) -> bool:
     """
     s = (cmd or "").strip()
     return bool(s) and len(s) <= _MAX_CMD_LEN
+
+
+def harden_host_command(cmd: str) -> str:
+    """Keep recursive grep out of venv/cache trees without a binary allowlist."""
+    raw = (cmd or "").strip()
+    if not raw or not _RECURSIVE_GREP.search(raw):
+        return raw
+    missing = [name for name in _HOST_GREP_EXCLUDES if f"--exclude-dir={name}" not in raw]
+    if not missing:
+        return raw
+    return raw + "".join(f" --exclude-dir={name}" for name in missing)
 
 
 def _normalize_candidate_cmd(line: str) -> Optional[str]:
@@ -277,6 +367,11 @@ def extract_eurika_cmds(text: str) -> List[str]:
                 buf.append(line)
         _add(_cmds_from_block_body("\n".join(buf)))
 
+    if not out:
+        bare = (text or "").strip().strip("`").strip()
+        if "\n" not in bare and _BARE_FILE_READ.match(bare):
+            _add([bare])
+
     return out
 
 
@@ -334,20 +429,127 @@ def strip_tool_calls(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", out).strip()
 
 
+def message_asks_market_learning(message: str) -> bool:
+    """True when the user is asking about paper Market results / learning."""
+    return bool(_MARKET_ASK_RE.search(message or ""))
+
+
+def market_learning_prompt_facts() -> str:
+    """Inject live paper facts from the stable Market root (no shell, no Path('.'))."""
+    try:
+        from eurika.ml.learning_status import (
+            format_market_learning_block,
+            market_economic_verdict,
+            market_learning_status,
+        )
+        from eurika.ml.root import resolve_market_root
+
+        root = resolve_market_root()
+        st = market_learning_status(root)
+        verdict = market_economic_verdict(st)
+        block = format_market_learning_block(st)
+        return (
+            f"[Market facts — root={root}]\n{block}\n"
+            f"Правило ответа: экономический вердикт = «{verdict.get('label')}». "
+            f"Следующий шаг = «{verdict.get('next_step')}». "
+            "Не смягчай убыток словами «неплохо/хорошо»; accuracy сама по себе не успех. "
+            "Не предлагай «пересмотреть стратегию», новый entry или explore on только из-за "
+            "отрицательного банка — это экзамен под воротами. "
+            "Не запускай python/cat для этих фактов — они уже выше."
+        )
+    except Exception as exc:
+        return (
+            f"[Market facts]\nне удалось прочитать статус: {type(exc).__name__}: {exc}"
+        )
+
+
+def looks_like_ungrounded_host_advice(text: str) -> bool:
+    """True when the model tells the user how to inspect the host instead of inspecting it."""
+    raw = text or ""
+    if extract_eurika_cmds(raw):
+        return False
+    return bool(_ADVICE_WITHOUT_TOOLS.search(raw))
+
+
+def message_asks_host_uplinks(message: str) -> bool:
+    """True when the user asks which network links are up (Wi‑Fi/VPN), not which ports listen."""
+    return bool(_UPLINK_ASK_RE.search(message or ""))
+
+
+def commands_are_socket_inventory(commands: Sequence[str]) -> bool:
+    """True when every command is netstat/ss/lsof (ports), none are nmcli/ip/iw."""
+    cmds = [str(c).strip() for c in (commands or []) if str(c).strip()]
+    if not cmds:
+        return False
+    if any(_UPLINK_CMD_RE.search(c) for c in cmds):
+        return False
+    return all(_SOCKET_CMD_RE.search(c) for c in cmds)
+
+
+def _os_release_pretty() -> str:
+    path = Path("/etc/os-release")
+    if not path.is_file():
+        return ""
+    try:
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith("PRETTY_NAME="):
+                return line.split("=", 1)[1].strip().strip('"')
+    except OSError:
+        return ""
+    return ""
+
+
+def host_identity_prompt_facts() -> str:
+    """Cheap live OS identity so the model does not invent macOS/Windows."""
+    uname = ""
+    try:
+        r = subprocess.run(
+            ["uname", "-srm"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        uname = (r.stdout or "").strip()
+    except Exception:
+        uname = ""
+    pretty = _os_release_pretty()
+    lines = ["[Host identity]"]
+    if uname:
+        lines.append(f"  uname: {uname}")
+    if pretty:
+        lines.append(f"  os: {pretty}")
+    if not uname and not pretty:
+        lines.append("  os: Linux (Qt Chat host)")
+    lines.append(
+        "Это Linux-хост. Не предполагай macOS/Windows. "
+        "Текущие соединения, устройства, процессы, диски — только через ```eurika-cmds``` "
+        "(nmcli / ip / ss / iw / lsblk), затем ответь по выводу. "
+        "Не советуй Activity Monitor и не проси пользователя запускать команды."
+    )
+    return "\n".join(lines)
+
+
 def tool_protocol_instructions(experience_snippet: str | None = None) -> str:
     """Prompt fragment describing host_shell / project facts. No binary allowlist."""
     base = (
         "Инструмент host_shell (Linux, cwd = корень текущего проекта). "
         "Если для ответа нужны факты о машине ИЛИ о проекте "
-        "(ls, дерево, git status/diff, файлы в .eurika/) — не угадывай: "
-        "выведи блок ```eurika-cmds``` с 1–5 командами, по одной в строке "
-        "(можно пайпы и обычный shell). Я выполню их сам и верну вывод; после этого "
-        "ответь своими словами строго по этому выводу. "
+        "(сеть, устройства, процессы, ls, дерево, git status/diff, файлы в .eurika/) — "
+        "не угадывай и не читай лекции: первый ответ — блок ```eurika-cmds``` с 1–5 "
+        "командами, по одной в строке (можно пайпы и обычный shell). Я выполню их сам "
+        "и верну вывод; после этого ответь своими словами строго по этому выводу. "
+        "Не пиши «вы можете использовать netstat/ifconfig» и не упоминай Activity Monitor "
+        "или macOS — хост Linux (см. [Host identity]). "
         "Успехи/статус обучения market ML — НЕ через `eurika scan` (это запахи кода). "
-        "Читай факты обучения, например: "
-        "`python -c \"from pathlib import Path; from eurika.ml.learning_status import format_market_learning_block; print(format_market_learning_block(Path('.')))\"` "
+        "Если в промпте уже есть блок [Market facts] — опирайся на него и НЕ дублируй "
+        "python/cat для learning_status. Иначе читай факты так: "
+        f"`{_MARKET_LEARNING_CMD}` "
         "и/или `cat .eurika/ml/weights/meta.json .eurika/ml/weights/exit_meta.json "
-        ".eurika/ml/weights/entry_cost_gate.json .eurika/ml/paper_portfolio.json`. "
+        ".eurika/ml/weights/entry_cost_gate.json .eurika/ml/paper_portfolio.json` "
+        "(только в корне Eurika / EURIKA_MARKET_ROOT). "
+        "Судьбу paper суди по строке «вердикт:» / equity Δ / net edge после fee — "
+        "не по accuracy. Убыток ≠ «неплохие результаты». "
         "Отвечай на языке пользователя (для русского — только русский, без смеси языков). "
         "Коммит/push/запись файлов через git commit — не делай сам: опиши план "
         "и дождись подтверждения «применяй». "
@@ -358,18 +560,23 @@ def tool_protocol_instructions(experience_snippet: str | None = None) -> str:
         "или продолжить с ограничениями без sudo.\n"
         "ВАЖНО: бинарного allowlist НЕТ. Запрещено выдумывать отказы вида "
         "«команды вне allowlist» и списки вроде amixer/bluetoothctl/wpctl — это устарело. "
-        "Нужен факт (например pwd или ls) → сразу блок ровно в таком виде "
+        "Нужен факт (например pwd, nmcli, ip addr) → сразу блок ровно в таком виде "
         "(язык = eurika-cmds, команды со следующей строки, без слова eurika-cmds "
         "внутри тела):\n"
-        "```eurika-cmds\nls -la\n```"
+        "```eurika-cmds\nls -la\n```\n"
+        "Рекурсивный поиск по репозиторию: не ходи в .venv / node_modules / .mypy_cache; "
+        "лучше `rg -n PATTERN eurika tests` или grep с --exclude-dir=.venv."
     )
-    # Skeleton teaching (not user phrase→reply YAML): which tools answer ML-learning questions.
+    # Skeleton teaching (not user phrase→reply YAML): which tools answer which questions.
     bootstrap = (
         "[Скелет опыта tool-loop]\n"
         "- вопрос про успехи/статус обучения market ML → "
-        "`python -c \"from pathlib import Path; from eurika.ml.learning_status "
-        "import format_market_learning_block; print(format_market_learning_block(Path('.')))\"` "
-        "(не `eurika scan`)"
+        f"`{_MARKET_LEARNING_CMD}` "
+        "(не `eurika scan`); если [Market facts] уже в промпте — не повторяй команду\n"
+        "- текущие сетевые соединения/интерфейсы хоста → "
+        "`nmcli device status`, `nmcli connection show --active`, "
+        "`ip -br addr`, `ip route` "
+        "(не ss -tuln, не lsof, не netstat — это порты; не Activity Monitor, не ifconfig)"
     )
     parts = [base, bootstrap]
     snippet = (experience_snippet or "").strip()
@@ -435,6 +642,8 @@ def infer_tool_turn_hint(
         return "список/дерево файлов проекта"
     if "pwd" in blob or "whoami" in blob or "hostnamectl" in blob:
         return "факт о машине/окружении"
+    if re.search(r"\b(nmcli|ip\s+(?:-br\s+)?addr|ip\s+route|iw\s+dev|\bss\b)\b", blob):
+        return "текущие сетевые соединения/интерфейсы хоста"
     first = str(commands[0]).strip() if commands else ""
     if first:
         return f"команды: {first[:80]}"
@@ -494,6 +703,11 @@ def _score_tool_turn(row: dict, query_tokens: set[str]) -> int:
         if "format_market_learning_block" in hay or "learning_status" in hay:
             score += 6
         if "eurika scan" in hay and "не eurika scan" not in hay:
+            score -= 4
+    if {"соединен", "соединения", "сеть", "wifi", "wlan", "nmcli"}.intersection(query_tokens):
+        if "nmcli" in hay or "ip -br" in hay or "ip route" in hay:
+            score += 6
+        if "activity monitor" in hay or "macos" in hay:
             score -= 4
     return score
 
@@ -620,6 +834,7 @@ def run_host_command(
     wants_sudo, body = _strip_sudo_prefix(raw)
     if not body:
         return HostCommandResult(126, "(empty command after sudo)")
+    body = harden_host_command(body)
     run_sudo = bool(use_sudo or wants_sudo or (password is not None and password != ""))
     work = cwd if cwd else None
     try:
@@ -762,6 +977,7 @@ def run_llm_tool_loop(
     call: Optional[Callable[[str, int], Tuple[Optional[str], Optional[str]]]] = None,
     privilege_prompt: Optional[PrivilegePrompt] = None,
     cwd: str | None = None,
+    user_message: str | None = None,
 ) -> Tuple[ToolLoopResult, Optional[str]]:
     """Run LLM ↔ host_shell until the model answers without asking for tools."""
     ask = call or _llm_call
@@ -826,6 +1042,14 @@ def run_llm_tool_loop(
             ):
                 observations.append(allowlist_nudge)
                 continue
+            if (
+                not executed
+                and looks_like_ungrounded_host_advice(text)
+                and not final_step
+                and _ADVICE_NUDGE not in observations
+            ):
+                observations.append(_ADVICE_NUDGE)
+                continue
             break
         if final_step:
             break
@@ -836,6 +1060,13 @@ def run_llm_tool_loop(
             )
             continue
         observations.append("\n\n".join(_run_cmds(cmds)))
+        if (
+            not final_step
+            and message_asks_host_uplinks(user_message or "")
+            and commands_are_socket_inventory(executed)
+            and _UPLINK_NUDGE not in observations
+        ):
+            observations.append(_UPLINK_NUDGE)
 
     if not executed and _FAKE_ALLOWLIST.search(text or ""):
         recovery = (
@@ -862,5 +1093,26 @@ def run_llm_tool_loop(
                 "Не удалось получить факты о хосте: модель повторила устаревший allowlist. "
                 "Нажми Clear в чате и спроси ещё раз (например: «какой сейчас pwd?»)."
             )
+
+    if not executed and looks_like_ungrounded_host_advice(text or ""):
+        recovery = (
+            f"{base_prompt}\n\n[Система]\n{_ADVICE_NUDGE}\n"
+            "Сейчас выведи только ```eurika-cmds``` с нужными командами."
+        )
+        raw, err = ask(recovery, max_tokens)
+        if err:
+            return ToolLoopResult("", "\n\n".join(log_parts), executed, 1), err
+        text = raw or ""
+        cmds = extract_eurika_cmds(text)
+        if cmds:
+            obs = _run_cmds(cmds)
+            final_prompt = (
+                f"{base_prompt}\n\n[Вывод выполненных команд]\n"
+                f"{_pack_observations(obs)}\n\n{_GROUND_FACTS}"
+            )
+            raw2, err2 = ask(final_prompt, max_tokens)
+            if err2:
+                return _finalize(text), err2
+            text = raw2 or text
 
     return _finalize(text), None

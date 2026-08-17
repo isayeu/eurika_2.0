@@ -109,6 +109,14 @@ def test_malformed_bare_header_is_tool_call() -> None:
     assert "pwd" not in strip_tool_calls(text)
 
 
+def test_bare_sed_polygon_read_is_tool_call() -> None:
+    """Weak models dump `sed -n` instead of a ```eurika-cmds``` fence."""
+    cmd = "sed -n '1,200p' eurika/polygon/refactor_code_smell_if_chain.py"
+    assert extract_eurika_cmds(cmd) == [cmd]
+    assert extract_eurika_cmds("cat /etc/passwd") == []
+    assert extract_eurika_cmds("rm eurika/polygon/deep_nesting.py") == []
+
+
 def test_pwd_and_pipes_are_allowed() -> None:
     assert is_safe_host_command("pwd") is True
     assert extract_eurika_cmds("```eurika-cmds\npwd\nls -la | head\n```") == [
@@ -143,6 +151,76 @@ def test_fake_allowlist_answer_triggers_recovery() -> None:
     assert result.commands == ["pwd"]
     assert "allowlist" not in result.text.lower()
     assert "Каталог" in result.text
+
+
+def test_ungrounded_macos_network_advice_triggers_cmds() -> None:
+    """Lecture about netstat/Activity Monitor must not replace a live host check."""
+    from eurika.api.chat_host_ops import looks_like_ungrounded_host_advice
+
+    lecture = (
+        "Для проверки подключений используйте netstat -tuln. "
+        "Откройте Activity Monitor на macOS."
+    )
+    assert looks_like_ungrounded_host_advice(lecture) is True
+    assert looks_like_ungrounded_host_advice("Python — язык программирования.") is False
+    call = _scripted(
+        lecture,
+        "```eurika-cmds\necho wlan0 Hotel_Kolyma\n```",
+        "Сейчас Wi‑Fi Hotel_Kolyma на wlan0.",
+    )
+    result, err = run_llm_tool_loop(
+        "посмотри какие соединения к сети у меня сейчас на компе",
+        call=call,
+    )
+    assert err is None
+    assert result.commands == ["echo wlan0 Hotel_Kolyma"]
+    assert "Hotel_Kolyma" in result.text
+    assert "Activity Monitor" not in result.text
+
+
+def test_socket_inventory_on_uplink_question_nudges_nmcli(monkeypatch) -> None:
+    from eurika.api import chat_host_ops as hop
+    from eurika.api.chat_host_ops import (
+        commands_are_socket_inventory,
+        message_asks_host_uplinks,
+    )
+
+    q = "посмотри какие соединения к сети у меня сейчас на компе"
+    assert message_asks_host_uplinks(q) is True
+    assert message_asks_host_uplinks("какие порты слушаются?") is False
+    assert commands_are_socket_inventory(["ss -tuln", "lsof -i TCP"]) is True
+    assert commands_are_socket_inventory(["nmcli device status"]) is False
+
+    def _fake_run(cmd, *, privilege_prompt=None, timeout=60.0, cwd=None):
+        out = "LISTEN 127.0.0.1:11434" if "ss" in cmd or "lsof" in cmd else "wlan0 Hotel_Kolyma\nwg0 ProDG.kz"
+        return hop.HostCommandResult(0, out)
+
+    monkeypatch.setattr(hop, "run_host_command_with_privilege", _fake_run)
+    call = _scripted(
+        "```eurika-cmds\nss -tuln\nlsof -i TCP\n```",
+        "```eurika-cmds\nnmcli connection show --active\nip -br addr\n```",
+        "Wi‑Fi Hotel_Kolyma и VPN ProDG.kz на wg0.",
+    )
+    result, err = run_llm_tool_loop(q, call=call, user_message=q, max_iters=4)
+    assert err is None
+    assert "ss -tuln" in result.commands
+    assert any("nmcli" in c or "ip -br" in c for c in result.commands)
+    assert "Hotel_Kolyma" in result.text
+    assert any("nmcli" in p for p in call.prompts[1:])
+
+
+def test_host_identity_injected_into_chat_prompt() -> None:
+    from eurika.api.chat_prompt import build_chat_prompt
+
+    prompt = build_chat_prompt(
+        "посмотри какие соединения к сети у меня сейчас на компе",
+        context="",
+        history=None,
+    )
+    assert "[Host identity]" in prompt
+    assert "Linux" in prompt
+    assert "Activity Monitor" in prompt  # as a forbidden example
+    assert "nmcli" in prompt
 
 
 def test_empty_tool_block_asks_for_real_commands() -> None:
@@ -238,10 +316,25 @@ def test_tool_protocol_has_no_allowlist_dump() -> None:
     assert "корень текущего проекта" in text or "cwd" in text.lower()
     assert "ls" in text
     assert "format_market_learning_block" in text
+    assert "resolve_market_root" in text
     assert "eurika scan" in text
-    assert "запахи кода" in text
+    assert "запахи кода" in text or "не через" in text.lower() or "НЕ через" in text
+    assert "accuracy" in text.lower()
     # Mentions retired names only as forbidden-to-invent examples, not as a grant list.
     assert "Разрешены только" not in text
+
+
+def test_message_asks_market_learning() -> None:
+    from eurika.api.chat_host_ops import message_asks_market_learning
+
+    assert message_asks_market_learning(
+        "как успехи проекта, проведи разбор, особенно в части касающейся маркета"
+    )
+    assert message_asks_market_learning(
+        "проведи аудит как проходит обучение ML, как вообще маркет справляется, стоит ли менять стратегию"
+    )
+    assert message_asks_market_learning("успехи обучения ML в проекте?")
+    assert not message_asks_market_learning("покажи содержимое каталога")
 
 
 def test_soft_scan_not_invented_for_ml_training_question() -> None:
@@ -277,8 +370,9 @@ def test_record_and_load_tool_turn_experience(tmp_path: Path) -> None:
         ok=False,
     )
     ml_cmd = (
-        'python -c "from pathlib import Path; from eurika.ml.learning_status '
-        'import format_market_learning_block; print(format_market_learning_block(Path(\'.\')))"'
+        'python -c "from eurika.ml.root import resolve_market_root; '
+        "from eurika.ml.learning_status import format_market_learning_block; "
+        'print(format_market_learning_block(resolve_market_root()))"'
     )
     record_tool_turn(
         tmp_path,
@@ -333,3 +427,29 @@ def test_host_facts_still_go_to_llm_not_direct(tmp_path: Path) -> None:
     assert handler is None
     handler, _cmd = resolve_direct_handler(tmp_path, "что за блютуз колонка у меня?")
     assert handler is None
+
+
+def test_harden_host_command_adds_venv_excludes() -> None:
+    from eurika.api.chat_host_ops import harden_host_command
+
+    plain = harden_host_command('grep -n handshake eurika/agent/stdio.py')
+    assert plain == 'grep -n handshake eurika/agent/stdio.py'
+    recursive = harden_host_command('grep -Rin "handshake" .')
+    assert "--exclude-dir=.venv" in recursive
+    assert "--exclude-dir=.mypy_cache" in recursive
+    already = harden_host_command('grep -Rin handshake . --exclude-dir=.venv')
+    assert already.count("--exclude-dir=.venv") == 1
+    assert "--exclude-dir=.mypy_cache" in already
+
+
+def test_recursive_grep_skips_venv_tree(tmp_path: Path) -> None:
+    (tmp_path / ".venv").mkdir()
+    (tmp_path / ".venv" / "noise.py").write_text("handshake = 1\n", encoding="utf-8")
+    src = tmp_path / "eurika"
+    src.mkdir()
+    (src / "stdio.py").write_text("def initialize():\n    handshake = True\n", encoding="utf-8")
+    result = run_host_command('grep -Rin "handshake" .', cwd=str(tmp_path), timeout=10)
+    assert result.exit_code == 0
+    assert "stdio.py" in result.output
+    assert ".venv" not in result.output
+

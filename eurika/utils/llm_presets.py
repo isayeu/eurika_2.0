@@ -7,7 +7,14 @@ Local Ollama remains the default via ``EURIKA_CHAT_PROVIDER=auto|ollama``.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Mapping, MutableMapping
+
+
+# Groq retired these ids on 2026-08-16. Keep the map so old .env / Qt fields still work.
+GROQ_RETIRED_MODELS = {
+    "llama-3.3-70b-versatile": "openai/gpt-oss-120b",
+    "llama-3.1-8b-instant": "openai/gpt-oss-20b",
+}
 
 
 @dataclass(frozen=True)
@@ -38,9 +45,9 @@ LLM_API_PRESETS: dict[str, LlmApiPreset] = {
         id="groq",
         label="Groq (free tier)",
         base_url="https://api.groq.com/openai/v1",
-        default_model="llama-3.3-70b-versatile",
+        default_model="openai/gpt-oss-120b",
         key_hint="console.groq.com/keys",
-        notes="Fast inference; RPM/TPM limits on free tier.",
+        notes="Fast inference; RPM/TPM limits on free tier. Llama 3.3 70B Versatile retired 2026-08-16.",
     ),
     "openrouter": LlmApiPreset(
         id="openrouter",
@@ -88,6 +95,31 @@ def get_llm_api_preset(preset_id: str | None) -> LlmApiPreset | None:
     if not pid:
         return None
     return LLM_API_PRESETS.get(pid)
+
+
+def canonical_chat_model(model: str | None, base_url: str | None = None) -> str:
+    """Rewrite retired Groq Llama ids to the current Groq replacements."""
+    raw = (model or "").strip()
+    if not raw:
+        return raw
+    host = (base_url or "").strip().lower()
+    key = raw[5:] if raw.startswith("groq/") else raw
+    groq_host = "groq" in host or raw.startswith("groq/")
+    if groq_host and key in GROQ_RETIRED_MODELS:
+        return GROQ_RETIRED_MODELS[key]
+    return raw
+
+
+def apply_retired_groq_model(environ: MutableMapping[str, str]) -> str | None:
+    """Mutate OPENAI_MODEL in place. Returns the previous id when rewritten."""
+    previous = (environ.get("OPENAI_MODEL") or "").strip()
+    if not previous:
+        return None
+    canonical = canonical_chat_model(previous, environ.get("OPENAI_BASE_URL"))
+    if canonical == previous:
+        return None
+    environ["OPENAI_MODEL"] = canonical
+    return previous
 
 
 def detect_llm_api_preset(base_url: str | None) -> str:
@@ -140,7 +172,7 @@ def apply_llm_api_preset_env(
     if not preset:
         return {}
     out: dict[str, str] = {"OPENAI_BASE_URL": preset.base_url}
-    chosen = (model or "").strip() or preset.default_model
+    chosen = canonical_chat_model((model or "").strip() or preset.default_model, preset.base_url)
     if chosen:
         out["OPENAI_MODEL"] = chosen
     if set_provider_openai:

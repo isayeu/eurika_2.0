@@ -196,7 +196,7 @@ def _build_llm_subtab(main: MainWindow) -> QWidget:
     main.openai_api_status = QLabel("OpenAI API: unknown")
     controls_layout.addRow("API status", main.openai_api_status)
     main.chat_openai_model = QLineEdit()
-    main.chat_openai_model.setPlaceholderText("e.g. llama-3.3-70b-versatile, gemini-2.0-flash, …")
+    main.chat_openai_model.setPlaceholderText("e.g. openai/gpt-oss-120b, gemini-2.0-flash, …")
     main.chat_openai_model.setMaximumWidth(INPUT_MAX_WIDTH)
     controls_layout.addRow("Remote model", main.chat_openai_model)
     chat_ollama_row = QHBoxLayout()

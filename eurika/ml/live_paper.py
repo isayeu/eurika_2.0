@@ -80,6 +80,7 @@ from eurika.ml.paper_trader import (
     fee_for_market,
     resolve_funding_edge,
     label_trade,
+    is_executed_trade,
     paper_trades_path,
 )
 
@@ -204,6 +205,8 @@ def count_live_labels(project_root: str | Path) -> int:
             except json.JSONDecodeError:
                 continue
             if not isinstance(row, dict):
+                continue
+            if not is_executed_trade(row):
                 continue
             if row.get("live"):
                 n += 1
@@ -587,7 +590,21 @@ def _sym_label(symbol: str, market: str) -> str:
     return symbol
 
 
-def _append_learn_events(events: list[dict[str, Any]], root: Path, *, epochs: int) -> None:
+def _gate_scope_label(markets: Sequence[str] | None) -> str:
+    """Which venues' fees the gate was calibrated on; empty when it saw them all."""
+    kinds = [normalize_market(m) for m in markets or ()]
+    if not kinds or len(set(kinds)) > 1:
+        return ""
+    return " (фьючерсы)" if kinds[0] == "futures" else " (спот)"
+
+
+def _append_learn_events(
+    events: list[dict[str, Any]],
+    root: Path,
+    *,
+    epochs: int,
+    markets: Sequence[str] | None = None,
+) -> None:
     trained = train_market_policy(root, epochs=int(epochs))
     if trained.get("ok"):
         events.append(
@@ -664,37 +681,36 @@ def _append_learn_events(events: list[dict[str, Any]], root: Path, *, epochs: in
                 "message": f"дообучение стиля входа пропущено: {trained_s.get('error')}",
             }
         )
-    gate = calibrate_cost_gate(root)
+    gate = calibrate_cost_gate(root, markets=markets)
+    # The fee the threshold was measured against depends on the venue, so the
+    # scope belongs in the journal next to the number it produced.
+    scope = _gate_scope_label(gate.get("markets"))
     if gate.get("calibrated"):
         events.append(
             {
                 "kind": "learn",
                 "message": (
-                    f"стоимостные ворота: расширение ≥ {float(gate['expansion_min']):+.2f}, "
+                    f"стоимостные ворота{scope}: расширение ≥ {float(gate['expansion_min']):+.2f}, "
                     f"ожидаемый эдж={100 * float(gate['expected_edge']):.3f}% "
                     f"(×{float(gate['cost_mult']):.2f} комиссии, примеров={gate.get('samples')})"
                 ),
             }
         )
-    elif gate.get("retained_previous"):
-        events.append(
-            {
-                "kind": "learn",
-                "message": (
-                    "стоимостные ворота: нового доказанного порога нет — "
-                    f"сохраняем предыдущий ≥ {float(gate['expansion_min']):+.2f} "
-                    f"(просмотрено сделок: {gate.get('scanned')})"
-                ),
-            }
-        )
     else:
+        held = (
+            "сохраняем предыдущий"
+            if gate.get("retained_previous")
+            else "держим запасной"
+        )
         events.append(
             {
                 "kind": "learn",
                 "message": (
-                    "стоимостные ворота: калибровка не нашла порога, окупающего комиссию — "
-                    f"держим запасной ≥ {float(gate['expansion_min']):+.2f} "
-                    f"(просмотрено сделок: {gate.get('scanned')})"
+                    f"стоимостные ворота{scope}: нового доказанного порога нет — "
+                    f"{held} ≥ {float(gate['expansion_min']):+.2f}; "
+                    f"выше него эдж={100 * float(gate.get('expected_edge') or 0.0):.3f}% "
+                    f"против нужных {100 * float(gate.get('required_edge') or 0.0):.3f}% "
+                    f"(примеров={gate.get('samples')}, просмотрено сделок: {gate.get('scanned')})"
                 ),
             }
         )
@@ -827,7 +843,7 @@ def run_live_tick(
     max_keep: int = DEFAULT_MAX_KEEP,
     micro_train: bool = True,
     train_epochs: int = 15,
-    explore: bool = True,
+    explore: bool = False,
     explore_rate: float = DEFAULT_EXPLORE_RATE,
     explore_when_idle: bool = True,
     explore_live_cap: int | None = DEFAULT_EXPLORE_LIVE_CAP,
@@ -2163,7 +2179,7 @@ def run_live_tick(
 
     if micro_train and (resolved > 0 or shadow_resolved > 0):
         _append_shadow_outcome_summary(events, shadow_resolved)
-        _append_learn_events(events, root, epochs=int(train_epochs))
+        _append_learn_events(events, root, epochs=int(train_epochs), markets=(kind,))
 
     ms = model_status(root)
     return {
@@ -2197,7 +2213,7 @@ def run_live_universe_tick(
     max_keep: int = DEFAULT_MAX_KEEP,
     micro_train: bool = True,
     train_epochs: int = 15,
-    explore: bool = True,
+    explore: bool = False,
     explore_rate: float = DEFAULT_EXPLORE_RATE,
     explore_when_idle: bool = True,
     explore_live_cap: int | None = DEFAULT_EXPLORE_LIVE_CAP,
@@ -2261,10 +2277,20 @@ def run_live_universe_tick(
 
     active_keys = {(s, m) for s, m in jobs}
 
-    # Orphan opens (wrong symbol or market) — resolve only.
+    # Any in-flight state outside the active universe still needs resolve-only
+    # ticks; otherwise removed symbols strand shadows or pending risk forever.
     orphan_jobs: list[tuple[str, MarketKind]] = []
     seen_orphans: set[tuple[str, MarketKind]] = set()
-    for p in load_open_positions(project_root):
+    orphan_state = [
+        *load_open_positions(project_root),
+        *load_shadow_positions(project_root),
+        *[
+            order
+            for order in load_pending_orders(project_root)
+            if str(order.get("status") or "pending") == "pending"
+        ],
+    ]
+    for p in orphan_state:
         u = str(p.get("symbol") or "").strip().upper()
         if not u:
             continue
@@ -2359,7 +2385,12 @@ def run_live_universe_tick(
 
     if micro_train and (total_resolved > 0 or total_shadow_resolved > 0):
         _append_shadow_outcome_summary(events, total_shadow_resolved)
-        _append_learn_events(events, Path(project_root).resolve(), epochs=int(train_epochs))
+        _append_learn_events(
+            events,
+            Path(project_root).resolve(),
+            epochs=int(train_epochs),
+            markets=market_kinds,
+        )
 
     interesting = {
         "sync",

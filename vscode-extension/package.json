@@ -76,10 +76,15 @@
   },
   "scripts": {
     "clean": "rm -rf dist out",
+    "prebuild": "npm --prefix ../clients/eurika-client run build",
     "build": "node esbuild.mjs && tsc -p tsconfig.test.json",
+    "precheck": "npm --prefix ../clients/eurika-client run build",
     "check": "tsc --noEmit -p tsconfig.json",
     "test": "npm run build && node --test out/test/*.test.js",
     "vscode:prepublish": "npm run build"
+  },
+  "dependencies": {
+    "@eurika/client": "file:../clients/eurika-client"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

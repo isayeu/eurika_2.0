@@ -243,6 +243,25 @@ def test_rows_to_xy_timing_filter() -> None:
     assert len(ws) == 2
 
 
+def test_rows_to_xy_excludes_unfilled_pending_cancellations() -> None:
+    from eurika.ml.market_model import _rows_to_xy
+
+    cancelled = {
+        "feature_vec": [0.0] * len(feat.FEATURE_NAMES),
+        "action": "BUY",
+        "correct": False,
+        "pending_cancelled": True,
+        "executed": False,
+        "exit_reason": "cancel_expire",
+    }
+
+    xs, ys, ws = _rows_to_xy([cancelled])
+
+    assert xs == []
+    assert ys == []
+    assert ws == []
+
+
 def test_sample_weight_from_row_pnl_and_edge() -> None:
     from eurika.ml.market_model import (
         SAMPLE_WEIGHT_MAX,

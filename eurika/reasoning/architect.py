@@ -65,6 +65,8 @@ def _init_primary_openai_client() -> tuple[Any | None, str | None, str | None]:
         return (None, None, 'OPENAI_API_KEY not set (add to .env or export; pip install python-dotenv to load .env)')
     base_url = os.environ.get('OPENAI_BASE_URL') or None
     model = os.environ.get('OPENAI_MODEL', 'gpt-4o-mini')
+    from eurika.utils.llm_presets import canonical_chat_model
+    model = canonical_chat_model(model, base_url)
     client, reason = _build_openai_client(api_key, base_url)
     return (client, model, reason)
 
@@ -100,6 +102,52 @@ def _build_ollama_cli_prompt(summary: Dict[str, Any], history: Dict[str, Any], p
     patch_desc = build_llm_patch_desc(patch_plan)
     return f"You are a software architect. Reply in exactly 2 short sentences.\nSentence 1: architecture risk level. Sentence 2: one highest-impact refactoring.\n\nMetrics: modules={modules}, dependencies={deps}, cycles={cycles}, maturity={maturity}\nTop risk: {top_risk}\nTrends: complexity={trends.get('complexity', 'unknown')}, smells={trends.get('smells', 'unknown')}, centralization={trends.get('centralization', 'unknown')}{patch_desc}"
 
+
+def _uses_completion_tokens(model: str) -> bool:
+    """Reasoning/gpt-oss models treat max_tokens as a prompt cap and return empty content."""
+    key = (model or "").lower()
+    return "gpt-oss" in key or key.startswith("o1") or "/o1" in key or key.startswith("o3") or "/o3" in key
+
+
+def _chat_create_kwargs(
+    model: str,
+    messages: list[dict[str, str]],
+    max_tokens: int,
+    timeout_sec: float,
+) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "timeout": timeout_sec,
+    }
+    if _uses_completion_tokens(model):
+        kwargs["max_completion_tokens"] = max_tokens
+    else:
+        kwargs["max_tokens"] = max_tokens
+    return kwargs
+
+
+def _message_text(message: Any) -> str:
+    """Read chat content, including gpt-oss reasoning-only payloads."""
+    if message is None:
+        return ""
+    content = getattr(message, "content", None)
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                parts.append(str(item.get("text") or item.get("content") or ""))
+        content = "".join(parts)
+    if isinstance(content, str) and content.strip():
+        return content.strip()
+    reasoning = getattr(message, "reasoning", None)
+    if isinstance(reasoning, str) and reasoning.strip():
+        return reasoning.strip()
+    return ""
+
+
 def _call_litellm(prompt: str, max_tokens: int=350) -> tuple[str | None, str | None]:
     """Try litellm first (unified OpenAI/Ollama/OpenRouter). Returns (text, None) or (None, reason)."""
     try:
@@ -111,12 +159,17 @@ def _call_litellm(prompt: str, max_tokens: int=350) -> tuple[str | None, str | N
     base = os.environ.get('OPENAI_BASE_URL') or ''
     base_l = base.lower()
     model = os.environ.get('OPENAI_MODEL') or os.environ.get('OLLAMA_OPENAI_MODEL', 'qwen2.5-coder:7b')
+    from eurika.utils.llm_presets import canonical_chat_model
+    model = canonical_chat_model(model, base)
     kwargs: dict[str, Any] = {
         'model': model,
         'messages': [{'role': 'user', 'content': prompt}],
-        'max_tokens': max_tokens,
         'timeout': float(os.environ.get('EURIKA_LLM_TIMEOUT_SEC', '60')),
     }
+    if _uses_completion_tokens(model):
+        kwargs['max_completion_tokens'] = max_tokens
+    else:
+        kwargs['max_tokens'] = max_tokens
     if 'openrouter' in base_l:
         kwargs['model'] = f'openrouter/{model}' if not model.startswith('openrouter/') else model
     elif 'groq.com' in base_l:
@@ -136,27 +189,69 @@ def _call_litellm(prompt: str, max_tokens: int=350) -> tuple[str | None, str | N
             kwargs['api_key'] = api_key
     elif not str(model).startswith('ollama/'):
         kwargs['model'] = f"ollama/{str(model).split('/')[-1]}"
+    import contextlib
+    import io as _io
+    import sys
+    leaked = _io.StringIO()
     try:
-        # Non-streaming call; stubs still union ModelResponse | CustomStreamWrapper.
-        r: Any = litellm.completion(**kwargs)
+        litellm.suppress_debug_info = True
+    except Exception:
+        pass
+    try:
+        with contextlib.redirect_stdout(leaked):
+            r: Any = litellm.completion(**kwargs)
+        noise = leaked.getvalue().strip()
+        if noise:
+            print(noise, file=sys.stderr, flush=True)
         choices = getattr(r, "choices", None) or []
         if not choices:
             return (None, "empty litellm response")
-        content = getattr(getattr(choices[0], "message", None), "content", None)
-        if content:
-            return (str(content).strip(), None)
+        text = _message_text(getattr(choices[0], "message", None))
+        if text:
+            return (text, None)
         return (None, "empty litellm response")
     except Exception as e:
+        noise = leaked.getvalue().strip()
+        if noise:
+            print(noise, file=sys.stderr, flush=True)
         return (None, str(e))
 
-def _call_llm_architect(client: Any, model: str, prompt: str, max_tokens: int=350) -> tuple[str | None, str | None]:
+def _ollama_http_timeout_sec() -> float:
+    """Local Ollama needs load + generate time; Groq keeps EURIKA_LLM_TIMEOUT_SEC."""
+    import os
+    raw = os.environ.get('EURIKA_OLLAMA_HTTP_TIMEOUT_SEC', '120')
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return 120.0
+    return value if value > 0 else 120.0
+
+
+def _call_llm_architect(
+    client: Any,
+    model: str,
+    prompt: str,
+    max_tokens: int = 350,
+    *,
+    timeout_sec: float | None = None,
+) -> tuple[str | None, str | None]:
     """Call OpenAI chat completions and normalize response shape."""
     import os
-    timeout_sec = float(os.environ.get('EURIKA_LLM_TIMEOUT_SEC', '20'))
+    if timeout_sec is None:
+        timeout_sec = float(os.environ.get('EURIKA_LLM_TIMEOUT_SEC', '20'))
     try:
-        r = client.chat.completions.create(model=model, messages=[{'role': 'user', 'content': prompt}], max_tokens=max_tokens, timeout=timeout_sec)
-        if r.choices and r.choices[0].message.content:
-            return (r.choices[0].message.content.strip(), None)
+        r = client.chat.completions.create(
+            **_chat_create_kwargs(
+                model,
+                [{'role': 'user', 'content': prompt}],
+                max_tokens,
+                timeout_sec,
+            )
+        )
+        if r.choices:
+            text = _message_text(r.choices[0].message)
+            if text:
+                return (text, None)
         return (None, 'empty LLM response')
     except Exception as e:
         return (None, str(e))
@@ -183,14 +278,25 @@ def _ollama_preflight_check(model: str) -> str | None:
     except Exception as e:
         return str(e)
 
+_OLLAMA_CLI_MAX_PROMPT_CHARS = 12_000
+
+
 def _call_ollama_cli(model: str, prompt: str, timeout_override: int | None=None) -> tuple[str | None, str | None]:
     """Fallback path via local `ollama run` CLI when HTTP endpoints are unavailable.
     EURIKA_OLLAMA_CLI_TIMEOUT_SEC: 0=unlimited, else seconds (default 120).
-    timeout_override: use instead of env (e.g. EURIKA_LLM_EXTRACT_TIMEOUT_SEC for extract)."""
+    timeout_override: use instead of env (e.g. EURIKA_LLM_EXTRACT_TIMEOUT_SEC for extract).
+    Agent-sized prompts must not be passed as CLI argv: that stalls or kills the runner.
+    """
     import os
     import subprocess
     import threading
     import time
+    if len(prompt) > _OLLAMA_CLI_MAX_PROMPT_CHARS:
+        return (
+            None,
+            f"ollama CLI skipped: prompt is {len(prompt)} chars "
+            f"(limit {_OLLAMA_CLI_MAX_PROMPT_CHARS}); use HTTP",
+        )
     if timeout_override is not None:
         cli_timeout_sec = timeout_override if timeout_override > 0 else None
     else:
@@ -384,7 +490,16 @@ def humanize_llm_error(err: str | None) -> str:
         return raw
     if _is_rate_limit_error(raw):
         return format_rate_limit_user_message(raw, local_failed=True)
-    return raw
+    compact = " ".join(raw.split())
+    low = compact.lower()
+    if "error 1010" in low or "cloudflare" in low or "cf-ray" in low:
+        return (
+            "Groq недоступен (Cloudflare 1010/403). Включите VPN и повторите. "
+            "Локальный Ollama для Desktop agent-loop обычно не тянет prompt."
+        )
+    if len(compact) > 600:
+        return compact[:600] + "…"
+    return compact
 
 
 def _with_rate_limit_footer(text: str, reason: str | None) -> str:
@@ -479,7 +594,11 @@ def _call_primary_openai_then_fallbacks(
     fallback_reason = fallback_init_reason
     if fallback_client and fallback_model:
         fallback_text, fallback_call_reason = _call_llm_architect(
-            fallback_client, fallback_model, prompt, max_tokens=max_tokens
+            fallback_client,
+            fallback_model,
+            prompt,
+            max_tokens=max_tokens,
+            timeout_sec=_ollama_http_timeout_sec(),
         )
         if fallback_text:
             _trace_architect('ollama HTTP ok')
@@ -543,7 +662,9 @@ def _llm_interpret(summary: Dict[str, Any], history: Dict[str, Any], patch_plan:
         fallback_client, fallback_model, fallback_init_reason = _init_ollama_fallback_client()
         fallback_reason = fallback_init_reason
         if fallback_client and fallback_model:
-            fallback_text, fallback_call_reason = _call_llm_architect(fallback_client, fallback_model, prompt)
+            fallback_text, fallback_call_reason = _call_llm_architect(
+                fallback_client, fallback_model, prompt, timeout_sec=_ollama_http_timeout_sec()
+            )
             if fallback_text:
                 _trace_architect('ollama HTTP ok')
                 return (fallback_text, None)
@@ -570,7 +691,9 @@ def _llm_interpret(summary: Dict[str, Any], history: Dict[str, Any], patch_plan:
     _trace_architect(f'ollama CLI failed: {cli_reason}; trying ollama HTTP...')
     fallback_client, fallback_model, fallback_init_reason = _init_ollama_fallback_client()
     if fallback_client and fallback_model:
-        fallback_text, _ = _call_llm_architect(fallback_client, fallback_model, prompt)
+        fallback_text, _ = _call_llm_architect(
+            fallback_client, fallback_model, prompt, timeout_sec=_ollama_http_timeout_sec()
+        )
         if fallback_text:
             _trace_architect('ollama HTTP ok')
             return (fallback_text, None)
@@ -592,7 +715,13 @@ def call_llm_with_prompt(prompt: str, max_tokens: int=1024) -> tuple[str | None,
         fallback_client, fallback_model, fallback_init_reason = _init_ollama_fallback_client()
         http_reason = fallback_init_reason
         if fallback_client and fallback_model:
-            text, http_reason = _call_llm_architect(fallback_client, fallback_model, prompt, max_tokens=max_tokens)
+            text, http_reason = _call_llm_architect(
+                fallback_client,
+                fallback_model,
+                prompt,
+                max_tokens=max_tokens,
+                timeout_sec=_ollama_http_timeout_sec(),
+            )
             if text:
                 return (text, None)
         return (None, f"ollama CLI and HTTP failed (CLI: {cli_reason or 'unknown'}; HTTP: {http_reason or 'unknown'})")
@@ -611,7 +740,13 @@ def call_llm_with_prompt(prompt: str, max_tokens: int=1024) -> tuple[str | None,
     fallback_client, fallback_model, fallback_init_reason = _init_ollama_fallback_client()
     http_reason = fallback_init_reason
     if fallback_client and fallback_model:
-        text, http_reason = _call_llm_architect(fallback_client, fallback_model, prompt, max_tokens=max_tokens)
+        text, http_reason = _call_llm_architect(
+            fallback_client,
+            fallback_model,
+            prompt,
+            max_tokens=max_tokens,
+            timeout_sec=_ollama_http_timeout_sec(),
+        )
         if text:
             return (text, None)
     return (None, f"ollama CLI and HTTP failed (CLI: {cli_reason or 'unknown'}; HTTP: {http_reason or 'unknown'})")

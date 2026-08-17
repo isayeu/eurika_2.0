@@ -197,6 +197,7 @@ def calibrate_cost_gate(
     cost_mult: float = DEFAULT_COST_MULT,
     min_samples: int = MIN_CALIB_SAMPLES,
     rows: Sequence[Mapping[str, Any]] | None = None,
+    markets: Sequence[str] | None = None,
     write: bool = True,
 ) -> dict[str, Any]:
     """Pick the lowest expansion threshold whose realized edge still pays the fee.
@@ -205,20 +206,41 @@ def calibrate_cost_gate(
     one where the mean gross edge of everything above it covers ``cost_mult``
     fees. Lowest-that-works keeps trade flow (and therefore labels) as high as
     the economics allow.
+
+    ``markets`` restricts the evidence to the venues currently being traded.
+    Spot and futures differ by more than 2x in round-trip fee, so a pooled
+    average asks futures to clear a bar set by spot's costs — a threshold
+    calibrated on trades that can no longer happen. Passing the active kinds
+    keeps the arithmetic on the fees the next trade will actually pay.
     """
     if rows is None:
         from eurika.ml.paper_trader import load_paper_trades
 
         rows = load_paper_trades(project_root)
+    from eurika.ml.market_store import normalize_market
+
+    kinds: set[str] | None = None
+    if markets is not None:
+        kinds = {normalize_market(m) for m in markets} or None
     samples: list[tuple[float, float, float]] = []  # expansion, gross edge, fee
     for row in rows:
         if str(row.get("exit_reason") or "").startswith("cancel"):
+            continue
+        if kinds is not None and normalize_market(row.get("market")) not in kinds:
             continue
         score = expansion_score(row.get("feature_vec") or row.get("features"))
         edge = _gross_edge(row)
         if score is None or edge is None:
             continue
         samples.append((score, edge, _row_fee(row)))
+
+    path = cost_gate_path(project_root)
+    previous_threshold: float | None = None
+    if path.is_file():
+        try:
+            previous_threshold = float(json.loads(path.read_text(encoding="utf-8"))["expansion_min"])
+        except (KeyError, OSError, TypeError, ValueError):
+            previous_threshold = None
 
     chosen: float | None = None
     expected = 0.0
@@ -239,33 +261,65 @@ def calibrate_cost_gate(
         chosen, expected, used = threshold, _mean_edge(tail), len(tail)
         break
 
-    path = cost_gate_path(project_root)
+    if previous_threshold is not None and chosen is not None:
+        previous_tail = [s for s in samples if s[0] >= previous_threshold]
+        previous_band = [
+            s for s in samples
+            if previous_threshold <= s[0] < previous_threshold + BAND_WIDTH
+        ]
+        if (
+            chosen > previous_threshold
+            and len(previous_tail) >= int(min_samples)
+            and _pays(previous_tail, cost_mult)
+            and len(previous_band) < int(min_samples)
+        ):
+            # The existing gate is economically sound, but its own admission
+            # band has too little evidence. Do not jump to a stricter sparse
+            # island and unnecessarily shut off label flow.
+            #
+            # Only tightening is held back. A lower threshold has already had
+            # to prove its own band above, so blocking it here would freeze the
+            # gate at whatever strictness it last reached — the very starvation
+            # this branch exists to prevent.
+            chosen = None
+
     retained_previous = False
     retained_threshold: float | None = None
-    if chosen is None and path.is_file():
-        try:
-            previous = json.loads(path.read_text(encoding="utf-8"))
-            retained_threshold = float(previous["expansion_min"])
-            retained_previous = True
-        except (KeyError, OSError, TypeError, ValueError):
-            retained_threshold = None
+    if chosen is None and previous_threshold is not None:
+        retained_threshold = previous_threshold
+        retained_previous = True
+
+    effective = float(
+        chosen
+        if chosen is not None
+        else (
+            retained_threshold if retained_threshold is not None else DEFAULT_EXPANSION_MIN
+        )
+    )
+    if chosen is None:
+        # A gate that keeps an unproven threshold still has to say what that
+        # threshold is currently worth. Reporting zeros here reads as "no data"
+        # while the tail above the gate may be one bad week away from paying,
+        # which is exactly the signal the operator needs during a freeze.
+        tail = [s for s in samples if s[0] >= effective]
+        expected = _mean_edge(tail)
+        used = len(tail)
+
+    need = float(cost_mult) * (
+        sum(s[2] for s in samples if s[0] >= effective) / used if used else 0.0
+    )
 
     out: dict[str, Any] = {
         "version": 1,
         "expansion_features": list(EXPANSION_FEATURES),
         "cost_mult": float(cost_mult),
-        "expansion_min": float(
-            chosen
-            if chosen is not None
-            else (
-                retained_threshold
-                if retained_threshold is not None
-                else DEFAULT_EXPANSION_MIN
-            )
-        ),
+        "expansion_min": effective,
         "expected_edge": float(expected),
+        "required_edge": float(need),
+        "covers_cost": bool(used and expected >= need),
         "samples": int(used),
         "scanned": int(len(samples)),
+        "markets": sorted(kinds) if kinds is not None else None,
         "calibrated": chosen is not None,
         "retained_previous": retained_previous,
         "note": (

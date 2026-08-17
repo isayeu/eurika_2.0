@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -25,6 +26,7 @@ from .protocol import (
     success_response,
     validate_request,
 )
+from eurika.utils.env import load_project_dotenv
 
 
 @dataclass(slots=True)
@@ -36,7 +38,10 @@ class _ActiveRequest:
 
 
 class JsonRpcStdioServer:
-    """Concurrent JSON-RPC server whose output writes remain frame-atomic."""
+    """Concurrent JSON-RPC server whose output writes remain frame-atomic.
+
+    The client protocol handshake is the ``initialize`` RPC on LocalAgentRuntime.
+    """
 
     def __init__(
         self,
@@ -84,7 +89,9 @@ class JsonRpcStdioServer:
                 exc = RpcError(ERR_TIMEOUT, "Request timed out")
             self._write(error_response(request_id, exc))
         except Exception as exc:  # pragma: no cover - final containment boundary
-            self._write(error_response(request_id, RpcError(ERR_INTERNAL, "Internal error", {"detail": str(exc)})))
+            detail = f"{type(exc).__name__}: {exc}"
+            print(f"[eurika-rpc] request {request_id} failed: {detail}", file=sys.stderr, flush=True)
+            self._write(error_response(request_id, RpcError(ERR_INTERNAL, "Internal error", {"detail": detail})))
         else:
             if active.timed_out.is_set():
                 self._write(error_response(request_id, RpcError(ERR_TIMEOUT, "Request timed out")))
@@ -165,6 +172,35 @@ class JsonRpcStdioServer:
             self._executor.shutdown(wait=True, cancel_futures=False)
 
 
+def redirect_library_stdout() -> TextIO:
+    """Keep JSON-RPC on the original stdout; send library prints to stderr."""
+    rpc_out = sys.stdout
+    if rpc_out is not sys.stderr:
+        sys.stdout = sys.stderr
+    return rpc_out
+
+
+def configure_workspace_env(workspace: Path) -> Path:
+    """Load project `.env` so Desktop inherits the same Groq/Ollama routing as Qt."""
+    root = workspace.expanduser().resolve()
+    load_project_dotenv(root)
+    from eurika.utils.env import _parse_env_file, upsert_project_env_var
+    from eurika.utils.llm_presets import apply_retired_groq_model, canonical_chat_model
+
+    apply_retired_groq_model(os.environ)
+    env_path = root / ".env"
+    if env_path.is_file():
+        parsed = _parse_env_file(env_path)
+        raw_model = (parsed.get("OPENAI_MODEL") or "").strip()
+        canon = canonical_chat_model(
+            raw_model,
+            parsed.get("OPENAI_BASE_URL") or os.environ.get("OPENAI_BASE_URL"),
+        )
+        if raw_model and canon != raw_model:
+            upsert_project_env_var(root, "OPENAI_MODEL", canon)
+    return root
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Eurika local JSON-RPC agent backend")
     parser.add_argument("--workspace", type=Path, default=Path.cwd(), help="Workspace root")
@@ -175,16 +211,29 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    runtime = LocalAgentRuntime(args.workspace)
-    server = JsonRpcStdioServer(
-        runtime,
-        reader=sys.stdin,
-        writer=sys.stdout,
-        max_workers=max(1, args.max_workers),
-        default_timeout_ms=max(1, args.request_timeout_ms),
-    )
-    server.serve_forever()
-    return 0
+    workspace = configure_workspace_env(args.workspace)
+    rpc_out = redirect_library_stdout()
+    runtime = LocalAgentRuntime(workspace)
+    http = None
+    try:
+        try:
+            from .http_api import ensure_workspace_gateway
+
+            http = ensure_workspace_gateway(workspace, runtime)
+        except Exception as exc:
+            print(f"[eurika-http] not started: {exc}", file=sys.stderr, flush=True)
+        server = JsonRpcStdioServer(
+            runtime,
+            reader=sys.stdin,
+            writer=rpc_out,
+            max_workers=max(1, args.max_workers),
+            default_timeout_ms=max(1, args.request_timeout_ms),
+        )
+        server.serve_forever()
+        return 0
+    finally:
+        if http is not None:
+            http.stop()
 
 
 if __name__ == "__main__":

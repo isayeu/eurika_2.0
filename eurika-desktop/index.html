@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Eurika</title>
+  </head>
+  <body>
+    <header>
+      <strong>Eurika</strong>
+      <button id="open-workspace">Open workspace</button>
+      <button id="refresh-files">Refresh files</button>
+      <select id="checkpoint-select" aria-label="Checkpoint">
+        <option value="">No checkpoints</option>
+      </select>
+      <button id="restore-checkpoint">Restore checkpoint</button>
+      <span id="workspace">No workspace</span>
+      <span id="status">stopped</span>
+    </header>
+    <div id="error-banner" hidden></div>
+    <main>
+      <aside id="files"></aside>
+      <section id="editor-pane">
+        <div id="tabs"></div>
+        <div id="editor"></div>
+        <div id="terminal"></div>
+        <form id="terminal-form">
+          <input id="terminal-command" placeholder="argv command, e.g. python -m pytest -q" />
+          <button>Run approved</button>
+        </form>
+      </section>
+      <aside id="agent-pane">
+        <nav id="panel-nav">
+          <button data-panel="approvals">Approvals</button>
+          <button data-panel="commands">Commands</button>
+          <button data-panel="market">Market</button>
+          <button data-panel="chat">Chat</button>
+        </nav>
+        <div id="product-panel" hidden></div>
+        <div id="messages"></div>
+        <div id="proposal"></div>
+        <form id="chat-form">
+          <textarea id="prompt" placeholder="Ask Eurika…"></textarea>
+          <button id="clear-chat" type="button">Clear</button>
+          <button id="cancel-chat" type="button" disabled>Cancel</button>
+          <button id="send-chat">Send</button>
+        </form>
+      </aside>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

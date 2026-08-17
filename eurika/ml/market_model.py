@@ -12,8 +12,8 @@ from typing import Any, Mapping, Optional, Sequence
 
 from eurika.ml.exec_tf import EXIT_FEATURE_NAMES
 from eurika.ml.features import FEATURE_NAMES
-from eurika.ml.market_store import ml_root
-from eurika.ml.paper_trader import load_paper_trades
+from eurika.ml.market_store import ml_root, read_jsonl_rows
+from eurika.ml.paper_trader import is_executed_trade, load_paper_trades
 from eurika.ml.torch_runtime import preferred_device, torch_available
 
 ACTION_TO_IDX = {"HOLD": 0, "BUY": 1, "SELL": 2}
@@ -187,6 +187,8 @@ def _rows_to_xy(
     ws: list[float] = []
     n_feat = len(FEATURE_NAMES)
     for row in rows:
+        if not is_executed_trade(row):
+            continue
         if str(row.get("kind") or "") == "exit_sample":
             continue
         vec = row.get("feature_vec")
@@ -443,21 +445,7 @@ def entry_setup_ok(action: str, features: Mapping[str, Any] | Sequence[float] | 
 
 
 def load_exit_samples(project_root: str | Path) -> list[dict[str, Any]]:
-    path = exit_samples_path(project_root)
-    if not path.is_file():
-        return []
-    rows: list[dict[str, Any]] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            row = json.loads(line)
-        except Exception:
-            continue
-        if isinstance(row, dict):
-            rows.append(row)
-    return rows
+    return read_jsonl_rows(exit_samples_path(project_root))
 
 
 def append_exit_samples(project_root: str | Path, samples: Sequence[dict[str, Any]]) -> int:
@@ -843,21 +831,7 @@ def predict_levels(
 
 
 def load_style_samples(project_root: str | Path) -> list[dict[str, Any]]:
-    path = style_samples_path(project_root)
-    if not path.is_file():
-        return []
-    rows: list[dict[str, Any]] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            row = json.loads(line)
-        except Exception:
-            continue
-        if isinstance(row, dict):
-            rows.append(row)
-    return rows
+    return read_jsonl_rows(style_samples_path(project_root))
 
 
 def append_style_samples(project_root: str | Path, samples: Sequence[dict[str, Any]]) -> int:

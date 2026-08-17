@@ -42,11 +42,11 @@ def refresh_market_learning(main: MainWindow, *, append_log: bool = False) -> di
     """Update Market learning progress labels from ``.eurika/ml/``."""
     from eurika.ml.learning_status import format_market_learning_block, market_learning_status
 
-    root = ""
-    if hasattr(main, "root_edit"):
-        root = main.root_edit.text().strip()
+    root = str(getattr(main, "_market_root", "") or "").strip()
     if not root:
-        root = "."
+        from eurika.ml.root import resolve_market_root
+
+        root = str(resolve_market_root())
     try:
         st = market_learning_status(root)
     except Exception as exc:

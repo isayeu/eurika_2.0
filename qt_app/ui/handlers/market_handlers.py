@@ -70,10 +70,14 @@ def futures_symbols_from_ui(main: MainWindow) -> list[str]:
     return _list_symbols(getattr(main, "market_futures_list", None))
 
 
-def _project_root(main: MainWindow) -> str:
-    if hasattr(main, "root_edit"):
-        return main.root_edit.text().strip()
-    return ""
+def _project_root(main: object) -> str:
+    """Return the stable Eurika Market root, never the opened coding workspace."""
+    configured = str(getattr(main, "_market_root", "") or "").strip()
+    if configured:
+        return configured
+    from eurika.ml.root import resolve_market_root
+
+    return str(resolve_market_root())
 
 
 class MarketTickWorker(QThread):
@@ -592,7 +596,7 @@ def load_market_preferences(main: MainWindow) -> None:
         main.market_micro_train_check.blockSignals(False)
     if hasattr(main, "market_explore_check"):
         main.market_explore_check.blockSignals(True)
-        main.market_explore_check.setChecked(bool(data.get("market_explore", True)))
+        main.market_explore_check.setChecked(bool(data.get("market_explore", False)))
         main.market_explore_check.blockSignals(False)
     if hasattr(main, "market_explore_cap_spin"):
         main.market_explore_cap_spin.blockSignals(True)

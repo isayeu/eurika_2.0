@@ -242,6 +242,8 @@ def _pending_cancel_row(
         "exit_reason": reason_s,
         "entry_style": order.get("entry_style"),
         "pending_cancelled": True,
+        "filled": False,
+        "executed": False,
         "mfe_pct": 0.0,
         "mae_pct": 0.0,
         "entry_timing_score": -1.0,

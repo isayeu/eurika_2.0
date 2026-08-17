@@ -29,6 +29,28 @@ test("request writes NDJSON and resolves its response", async () => {
   client.close();
 });
 
+test("JSON-RPC errors expose backend diagnostic details", async () => {
+  const { client, backendToClient, clientToBackend } = transport();
+  const requestLine = new Promise<string>((resolve) =>
+    clientToBackend.once("data", (chunk) => resolve(String(chunk))),
+  );
+  const pending = client.request("session/chat", { message: "hello" });
+  const request = JSON.parse(await requestLine);
+  backendToClient.write(
+    `${JSON.stringify({
+      jsonrpc: "2.0",
+      id: request.id,
+      error: {
+        code: -32603,
+        message: "Internal error",
+        data: { detail: "ValueError: broken response" },
+      },
+    })}\n`,
+  );
+  await assert.rejects(pending, /Internal error: ValueError: broken response/);
+  client.close();
+});
+
 test("notifications are emitted by method", async () => {
   const { client, backendToClient } = transport();
   const received = new Promise<unknown>((resolve) => client.once("event", resolve));

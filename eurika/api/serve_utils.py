@@ -9,11 +9,24 @@ from http.server import BaseHTTPRequestHandler
 
 
 def json_response(handler: BaseHTTPRequestHandler, data: dict, status: int = 200) -> None:
+    encoded = json.dumps(data, ensure_ascii=False).encode("utf-8")
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Access-Control-Allow-Origin", "*")
+    handler.send_header("Content-Length", str(len(encoded)))
     handler.end_headers()
-    handler.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
+    handler.wfile.write(encoded)
+
+
+def emit_route_json(handler: BaseHTTPRequestHandler, data: dict, status: int = 200) -> None:
+    """Send JSON via serve._json_response so tests can monkeypatch that alias.
+
+    Routes must not import ``eurika.api.serve`` at module load time: serve imports
+    the route modules, and a cold GET /api/* would otherwise circular-import.
+    """
+    from eurika.api import serve as _serve
+
+    return _serve._json_response(handler, data, status)
 
 
 def read_json_body(handler: BaseHTTPRequestHandler) -> dict | None:

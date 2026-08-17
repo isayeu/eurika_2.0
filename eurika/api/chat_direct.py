@@ -399,8 +399,18 @@ def _accept_soft_handler(handler_id: Optional[str], msg: str) -> bool:
     if handler_id == "self_check" and not is_os_env_check_request(msg):
         # Soft path only reaches here; require explicit self-check/env cues.
         return False
-    # Soft/vector must never invent goal/docs rituals without lexical cues.
-    if handler_id in {"goal_reflection", "goal_status", "clear_goal", "continue_dev", "docs_audit"}:
+    # Soft/vector must never invent goal/docs rituals or persona/count templates.
+    if handler_id in {
+        "goal_reflection",
+        "goal_status",
+        "clear_goal",
+        "continue_dev",
+        "docs_audit",
+        "identity",
+        "greeting",
+        "capabilities",
+        "file_recount",
+    }:
         return False
     if handler_id == "list_docs":
         n = _norm_msg(msg)

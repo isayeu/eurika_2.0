@@ -11,6 +11,16 @@
 - **Исключение (скелет, не знание домена):** HITL (`применяй`), диалог sudo/пароля для host tools, узкие project-facts (`ls`/`scan`) — пока без самописных phrase-books. Binary allowlist для chat host tools снят: команды из `eurika-cmds` выполняются, привилегии — через UI.
 - Цель Chat: **LLM-first** → tools → LLM; маршрутизация и «что спросить/ответить» со временем — из `.eurika/` опыта, не из новых `if "колонка" in msg`.
 
+### Политика выбора технологий
+
+- Eurika не привязана к одному языку: язык выбирается по корректности, скорости,
+  доступным библиотекам и стоимости сопровождения.
+- Python остаётся для agent/ML/Market/orchestration, TypeScript — для IDE-клиентов.
+  Rust/C/C++ допустимы для доказанных горячих участков (индекс, поиск, watcher,
+  parsing/diff, PTY), но только после профилирования и с contract-тестами на границе.
+- Не переписывать рабочие подсистемы «ради быстрого языка»: сначала измерить
+  bottleneck, затем заменить минимальный участок за стабильным API.
+
 ## Три слоя
 
 1. **Shell (как Cursor)** — chat-first: агент в центре; проект, diff/apply, terminal, модели — вокруг. Вкладки Dashboard/Graph/Commands — вторичные панели, не главный экран.
@@ -71,7 +81,8 @@
 
 Файлы: `.eurika/ml/market_journal.jsonl`, `paper_trades.jsonl`, `open_paper.json`, `shadow_open.json`, `paper_portfolio.json`, `weights/meta.json`, `weights/entry_cost_gate.json`.
 
-1. Live всё ещё на `.Qt`? (`~/.eurika/qt_settings.json` → `project_root`)
+1. Market root всё ещё `.Qt`? (`EURIKA_MARKET_ROOT` или source-root из
+   `eurika.ml.root`; выбранный coding-workspace на него не влияет)
 2. Equity / Δ USDT; новые закрытия: edge, `pnl_usdt`, `exit_reason`, source (`model` / soft / explore)
 3. Доля HOLD vs сделок; не залип ли только HOLD; много ли `horizon`/`sl` vs `model`
 4. Ошибки sync / QThread / «Live paper выключен» без причины
@@ -84,7 +95,7 @@
 ## Backlog после окна (порядок)
 
 ### A. Продукт / UX
-1. ~~**Chat-first coding-оболочка**~~ ✅ (2026-08-08, local core v1): основным coding UI стало расширение VS Code/VSCodium `vscode-extension/`; Python backend `eurika.agent` работает по versioned streaming JSON-RPC/stdio с cancellation, structured `search/read/edit/terminal/diagnostics/tests/git_diff`, preview/Apply/Reject, checkpoints и scoped rules. Qt остаётся для Market/Approvals/ops. Старый текстовый `eurika-cmds` сохраняется только для совместимости, но не является основным coding loop. Release/eval gate: `docs/LOCAL_CODING_AGENT_RELEASE.md`.
+1. ~~**Chat-first coding-оболочка**~~ ✅ (2026-08-09, standalone MVP): основным coding UI становится самостоятельный `eurika-desktop/` (Electron + Monaco + xterm); расширение VS Code/VSCodium `vscode-extension/` — optional adapter. Оба клиента используют общий `clients/eurika-client` и Python backend `eurika.agent` по versioned streaming JSON-RPC/stdio. Proposal/Apply/Reject, stale checks, checkpoints и persistent Chat history принадлежат ядру, а не VS Code. Desktop уже показывает Chat/Diff/Approvals/Commands/Market; Qt сохраняется до функционального паритета. Release/eval gate: `docs/LOCAL_CODING_AGENT_RELEASE.md`.
 2. ~~**Session digest «пока тебя не было»**~~ ✅ (2026-08-03) — при открытии Qt в ленту Market; Chat: «пока меня не было».
 
 ### B. Market paper (по статистике journal)
@@ -103,6 +114,8 @@
 15. **Метки всё ещё частично свои же** — политика входа учится на исходах, отобранных `soft_entry`; теневые входы снимают цензуру ворот, но не эту. Мера: доля меток, пришедших не от собственного решения.
 16. Позже: walk-forward; impulse-путь на 1m-фичах при сильном burst/break; полный режимный фильтр по часу (сейчас тег + soft-cap 07–09).
 17. **Аудит технических признаков, не indicator-rules:** после стабилизации журнала провести ablation/walk-forward для RSI/MACD/SMA/Bollinger/volume и их динамики, оценивая только прирост out-of-sample net edge после комиссий. При необходимости добавить нормированный stochastic `%K` как непрерывный признак положения в диапазоне — только если он даёт независимый прирост относительно уже имеющихся `dist_to_low/high`; не вводить правила вида `RSI < 30 → BUY` или «выход за Bollinger → возврат».
+18. ~~**Ворота калибруются по активному рынку**~~ ✅ (2026-08-17) — комиссия круга у спота 0.2000% против 0.0948% у фьючерсов, а `calibrate_cost_gate` усредняла обе площадки: порог требовал 0.184% эджа вместо фьючерсных 0.139% и вставал на +2.00. Теперь `markets=` ограничивает выборку теми площадками, где реально идёт торговля (`live_paper` передаёт активные `market_kinds`), а `retained_previous`-защита придерживает только **ужесточение**: смягчение уже обязано доказать свою впускаемую полосу, и блокировать его значило заморозить ворота на достигнутой строгости. На данных 08-17: `both` → +2.00 (без изменений), `futures` → **+0.50** (хвост 350 против 82, эдж 0.179% против нужных 0.139%), `spot` → свою комиссию не окупает ни на одном пороге. Область калибровки пишется в `entry_cost_gate.json` (`markets`) и в journal-строку ворот.
+19. **Обучение голов остаётся общим по рынкам** — `train_market_policy` / `levels` / `style` берут весь журнал без фильтра, спот это 35.5% исполненных строк. Направление на споте не шум (BTC ходит одинаково), но `edge` там систематически хуже на комиссию, и веса меток по `|pnl|` учат «сетап плохой» вместо «площадка дорогая». Мерить долю спот-строк в пуле; фильтровать только если futures-only статистика покажет расхождение — пул с 3987 до 2574 резать вслепую нельзя.
 
 ### C. Agent / платформа
 11. ~~**Plugin hooks** `after_*`~~ ✅ (2026-08-08, v1) — versioned JSON-safe immutable `HookContext`; canonical `after_scan/plan/apply/verify` (не CLI/Qt wrappers); конфиг `.eurika/plugins.toml` / `pyproject`; ordered + dedupe + fail-open; результаты в `report.plugin_hooks` и `.eurika/events.json`. Trusted in-process plugins, не sandbox.

@@ -483,7 +483,7 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     if intent == 'save' and (not save_target):
         save_target = _infer_default_save_target(msg)
         target = save_target
-    feedback_snippet = _load_chat_feedback_for_prompt(root)
+    feedback_snippet = _load_chat_feedback_for_prompt(root, message=msg)
     rules_snippet = _load_eurika_rules_for_chat(root)
     intent_hints = _intent_hints_for_prompt(root)
     tool_experience = ''
@@ -516,10 +516,11 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         from eurika.api.chat_host_ops import run_llm_tool_loop
         tool_loop, err = run_llm_tool_loop(
             prompt,
-            max_iters=3,
+            max_iters=4,
             max_tokens=1024,
             privilege_prompt=privilege_prompt,
             cwd=str(root),
+            user_message=msg,
         )
         text = tool_loop.text
         for cmd in tool_loop.commands:

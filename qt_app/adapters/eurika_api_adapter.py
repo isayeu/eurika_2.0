@@ -157,6 +157,9 @@ class EurikaApiAdapter:
                     os.environ["OPENAI_MODEL"] = openai_model.strip()
                 if ollama_model.strip():
                     os.environ["OLLAMA_OPENAI_MODEL"] = ollama_model.strip()
+            from eurika.utils.llm_presets import apply_retired_groq_model
+
+            apply_retired_groq_model(os.environ)
             yield
         finally:
             for key, value in old_values.items():

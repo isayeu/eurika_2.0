@@ -28,6 +28,7 @@ def test_qt_main_window_smoke() -> None:
         window = MainWindow()
         assert window.windowTitle() == "Eurika Qt"
         assert window.root_edit is not None
+        assert window.desktop_btn.text() == "Открыть Eurika Desktop"
         assert window.chat_send_btn is not None
         assert window.chat_cancel_btn is not None
         assert window.chat_typing_label is not None

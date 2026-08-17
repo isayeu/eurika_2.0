@@ -149,6 +149,9 @@ def load_project_dotenv(
         value = values.get(key)
         if value:
             os.environ[key] = value
+    from eurika.utils.llm_presets import apply_retired_groq_model
+
+    apply_retired_groq_model(os.environ)
 
 
 def binance_credentials_status() -> dict[str, object]:

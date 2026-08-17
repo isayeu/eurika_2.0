@@ -308,6 +308,24 @@ def test_dispatch_api_get_history_returns_dict(tmp_path: Path, monkeypatch) -> N
     assert isinstance(data, dict)
 
 
+def test_dispatch_api_get_market_and_learning(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def _fake_json_response(_handler, data: dict, status: int = 200) -> None:
+        captured["status"] = status
+        captured["data"] = data
+
+    monkeypatch.setattr(api_serve, "_json_response", _fake_json_response)
+    handled = api_serve._dispatch_api_get(_DummyHandler(), tmp_path, "/api/market", {})
+    assert handled is True
+    data = captured.get("data") or {}
+    assert data.get("panel") == "market"
+    handled = api_serve._dispatch_api_get(_DummyHandler(), tmp_path, "/api/learning", {})
+    assert handled is True
+    data = captured.get("data") or {}
+    assert "paper" in data
+
+
 def test_read_json_body_returns_parsed_dict_on_valid_json() -> None:
     """_read_json_body should parse valid JSON body."""
     handler = _BodyHandler(b'{"a": 1}', "8")

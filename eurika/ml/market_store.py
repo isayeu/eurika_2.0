@@ -67,6 +67,31 @@ def candles_path(
     return market_dir(project_root, kind) / f"{sym}_{safe_iv}.json"
 
 
+def read_jsonl_rows(path: Path) -> list[dict[str, Any]]:
+    """Objects from a newline-delimited JSON log, skipping unreadable lines.
+
+    Streams the file: the sample logs grow into tens of megabytes and are
+    re-read on every micro-training, so slurping them whole would hold the raw
+    text and the split line list in memory alongside the parsed rows.
+    """
+    rows: list[dict[str, Any]] = []
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(row, dict):
+                    rows.append(row)
+    except OSError:
+        return rows
+    return rows
+
+
 def _read_candle_file(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
         return []

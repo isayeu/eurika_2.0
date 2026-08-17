@@ -20,9 +20,9 @@
 
 1. Модель получает описание инструмента `host_shell` (cwd = project root) и, если нужны факты, выводит блок ```` ```eurika-cmds ```` с командами (`ls -la`, `git status`, `pwd`, …).
 2. Eurika выполняет их сама через `bash -c` (**без** binary allowlist), пишет `$ cmd` + вывод во вкладку **Terminal**. Если нужны права — Qt предлагает: пароль sudo / продолжить без пароля (с ограничениями) / пропустить.
-3. Вывод возвращается модели, она отвечает своими словами. Пустой блок `eurika-cmds` — модели сообщают об этом, и она может повторить. Обычные ```` ```bash ```` / ```` ```python ```` **не** автозапускаются (для UI Copy/Run).
+3. Вывод возвращается модели, она отвечает своими словами. Пустой блок `eurika-cmds` — модели сообщают об этом, и она может повторить. Если вместо проверки хоста модель выдала лекцию (`netstat`/`ifconfig`/Activity Monitor) — цикл один раз требует реальный `eurika-cmds`. Если на вопрос про Wi‑Fi/VPN она сняла только порты (`ss`/`lsof`/`netstat`) — цикл требует `nmcli`/`ip`. Обычные ```` ```bash ```` / ```` ```python ```` **не** автозапускаются (для UI Copy/Run).
 4. Удачные tool-turns пишутся в `.eurika/chat_tool_turns.jsonl` (команды + `outcome_hint`) и подмешиваются в промпт **по релевантности** к текущему сообщению (не только хвост файла; не YAML phrase-book).
-5. Вопросы про **успехи обучения market ML** — через `format_market_learning_block` / `.eurika/ml/weights/*.json`, **не** через `eurika scan` (scan = запахи кода).
+5. В каждый промпт кладётся `[Host identity]` (`uname` / os-release) — чтобы не выдумывать macOS. Вопросы про **успехи обучения market ML** — факты из `resolve_market_root()` (`[Market facts]` + строка **вердикт** по equity/net edge). Иначе — `format_market_learning_block(resolve_market_root())` / weights meta, **не** `eurika scan`. Убыток по банку нельзя смягчать через accuracy.
 
 Ответ пользователю формирует **только LLM** — в коде нет шаблонов вроде «Проверка на хосте», подсказок «напиши проверь» и пост-фильтров над текстом модели. Блоки `eurika-cmds` вырезаются из финального ответа (это синтаксис протокола); обычные code fence остаются для рамки Copy/Run.
 
@@ -127,7 +127,7 @@
 |------------|------------|
 | `EURIKA_CHAT_PROVIDER` | `auto` \| `ollama` \| `openai` \| `codex` — маршрутизация чата |
 | `OPENAI_API_KEY` | Ключ OpenAI **или** любого OpenAI-compatible API (Groq/OpenRouter/Gemini/…) |
-| `OPENAI_MODEL` | Модель (например `gpt-4o-mini`, `llama-3.3-70b-versatile`, `gemini-2.0-flash`) |
+| `OPENAI_MODEL` | Модель (например `gpt-4o-mini`, `openai/gpt-oss-120b`, `gemini-2.0-flash`) |
 | `OPENAI_BASE_URL` | Базовый URL API (по умолчанию OpenAI; см. пресеты ниже) |
 | `OLLAMA_OPENAI_BASE_URL` | Ollama OpenAI-совместимый endpoint (обычно `http://127.0.0.1:11434/v1`) |
 | `OLLAMA_OPENAI_MODEL` | Имя модели Ollama (должна быть установлена: `ollama pull …`) |
@@ -143,7 +143,7 @@
 
 | Preset | `OPENAI_BASE_URL` | Пример модели | Ключ |
 |--------|-------------------|---------------|------|
-| Groq | `https://api.groq.com/openai/v1` | `llama-3.3-70b-versatile` | console.groq.com/keys |
+| Groq | `https://api.groq.com/openai/v1` | `openai/gpt-oss-120b` (или `qwen/qwen3.6-27b`) | console.groq.com/keys |
 | OpenRouter | `https://openrouter.ai/api/v1` | `openrouter/free` или `…:free` | openrouter.ai/keys |
 | Gemini | `https://generativelanguage.googleapis.com/v1beta/openai/` | `gemini-2.0-flash` | aistudio.google.com/apikey |
 | Cerebras | `https://api.cerebras.ai/v1` | `llama-3.3-70b` | cloud.cerebras.ai |
@@ -240,6 +240,19 @@ BRAVE_SEARCH_API_KEY=BSA...
 ## Обратная связь
 
 Кнопки **Полезно** / **Не то** на вкладке Chat пишут в `.eurika/chat_feedback.json` и используются как few-shot в промпте LLM.
+
+---
+
+## HTTP (Cursor / внешние клиенты)
+
+Пока открыт Qt или Desktop, ядро доступно на loopback (токен в `.eurika/agent_http.json`):
+
+```bash
+python -m eurika.agent.http_client chat "Что за проект?"
+python -m eurika.agent.http_client market
+```
+
+`chat` — тот же `chat_send`, что вкладка Chat. Подробнее: [CLI.md](CLI.md) § `eurika serve`.
 
 ---
 

@@ -1,0 +1,48 @@
+{
+  "name": "eurika-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "prebuild": "npm --prefix ../clients/eurika-client run build",
+    "build": "vite build && tsc -p tsconfig.electron.json",
+    "check": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.electron.json",
+    "dev": "vite",
+    "start": "npm run build && env -u ELECTRON_RUN_AS_NODE electron .",
+    "test": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test test/*.test.mjs",
+    "predogfood": "npm --prefix ../clients/eurika-client run build",
+    "dogfood": "node scripts/dogfood.mjs",
+    "dist:linux": "npm run build && electron-builder --linux dir"
+  },
+  "dependencies": {
+    "@eurika/client": "file:../clients/eurika-client",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "monaco-editor": "^0.52.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.6"
+  },
+  "build": {
+    "appId": "ai.eurika.desktop",
+    "productName": "Eurika",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "linux": {
+      "category": "Development",
+      "target": [
+        "dir"
+      ]
+    }
+  }
+}

@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from eurika.ml.market_store import ml_root
+from eurika.ml.market_store import ml_root, read_jsonl_rows
 
 # Transcript only — safe to rotate. Do not apply to paper_trades / weights.
 JOURNAL_ROTATE_DAYS = 7
@@ -200,20 +200,7 @@ def load_market_journal(
     limit: int | None = None,
 ) -> list[dict[str, Any]]:
     """Load journal rows (optionally last ``limit`` lines)."""
-    path = market_journal_path(project_root)
-    if not path.is_file():
-        return []
-    rows: list[dict[str, Any]] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            row = json.loads(line)
-        except Exception:
-            continue
-        if isinstance(row, dict):
-            rows.append(row)
+    rows = read_jsonl_rows(market_journal_path(project_root))
     if limit is not None and int(limit) > 0:
         return rows[-int(limit) :]
     return rows

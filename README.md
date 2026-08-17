@@ -26,7 +26,9 @@ pip install -e ".[test]"
 eurika scan .           # полный скан → self_map.json, smells, summary
 eurika doctor .         # диагностика (report + architect) без патчей
 eurika fix . --dry-run  # план рефакторинга без применения
-eurika serve .          # JSON API на http://127.0.0.1:8765/api
+eurika serve .          # JSON API на http://127.0.0.1:8765/api (без токена)
+# Qt и Desktop также поднимают loopback-шлюз: .eurika/agent_http.json
+# python -m eurika.agent.http_client health|chat|market|exec "eurika scan ."
 ```
 
 ### Qt desktop shell (PySide6, Qt-first)

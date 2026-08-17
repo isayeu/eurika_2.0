@@ -24,6 +24,7 @@ from qt_app.adapters.eurika_api_adapter import EurikaApiAdapter
 from qt_app.services.command_service import CommandService
 from qt_app.services.settings_service import SettingsService
 from eurika.utils.env import load_project_dotenv
+from eurika.ml.root import resolve_market_root
 from qt_app.ui.styles import (
     CONTENT_MARGINS,
     get_hint_label_stylesheet,
@@ -39,6 +40,7 @@ from .handlers import (
     chat_handlers,
     command_handlers,
     dashboard_handlers,
+    desktop_handlers,
     market_handlers,
     ml_handlers,
     notes_handlers,
@@ -70,11 +72,16 @@ class MainWindow(
     """Desktop-first shell for running core Eurika workflows."""
 
     tabs: QTabWidget
+    desktop_btn: QPushButton
+    _session_digest_shown_roots: set[str]
+    _session_digest_scheduled: bool
+
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle('Eurika Qt')
         self.resize(1100, 760)
         self._settings = SettingsService()
+        self._market_root = str(resolve_market_root())
         saved_root = self._settings.get_project_root()
         self._first_run_prompt_pending = not bool(saved_root and saved_root.strip())
         initial_root = '' if self._first_run_prompt_pending else (saved_root or '').strip() or '.'
@@ -90,7 +97,11 @@ class MainWindow(
         self._pending_plan_fallback_active = False
         self._pending_diff_gate_fp = ''
         self._pending_diff_seen_fp = ''
+        self._session_digest_shown_roots = set()
+        self._session_digest_scheduled = False
         self._is_closing = False
+        self._gateway = None
+        self._gateway_root: str | None = None
         self._ollama_process = QProcess(self)
         self._ollama_task_process = QProcess(self)
         self._ollama_task_mode = ''
@@ -128,6 +139,11 @@ class MainWindow(
         top_row.addWidget(self.root_edit, 1)
         self.browse_btn = QPushButton("Browse")
         top_row.addWidget(self.browse_btn)
+        self.desktop_btn = QPushButton("Открыть Eurika Desktop")
+        self.desktop_btn.setToolTip(
+            "Запустить самостоятельный редактор для выбранного проекта"
+        )
+        top_row.addWidget(self.desktop_btn)
         root_layout.addLayout(top_row)
         self._first_run_hint = QFrame()
         self._first_run_hint.setFrameShape(QFrame.Shape.StyledPanel)
@@ -194,6 +210,7 @@ class MainWindow(
 
     def _wire_events(self) -> None:
         self.browse_btn.clicked.connect(self._select_root)
+        self.desktop_btn.clicked.connect(lambda: desktop_handlers.launch_desktop(self))
         self.root_edit.editingFinished.connect(self._on_root_edited)
         if getattr(self, "module_browse_btn", None):
             self.module_browse_btn.clicked.connect(lambda: command_handlers.select_module(self))
@@ -352,6 +369,7 @@ class MainWindow(
             self._terminal_cwd = root_resolved
         chat_handlers.load_chat_preferences(self)
         market_handlers.load_market_preferences(self)
+        self._ensure_gateway()
         chat_handlers.refresh_chat_goal_view(self)
         dashboard_handlers.refresh_dashboard(self)
         notes_handlers.load_notes(self)
@@ -360,6 +378,37 @@ class MainWindow(
         self._sync_preview()
         if self._command_service.state == "idle":
             command_handlers.on_state_changed(self, "idle")
+
+    def _ensure_gateway(self) -> None:
+        """Publish loopback HTTP for this project so Cursor can talk to core Eurika."""
+        if self._is_closing or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+            return
+        root = self.root_edit.text().strip()
+        resolved = str(Path(root).resolve()) if root else ""
+        if resolved and self._gateway_root == resolved:
+            return
+        owned = self._gateway
+        if owned is not None:
+            try:
+                owned.stop()
+            except Exception:
+                pass
+            self._gateway = None
+        self._gateway_root = resolved or None
+        if not resolved:
+            return
+        from eurika.agent.http_api import ensure_workspace_gateway
+
+        self._gateway = ensure_workspace_gateway(resolved)
+        if hasattr(self, "status_label"):
+            if self._gateway is not None:
+                self.status_label.setText(f"HTTP {self._gateway.url}")
+            else:
+                from eurika.agent.http_api import probe_endpoint, read_endpoint
+
+                endpoint = read_endpoint(resolved)
+                if endpoint and probe_endpoint(endpoint):
+                    self.status_label.setText(f"HTTP {endpoint['url']}")
 
     def _refresh_openai_api_status(self) -> None:
         if not hasattr(self, "openai_api_status"):
@@ -552,6 +601,13 @@ class MainWindow(
             ollama_handlers.shutdown_qprocess(self._terminal_process, timeout_ms=800)
         ollama_handlers.shutdown_qprocess(self._ollama_task_process, timeout_ms=800)
         ollama_handlers.shutdown_qprocess(self._ollama_process, timeout_ms=800)
+        gateway = getattr(self, "_gateway", None)
+        if gateway is not None:
+            try:
+                gateway.stop()
+            except Exception:
+                pass
+            self._gateway = None
         if self._graph_web_view is not None:
             try:
                 self._graph_web_view.setHtml('<!DOCTYPE html><html><body></body></html>', 'about:blank')
