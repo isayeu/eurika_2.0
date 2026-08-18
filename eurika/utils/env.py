@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -48,6 +49,22 @@ LLM_ROUTING_ENV_KEYS = (
     "CURSOR_MODEL",
     "CURSOR_OPTIMIZE_FOR",
 )
+
+# Qt ChatWorker sets this so .env cannot clobber Models → Источник for one call.
+LLM_ENV_LOCK_KEY = "EURIKA_LLM_ENV_LOCKED"
+LLM_ENV_LOCKED_ROUTING_KEYS = frozenset(
+    {
+        "EURIKA_CHAT_PROVIDER",
+        "CURSOR_MODEL",
+        "CURSOR_OPTIMIZE_FOR",
+        "OPENAI_MODEL",
+        "OPENAI_BASE_URL",
+        "OLLAMA_OPENAI_MODEL",
+    }
+)
+CURSOR_SECRET_ENV_KEYS = ("CURSOR_API_KEY",)
+_CHAT_PROVIDERS = frozenset({"auto", "openai", "ollama", "codex", "cursor"})
+_CURSOR_OPTIMIZE_VALUES = frozenset({"cost", "balanced", "intelligence"})
 
 
 def _parse_env_file(env_path: Path) -> dict[str, str]:
@@ -151,13 +168,69 @@ def load_project_dotenv(
         values = {k: (str(v) if v is not None else None) for k, v in raw.items()}
     except ImportError:
         values = {k: v for k, v in _parse_env_file(env_path).items()}
+    locked = (os.environ.get(LLM_ENV_LOCK_KEY) or "").strip() == "1"
     for key in wanted:
         value = values.get(key)
-        if value:
-            os.environ[key] = value
+        if not value:
+            continue
+        if locked and key in LLM_ENV_LOCKED_ROUTING_KEYS:
+            continue
+        os.environ[key] = value
     from eurika.utils.llm_presets import apply_retired_groq_model
 
     apply_retired_groq_model(os.environ)
+    # .env often has Groq/openai; Qt Models is the live source. Re-apply after every
+    # dotenv load so a restart cannot silently switch Chat/agent-chat back to Groq→Ollama.
+    if not locked:
+        apply_qt_chat_routing()
+
+
+def default_qt_settings_path() -> Path:
+    override = (os.environ.get("EURIKA_QT_SETTINGS_PATH") or "").strip()
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".eurika" / "qt_settings.json"
+
+
+def llm_env_is_locked() -> bool:
+    return (os.environ.get(LLM_ENV_LOCK_KEY) or "").strip() == "1"
+
+
+def apply_qt_chat_routing(
+    environ: dict[str, str] | None = None,
+    *,
+    settings_path: Path | None = None,
+) -> str | None:
+    """Apply Qt Models → Источник over ``.env``. No-op if ChatWorker locked routing.
+
+    Returns the provider that was applied, or None if settings were missing.
+    """
+    if llm_env_is_locked():
+        raw = (os.environ.get("EURIKA_CHAT_PROVIDER") or "").strip().lower()
+        return raw if raw in _CHAT_PROVIDERS else None
+    path = settings_path or default_qt_settings_path()
+    try:
+        raw_text = path.read_text(encoding="utf-8")
+        data = json.loads(raw_text)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    provider = str(data.get("chat_provider") or "").strip().lower()
+    if provider not in _CHAT_PROVIDERS:
+        return None
+    target = environ if environ is not None else os.environ
+    target["EURIKA_CHAT_PROVIDER"] = provider
+    if provider == "cursor":
+        model = str(data.get("chat_cursor_model") or "").strip()
+        if model:
+            target["CURSOR_MODEL"] = model
+        opt = str(data.get("chat_cursor_router") or "").strip().lower()
+        if opt in _CURSOR_OPTIMIZE_VALUES:
+            target["CURSOR_OPTIMIZE_FOR"] = opt
+        else:
+            target.pop("CURSOR_OPTIMIZE_FOR", None)
+    return provider
 
 
 def binance_credentials_status() -> dict[str, object]:

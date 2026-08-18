@@ -38,6 +38,7 @@ class ChatTabAttrs:
     chat_mode_agent_btn: QPushButton
     chat_mode_market_btn: QPushButton
     chat_mode_learn_btn: QPushButton
+    chat_llm_source_label: QLabel
     chat_mode_status_label: QLabel
     chat_goal_view: QTextEdit
     chat_diff_view: QTextEdit

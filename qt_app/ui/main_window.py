@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
 from qt_app.adapters.eurika_api_adapter import EurikaApiAdapter
 from qt_app.services.command_service import CommandService
 from qt_app.services.settings_service import SettingsService
-from eurika.utils.env import load_project_dotenv
+from eurika.utils.env import apply_qt_chat_routing, load_project_dotenv
 from eurika.ml.root import resolve_market_root
 from qt_app.ui.styles import (
     CONTENT_MARGINS,
@@ -79,7 +79,9 @@ class MainWindow(
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle('Eurika Qt')
-        self.resize(1100, 760)
+        self.setMinimumSize(640, 420)
+        self.resize(1100, 680)
+        self._geometry_fitted = False
         self._settings = SettingsService()
         self._market_root = str(resolve_market_root())
         saved_root = self._settings.get_project_root()
@@ -113,6 +115,7 @@ class MainWindow(
         ollama_handlers.wire_ollama_process(self)
         ollama_handlers.wire_ollama_task_process(self)
         self._build_ui()
+        self._fit_to_available_screen(initial=True)
         self._wire_events()
         self._set_project_root(initial_root)
         ollama_handlers.setup_ollama_health_timer(self)
@@ -176,6 +179,31 @@ class MainWindow(
         self.status_label.setStyleSheet(get_status_style())
         root_layout.addWidget(self.status_label)
 
+    def _fit_to_available_screen(self, *, initial: bool = False) -> None:
+        """Keep the window inside the working area (taskbar/panel excluded)."""
+        app = QApplication.instance()
+        if not isinstance(app, QApplication):
+            return
+        screen = self.screen() or app.primaryScreen()
+        if screen is None:
+            return
+        avail = screen.availableGeometry()
+        extra_w = max(0, self.frameGeometry().width() - self.geometry().width())
+        extra_h = max(0, self.frameGeometry().height() - self.geometry().height())
+        max_w = max(640, avail.width() - extra_w)
+        max_h = max(420, avail.height() - extra_h)
+        if initial:
+            width = min(1100, max_w)
+            height = min(680, max_h)
+        else:
+            width = min(max(self.width(), 640), max_w)
+            height = min(max(self.height(), 420), max_h)
+        self.resize(width, height)
+        frame = self.frameGeometry()
+        x = min(max(avail.x(), frame.x()), avail.x() + max(0, avail.width() - frame.width()))
+        y = min(max(avail.y(), frame.y()), avail.y() + max(0, avail.height() - frame.height()))
+        self.move(x, y)
+
     def _on_toggle_dark_theme(self, checked: bool) -> None:
         self._settings.set_theme("dark" if checked else "light")
         set_theme_dark(checked)
@@ -201,6 +229,8 @@ class MainWindow(
             self.ml_policy_hint.setStyleSheet(get_secondary_hint())
         if hasattr(self, "ollama_gpu_hint"):
             self.ollama_gpu_hint.setStyleSheet(get_secondary_hint())
+        if hasattr(self, "chat_transcript"):
+            chat_handlers.redraw_chat_transcript(self)
 
     def _on_tab_changed(self, index: int) -> None:
         """Lazy-load Graph WebEngine when user first opens Graph tab."""
@@ -333,18 +363,25 @@ class MainWindow(
         self._command_service.command_finished.connect(lambda c: command_handlers.on_command_finished(self, c))
         self._command_service.state_changed.connect(lambda s: command_handlers.on_state_changed(self, s))
         self._sync_preview()
+
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
+        if not self._geometry_fitted:
+            self._geometry_fitted = True
+            self._fit_to_available_screen(initial=True)
         if self._first_run_prompt_pending:
             self._first_run_prompt_pending = False
             QTimer.singleShot(150, self._prompt_project_root_if_empty)
         QTimer.singleShot(400, self._check_ollama_on_startup)
 
     def _check_ollama_on_startup(self) -> None:
-        """If Ollama not running, auto-start it in background (stay on Chat)."""
+        """If Ollama not running and Chat may need it, auto-start in background."""
         if self._is_closing:
             return
         if os.environ.get('QT_QPA_PLATFORM') == 'offscreen':
+            return
+        provider = chat_handlers.current_chat_provider(self)
+        if not ollama_handlers.should_autostart_ollama(provider):
             return
         if not self._api.is_ollama_healthy():
             # Chat-first: do not steal focus to Models; start Ollama quietly.
@@ -377,6 +414,7 @@ class MainWindow(
         if hasattr(self, '_terminal_cwd'):
             self._terminal_cwd = root_resolved
         chat_handlers.load_chat_preferences(self)
+        apply_qt_chat_routing()
         market_handlers.load_market_preferences(self)
         self._ensure_gateway()
         chat_handlers.refresh_chat_goal_view(self)
@@ -596,7 +634,7 @@ class MainWindow(
         timer = getattr(self, "_market_timer", None)
         if timer is not None and timer.isActive():
             timer.stop()
-        # Chat first: default LLM timeout is ~120s; without terminate the process stays alive after the window closes.
+        # Chat first: default LLM timeout is 10 min; without terminate the process stays alive after the window closes.
         self._force_stop_qthread(self._chat_worker, soft_ms=400, hard_ms=400)
         self._chat_worker = None
         # MarketTickWorker is a QThread child of MainWindow — must finish before destroy

@@ -13,6 +13,9 @@ from typing import Any
 
 from .http_api import read_endpoint
 
+# Cursor implement loops (read/edit/nudge) often exceed 3–5 minutes.
+AGENT_HTTP_TIMEOUT_SEC = 600
+
 
 class AgentHttpClient:
     def __init__(self, url: str, token: str) -> None:
@@ -37,19 +40,19 @@ class AgentHttpClient:
             path = "/" + path
         return self._request("GET", path)
 
-    def post(self, path: str, payload: dict[str, Any] | None = None, *, timeout: float = 300) -> dict[str, Any]:
+    def post(self, path: str, payload: dict[str, Any] | None = None, *, timeout: float = AGENT_HTTP_TIMEOUT_SEC) -> dict[str, Any]:
         if not path.startswith("/"):
             path = "/" + path
         return self._request("POST", path, payload or {}, timeout=timeout)
 
-    def chat(self, message: str, *, history: list[dict[str, Any]] | None = None, timeout: float = 180) -> dict[str, Any]:
+    def chat(self, message: str, *, history: list[dict[str, Any]] | None = None, timeout: float = AGENT_HTTP_TIMEOUT_SEC) -> dict[str, Any]:
         """Core Eurika chat (`chat_send` / Qt Chat tab)."""
         payload: dict[str, Any] = {"message": message}
         if history is not None:
             payload["history"] = history
         return self.post("/api/chat", payload, timeout=timeout)
 
-    def agent_chat(self, message: str, *, context: dict[str, Any] | None = None, timeout: float = 90) -> dict[str, Any]:
+    def agent_chat(self, message: str, *, context: dict[str, Any] | None = None, timeout: float = AGENT_HTTP_TIMEOUT_SEC) -> dict[str, Any]:
         """Desktop local-agent session/chat loop."""
         payload: dict[str, Any] = {"message": message}
         if context:
@@ -63,14 +66,14 @@ class AgentHttpClient:
             payload["timeout"] = timeout
         return self.post("/api/exec", payload, timeout=http_timeout)
 
-    def rpc(self, method: str, params: dict[str, Any] | None = None, request_id: Any = 1, *, timeout: float = 300) -> dict[str, Any]:
+    def rpc(self, method: str, params: dict[str, Any] | None = None, request_id: Any = 1, *, timeout: float = AGENT_HTTP_TIMEOUT_SEC) -> dict[str, Any]:
         return self.post(
             "/rpc",
             {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params or {}},
             timeout=timeout,
         )
 
-    def _request(self, method: str, path: str, payload: dict[str, Any] | None = None, *, timeout: float = 300) -> dict[str, Any]:
+    def _request(self, method: str, path: str, payload: dict[str, Any] | None = None, *, timeout: float = AGENT_HTTP_TIMEOUT_SEC) -> dict[str, Any]:
         data = None if payload is None else json.dumps(payload).encode("utf-8")
         request = urllib.request.Request(
             f"{self.url}{path}",

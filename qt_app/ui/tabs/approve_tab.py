@@ -63,7 +63,7 @@ def build_approve_tab(main: MainWindow) -> None:
     main.approvals_diff_text = QPlainTextEdit()
     main.approvals_diff_text.setReadOnly(True)
     main.approvals_diff_text.setPlaceholderText('Click a row or file name in the table to see the diff.')
-    main.approvals_diff_text.setMinimumHeight(120)
+    main.approvals_diff_text.setMinimumHeight(64)
     main.approvals_diff_text.setFont(main.approvals_diff_text.font())
     try:
         from PySide6.QtGui import QFont

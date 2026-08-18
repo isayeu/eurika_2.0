@@ -8,8 +8,16 @@ from pathlib import Path
 import pytest
 
 from eurika.agent.http_api import AgentHttpService, read_endpoint
-from eurika.agent.http_client import AgentHttpClient
+from eurika.agent.http_client import AGENT_HTTP_TIMEOUT_SEC, AgentHttpClient
 from eurika.agent.local_runtime import LocalAgentRuntime
+
+
+def test_agent_http_client_defaults_to_ten_minutes() -> None:
+    import inspect
+
+    assert AGENT_HTTP_TIMEOUT_SEC == 600
+    assert inspect.signature(AgentHttpClient.agent_chat).parameters["timeout"].default == 600
+    assert inspect.signature(AgentHttpClient.chat).parameters["timeout"].default == 600
 
 
 @pytest.fixture

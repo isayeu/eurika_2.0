@@ -64,7 +64,16 @@ class WorkspaceTools:
         raw = value or "."
         supplied = Path(raw)
         if supplied.is_absolute():
-            raise RpcError(ERR_WORKSPACE_VIOLATION, "Paths must be workspace-relative", {"path": raw})
+            try:
+                absolute = supplied.expanduser().resolve(strict=False)
+                raw = absolute.relative_to(self.root).as_posix()
+                supplied = Path(raw)
+            except ValueError as exc:
+                raise RpcError(
+                    ERR_WORKSPACE_VIOLATION,
+                    "Paths must be workspace-relative",
+                    {"path": value},
+                ) from exc
         try:
             target = (self.root / supplied).resolve(strict=False)
         except OSError as exc:

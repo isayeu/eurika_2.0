@@ -448,6 +448,46 @@ def test_session_chat_executes_reads_but_returns_edits_for_client_approval(
     assert preview["files"][0]["after"] == "new"
 
 
+def test_implement_request_nudges_model_to_emit_edit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "sample.txt"
+    target.write_text("old", encoding="utf-8")
+    runtime = LocalAgentRuntime(tmp_path)
+    replies = iter(
+        [
+            '{"type":"final","text":"I would change sample.txt to new."}',
+            json.dumps(
+                {
+                    "type": "tool_calls",
+                    "toolCalls": [
+                        {
+                            "callId": "edit-1",
+                            "tool": "edit",
+                            "arguments": {
+                                "path": "sample.txt",
+                                "oldText": "old",
+                                "newText": "new",
+                            },
+                        }
+                    ],
+                }
+            ),
+        ]
+    )
+    monkeypatch.setattr(runtime, "_call_model", lambda prompt: (next(replies), None))
+    result = _runtime_call(
+        runtime,
+        "session/chat",
+        {"message": "Implement a one-line fix in sample.txt", "context": {}},
+        [],
+    )
+    assert target.read_text(encoding="utf-8") == "old"
+    assert result["pendingToolCalls"][0]["tool"] == "edit"
+    assert result["pendingToolCalls"][0]["arguments"]["newText"] == "new"
+    assert "Prepared tool action" in result["text"]
+
+
 def test_core_proposal_supports_granular_apply_reject_and_restore(tmp_path: Path) -> None:
     (tmp_path / "a.txt").write_text("one", encoding="utf-8")
     (tmp_path / "b.txt").write_text("two", encoding="utf-8")
@@ -968,6 +1008,25 @@ def test_workspace_confinement_rejects_parent_and_symlink_escape(tmp_path: Path)
     with pytest.raises(RpcError) as symlink_error:
         tools.resolve("escape", must_exist=True)
     assert symlink_error.value.code == ERR_WORKSPACE_VIOLATION
+
+
+def test_resolve_accepts_absolute_path_inside_workspace(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    nested = root / "qt_app"
+    nested.mkdir(parents=True)
+    target = nested / "main_window.py"
+    target.write_text("ok", encoding="utf-8")
+    tools = WorkspaceTools(root)
+    resolved = tools.resolve(str(target.resolve()))
+    assert resolved == target.resolve()
+    runtime = LocalAgentRuntime(root)
+    proposal = _runtime_call(
+        runtime,
+        "proposal/prepare",
+        {"path": str(target.resolve()), "content": "changed"},
+        [],
+    )
+    assert proposal["files"][0]["path"] == "qt_app/main_window.py"
 
 
 def test_edit_requires_approval_and_uses_optimistic_version(tmp_path: Path) -> None:

@@ -45,6 +45,12 @@ def detect_nvidia_gpu() -> bool:
         return False
 
 
+def should_autostart_ollama(provider: str) -> bool:
+    """Background `ollama serve` on Qt launch only when Chat may need a local model."""
+    raw = (provider or "auto").strip().lower()
+    return raw in {"auto", "ollama", ""}
+
+
 def apply_ollama_gpu_env(
     env: Any,
     *,

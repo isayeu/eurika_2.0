@@ -34,6 +34,30 @@ def _normalize_rel(path: str) -> str:
     return path.replace("\\", "/").lstrip("./")
 
 
+_IMPLEMENT_REQUEST = re.compile(
+    r"(?is)\b("
+    r"implement|create|write|replace|patch|refactor|"
+    r"реализуй|исправ(?:ь|ить)|поправ(?:ь|ить)|внеси правк|напиши код|"
+    r"добавь тест"
+    r")\b"
+)
+_IMPLEMENT_NUDGE = "IMPLEMENT_REQUIRED"
+
+
+def _wants_code_mutation(messages: list[dict[str, str]]) -> bool:
+    for item in reversed(messages or []):
+        if item.get("role") == "user":
+            return bool(_IMPLEMENT_REQUEST.search(str(item.get("content") or "")))
+    return False
+
+
+def _already_nudged_edit(observations: list[dict[str, Any]]) -> bool:
+    return any(
+        isinstance(item, dict) and item.get("error") == _IMPLEMENT_NUDGE
+        for item in observations
+    )
+
+
 @dataclass(slots=True)
 class LocalSession:
     id: str
@@ -327,12 +351,42 @@ class LocalAgentRuntime:
                     str(parsed.get("text") or "").strip(),
                     observations,
                 )
+                if (
+                    text
+                    and _wants_code_mutation(session.messages)
+                    and not pending_calls
+                    and not _already_nudged_edit(observations)
+                ):
+                    observations.append(
+                        {
+                            "tool": "edit",
+                            "error": _IMPLEMENT_NUDGE,
+                            "hint": "Emit tool_calls with tool=edit; do not describe the patch as type:final.",
+                        }
+                    )
+                    text = ""
+                    continue
                 if text:
                     break
                 continue
             calls = parsed.get("toolCalls")
             if not isinstance(calls, list) or not calls:
                 text = self._accept_grounded_final(str(parsed.get("text") or body or "").strip(), observations)
+                if (
+                    text
+                    and _wants_code_mutation(session.messages)
+                    and not pending_calls
+                    and not _already_nudged_edit(observations)
+                ):
+                    observations.append(
+                        {
+                            "tool": "edit",
+                            "error": _IMPLEMENT_NUDGE,
+                            "hint": "Emit tool_calls with tool=edit; do not describe the patch as type:final.",
+                        }
+                    )
+                    text = ""
+                    continue
                 if text:
                     break
                 continue
@@ -528,7 +582,9 @@ class LocalAgentRuntime:
     @staticmethod
     def _call_model(prompt: str) -> tuple[str, str | None]:
         from eurika.reasoning.architect import call_llm_with_prompt, humanize_llm_error
+        from eurika.utils.env import apply_qt_chat_routing
 
+        apply_qt_chat_routing()
         text, error = call_llm_with_prompt(prompt, max_tokens=2048)
         if error:
             return text or "", humanize_llm_error(error)
@@ -705,9 +761,12 @@ class LocalAgentRuntime:
             "verify; if search hits a test first, read the production module it "
             "imports. "
             + closing
-            + "When the user asks to create, change, fix, or implement workspace code, "
-            "use the edit tool and return the proposal for approval; do not answer with "
-            "only a description of the requested code. "
+                + "When the user asks to create, change, fix, or implement workspace code, "
+                "use the edit tool and return the proposal for approval; do not answer with "
+                "only a description of the requested code. "
+                "edit.path must be workspace-relative (e.g. qt_app/ui/main_window.py). "
+                "If TOOL_OBSERVATIONS contains IMPLEMENT_REQUIRED, the next JSON MUST be "
+                '{"type":"tool_calls","toolCalls":[{"tool":"edit","arguments":{...}}]}. '
             "For claims about the current paper Market, PnL, positions, or learning, "
             "call market_status first and assess profitability from the verdict / net "
             "PnL / mean edge, not accuracy alone. Never call a losing paper book "

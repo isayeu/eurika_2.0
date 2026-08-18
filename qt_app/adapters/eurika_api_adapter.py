@@ -31,6 +31,7 @@ from eurika.api import (
 from eurika.api import get_suggest_plan_data as _get_suggest_plan_data
 from eurika.api.chat import chat_send as _chat_send, save_chat_feedback as _save_chat_feedback
 from eurika.api.chat_host_ops import PrivilegePrompt
+from eurika.utils.env import LLM_ENV_LOCK_KEY
 
 
 class EurikaApiAdapter:
@@ -131,9 +132,11 @@ class EurikaApiAdapter:
             "CURSOR_MODEL",
             "CURSOR_OPTIMIZE_FOR",
             "EURIKA_CURSOR_CWD",
+            LLM_ENV_LOCK_KEY,
         )
         old_values = {key: os.environ.get(key) for key in keys}
         try:
+            os.environ[LLM_ENV_LOCK_KEY] = "1"
             os.environ["EURIKA_LLM_TIMEOUT_SEC"] = str(timeout_sec if timeout_sec > 0 else 3600)
             cli_timeout = timeout_sec if timeout_sec > 0 else 0
             if provider in {"auto", "ollama"} and cli_timeout > 0:
@@ -180,6 +183,9 @@ class EurikaApiAdapter:
                     os.environ.pop(key, None)
                 else:
                     os.environ[key] = value
+            from eurika.utils.env import apply_qt_chat_routing
+
+            apply_qt_chat_routing()
 
     def chat_send(
         self,

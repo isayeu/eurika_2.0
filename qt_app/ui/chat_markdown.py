@@ -9,6 +9,7 @@ from __future__ import annotations
 import html
 import re
 import uuid
+from pathlib import Path
 from typing import MutableMapping
 
 CHAT_LINK_SCHEME = "eurika-chat"
@@ -60,6 +61,14 @@ _SHELL_STARTERS = frozenset(
 _BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
 _INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
 _LIST_ITEM_RE = re.compile(r"^(\s*)([-*]|\d+\.)\s+(.*)$")
+_HEADING_RE = re.compile(r"^(#{1,3})\s+(.*)$")
+_QUOTE_RE = re.compile(r"^>\s?(.*)$")
+_HR_RE = re.compile(r"^(-{3,}|\*{3,})\s*$")
+_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
+_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+|file:[^)\s]+)\)")
+_IMAGE_LINE_RE = re.compile(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$")
+_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"}
+_MAX_CHAT_IMAGE_WIDTH = 520
 
 
 def new_block_id() -> str:
@@ -157,13 +166,52 @@ def _render_fence(
         "</td></tr>"
         "<tr><td style=\"padding:8px;\">"
         '<pre style="margin:0; font-family:monospace; font-size:12px; '
-        f'color:#e2e8f0;">{body}</pre>'
+        f'color:#e2e8f0; white-space:pre-wrap;">{body}</pre>'
         "</td></tr></table>"
     )
 
 
-def _render_inline(text: str) -> str:
-    """Escape text, then restore bold and inline code spans."""
+def resolve_chat_image_src(src: str, image_root: Path | None = None) -> str | None:
+    """Return a Qt-safe ``file://`` or data URI, or None if the target is not an image file."""
+    raw = (src or "").strip().strip('"').strip("'")
+    if not raw:
+        return None
+    if raw.startswith("data:image/"):
+        return raw
+    if raw.startswith(("http://", "https://")):
+        return None
+    local = raw[7:] if raw.startswith("file://") else raw
+    path = Path(local)
+    if not path.is_absolute() and image_root is not None:
+        path = image_root / local
+    try:
+        path = path.expanduser()
+        if path.suffix.lower() not in _IMAGE_EXTS:
+            return None
+        resolved = path.resolve()
+    except OSError:
+        return None
+    if not resolved.is_file():
+        return None
+    return resolved.as_uri()
+
+
+def _render_image_html(alt: str, src: str, image_root: Path | None) -> str:
+    resolved = resolve_chat_image_src(src, image_root)
+    alt_e = html.escape(alt or "image")
+    if not resolved:
+        return f'<span style="color:#94a3b8;">[{alt_e}]</span>'
+    src_e = html.escape(resolved, quote=True)
+    return (
+        f'<div style="margin:8px 0 4px 0;">'
+        f'<img src="{src_e}" alt="{alt_e}" width="{_MAX_CHAT_IMAGE_WIDTH}" />'
+        f'<div style="color:#94a3b8; font-size:11px; margin-top:2px;">{alt_e}</div>'
+        f"</div>"
+    )
+
+
+def _render_inline(text: str, image_root: Path | None = None) -> str:
+    """Escape text, then restore images, links, bold and inline code spans."""
     if not text:
         return ""
     placeholders: dict[str, str] = {}
@@ -173,6 +221,16 @@ def _render_inline(text: str) -> str:
         placeholders[key] = html_frag
         return key
 
+    def _image_sub(m: re.Match[str]) -> str:
+        return _hold(_render_image_html(m.group(1), m.group(2), image_root))
+
+    def _link_sub(m: re.Match[str]) -> str:
+        label = html.escape(m.group(1))
+        href = html.escape(m.group(2), quote=True)
+        return _hold(
+            f'<a href="{href}" style="color:#93c5fd; text-decoration:underline;">{label}</a>'
+        )
+
     def _code_sub(m: re.Match[str]) -> str:
         inner = html.escape(m.group(1))
         return _hold(
@@ -180,13 +238,13 @@ def _render_inline(text: str) -> str:
             f'font-family:monospace; padding:1px 4px;">{inner}</code>'
         )
 
-    # Protect inline code before bold / escape.
-    protected = _INLINE_CODE_RE.sub(_code_sub, text)
+    protected = _IMAGE_RE.sub(_image_sub, text)
+    protected = _LINK_RE.sub(_link_sub, protected)
+    protected = _INLINE_CODE_RE.sub(_code_sub, protected)
     pieces: list[str] = []
     pos = 0
     for m in _BOLD_RE.finditer(protected):
         pieces.append(html.escape(protected[pos : m.start()]).replace("\n", "<br>"))
-        # Bold body may still contain @@EURIKAHTML…@@ placeholders — keep as-is.
         bold_inner = m.group(1)
         if "@@EURIKAHTML" in bold_inner:
             pieces.append(f"<b>{bold_inner}</b>")
@@ -195,14 +253,20 @@ def _render_inline(text: str) -> str:
         pos = m.end()
     pieces.append(html.escape(protected[pos:]).replace("\n", "<br>"))
     out = "".join(pieces)
-    # Placeholders survive html.escape (letters/@ only).
     for key, frag in placeholders.items():
         out = out.replace(key, frag)
     return out
 
 
-def _render_text_block(text: str) -> str:
-    """Paragraphs + simple list items."""
+def _next_nonempty(lines: list[str], start: int) -> str | None:
+    for look in lines[start:]:
+        if look.strip():
+            return look
+    return None
+
+
+def _render_text_block(text: str, image_root: Path | None = None) -> str:
+    """Paragraphs, headings, quotes, images, lists (no ``<ol>`` — Qt leaks numbering)."""
     if not text.strip():
         return ""
     lines = text.split("\n")
@@ -214,9 +278,15 @@ def _render_text_block(text: str) -> str:
         nonlocal list_buf, list_ordered
         if not list_buf:
             return
-        tag = "ol" if list_ordered else "ul"
-        items = "".join(f"<li>{_render_inline(item)}</li>" for item in list_buf)
-        parts.append(f"<{tag}>{items}</{tag}>")
+        ordered = bool(list_ordered)
+        rows: list[str] = []
+        for i, item in enumerate(list_buf, start=1):
+            marker = f"{i}." if ordered else "•"
+            rows.append(
+                f'<p style="margin:2px 0 2px 16px;">{html.escape(marker)}&nbsp;'
+                f"{_render_inline(item, image_root)}</p>"
+            )
+        parts.append("".join(rows))
         list_buf = []
         list_ordered = None
 
@@ -226,11 +296,42 @@ def _render_text_block(text: str) -> str:
         nonlocal para
         if not para:
             return
-        body = _render_inline("\n".join(para))
-        parts.append(f"<p style=\"margin:4px 0;\">{body}</p>")
+        body = _render_inline("\n".join(para), image_root)
+        parts.append(f'<p style="margin:4px 0;">{body}</p>')
         para = []
 
-    for line in lines:
+    for idx, line in enumerate(lines):
+        img_line = _IMAGE_LINE_RE.match(line.strip())
+        if img_line:
+            flush_para()
+            flush_list()
+            parts.append(_render_image_html(img_line.group(1), img_line.group(2), image_root))
+            continue
+        heading = _HEADING_RE.match(line)
+        if heading:
+            flush_para()
+            flush_list()
+            level = len(heading.group(1))
+            size = {1: 16, 2: 15, 3: 14}.get(level, 13)
+            parts.append(
+                f'<p style="margin:8px 0 4px 0; font-size:{size}px;">'
+                f"<b>{_render_inline(heading.group(2), image_root)}</b></p>"
+            )
+            continue
+        if _HR_RE.match(line.strip()):
+            flush_para()
+            flush_list()
+            parts.append('<hr style="border:0; border-top:1px solid #334155; margin:8px 0;" />')
+            continue
+        quote = _QUOTE_RE.match(line)
+        if quote:
+            flush_para()
+            flush_list()
+            parts.append(
+                f'<p style="margin:4px 0 4px 12px; color:#94a3b8;">'
+                f"{_render_inline(quote.group(1), image_root)}</p>"
+            )
+            continue
         m = _LIST_ITEM_RE.match(line)
         if m:
             flush_para()
@@ -242,6 +343,9 @@ def _render_text_block(text: str) -> str:
             list_buf.append(m.group(3))
             continue
         if not line.strip():
+            nxt = _next_nonempty(lines, idx + 1)
+            if list_buf and nxt is not None and _LIST_ITEM_RE.match(nxt):
+                continue
             flush_list()
             flush_para()
             continue
@@ -284,16 +388,18 @@ def render_chat_markdown(
     text: str,
     *,
     payloads: MutableMapping[str, str] | None = None,
+    image_root: Path | str | None = None,
 ) -> str:
     """Convert light markdown to Qt-rich HTML. Mutates ``payloads`` for fences."""
     store: MutableMapping[str, str] = payloads if payloads is not None else {}
+    root = Path(image_root) if image_root else None
     chunks: list[str] = []
     for kind, lang, body in split_fenced_segments(text or ""):
         if kind == "fence":
             chunks.append(_render_fence(body, lang, store))
         else:
-            chunks.append(_render_text_block(body))
-    return "".join(chunks) or _render_inline(text or "")
+            chunks.append(_render_text_block(body, root))
+    return "".join(chunks) or _render_inline(text or "", root)
 
 
 def format_chat_line_html(
@@ -302,13 +408,42 @@ def format_chat_line_html(
     *,
     is_error: bool = False,
     payloads: MutableMapping[str, str] | None = None,
+    image_root: Path | str | None = None,
+    dark: bool | None = None,
 ) -> str:
-    """Role label + rendered body for ``QTextBrowser.append``."""
-    body = render_chat_markdown(text, payloads=payloads)
+    """Isolated message card. Tables prevent Qt from continuing lists across appends."""
+    from qt_app.ui.styles import is_dark_theme
+
+    use_dark = is_dark_theme() if dark is None else bool(dark)
+    body = render_chat_markdown(text, payloads=payloads, image_root=image_root)
     if role == "user":
-        label = '<b><span style="color:#1e40af">You</span></b>'
+        name = "You"
+        name_color = "#93c5fd" if use_dark else "#1e40af"
+        accent = "#3b82f6"
+        bg = "#1e293b" if use_dark else "#eff6ff"
+        fg = "#e5e7eb" if use_dark else "#111827"
     elif is_error:
-        label = '<b><span style="color:#b91c1c">Eurika</span></b>'
+        name = "Eurika"
+        name_color = "#fca5a5" if use_dark else "#b91c1c"
+        accent = "#ef4444"
+        bg = "#3f1d1d" if use_dark else "#fef2f2"
+        fg = "#fecaca" if use_dark else "#7f1d1d"
     else:
-        label = '<b><span style="color:#15803d">Eurika</span></b>'
-    return f'{label}:<div style="margin:2px 0 10px 0;">{body}</div>'
+        name = "Eurika"
+        name_color = "#86efac" if use_dark else "#15803d"
+        accent = "#22c55e"
+        bg = "#052e16" if use_dark else "#f0fdf4"
+        fg = "#e5e7eb" if use_dark else "#14532d"
+    return (
+        f'<table width="100%" cellspacing="0" cellpadding="0" '
+        f'style="margin:0 0 12px 0;">'
+        f"<tr>"
+        f'<td width="4" bgcolor="{accent}">&nbsp;</td>'
+        f'<td bgcolor="{bg}" style="padding:8px 10px;">'
+        f'<p style="margin:0 0 6px 0; font-family:sans-serif; font-size:12px; '
+        f'color:{name_color};"><b>{name}</b></p>'
+        f'<div style="font-family:sans-serif; font-size:13px; color:{fg};">{body}</div>'
+        f"</td></tr></table>"
+        # Extra break so the next QTextBrowser.insertHtml cannot inherit list format.
+        "<p style=\"margin:0; font-size:1px; color:transparent;\">&nbsp;</p>"
+    )

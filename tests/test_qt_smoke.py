@@ -36,6 +36,7 @@ def test_qt_main_window_smoke() -> None:
         assert window.chat_reject_btn is not None
         assert window.chat_pending_label is not None
         assert window.chat_provider_combo is not None
+        assert window.chat_llm_source_label is not None
         assert window.chat_cursor_model_combo is not None
         assert window.chat_cursor_router_combo is not None
         assert window.chat_cloud_box is not None
@@ -43,10 +44,12 @@ def test_qt_main_window_smoke() -> None:
         from qt_app.ui.handlers import chat_handlers
         chat_handlers.set_chat_provider(window, "cursor")
         chat_handlers.sync_chat_provider_panels(window)
+        assert window.chat_llm_source_label.text() == "LLM: Cursor"
         assert not window.chat_cursor_box.isHidden()
         assert window.chat_cloud_box.isHidden()
         chat_handlers.set_chat_provider(window, "openai")
         chat_handlers.sync_chat_provider_panels(window)
+        assert window.chat_llm_source_label.text() == "LLM: облако"
         assert not window.chat_cloud_box.isHidden()
         assert window.chat_cursor_box.isHidden()
         assert window.learning_widget_text is not None
@@ -81,6 +84,9 @@ def test_qt_main_window_smoke() -> None:
         from qt_app.ui.main_window_helpers import TerminalView
         assert isinstance(window.terminal_emulator_output, TerminalView)
         assert window.terminal_emulator_output.toPlainText().endswith("$ ")
+        assert window.minimumSizeHint().height() <= 560
+        window.resize(900, 480)
+        assert window.height() <= 500
         print("SMOKE_OK")
         sys.exit(0)
         """
@@ -113,10 +119,36 @@ def test_qt_main_window_smoke() -> None:
     )
 
 
+def test_main_window_fits_short_vertical_space() -> None:
+    """Models/Help must not force a taller-than-screen window (QTabWidget max sizeHint)."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from qt_app.ui.scroll import VerticalScrollArea
+
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    assert isinstance(window.models_inner_tabs.widget(0), VerticalScrollArea)
+    assert isinstance(window.models_inner_tabs.widget(1), VerticalScrollArea)
+    assert window.minimumSizeHint().height() <= 560
+    window.resize(900, 480)
+    assert window.height() <= 500
+
+
 def test_available_ollama_models_not_empty() -> None:
     from qt_app.ui.handlers.ollama_handlers import AVAILABLE_OLLAMA_MODELS
 
     assert len(AVAILABLE_OLLAMA_MODELS) >= 10
+
+
+def test_should_autostart_ollama_skips_cursor_and_cloud() -> None:
+    from qt_app.ui.handlers.ollama_handlers import should_autostart_ollama
+
+    assert should_autostart_ollama("auto") is True
+    assert should_autostart_ollama("ollama") is True
+    assert should_autostart_ollama("cursor") is False
+    assert should_autostart_ollama("openai") is False
+    assert should_autostart_ollama("codex") is False
 
 
 def test_resolve_ollama_model_to_install_prefers_custom() -> None:
@@ -249,6 +281,32 @@ def test_chat_input_up_down_history() -> None:
     edit2 = ChatInputEdit()
     edit2.set_history(snap)
     assert edit2.history_snapshot()[-1] == "аудит документации"
+
+
+def test_chat_input_inserts_dropped_image_file(tmp_path: Path) -> None:
+    """File-manager drops send urls, not QImage — compose must copy into chat_images."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QMimeData, QUrl
+    from PySide6.QtWidgets import QApplication
+    from qt_app.ui.main_window_helpers import ChatInputEdit
+
+    app = QApplication.instance() or QApplication([])
+    png = tmp_path / "shot.png"
+    png.write_bytes(
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
+        b"\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde"
+    )
+    edit = ChatInputEdit()
+    edit.set_project_root(str(tmp_path))
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(png))])
+    assert edit.canInsertFromMimeData(mime) is True
+    edit.insertFromMimeData(mime)
+    text = edit.toPlainText()
+    assert "![shot]" in text
+    assert ".eurika/chat_images/" in text
+    copied = list((tmp_path / ".eurika" / "chat_images").glob("*.png"))
+    assert len(copied) == 1
 
 
 def test_validate_project_root_rejects_empty() -> None:

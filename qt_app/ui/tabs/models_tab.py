@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from qt_app.ui.scroll import VerticalScrollArea
 from qt_app.ui.styles import (
     BTN_SMALL_WIDTH,
     COMBO_MAX_WIDTH,
@@ -162,7 +163,7 @@ def _build_llm_subtab(main: MainWindow) -> QWidget:
     main.ollama_output = QTextEdit()
     main.ollama_output.setReadOnly(True)
     main.ollama_output.setPlaceholderText("`ollama serve` output will appear here.")
-    main.ollama_output.setMinimumHeight(80)
+    main.ollama_output.setMinimumHeight(48)
     ollama_layout.addRow("Output", main.ollama_output)
     layout.addWidget(ollama_box)
 
@@ -260,14 +261,14 @@ def _build_llm_subtab(main: MainWindow) -> QWidget:
     main.chat_timeout_spin = QSpinBox()
     main.chat_timeout_spin.setRange(0, 9999)
     main.chat_timeout_spin.setSpecialValueText("∞ (unlimited)")
-    main.chat_timeout_spin.setValue(120)
+    main.chat_timeout_spin.setValue(600)
     main.chat_timeout_spin.setMaximumWidth(SPIN_MAX_WIDTH)
-    main.chat_timeout_spin.setToolTip("Для Cursor лучше 180–300 с.")
+    main.chat_timeout_spin.setToolTip("Для Cursor implement — 600 с (10 мин). 0 = без лимита.")
     timeout_form.addRow("Timeout сек", main.chat_timeout_spin)
     controls_layout.addLayout(timeout_form)
     layout.addWidget(controls)
     layout.addStretch(1)
-    return page
+    return VerticalScrollArea(page)
 
 
 def _build_ml_subtab(main: MainWindow) -> QWidget:
@@ -321,7 +322,7 @@ def _build_ml_subtab(main: MainWindow) -> QWidget:
     main.ml_torch_output = QTextEdit()
     main.ml_torch_output.setReadOnly(True)
     main.ml_torch_output.setPlaceholderText("PyTorch probe log…")
-    main.ml_torch_output.setMinimumHeight(100)
+    main.ml_torch_output.setMinimumHeight(48)
     form.addRow("Log", main.ml_torch_output)
 
     layout.addWidget(box)
@@ -365,4 +366,4 @@ def _build_ml_subtab(main: MainWindow) -> QWidget:
 
     layout.addWidget(learn)
     layout.addStretch(1)
-    return page
+    return VerticalScrollArea(page)

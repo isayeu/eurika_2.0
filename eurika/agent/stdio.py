@@ -50,7 +50,7 @@ class JsonRpcStdioServer:
         reader: TextIO,
         writer: TextIO,
         max_workers: int = 4,
-        default_timeout_ms: int = 300_000,
+        default_timeout_ms: int = 600_000,
     ) -> None:
         self.runtime = runtime
         self.reader = reader
@@ -205,7 +205,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Eurika local JSON-RPC agent backend")
     parser.add_argument("--workspace", type=Path, default=Path.cwd(), help="Workspace root")
     parser.add_argument("--max-workers", type=int, default=4)
-    parser.add_argument("--request-timeout-ms", type=int, default=300_000)
+    parser.add_argument("--request-timeout-ms", type=int, default=600_000)
     return parser
 
 

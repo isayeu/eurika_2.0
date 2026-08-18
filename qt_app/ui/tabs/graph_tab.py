@@ -60,7 +60,7 @@ def ensure_graph_widget(main: MainWindow) -> None:
         page = create_graph_page(view, lambda mod: on_graph_node_explain(main, mod))
         if page is not None:
             view.setPage(page)
-        view.setMinimumHeight(300)
+        view.setMinimumHeight(80)
         view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         main.graph_placeholder_layout.addWidget(view)
         main._graph_web_view = view

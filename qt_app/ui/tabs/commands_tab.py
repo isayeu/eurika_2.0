@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from qt_app.ui.scroll import VerticalScrollArea
 from qt_app.ui.styles import COMBO_MAX_WIDTH, SPIN_MAX_WIDTH, TAB_MARGINS
 
 from PySide6.QtCore import Qt
@@ -16,7 +17,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
-    QScrollArea,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -52,15 +52,10 @@ RUNTIME_MODES = [
 def build_commands_tab(main: MainWindow) -> None:
     """Build Commands tab: scan, doctor, fix, cycle, explain, options, run/stop."""
     main.commands_tab = tab = QWidget()
-    scroll = QScrollArea()
-    scroll.setWidgetResizable(True)
-    scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     content = QWidget()
     layout = QVBoxLayout(content)
     layout.setContentsMargins(0, 0, 0, 0)
     layout.setSpacing(12)
-    scroll.setWidget(content)
 
     # === Команда ===
     cmd_group = QGroupBox("Команда")
@@ -193,5 +188,5 @@ def build_commands_tab(main: MainWindow) -> None:
     layout.addStretch(1)
     outer = QVBoxLayout(tab)
     outer.setContentsMargins(*TAB_MARGINS)
-    outer.addWidget(scroll)
+    outer.addWidget(VerticalScrollArea(content))
     main.tabs.addTab(tab, "Команды")

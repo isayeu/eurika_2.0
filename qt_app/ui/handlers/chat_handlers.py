@@ -97,7 +97,7 @@ def _restore_chat_session(main: "MainWindow") -> None:
     main._chat_history.extend(restored)
     for item in restored:
         _remember_live_chat(main, item["role"], item["content"])
-        main.chat_transcript.append(
+        _append_transcript(main,
             _format_chat_line(main, item["role"], item["content"])
         )
     if restored:
@@ -179,7 +179,7 @@ def poll_live_activity(main: "MainWindow") -> None:
         if not _remember_live_chat(main, role, content):
             continue
         main._chat_history.append({"role": role, "content": content})
-        main.chat_transcript.append(_format_chat_line(main, role, content))
+        _append_transcript(main, _format_chat_line(main, role, content))
         drew_chat = True
     if drew_chat:
         _scroll_transcript_to_bottom(main)
@@ -230,7 +230,7 @@ def _apply_live_activity_event(main: "MainWindow", event: dict[str, Any]) -> Non
             main.status_label.setText(line[:120])
         if hasattr(main, "terminal_emulator_output") and main.terminal_emulator_output:
             main.terminal_emulator_output.append(line)
-        main.chat_transcript.append(_format_chat_line(main, "assistant", line))
+        _append_transcript(main, _format_chat_line(main, "assistant", line))
         _scroll_transcript_to_bottom(main)
         if kind in {"chat", "http"}:
             _maybe_show_chat_tab(main)
@@ -255,7 +255,7 @@ def _apply_live_activity_event(main: "MainWindow", event: dict[str, Any]) -> Non
                     main.tabs.setCurrentIndex(main.terminal_tab_index)
     err = str(event.get("error") or "").strip()
     if err:
-        main.chat_transcript.append(
+        _append_transcript(main,
             _format_chat_line(main, "assistant", f"[API error] {err}", is_error=True)
         )
         _scroll_transcript_to_bottom(main)
@@ -278,6 +278,8 @@ def refresh_chat_mention_candidates(main: "MainWindow") -> None:
     if not root and hasattr(main, "root_edit"):
         root = (main.root_edit.text() or "").strip()
     main.chat_input.refresh_mentions_from_root(root or None)
+    if hasattr(main.chat_input, "set_project_root"):
+        main.chat_input.set_project_root(root or None)
 
 
 def current_chat_provider(main: MainWindow) -> str:
@@ -304,6 +306,50 @@ def set_chat_provider(main: MainWindow, provider: str) -> None:
     combo.setCurrentIndex(idx if idx >= 0 else 0)
 
 
+def _chat_source_label(provider: str) -> str:
+    return {
+        "auto": "LLM: авто",
+        "openai": "LLM: облако",
+        "codex": "LLM: Codex",
+        "ollama": "LLM: Ollama",
+        "cursor": "LLM: Cursor",
+    }.get((provider or "auto").strip().lower(), "LLM: —")
+
+
+def _chat_source_tooltip(main: MainWindow, provider: str) -> str:
+    base = "Активный источник ответа (Models → Источник)"
+    key = (provider or "auto").strip().lower()
+    if key == "cursor":
+        combo = getattr(main, "chat_cursor_model_combo", None)
+        model = str(combo.currentText() if combo is not None else "").strip()
+        router_combo = getattr(main, "chat_cursor_router_combo", None)
+        router = str(router_combo.currentText() if router_combo is not None else "").strip()
+        lines = [base]
+        if model:
+            lines.append(f"Модель: {model}")
+        if router and router_combo is not None and router_combo.isEnabled():
+            lines.append(f"Router: {router}")
+        return "\n".join(lines)
+    if key in {"openai", "codex"}:
+        field = getattr(main, "chat_openai_model", None)
+        model = field.text().strip() if field is not None else ""
+        return f"{base}\nМодель: {model}" if model else base
+    if key == "ollama":
+        combo = getattr(main, "chat_ollama_model", None)
+        model = str(combo.currentText() if combo is not None else "").strip()
+        return f"{base}\nМодель: {model}" if model else base
+    return base
+
+
+def _sync_chat_llm_badge(main: MainWindow) -> None:
+    badge = getattr(main, "chat_llm_source_label", None)
+    if badge is None:
+        return
+    provider = current_chat_provider(main)
+    badge.setText(_chat_source_label(provider))
+    badge.setToolTip(_chat_source_tooltip(main, provider))
+
+
 def sync_chat_provider_panels(main: MainWindow) -> None:
     """Show only the settings that belong to the selected chat source."""
     provider = current_chat_provider(main)
@@ -327,12 +373,19 @@ def sync_chat_provider_panels(main: MainWindow) -> None:
                 "cursor": "Ответ через Cursor. Groq и Ollama не используются.",
             }.get(provider, "")
         )
+    _sync_chat_llm_badge(main)
     sync_cursor_router_enabled(main)
 
 
 def on_chat_provider_changed(main: MainWindow, *_args: object) -> None:
     sync_chat_provider_panels(main)
     save_chat_preferences(main)
+    try:
+        from eurika.utils.env import apply_qt_chat_routing
+
+        apply_qt_chat_routing()
+    except Exception:
+        pass
     if hasattr(main, "_refresh_openai_api_status"):
         main._refresh_openai_api_status()
     refresh_cursor_api_status(main)
@@ -393,6 +446,7 @@ def sync_cursor_router_enabled(main: MainWindow) -> None:
             form.setRowVisible(main.chat_cursor_router_combo, enabled)
         except Exception:
             main.chat_cursor_router_combo.setVisible(enabled)
+    _sync_chat_llm_badge(main)
 
 
 def refresh_cursor_api_status(main: MainWindow) -> None:
@@ -475,11 +529,11 @@ def load_chat_preferences(main: MainWindow) -> None:
             combo.addItem(saved_ollama)
         combo.setCurrentText(saved_ollama)
     _load_cursor_model_prefs(main, data)
-    timeout_val = data.get("chat_timeout_sec", 120)
+    timeout_val = data.get("chat_timeout_sec", 600)
     try:
         timeout = int(timeout_val)
     except (TypeError, ValueError):
-        timeout = 120
+        timeout = 600
     # Prompt ↑/↓ history (project-local; fallback qt_settings).
     _load_chat_prompt_history(main, data)
     _restore_chat_session(main)
@@ -809,6 +863,17 @@ def _chat_block_payloads(main: "MainWindow") -> dict[str, str]:
     return store
 
 
+def _chat_image_root(main: "MainWindow") -> Path | None:
+    root = ""
+    try:
+        root = str(main._settings.get_project_root() or "").strip()
+    except Exception:
+        root = ""
+    if not root and hasattr(main, "root_edit"):
+        root = (main.root_edit.text() or "").strip()
+    return Path(root) if root else None
+
+
 def _format_chat_line(
     main: "MainWindow",
     role: str,
@@ -816,13 +881,44 @@ def _format_chat_line(
     *,
     is_error: bool = False,
 ) -> str:
-    """Format chat line: role label + light markdown (fenced code frames, Copy/Run)."""
+    """Format chat line: isolated message card + light markdown (code, images)."""
     return format_chat_line_html(
         role,
         text,
         is_error=is_error,
         payloads=_chat_block_payloads(main),
+        image_root=_chat_image_root(main),
     )
+
+
+def _append_transcript(main: "MainWindow", html: str) -> None:
+    """Insert a self-contained HTML card without leaking Qt list formatting."""
+    view = getattr(main, "chat_transcript", None)
+    if view is None or not html:
+        return
+    from PySide6.QtGui import QTextBlockFormat, QTextCursor
+
+    cursor = view.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    cursor.insertHtml(html)
+    cursor.insertBlock(QTextBlockFormat())
+    view.setTextCursor(cursor)
+
+
+def redraw_chat_transcript(main: "MainWindow") -> None:
+    """Rebuild the transcript from history (theme change / layout refresh)."""
+    view = getattr(main, "chat_transcript", None)
+    if view is None:
+        return
+    main._chat_block_payloads = {}
+    view.clear()
+    for item in list(getattr(main, "_chat_history", []) or []):
+        role = str(item.get("role") or "")
+        content = str(item.get("content") or "")
+        if role not in {"user", "assistant"} or not content:
+            continue
+        _append_transcript(main, _format_chat_line(main, role, content))
+    _scroll_transcript_to_bottom(main)
 
 
 def _flash_chat_chip_status(main: "MainWindow", message: str) -> None:
@@ -927,7 +1023,7 @@ def dispatch_chat_message(main: MainWindow, message: str) -> None:
         cursor_model = str(main.chat_cursor_model_combo.currentData() or "")
     if hasattr(main, "chat_cursor_router_combo"):
         cursor_optimize = str(main.chat_cursor_router_combo.currentData() or "")
-    main.chat_transcript.append(_format_chat_line(main, "user", message))
+    _append_transcript(main, _format_chat_line(main, "user", message))
     main._chat_history.append({"role": "user", "content": message})
     _remember_live_chat(main, "user", message)
     main.chat_input.clear()
@@ -1139,21 +1235,21 @@ def on_chat_result(main: MainWindow, payload: dict[str, Any]) -> None:
     err = payload.get("error")
     # Prefer structured chat text over dumping raw tool output as [error].
     if err and not text:
-        main.chat_transcript.append(_format_chat_line(main, "assistant", f"[error]: {err}", is_error=True))
+        _append_transcript(main, _format_chat_line(main, "assistant", f"[error]: {err}", is_error=True))
         return
     if err and text:
         # Keep a short note; do not replace the expert reply with a raw dump.
         err_s = str(err).strip()
         if len(err_s) > 280:
             err_s = err_s[:240] + "…"
-        main.chat_transcript.append(
+        _append_transcript(main,
             _format_chat_line(main, "assistant", f"[note]: {err_s}", is_error=True)
         )
     if not text:
-        main.chat_transcript.append(_format_chat_line(main, "assistant", "(empty response)"))
+        _append_transcript(main, _format_chat_line(main, "assistant", "(empty response)"))
         refresh_chat_goal_view(main)
         return
-    main.chat_transcript.append(_format_chat_line(main, "assistant", text))
+    _append_transcript(main, _format_chat_line(main, "assistant", text))
     main._chat_history.append({"role": "assistant", "content": text})
     _remember_live_chat(main, "assistant", text)
     main.chat_feedback_helpful_btn.setEnabled(True)
@@ -1166,7 +1262,7 @@ def on_chat_result(main: MainWindow, payload: dict[str, Any]) -> None:
 def on_chat_error(main: MainWindow, error: str) -> None:
     if getattr(main, "_chat_cancelled", False):
         return
-    main.chat_transcript.append(_format_chat_line(main, "assistant", f"[exception]: {error}", is_error=True))
+    _append_transcript(main, _format_chat_line(main, "assistant", f"[exception]: {error}", is_error=True))
     refresh_chat_goal_view(main)
 
 
@@ -1185,7 +1281,7 @@ def activate_pending_controls_from_response(main: MainWindow, text: str) -> None
     main.chat_pending_label.setText(f"Pending plan: token={token}")
     # Re-run gate: auto-Diff may already unlock Apply for this token.
     refresh_chat_goal_view(main)
-    main.chat_transcript.append(
+    _append_transcript(main,
         _format_chat_line(
             main,
             "assistant",
@@ -1219,7 +1315,7 @@ def on_chat_finished(main: MainWindow) -> None:
         main._chat_worker.deleteLater()
         main._chat_worker = None
     if cancelled:
-        main.chat_transcript.append(
+        _append_transcript(main,
             _format_chat_line(
                 main,
                 "assistant",

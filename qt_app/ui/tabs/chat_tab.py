@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from qt_app.ui.main_window_helpers import ChatInputEdit
+from qt_app.ui.scroll import VerticalScrollArea
 from qt_app.ui.styles import TAB_MARGINS
 
 from PySide6.QtCore import Qt
@@ -70,6 +71,11 @@ def _build_mode_strip(main: MainWindow) -> QWidget:
     row.addWidget(main.chat_mode_market_btn)
     row.addWidget(main.chat_mode_learn_btn)
 
+    main.chat_llm_source_label = QLabel("LLM: —")
+    main.chat_llm_source_label.setStyleSheet("color: #64748b; font-size: 11px;")
+    main.chat_llm_source_label.setToolTip("Активный источник ответа (Models → Источник)")
+    row.addWidget(main.chat_llm_source_label)
+
     main.chat_mode_status_label = QLabel("Market: —")
     main.chat_mode_status_label.setWordWrap(True)
     main.chat_mode_status_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -92,6 +98,10 @@ def _build_dialog_page(main: MainWindow) -> QWidget:
     main.chat_transcript.setOpenExternalLinks(False)
     main.chat_transcript.setOpenLinks(False)
     main.chat_transcript.setPlaceholderText("Dialog with Eurika…")
+    main.chat_transcript.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+    main.chat_transcript.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    main.chat_transcript.document().setDocumentMargin(8)
+    main.chat_transcript.setStyleSheet("QTextBrowser { border: none; padding: 4px; }")
     main._chat_block_payloads = {}
 
     compose = QWidget()
@@ -101,9 +111,9 @@ def _build_dialog_page(main: MainWindow) -> QWidget:
 
     main.chat_input = ChatInputEdit()
     main.chat_input.setPlaceholderText(
-        "Спроси агента… @модуль/@smell · Ctrl+Enter · ↑/↓ история"
+        "Спроси агента… Ctrl+V — скриншот · @модуль · Ctrl+Enter · ↑/↓"
     )
-    main.chat_input.setMinimumHeight(72)
+    main.chat_input.setMinimumHeight(48)
     main.chat_input.setMaximumHeight(140)
     compose_layout.addWidget(main.chat_input)
 
@@ -179,7 +189,7 @@ def _build_dialog_page(main: MainWindow) -> QWidget:
         "Diff pending-плана (авто; Apply после просмотра)"
     )
     main.chat_diff_view.setStyleSheet("font-family: monospace; font-size: 12px;")
-    main.chat_diff_view.setMinimumHeight(120)
+    main.chat_diff_view.setMinimumHeight(64)
     context_layout.addWidget(main.chat_diff_view, 1)
 
     jump_row = QHBoxLayout()
@@ -415,7 +425,7 @@ def _build_market_page(main: MainWindow) -> QWidget:
     main.market_status_label.setWordWrap(True)
     main.market_status_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
     form.addRow("Статус", main.market_status_label)
-    layout.addWidget(controls)
+    layout.addWidget(VerticalScrollArea(controls, hint_height=220))
 
     main.market_transcript = QTextEdit()
     main.market_transcript.setReadOnly(True)

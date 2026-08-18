@@ -4,16 +4,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from qt_app.ui.scroll import VerticalScrollArea
 from qt_app.ui.styles import TAB_MARGINS, get_secondary_hint
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
-    QFrame,
     QGridLayout,
     QLabel,
     QPushButton,
-    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -59,12 +58,6 @@ def build_help_tab(main: MainWindow) -> None:
     header.setWordWrap(True)
     layout.addWidget(header)
 
-    scroll = QScrollArea()
-    scroll.setWidgetResizable(True)
-    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    scroll.setFrameShape(QFrame.Shape.NoFrame)
-    scroll.setContentsMargins(0, 0, 0, 0)
-
     content = QWidget()
     grid = QGridLayout(content)
     grid.setColumnStretch(1, 1)
@@ -90,6 +83,5 @@ def build_help_tab(main: MainWindow) -> None:
         open_btn.setToolTip(str(path) if exists else f"Не найден: {path}")
         grid.addWidget(open_btn, row, 2)
 
-    scroll.setWidget(content)
-    layout.addWidget(scroll, 1)
+    layout.addWidget(VerticalScrollArea(content), 1)
     main.tabs.addTab(tab, "Помощь")

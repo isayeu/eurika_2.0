@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from qt_app.ui.scroll import VerticalScrollArea
 from qt_app.ui.styles import BTN_COMPACT_WIDTH, SECTION_SPACING, TAB_MARGINS
 
 from PySide6.QtWidgets import (
@@ -73,7 +74,7 @@ def _build_overview_panel(main: MainWindow) -> QWidget:
     arch_layout.addLayout(arch_dens_row)
     main.dashboard_blast_radius_text = QTextEdit()
     main.dashboard_blast_radius_text.setReadOnly(True)
-    main.dashboard_blast_radius_text.setMaximumHeight(220)
+    main.dashboard_blast_radius_text.setMaximumHeight(140)
     main.dashboard_blast_radius_text.setPlaceholderText("Run scan for blast radius + fragility heatmap")
     main.dashboard_blast_radius_text.setToolTip(
         "RV1: blast_radius. RV10: 🟢🟡🔴 by br (green<10, yellow<30, red≥30), propagation_depth"
@@ -182,8 +183,13 @@ def _build_learning_panel(main: MainWindow) -> QWidget:
 def build_dashboard_tab(main: MainWindow) -> None:
     """Build Dashboard tab: overview + sub-tabs for Risks and Learning."""
     tab = QWidget()
-    layout = QVBoxLayout(tab)
-    layout.setContentsMargins(*TAB_MARGINS)
+    outer = QVBoxLayout(tab)
+    outer.setContentsMargins(*TAB_MARGINS)
+    outer.setSpacing(SECTION_SPACING)
+
+    content = QWidget()
+    layout = QVBoxLayout(content)
+    layout.setContentsMargins(0, 0, 0, 0)
     layout.setSpacing(SECTION_SPACING)
     refresh_row = QHBoxLayout()
     main.refresh_dashboard_btn = QPushButton("Обновить")
@@ -201,4 +207,5 @@ def build_dashboard_tab(main: MainWindow) -> None:
     sub_tabs.addTab(_build_suggest_plan_panel(main), "Suggest plan")
     sub_tabs.addTab(_build_learning_panel(main), "Обучение")
     layout.addWidget(sub_tabs, 1)
+    outer.addWidget(VerticalScrollArea(content))
     main.tabs.addTab(tab, "Dashboard")

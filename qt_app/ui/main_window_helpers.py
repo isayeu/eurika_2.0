@@ -3,11 +3,15 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
+import uuid
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Callable
 
 from eurika.api.chat_host_ops import PrivilegeAction, PrivilegePrompt
-from PySide6.QtCore import QObject, QPoint, Qt, QThread, Signal, Slot
-from PySide6.QtGui import QKeyEvent, QTextCursor
+from PySide6.QtCore import QMimeData, QObject, QPoint, Qt, QThread, Signal, Slot
+from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QImage, QKeyEvent, QPixmap, QTextCursor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QInputDialog,
@@ -27,6 +31,7 @@ _ANSI_STRIP_RE = re.compile(
 _OLLAMA_PULL_PCT_RE = re.compile(r'(\d+)\s*%')
 _OLLAMA_PULL_MB_GB_RE = re.compile(r'(\d+)\s*MB\s*/\s*([\d.]+)\s*GB')
 _TUI_COMMANDS = frozenset(('htop', 'top', 'vim', 'vi', 'nano', 'less', 'more', 'watch', 'mc'))
+CHAT_IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"})
 
 
 class HostPrivilegeBridge(QObject):
@@ -531,7 +536,124 @@ class ChatInputEdit(QTextEdit):
         self._pending_from_history: str | None = None
         self._mention_catalog: list[str] = []
         self._mention_popup: QListWidget | None = None
+        self._project_root: str = ""
+        self.setAcceptDrops(True)
         self.textChanged.connect(self._on_text_changed_for_mentions)
+
+    def set_project_root(self, root: str | None) -> None:
+        self._project_root = str(root or "").strip()
+
+    def _save_pasted_image(self, image: QImage) -> str | None:
+        if image is None or image.isNull():
+            return None
+        scaled = image
+        if scaled.width() > 1920:
+            scaled = scaled.scaledToWidth(1920, Qt.TransformationMode.SmoothTransformation)
+        root = Path(self._project_root).expanduser() if self._project_root else Path.home()
+        folder = root / ".eurika" / "chat_images"
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            return None
+        name = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}.png"
+        path = folder / name
+        if not scaled.save(str(path), "PNG"):
+            return None
+        try:
+            return path.relative_to(root).as_posix()
+        except ValueError:
+            return str(path)
+
+    def _chat_images_root(self) -> Path:
+        root = Path(self._project_root).expanduser() if self._project_root else Path.home()
+        return root / ".eurika" / "chat_images"
+
+    def _rel_chat_image_path(self, path: Path) -> str:
+        root = Path(self._project_root).expanduser() if self._project_root else Path.home()
+        try:
+            return path.relative_to(root).as_posix()
+        except ValueError:
+            return str(path)
+
+    def _copy_image_file(self, src: Path) -> str | None:
+        if src.suffix.lower() not in CHAT_IMAGE_EXTS or not src.is_file():
+            return None
+        folder = self._chat_images_root()
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            return None
+        dest = folder / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}{src.suffix.lower()}"
+        try:
+            shutil.copy2(src, dest)
+        except OSError:
+            return None
+        return self._rel_chat_image_path(dest)
+
+    def _image_paths_from_mime(self, source: QMimeData | None) -> list[Path]:
+        if source is None or not source.hasUrls():
+            return []
+        out: list[Path] = []
+        for url in source.urls():
+            local = url.toLocalFile()
+            if not local:
+                continue
+            path = Path(local)
+            if path.suffix.lower() in CHAT_IMAGE_EXTS and path.is_file():
+                out.append(path)
+        return out
+
+    def _insert_image_file(self, path: Path) -> bool:
+        rel = self._copy_image_file(path)
+        if not rel:
+            return False
+        alt = path.stem or "image"
+        self.textCursor().insertText(f"\n![{alt}]({rel})\n")
+        return True
+
+    def _insert_screenshot_markdown(self, image: QImage) -> bool:
+        rel = self._save_pasted_image(image)
+        if not rel:
+            return False
+        self.textCursor().insertText(f"\n![screenshot]({rel})\n")
+        return True
+
+    def canInsertFromMimeData(self, source: QMimeData) -> bool:
+        if source is not None and (source.hasImage() or bool(self._image_paths_from_mime(source))):
+            return True
+        return super().canInsertFromMimeData(source)
+
+    def insertFromMimeData(self, source: QMimeData) -> None:
+        if source is not None and source.hasImage():
+            raw = source.imageData()
+            image: QImage | None = None
+            if isinstance(raw, QImage):
+                image = raw
+            elif isinstance(raw, QPixmap):
+                image = raw.toImage()
+            if image is not None and self._insert_screenshot_markdown(image):
+                return
+        if source is not None:
+            inserted = False
+            for path in self._image_paths_from_mime(source):
+                inserted = self._insert_image_file(path) or inserted
+            if inserted:
+                return
+        super().insertFromMimeData(source)
+
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        mime = event.mimeData()
+        if mime is not None and (mime.hasImage() or self._image_paths_from_mime(mime)):
+            event.acceptProposedAction()
+            return
+        super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event: QDragMoveEvent) -> None:
+        mime = event.mimeData()
+        if mime is not None and (mime.hasImage() or self._image_paths_from_mime(mime)):
+            event.acceptProposedAction()
+            return
+        super().dragMoveEvent(event)
 
     def set_mention_catalog(self, items: list[str] | None) -> None:
         self._mention_catalog = [str(x) for x in (items or []) if str(x).strip()]
@@ -540,6 +662,7 @@ class ChatInputEdit(QTextEdit):
         from eurika.api.chat_mentions import build_mention_catalog
 
         self.set_mention_catalog(build_mention_catalog(root))
+        self.set_project_root(root)
 
     def mention_popup_visible(self) -> bool:
         return bool(self._mention_popup is not None and self._mention_popup.isVisible())

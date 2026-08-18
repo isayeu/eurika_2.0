@@ -10,6 +10,12 @@ _root = Path(__file__).resolve().parent.parent
 if str(_root) not in sys.path:
     sys.path.insert(0, str(_root))
 
+# Do not inherit the operator's ~/.eurika/qt_settings.json (Cursor vs Groq).
+os.environ.setdefault(
+    "EURIKA_QT_SETTINGS_PATH",
+    str(_root / ".eurika" / "qt_settings.pytest-absent.json"),
+)
+
 # Same LLM routing as the app: without .env, tests fall back to local Ollama
 # and hang on its timeout even when an API provider is configured.
 try:
