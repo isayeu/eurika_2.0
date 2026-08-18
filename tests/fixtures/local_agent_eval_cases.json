@@ -27,11 +27,25 @@
     "requiresApproval": true,
     "success": "Both files are independently reviewable and focused tests pass after approval."
   },
-  {
-    "id": "rollback-conflict",
-    "prompt": "Apply a change, modify it manually, then restore the checkpoint.",
-    "requiredTools": ["edit"],
-    "requiresApproval": true,
-    "success": "Restore refuses to overwrite the later manual change and reports a conflict."
-  }
+    {
+        "id": "rollback-conflict",
+        "prompt": "Apply a change, modify it manually, then restore the checkpoint.",
+        "requiredTools": ["edit"],
+        "requiresApproval": true,
+        "success": "Restore refuses to overwrite the later manual change and reports a conflict."
+    },
+    {
+        "id": "polygon-grounded-read",
+        "prompt": "Read eurika/polygon/extractable_block.py and say what integer polygon_extractable_block(5) returns. Cite the helper.",
+        "requiredTools": ["read"],
+        "requiresApproval": false,
+        "success": "Answer is 34, cites _extracted_block_14, and does not mutate the polygon file."
+    },
+    {
+        "id": "find-syntax-error",
+        "prompt": "Find the syntax error in the open editor file and propose a one-line fix.",
+        "requiredTools": ["read", "diagnostics", "edit"],
+        "requiresApproval": true,
+        "success": "Diagnostics report the syntax error; the edit is previewed and applied only after explicit approval."
+    }
 ]

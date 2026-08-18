@@ -625,9 +625,9 @@ class LocalAgentRuntime:
     ) -> str:
         tools = {
             name: {
-                "description": contract["description"],
+                "description": str(contract["description"])[:120],
                 "requiresApproval": contract["requiresApproval"],
-                "inputSchema": contract["inputSchema"],
+                "required": list((contract.get("inputSchema") or {}).get("required") or []),
             }
             for name, contract in TOOL_CONTRACTS.items()
         }
@@ -674,10 +674,10 @@ class LocalAgentRuntime:
             "output unless a terminal tool observation is present. "
             "Use read-only tools to gather evidence. Side-effecting tools are presented "
             "to the user for approval and are never executed automatically.\n"
-            f"CONVERSATION={bounded(session.messages[-12:], 40_000)}\n"
-            f"EDITOR_CONTEXT={bounded(context, 220_000)}\n"
-            f"TOOL_OBSERVATIONS={bounded(observations, 160_000)}\n"
-            f"TOOLS={bounded(tools, 60_000)}"
+            f"CONVERSATION={bounded(session.messages[-8:], 12_000)}\n"
+            f"EDITOR_CONTEXT={bounded(context, 40_000)}\n"
+            f"TOOL_OBSERVATIONS={bounded(observations, 40_000)}\n"
+            f"TOOLS={bounded(tools, 8_000)}"
         )
 
     def _call_tool(

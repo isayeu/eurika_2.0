@@ -74,6 +74,10 @@ _BARE_FILE_READ = re.compile(
     r"^(?:sed\s+-n\s+'[0-9,]+p'|head(?:\s+-n)?\s+\d+|cat)\s+"
     r"(?!/)(?!\.\./)([a-zA-Z0-9_./-]+\.py)\s*$"
 )
+_BARE_PYTHON_PRINT = re.compile(
+    r"^python(?:3)?\s+-c\s+['\"].*['\"]\s*$",
+    re.IGNORECASE,
+)
 _TOOL_FENCE = re.compile(
     r"```(?:eurika-cmds|eurika_cmds)[^\S\n]*\n(.*?)```",
     re.IGNORECASE | re.DOTALL,
@@ -150,6 +154,39 @@ def is_safe_host_command(cmd: str) -> bool:
     """
     s = (cmd or "").strip()
     return bool(s) and len(s) <= _MAX_CMD_LEN
+
+
+_DEV_NULL_REDIR = re.compile(r"(?:\d)?>>?\s*/dev/null|\b2>&1\b")
+_MUTATING_BIN = re.compile(
+    r"(?:^|[;&|]\s*)(?:rm|mv|cp|chmod|chown|chgrp|truncate|dd|install|touch|mkdir|"
+    r"rmdir|ln|tee|sed\s+-i|perl\s+-i)\b",
+    re.IGNORECASE,
+)
+_WRITE_OPEN = re.compile(
+    r"""open\s*\([^)]*['\"][wa]|\.write_text\s*\(|\.write_bytes\s*\(|"""
+    r"""Path\([^)]*\)\.write|to_json\s*\(|dump\s*\([^,]*,\s*open\s*\(""",
+    re.IGNORECASE,
+)
+_FILE_REDIRECT = re.compile(r"(?:^|[^0-9])(?:>>|>)\s*(?!/dev/)")
+
+
+def host_command_mutates_workspace(cmd: str) -> bool:
+    """True when a host_shell line would create/overwrite/delete files.
+
+    Chat tool-loop is for facts (grep/sed/python -c print). Mutations go through
+    HITL Apply / agent ``edit`` proposals — same boundary as Cursor Agent.
+    """
+    s = (cmd or "").strip()
+    if not s:
+        return False
+    cleaned = _DEV_NULL_REDIR.sub(" ", s)
+    if _MUTATING_BIN.search(cleaned):
+        return True
+    if _FILE_REDIRECT.search(cleaned):
+        return True
+    if _WRITE_OPEN.search(cleaned):
+        return True
+    return False
 
 
 def harden_host_command(cmd: str) -> str:
@@ -371,6 +408,8 @@ def extract_eurika_cmds(text: str) -> List[str]:
         bare = (text or "").strip().strip("`").strip()
         if "\n" not in bare and _BARE_FILE_READ.match(bare):
             _add([bare])
+        elif "\n" not in bare and _BARE_PYTHON_PRINT.match(bare) and not host_command_mutates_workspace(bare):
+            _add([bare])
 
     return out
 
@@ -553,6 +592,9 @@ def tool_protocol_instructions(experience_snippet: str | None = None) -> str:
         "Отвечай на языке пользователя (для русского — только русский, без смеси языков). "
         "Коммит/push/запись файлов через git commit — не делай сам: опиши план "
         "и дождись подтверждения «применяй». "
+        "Не пиши в файлы проекта из eurika-cmds (нет `>`, `tee`, `rm`, `sed -i`, "
+        "Path.write_text): такие команды будут отказаны. Правки кода — через "
+        "предложение diff / «применяй», не через shell. "
         "Обычные примеры кода показывай в ```bash``` / ```python``` — их увидит "
         "пользователь (Copy/Run), они НЕ запускаются автоматически. "
         "Не проси пользователя запускать команды вручную, если можешь сделать это "
@@ -1000,6 +1042,18 @@ def run_llm_tool_loop(
             log_parts.append("=== HOST TOOL LOOP ===")
         obs: List[str] = []
         for cmd in cmds:
+            if host_command_mutates_workspace(cmd):
+                msg = (
+                    f"$ {cmd}\n(exit 126)\n"
+                    "отказ: команда меняет файлы. Чтение — sed/grep/python -c print; "
+                    "правка кода — diff / «применяй», не redirect и не write_text."
+                )
+                executed.append(cmd)
+                log_parts.append(msg)
+                obs.append(msg)
+                if worst == 0:
+                    worst = 126
+                continue
             result = run_host_command_with_privilege(
                 cmd,
                 privilege_prompt=privilege_prompt,

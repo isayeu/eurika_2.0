@@ -117,6 +117,20 @@ def test_bare_sed_polygon_read_is_tool_call() -> None:
     assert extract_eurika_cmds("rm eurika/polygon/deep_nesting.py") == []
 
 
+def test_host_command_mutates_workspace_blocks_writes() -> None:
+    from eurika.api.chat_host_ops import host_command_mutates_workspace
+
+    assert host_command_mutates_workspace("sed -n '1,80p' eurika/polygon/deep_nesting.py") is False
+    assert host_command_mutates_workspace("python -c \"print(1)\"") is False
+    assert host_command_mutates_workspace("ls -la 2>/dev/null") is False
+    assert host_command_mutates_workspace("echo hi > eurika/polygon/deep_nesting.py") is True
+    assert host_command_mutates_workspace("rm -f eurika/polygon/imports_ok.py") is True
+    assert host_command_mutates_workspace("tee eurika/polygon/imports_ok.py") is True
+    assert host_command_mutates_workspace(
+        "python -c \"from pathlib import Path; Path('x.py').write_text('nope')\""
+    ) is True
+
+
 def test_pwd_and_pipes_are_allowed() -> None:
     assert is_safe_host_command("pwd") is True
     assert extract_eurika_cmds("```eurika-cmds\npwd\nls -la | head\n```") == [
