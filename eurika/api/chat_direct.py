@@ -450,7 +450,7 @@ def _accept_soft_handler(handler_id: Optional[str], msg: str) -> bool:
         return False
     if handler_id == "add_module_test" and not is_add_module_test_request(msg):
         return False
-    if handler_id == "git_commit" and not is_git_commit_request(msg):
+    if handler_id == "git_commit" and not is_git_commit_request(msg) and not is_git_commit_and_push_request(msg):
         return False
     # Soft/vector must not map scan typos (scsn) to unrelated skills like list_docs.
     if looks_like_scan_typo(msg) and handler_id != "scan":
@@ -470,10 +470,14 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
     # Never fuzzy-route HITL confirmations (vector may map «отклонить» → show_report).
     if is_reject_confirmation(msg) or is_apply_confirmation(msg):
         return (None, None)
-    # Explicit commit requests must beat incidental ROADMAP/phase text supplied
-    # as the desired commit-message context.
-    if is_git_commit_request(msg):
+    # Explicit commit/push must beat incidental ROADMAP/phase text supplied
+    # as the desired commit-message context. Force push is refused in the handler.
+    if is_force_push_request(msg):
+        return ("git_push", None)
+    if is_git_commit_and_push_request(msg) or is_git_commit_request(msg):
         return ("git_commit", None)
+    if is_git_push_request(msg):
+        return ("git_push", None)
     # A concrete test request belongs to the run_tests executor. Without this
     # guard the vector matcher may turn an arbitrary test path into qt smoke.
     detected_run = detect_run(msg, msg.lower())
@@ -485,7 +489,7 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
         # YAML may still list status phrases under git_commit — demote those.
         if hid in _LLM_TOOL_LOOP_FACTS:
             pass
-        elif hid == "git_commit" and not is_git_commit_request(msg):
+        elif hid == "git_commit" and not is_git_commit_request(msg) and not is_git_commit_and_push_request(msg):
             pass
         else:
             return matched
@@ -527,6 +531,12 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
     # No domain auto-shell: host questions fall through to the LLM tool-loop.
     if is_os_env_check_request(msg):
         return ("self_check", "$ eurika self-check .")
+    if is_force_push_request(msg):
+        return ("git_push", None)
+    if is_git_commit_and_push_request(msg) or (
+        is_git_commit_request(msg) and is_git_push_request(msg)
+    ):
+        return ("git_commit", None)
     if is_git_push_request(msg):
         return ("git_push", None)
     if is_git_commit_request(msg):
@@ -955,8 +965,51 @@ def is_ritual_request(message: str) -> bool:
     return any(k in msg for k in keywords)
 
 
+def is_force_push_request(message: str) -> bool:
+    """True when the user asked for a force push — always refused."""
+    msg = _norm_msg(message)
+    if not msg:
+        return False
+    needles = (
+        "force push",
+        "push --force",
+        "push -f",
+        "--force-with-lease",
+        "force-with-lease",
+        "force-пуш",
+        "force пуш",
+        "пуш с force",
+        "форс пуш",
+        "форс-пуш",
+    )
+    return any(k in msg for k in needles)
+
+
+def is_git_commit_and_push_request(message: str) -> bool:
+    """Detect combined commit+push (HITL → apply does both)."""
+    msg = _norm_msg(message)
+    if not msg:
+        return False
+    phrases = (
+        "commit and push",
+        "commit & push",
+        "commit+push",
+        "закоммить и запушь",
+        "закоммить и пуш",
+        "собери коммит и запушь",
+        "сделай коммит и запушь",
+        "создай коммит и запушь",
+        "закоммить и отправь",
+        "коммит и пуш",
+        "коммит и push",
+    )
+    if any(p in msg for p in phrases):
+        return True
+    return is_git_commit_request(message) and is_git_push_request(message)
+
+
 def is_git_push_request(message: str) -> bool:
-    """Detect git push request (chat explains Terminal; no auto-push)."""
+    """Detect git push request (HITL → ``применяй``; never auto-push)."""
     msg = _norm_msg(message)
     if not msg:
         return False
@@ -970,6 +1023,7 @@ def is_git_push_request(message: str) -> bool:
         "push to remote",
         "отправь на github",
         "отправь в remote",
+        "отправь на origin",
     )
     if any(k in msg for k in keywords):
         return True
@@ -1046,16 +1100,19 @@ def extract_commit_message_from_request(message: str) -> Optional[str]:
 
 
 def infer_commit_message_via_llm(
-    user_message: str, status_out: str, diff_snippet: str
+    user_message: str, status_out: str, diff_snippet: str, log_snippet: str = ""
 ) -> Optional[str]:
     """Infer commit message from user intent via LLM. Fallback-safe."""
     if not user_message or not user_message.strip():
         return None
+    style = (log_snippet or "").strip()[:600]
+    style_block = f"\nRecent commit subjects (match this style):\n{style}\n" if style else ""
     prompt = f"""User wants to commit. Their message: "{user_message.strip()[:500]}"
 Changed files (git status): {status_out[:600]}
 Diff snippet: {diff_snippet[:800]}
-
-Reply with ONLY the commit message (1-2 lines), no quotes, no explanation. Convey what the user asked for."""
+{style_block}
+Reply with ONLY the commit message (1-2 sentences), no quotes, no explanation.
+Focus on WHY, not a file count. Do not mention secrets. Do not write "Update N files"."""
     try:
         from eurika.reasoning.architect import call_llm_with_prompt
 

@@ -364,11 +364,59 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
     if handler_id == 'git_push':
+        import secrets
+        from eurika.api.chat_direct import is_force_push_request
+        from eurika.api.chat_git import inspect_push
+
+        if is_force_push_request(msg):
+            text = (
+                "Force push не делаю (ни `--force`, ни `--force-with-lease`). "
+                "Обычный `git push` — напиши «запушь» без force."
+            )
+            append_safe(root, 'user', msg, None)
+            append_safe(root, 'assistant', text, None)
+            return {'text': text, 'error': None}
+        info = inspect_push(root)
+        branch = str(info.get('branch') or '?')
+        if not info.get('has_origin'):
+            text = f"Ветка `{branch}`: нет remote `origin` — push некуда."
+            append_safe(root, 'user', msg, None)
+            append_safe(root, 'assistant', text, None)
+            return {'text': text, 'error': None}
+        ahead = info.get('ahead')
+        if info.get('upstream') and ahead == 0:
+            text = (
+                f"Ветка `{branch}` уже синхронна с `{info.get('upstream')}` "
+                "(ahead=0). Пушить нечего."
+            )
+            append_safe(root, 'user', msg, None)
+            append_safe(root, 'assistant', text, None)
+            return {'text': text, 'error': None}
+        token = secrets.token_hex(4)
+        cmd = "git push -u origin HEAD" if info.get('needs_upstream') else "git push"
+        proposed = f"Push {branch} to origin"
+        state['pending_git_commit'] = {
+            'message': proposed,
+            'token': token,
+            'paths': [],
+            'skipped_secrets': [],
+            'push_after': True,
+            'action': 'push',
+            'branch': branch,
+            'protected': bool(info.get('protected')),
+        }
+        save_dialog_state(root, state)
+        warn = ""
+        if info.get('protected'):
+            warn = (
+                f"\nВетка `{branch}` — основная. Обычный push после Apply разрешён; "
+                "force Эврика не делает."
+            )
+        ahead_s = f"ahead={ahead}" if ahead is not None else "upstream ещё нет"
         text = (
-            '**git push** из чата не запускаю (нужен твой Terminal / SSH).\n\n'
-            'Коммит уже локальный — выполни в Terminal:\n'
-            '```\ngit push\n```\n'
-            'Или `git push -u origin HEAD`, если ветка ещё не на remote.'
+            f"**git push** `{branch}` → origin ({ahead_s}).\n"
+            f"Команда: `{cmd}`.{warn}\n\n"
+            f"Напиши **применяй token:{token}** (или [Apply])."
         )
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
@@ -773,6 +821,15 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         return {'text': text, 'error': None}
     if handler_id == 'git_commit':
         import secrets
+        from eurika.api.chat_direct import (
+            is_git_commit_and_push_request,
+            is_git_push_request,
+        )
+        from eurika.api.chat_git import (
+            collect_commit_preview,
+            format_commit_preview_blocks,
+            inspect_push,
+        )
         from eurika.api.chat_tools import git_diff, git_status
         term_parts: list[str] = []
         if run_command_with_result is not None:
@@ -794,31 +851,70 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         else:
             ok_status, status_out = git_status(root)
             ok_diff, diff_out = git_diff(root)
-            term_cmd = "$ git status && git diff"
+            term_cmd = "$ git status && git diff && git log -8 --oneline"
             term_out = f"{status_out or ''}\n{diff_out or ''}".strip()
             term_code = 0 if ok_status else 1
-        if not ok_status and (not status_out):
-            status_out = 'Не git-репозиторий или git недоступен.'
-        blocks = [f"**git status**\n```\n{status_out or '(пусто)'}\n```"]
-        if diff_out:
-            blocks.append(f"**git diff**\n```\n{diff_out[:4000]}{('...' if len(diff_out) > 4000 else '')}\n```")
-        if ok_status and status_out.strip():
+        preview = collect_commit_preview(root)
+        if not preview.get('ok'):
+            ok_status = False
+            if not status_out:
+                status_out = str(preview.get('error') or 'Не git-репозиторий или git недоступен.')
+        push_after = is_git_commit_and_push_request(msg) or is_git_push_request(msg)
+        push_info = inspect_push(root) if push_after else None
+        include = list(preview.get('include') or [])
+        if ok_status and include:
             explicit = extract_commit_message_from_request(msg)
             if explicit:
                 proposed = explicit
             else:
-                minimal = msg.strip().lower() in ('собери коммит', 'сделай коммит', 'commit', 'коммит') or len(msg.strip()) < 20
+                minimal = msg.strip().lower() in (
+                    'собери коммит', 'сделай коммит', 'commit', 'коммит',
+                    'закоммить и запушь', 'commit and push',
+                ) or len(msg.strip()) < 20
+                log_snip = str(preview.get('log') or '')
                 if not minimal:
-                    inferred = infer_commit_message_via_llm(msg, status_out, diff_out[:1500] if diff_out else '')
-                    proposed = inferred if inferred else propose_commit_message_from_status(status_out, diff_out or '')
+                    inferred = infer_commit_message_via_llm(
+                        msg,
+                        status_out,
+                        (diff_out[:1500] if diff_out else ''),
+                        log_snip,
+                    )
+                    proposed = inferred if inferred else propose_commit_message_from_status(
+                        status_out, diff_out or ''
+                    )
                 else:
                     proposed = propose_commit_message_from_status(status_out, diff_out or '')
             token = secrets.token_hex(4)
-            state['pending_git_commit'] = {'message': proposed, 'token': token}
+            state['pending_git_commit'] = {
+                'message': proposed,
+                'token': token,
+                'paths': include,
+                'skipped_secrets': list(preview.get('skipped_secrets') or []),
+                'push_after': push_after,
+                'action': 'commit_push' if push_after else 'commit',
+                'branch': preview.get('branch') or '',
+                'protected': bool(preview.get('protected')),
+            }
             save_dialog_state(root, state)
-            blocks.append(f'\nПредлагаю коммит с сообщением: «{proposed}». Напиши **применяй token:{token}** для подтверждения (или нажми [Apply]).')
+            blocks = format_commit_preview_blocks(
+                status_out=status_out,
+                diff_out=diff_out or '',
+                preview=preview,
+                proposed=proposed,
+                token=token,
+                push_after=push_after,
+                push_info=push_info,
+            )
         else:
-            blocks.append('\nНет изменений для коммита.')
+            blocks = [f"**git status**\n```\n{status_out or '(пусто)'}\n```"]
+            skipped = list(preview.get('skipped_secrets') or [])
+            if skipped and not include:
+                blocks.append(
+                    'Нет безопасных файлов для коммита. Пропущены секреты:\n'
+                    + '\n'.join(f'- `{p}`' for p in skipped)
+                )
+            else:
+                blocks.append('\nНет изменений для коммита.')
         text = '\n\n'.join(blocks)
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)

@@ -21,6 +21,16 @@ RPC_METHOD_CONTRACTS: dict[str, dict[str, Any]] = {
         "mutatesWorkspace": False,
         "inputSchema": {"type": "object"},
     },
+    "activity/recent": {
+        "mutatesWorkspace": False,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "afterOffset": {"type": "integer", "minimum": 0},
+                "limit": {"type": "integer", "minimum": 0, "maximum": 200},
+            },
+        },
+    },
     "proposal/prepare": {
         "mutatesWorkspace": False,
         "inputSchema": {"type": "object"},

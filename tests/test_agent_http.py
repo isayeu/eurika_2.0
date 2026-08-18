@@ -66,6 +66,15 @@ def test_agent_http_chat_executes_bare_tool_json(
     assert result["pendingToolCalls"] == []
 
 
+def test_health_hit_is_written_to_live_activity(agent_http: AgentHttpService, tmp_path: Path) -> None:
+    from eurika.agent.live_activity import recent
+
+    client = AgentHttpClient(agent_http.url, agent_http.token)
+    assert client.health()["ok"] is True
+    titles = [event.get("title") for event in recent(tmp_path)["events"]]
+    assert any(isinstance(title, str) and "GET /health" in title for title in titles)
+
+
 def test_agent_http_stops_and_removes_endpoint(tmp_path: Path) -> None:
     runtime = LocalAgentRuntime(tmp_path)
     service = AgentHttpService(runtime, port=0)

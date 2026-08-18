@@ -413,6 +413,12 @@ def format_agent_context_panel(
         lines.append("")
         lines.append("Pending git commit:")
         lines.append(f"- message: {pending_git.get('message', '-')}")
+        action = str(pending_git.get("action") or "commit")
+        if pending_git.get("push_after") or action in {"push", "commit_push"}:
+            lines.append(f"- action: {action} (push after apply)")
+        paths = pending_git.get("paths") or []
+        if isinstance(paths, list) and paths:
+            lines.append(f"- files: {', '.join(str(p) for p in paths[:8])}")
 
     has_substance = goal_dict is not None or (
         isinstance(pending, dict) and bool(pending)

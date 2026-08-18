@@ -49,7 +49,18 @@ def dispatch_api_post(handler, project_root: Path, path: str, body: dict | None)
             if err:
                 _json_response(handler, {'error': err, 'hint': 'Expected timeout: integer, null, or 1..3600'}, status=400)
                 return True
-        _json_response(handler, exec_eurika_command(project_root, command, timeout))
+        from eurika.agent.live_activity import publish_done, publish_start
+
+        started = publish_start(
+            project_root, "POST /api/exec", {"command": command}, client="http"
+        )
+        try:
+            result = exec_eurika_command(project_root, command, timeout)
+        except Exception as exc:
+            publish_done(project_root, started, ok=False, error=str(exc))
+            raise
+        publish_done(project_root, started, ok=True, result=result if isinstance(result, dict) else {})
+        _json_response(handler, result)
         return True
     if path == '/api/chat':
         if not body or 'message' not in body:
@@ -77,7 +88,20 @@ def dispatch_api_post(handler, project_root: Path, path: str, body: dict | None)
                     _json_response(handler, {'error': 'invalid history payload', 'hint': 'history item content must be string'}, status=400)
                     return True
         from eurika.api.chat import chat_send
-        result = chat_send(project_root, message, history=history)
+        from eurika.agent.live_activity import publish_done, publish_start
+
+        client = "http"
+        if isinstance(body.get("client"), str) and body["client"].strip():
+            client = body["client"].strip()[:40]
+        started = publish_start(
+            project_root, "POST /api/chat", {"message": message}, client=client
+        )
+        try:
+            result = chat_send(project_root, message, history=history)
+        except Exception as exc:
+            publish_done(project_root, started, ok=False, error=str(exc))
+            raise
+        publish_done(project_root, started, ok=True, result=result if isinstance(result, dict) else {})
         _json_response(handler, result)
         return True
     if path == '/api/ask_architect':

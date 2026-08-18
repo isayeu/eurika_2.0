@@ -58,6 +58,21 @@ let chatRequestId: string | undefined;
 let streamMessage: HTMLElement | undefined;
 let fileTree: FileTreeNode[] = [];
 const expandedFolders = new Set<string>();
+const seenChatKeys = new Set<string>();
+const seenActivityKeys = new Set<string>();
+let activityOffset = 0;
+let livePollTimer: number | undefined;
+
+function chatKey(role: string, text: string): string {
+  return `${role}:${text.trim().slice(0, 800)}`;
+}
+
+function rememberChat(role: string, text: string): boolean {
+  const key = chatKey(role, text);
+  if (seenChatKeys.has(key)) return false;
+  seenChatKeys.add(key);
+  return true;
+}
 
 function required(id: string): HTMLElement {
   const value = document.getElementById(id);
@@ -136,8 +151,12 @@ async function openWorkspace(requested?: string): Promise<void> {
     throw new Error("Trust this folder to start Eurika. The backend was not started.");
   }
   workspaceElement.textContent = String(result.workspace ?? "");
+  seenChatKeys.clear();
+  seenActivityKeys.clear();
+  activityOffset = 0;
   await restoreChatHistory();
   await refreshFiles();
+  startLiveFollow();
 }
 
 async function restoreChatHistory(): Promise<void> {
@@ -145,8 +164,59 @@ async function restoreChatHistory(): Promise<void> {
     messages: Array<{ role: string; content: string }>;
   }>("session/history", { limit: 80 });
   messagesElement.replaceChildren();
+  seenChatKeys.clear();
   for (const message of history.messages) {
     appendMessage(message.role, message.content);
+  }
+}
+
+function startLiveFollow(): void {
+  if (livePollTimer !== undefined) window.clearInterval(livePollTimer);
+  livePollTimer = window.setInterval(() => {
+    void pollLiveActivity();
+  }, 800);
+}
+
+async function pollLiveActivity(): Promise<void> {
+  try {
+    const activity = await window.eurika.request<{
+      events: Array<{
+        id?: string;
+        phase?: string;
+        client?: string;
+        title?: string;
+        method?: string;
+        kind?: string;
+        terminal_cmd?: string;
+        terminal_output?: string;
+        error?: string;
+      }>;
+      offset: number;
+    }>("activity/recent", { afterOffset: activityOffset, limit: 80 });
+    activityOffset = activity.offset;
+    for (const event of activity.events ?? []) {
+      const key = `${event.id ?? ""}:${event.phase ?? ""}`;
+      if (seenActivityKeys.has(key)) continue;
+      seenActivityKeys.add(key);
+      if (event.client === "agent" && event.kind !== "http") continue;
+      const title = event.title || event.method || "API";
+      if (event.phase === "start" || event.kind === "http") {
+        terminal.writeln(`[API] ${title}`);
+        appendMessage("assistant", `[API] ${title}`);
+      }
+      if (event.terminal_cmd) terminal.writeln(event.terminal_cmd);
+      if (event.terminal_output) terminal.writeln(event.terminal_output);
+      if (event.error) appendMessage("assistant", `[API error] ${event.error}`);
+    }
+    const history = await window.eurika.request<{
+      messages: Array<{ role: string; content: string }>;
+    }>("session/history", { limit: 80 });
+    for (const message of history.messages) {
+      if (seenChatKeys.has(chatKey(message.role, message.content))) continue;
+      appendMessage(message.role, message.content);
+    }
+  } catch {
+    // Backend may be restarting; the next tick retries.
   }
 }
 
@@ -154,6 +224,7 @@ async function clearChatHistory(): Promise<void> {
   if (!window.confirm("Clear persisted chat history for this workspace?")) return;
   await window.eurika.request("session/clear");
   messagesElement.replaceChildren();
+  seenChatKeys.clear();
 }
 
 async function refreshFiles(): Promise<void> {
@@ -290,6 +361,7 @@ async function proposeEditorSave(): Promise<void> {
 }
 
 function appendMessage(role: string, text: string): HTMLElement {
+  rememberChat(role, text);
   const item = document.createElement("div");
   item.className = `message ${role}`;
   const label = document.createElement("strong");

@@ -213,6 +213,7 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         "project_ls",
         "project_tree",
         "git_commit",
+        "git_push",
     }
     if emit_cmd and '{' not in str(emit_cmd) and (not skip_emit):
         _emit(emit_cmd, on_system_action)
@@ -264,19 +265,21 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     if _is_apply_confirmation(msg):
         pending_git = state.get('pending_git_commit') if isinstance(state, dict) else None
         if isinstance(pending_git, dict) and pending_git.get('message'):
-            from eurika.api.chat_tools import git_commit as _git_commit_tool
-            msg_commit = str(pending_git.get('message') or '').strip()
+            from eurika.api.chat_git import apply_pending_git
+            pending_copy = dict(pending_git)
             state['pending_git_commit'] = {}
             _save_dialog_state(root, state)
-            ok, out = _git_commit_tool(root, msg_commit)
-            text = f'Коммит выполнен: {out}' if ok else f'Ошибка: {out}'
+            result = apply_pending_git(root, pending_copy)
+            ok = bool(result.get('ok'))
+            text = str(result.get('text') or '')
+            out = str(result.get('terminal_output') or '')
             _append_chat_history_safe(root, 'user', msg, None)
             _append_chat_history_safe(root, 'assistant', text, None)
             return {
                 'text': text,
-                'error': None if ok else out,
-                'terminal_cmd': f'$ git add -A && git commit -m {msg_commit!r}',
-                'terminal_output': out or '',
+                'error': None if ok else (result.get('error') or out or 'git failed'),
+                'terminal_cmd': result.get('terminal_cmd') or '',
+                'terminal_output': out,
                 'terminal_exit_code': 0 if ok else 1,
             }
         pending_plan = state.get('pending_plan') if isinstance(state, dict) else {}

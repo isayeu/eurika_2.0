@@ -168,6 +168,12 @@ _WRITE_OPEN = re.compile(
     re.IGNORECASE,
 )
 _FILE_REDIRECT = re.compile(r"(?:^|[^0-9])(?:>>|>)\s*(?!/dev/)")
+_MUTATING_GIT = re.compile(
+    r"(?:^|[;&|]\s*)git\s+"
+    r"(?:add|commit|push|reset|checkout|switch|merge|rebase|stash|tag|"
+    r"branch\s+-[dD]|clean|cherry-pick|revert)\b",
+    re.IGNORECASE,
+)
 
 
 def host_command_mutates_workspace(cmd: str) -> bool:
@@ -181,6 +187,8 @@ def host_command_mutates_workspace(cmd: str) -> bool:
         return False
     cleaned = _DEV_NULL_REDIR.sub(" ", s)
     if _MUTATING_BIN.search(cleaned):
+        return True
+    if _MUTATING_GIT.search(cleaned):
         return True
     if _FILE_REDIRECT.search(cleaned):
         return True
@@ -590,8 +598,9 @@ def tool_protocol_instructions(experience_snippet: str | None = None) -> str:
         "Судьбу paper суди по строке «вердикт:» / equity Δ / net edge после fee — "
         "не по accuracy. Убыток ≠ «неплохие результаты». "
         "Отвечай на языке пользователя (для русского — только русский, без смеси языков). "
-        "Коммит/push/запись файлов через git commit — не делай сам: опиши план "
-        "и дождись подтверждения «применяй». "
+        "Коммит/push не делай через eurika-cmds (`git add`/`commit`/`push` будут "
+        "отказаны). Пользователь пишет «собери коммит» / «запушь» / "
+        "«закоммить и запушь» — HITL покажет файлы и сообщение, затем «применяй». "
         "Не пиши в файлы проекта из eurika-cmds (нет `>`, `tee`, `rm`, `sed -i`, "
         "Path.write_text): такие команды будут отказаны. Правки кода — через "
         "предложение diff / «применяй», не через shell. "

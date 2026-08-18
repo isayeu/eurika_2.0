@@ -153,53 +153,104 @@ class AgentHttpService:
                 parsed = urlparse(self.path)
                 path = parsed.path.rstrip("/") or "/"
                 query = parse_qs(parsed.query)
-                if path in {"/", "/health"}:
-                    self._json(
-                        {
-                            "ok": True,
-                            "workspace": str(service.runtime.workspace_root),
-                            "pid": os.getpid(),
-                            "sessionId": service._session_id,
-                            "surfaces": ["core", "agent"],
-                        }
-                    )
-                    return
-                if path.startswith("/api"):
-                    from eurika.api.serve_routes_get import dispatch_api_get
-
-                    if dispatch_api_get(self, service.runtime.workspace_root, path, query):
+                status = 200
+                ok = True
+                try:
+                    if path in {"/", "/health"}:
+                        self._json(
+                            {
+                                "ok": True,
+                                "workspace": str(service.runtime.workspace_root),
+                                "pid": os.getpid(),
+                                "sessionId": service._session_id,
+                                "surfaces": ["core", "agent"],
+                            }
+                        )
                         return
+                    if path.startswith("/api"):
+                        from eurika.api.serve_routes_get import dispatch_api_get
+
+                        if dispatch_api_get(self, service.runtime.workspace_root, path, query):
+                            return
+                        status = 404
+                        ok = False
+                        self._json({"error": "not found", "path": path}, status=404)
+                        return
+                    status = 404
+                    ok = False
                     self._json({"error": "not found", "path": path}, status=404)
-                    return
-                self._json({"error": "not found", "path": path}, status=404)
+                finally:
+                    from .live_activity import publish_http
+
+                    publish_http(
+                        service.runtime.workspace_root,
+                        "GET",
+                        path,
+                        ok=ok,
+                        status=status,
+                    )
 
             def _do_POST(self) -> None:
                 path = urlparse(self.path).path.rstrip("/") or "/"
+                status = 200
+                ok = True
                 try:
                     body = service._read_body(self)
                 except RpcError as exc:
                     self._json(error_response(None, exc), status=400)
-                    return
-                if path == "/rpc":
-                    self._json(service.handle_rpc(body))
-                    return
-                if path == "/chat":
-                    payload = service.handle_chat(body)
-                    self._json(payload, status=200 if payload.get("ok") is not False else 400)
-                    return
-                if path.startswith("/api"):
-                    from eurika.api.serve_routes_post import dispatch_api_post
+                    from .live_activity import publish_http
 
-                    if dispatch_api_post(
-                        self,
-                        service.runtime.workspace_root,
-                        path,
-                        body if isinstance(body, dict) else None,
-                    ):
-                        return
-                    self._json({"error": "not found", "path": path}, status=404)
+                    publish_http(
+                        service.runtime.workspace_root, "POST", path, ok=False, status=400
+                    )
                     return
-                self._json({"error": "not found", "path": path}, status=404)
+                try:
+                    if path == "/rpc":
+                        rpc = service.handle_rpc(body)
+                        if "error" in rpc:
+                            ok = False
+                            status = 200
+                        self._json(rpc)
+                        return
+                    if path == "/chat":
+                        payload = service.handle_chat(body)
+                        ok = payload.get("ok") is not False
+                        status = 200 if ok else 400
+                        self._json(payload, status=status)
+                        return
+                    if path.startswith("/api"):
+                        from eurika.api.serve_routes_post import dispatch_api_post
+
+                        if dispatch_api_post(
+                            self,
+                            service.runtime.workspace_root,
+                            path,
+                            body if isinstance(body, dict) else None,
+                        ):
+                            return
+                        status = 404
+                        ok = False
+                        self._json({"error": "not found", "path": path}, status=404)
+                        return
+                    status = 404
+                    ok = False
+                    self._json({"error": "not found", "path": path}, status=404)
+                finally:
+                    from .live_activity import publish_http
+
+                    detail = ""
+                    if path == "/rpc" and isinstance(body, dict):
+                        detail = str(body.get("method") or "")
+                    elif path in {"/chat", "/api/chat"} and isinstance(body, dict):
+                        detail = str(body.get("message") or "")
+                    publish_http(
+                        service.runtime.workspace_root,
+                        "POST",
+                        path,
+                        ok=ok,
+                        status=status,
+                        detail=detail,
+                    )
 
             def _internal_error(self, method: str, exc: Exception) -> None:
                 detail = f"{type(exc).__name__}: {exc}"

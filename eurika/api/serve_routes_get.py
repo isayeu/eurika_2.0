@@ -80,6 +80,7 @@ def dispatch_api_get(
                 "GET /api/market — paper Market panel (portfolio, opens, journal)",
                 "GET /api/learning — paper learning snapshot (trades, model, bank)",
                 "GET /api/file?path=... — read file content (for diff preview)",
+                "GET /api/activity?after=0 — live API/agent work for Chat/Terminal/Desktop",
                 "POST /api/operation_preview — preview single-file op diff (ROADMAP 3.6.7)",
                 "POST /api/approve — save approve/reject decisions to pending_plan.json",
                 "POST /api/exec — run whitelisted eurika command (scan, doctor, fix, cycle, ...)",
@@ -177,5 +178,20 @@ def dispatch_api_get(
         window = int(query.get("window", [5])[0])
         text, err = explain_module(project_root, module_q[0], window=window)
         _json_response(handler, {"text": text, "module": module_q[0]} if not err else {"error": err, "text": text})
+        return True
+    if path == "/api/activity":
+        from eurika.agent.live_activity import recent as live_recent
+
+        try:
+            after = int((query.get("after") or ["0"])[0])
+        except (TypeError, ValueError):
+            after = 0
+        if after < 0:
+            after = 0
+        try:
+            limit = int((query.get("limit") or ["80"])[0])
+        except (TypeError, ValueError):
+            limit = 80
+        _json_response(handler, live_recent(project_root, after_offset=after, limit=limit))
         return True
     return False

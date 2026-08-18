@@ -18,6 +18,7 @@ const REQUEST_METHODS = new Set([
   "panel/state",
   "approval/preview",
   "approval/save",
+  "activity/recent",
   "command/run",
 ]);
 

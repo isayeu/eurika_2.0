@@ -1,6 +1,6 @@
 """Chat tool calls (ROADMAP 3.6.8 Phase 1).
 
-Provides git_status, git_diff, git_commit, run_eurika_ritual for Chat flow.
+Provides git_status, git_diff, git_commit, git_push, run_eurika_ritual for Chat flow.
 Invoked when user intent is commit-related or ritual-related.
 """
 from __future__ import annotations
@@ -115,36 +115,40 @@ def run_release_check(project_root: Path, timeout: int | None = None) -> Tuple[b
         return (False, f"release_check: {e}")
 
 
-def git_commit(project_root: Path, message: str) -> Tuple[bool, str]:
-    """Run git add -A and git commit -m in project root. Returns (ok, output)."""
-    if not message or not message.strip():
-        return (False, "commit message is empty")
+def git_commit(
+    project_root: Path, message: str, paths: list[str] | None = None
+) -> Tuple[bool, str]:
+    """Stage listed paths (or all non-secret dirty files) and commit via stdin.
+
+    Never ``git add -A``, never ``--no-verify``.
+    """
+    from eurika.api.chat_git import collect_commit_preview, commit_selected
+
     try:
-        add_r = subprocess.run(
-            ["git", "add", "-A"],
-            cwd=str(project_root),
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if add_r.returncode != 0:
-            err = (add_r.stderr or add_r.stdout or "").strip() or f"exit {add_r.returncode}"
-            return (False, f"git add -A failed: {err}")
-        commit_r = subprocess.run(
-            ["git", "commit", "-m", message.strip()],
-            cwd=str(project_root),
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        out = (commit_r.stdout or "").strip() or (commit_r.stderr or "").strip()
-        if commit_r.returncode != 0 and not out:
-            out = f"git commit failed (exit {commit_r.returncode})"
-        return (commit_r.returncode == 0, out)
+        if paths is None:
+            preview = collect_commit_preview(project_root)
+            if not preview.get("ok"):
+                return (False, str(preview.get("error") or "git status failed"))
+            paths = list(preview.get("include") or [])
+        ok, out, _term = commit_selected(project_root, message, list(paths or []))
+        return (ok, out)
     except subprocess.TimeoutExpired:
         return (False, "git commit: timeout")
     except Exception as e:
         return (False, f"git commit: {e}")
+
+
+def git_push(project_root: Path) -> Tuple[bool, str]:
+    """Push current branch to origin (set upstream if missing). Never --force."""
+    from eurika.api.chat_git import push_current_branch
+
+    try:
+        ok, out, _term = push_current_branch(project_root)
+        return (ok, out)
+    except subprocess.TimeoutExpired:
+        return (False, "git push: timeout")
+    except Exception as e:
+        return (False, f"git push: {e}")
 
 
 def run_chat_smoke(project_root: Path, *, timeout: int = 120) -> Tuple[bool, str]:

@@ -129,6 +129,12 @@ def test_host_command_mutates_workspace_blocks_writes() -> None:
     assert host_command_mutates_workspace(
         "python -c \"from pathlib import Path; Path('x.py').write_text('nope')\""
     ) is True
+    assert host_command_mutates_workspace("git add -A") is True
+    assert host_command_mutates_workspace("git commit -m x") is True
+    assert host_command_mutates_workspace("git push") is True
+    assert host_command_mutates_workspace("git status") is False
+    assert host_command_mutates_workspace("git diff") is False
+    assert host_command_mutates_workspace("git log -8 --oneline") is False
 
 
 def test_pwd_and_pipes_are_allowed() -> None:

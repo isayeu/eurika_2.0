@@ -96,11 +96,174 @@ def _restore_chat_session(main: "MainWindow") -> None:
     restored = load_chat_history(Path(root_key), limit=80)
     main._chat_history.extend(restored)
     for item in restored:
+        _remember_live_chat(main, item["role"], item["content"])
         main.chat_transcript.append(
             _format_chat_line(main, item["role"], item["content"])
         )
     if restored:
         _scroll_transcript_to_bottom(main)
+    _reset_live_follow_offsets(main, Path(root_key))
+    start_live_activity_follow(main)
+
+
+def _live_chat_key(role: str, content: str) -> str:
+    return f"{role}:{content.strip()[:800]}"
+
+
+def _remember_live_chat(main: "MainWindow", role: str, content: str) -> bool:
+    """True when this line is new and should be drawn."""
+    seen = getattr(main, "_live_chat_seen", None)
+    if not isinstance(seen, set):
+        seen = set()
+        main._live_chat_seen = seen
+    key = _live_chat_key(role, content)
+    if key in seen:
+        return False
+    seen.add(key)
+    if len(seen) > 400:
+        # Drop oldest-ish by rebuilding from history.
+        main._live_chat_seen = {
+            _live_chat_key(str(item.get("role")), str(item.get("content")))
+            for item in list(getattr(main, "_chat_history", []) or [])[-200:]
+        }
+        main._live_chat_seen.add(key)
+    return True
+
+
+def _reset_live_follow_offsets(main: "MainWindow", root: Path) -> None:
+    from eurika.agent.live_activity import activity_path, chat_history_path, file_end
+
+    main._live_chat_offset = file_end(chat_history_path(root))
+    main._live_activity_offset = file_end(activity_path(root))
+    seen_ids = getattr(main, "_live_activity_ids", None)
+    if not isinstance(seen_ids, set):
+        main._live_activity_ids = set()
+    else:
+        seen_ids.clear()
+
+
+def start_live_activity_follow(main: "MainWindow") -> None:
+    """Poll workspace logs so API/Desktop work appears without a restart."""
+    import os
+
+    if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+        return
+    timer = getattr(main, "_live_activity_timer", None)
+    if timer is None:
+        timer = QTimer(main)
+        timer.setInterval(700)
+        timer.timeout.connect(lambda: poll_live_activity(main))
+        main._live_activity_timer = timer
+    if not timer.isActive():
+        timer.start()
+
+
+def poll_live_activity(main: "MainWindow") -> None:
+    if getattr(main, "_is_closing", False):
+        return
+    try:
+        root = Path(str(main._api._root()))
+    except Exception:
+        return
+    from eurika.agent.live_activity import activity_path, chat_history_path, consume_jsonl
+
+    chat_offset = int(getattr(main, "_live_chat_offset", 0) or 0)
+    records, chat_offset = consume_jsonl(chat_history_path(root), chat_offset)
+    main._live_chat_offset = chat_offset
+    drew_chat = False
+    for record in records:
+        role = str(record.get("role") or "").strip().lower()
+        content = str(record.get("content") or "").strip()
+        if role not in {"user", "assistant"} or not content:
+            continue
+        if not _remember_live_chat(main, role, content):
+            continue
+        main._chat_history.append({"role": role, "content": content})
+        main.chat_transcript.append(_format_chat_line(main, role, content))
+        drew_chat = True
+    if drew_chat:
+        _scroll_transcript_to_bottom(main)
+        _maybe_show_chat_tab(main)
+
+    act_offset = int(getattr(main, "_live_activity_offset", 0) or 0)
+    events, act_offset = consume_jsonl(activity_path(root), act_offset)
+    main._live_activity_offset = act_offset
+    seen_ids = getattr(main, "_live_activity_ids", None)
+    if not isinstance(seen_ids, set):
+        seen_ids = set()
+        main._live_activity_ids = seen_ids
+    for event in events:
+        event_id = str(event.get("id") or "")
+        phase = str(event.get("phase") or "")
+        key = f"{event_id}:{phase}"
+        if key in seen_ids:
+            continue
+        seen_ids.add(key)
+        _apply_live_activity_event(main, event)
+
+
+def _maybe_show_chat_tab(main: "MainWindow") -> None:
+    chat_input = getattr(main, "chat_input", None)
+    if chat_input is not None and chat_input.hasFocus():
+        return
+    if hasattr(main, "tabs") and hasattr(main, "chat_tab_index"):
+        main.tabs.setCurrentIndex(main.chat_tab_index)
+    inner = getattr(main, "chat_inner_tabs", None)
+    if inner is not None and hasattr(main, "chat_dialog_subtab_index"):
+        inner.setCurrentIndex(main.chat_dialog_subtab_index)
+
+
+def _apply_live_activity_event(main: "MainWindow", event: dict[str, Any]) -> None:
+    title = str(event.get("title") or event.get("method") or "API").strip()
+    phase = str(event.get("phase") or "")
+    client = str(event.get("client") or "api")
+    kind = str(event.get("kind") or "")
+    visible = phase == "start" or kind == "http"
+    if visible:
+        suffix = ""
+        if phase == "done" and event.get("ok") is False:
+            suffix = " — fail"
+        elif phase == "done" and kind == "http":
+            suffix = " — ok"
+        line = f"[API {client}] {title}{suffix}"
+        if hasattr(main, "status_label"):
+            main.status_label.setText(line[:120])
+        if hasattr(main, "terminal_emulator_output") and main.terminal_emulator_output:
+            main.terminal_emulator_output.append(line)
+        main.chat_transcript.append(_format_chat_line(main, "assistant", line))
+        _scroll_transcript_to_bottom(main)
+        if kind in {"chat", "http"}:
+            _maybe_show_chat_tab(main)
+        if phase == "start":
+            return
+    if phase != "done":
+        return
+    cmd = str(event.get("terminal_cmd") or "").strip()
+    out = str(event.get("terminal_output") or "").strip()
+    if cmd or out:
+        if hasattr(main, "terminal_emulator_output") and main.terminal_emulator_output:
+            if cmd:
+                main.terminal_emulator_output.append(f"[API] {cmd}")
+            if out:
+                terminal_tab._append_stream(main, out)
+            code = event.get("terminal_exit_code")
+            if code is not None:
+                main.terminal_emulator_output.append(f"[API done] exit_code={code}\n")
+            chat_input = getattr(main, "chat_input", None)
+            if chat_input is None or not chat_input.hasFocus():
+                if hasattr(main, "tabs") and hasattr(main, "terminal_tab_index"):
+                    main.tabs.setCurrentIndex(main.terminal_tab_index)
+    err = str(event.get("error") or "").strip()
+    if err:
+        main.chat_transcript.append(
+            _format_chat_line(main, "assistant", f"[API error] {err}", is_error=True)
+        )
+        _scroll_transcript_to_bottom(main)
+    elif event.get("ok") is False:
+        if hasattr(main, "status_label"):
+            main.status_label.setText(f"API failed: {title[:80]}")
+    elif hasattr(main, "status_label") and not getattr(main, "_chat_worker", None):
+        main.status_label.setText(f"API done: {title[:80]}")
 
 
 def refresh_chat_mention_candidates(main: "MainWindow") -> None:
@@ -153,6 +316,7 @@ def load_chat_preferences(main: MainWindow) -> None:
     # Prompt ↑/↓ history (project-local; fallback qt_settings).
     _load_chat_prompt_history(main, data)
     _restore_chat_session(main)
+    start_live_activity_follow(main)
     refresh_chat_mention_candidates(main)
     main.chat_timeout_spin.setValue(min(9999, max(0, timeout)))
     main.ollama_hsa_edit.setText(str(data.get("ollama_hsa_override_gfx", "")))
@@ -586,6 +750,7 @@ def dispatch_chat_message(main: MainWindow, message: str) -> None:
     openai_base_url = current_chat_openai_base_url(main)
     main.chat_transcript.append(_format_chat_line(main, "user", message))
     main._chat_history.append({"role": "user", "content": message})
+    _remember_live_chat(main, "user", message)
     main.chat_input.clear()
     main._chat_cancelled = False
     _set_chat_busy(main, busy=True)
@@ -809,6 +974,7 @@ def on_chat_result(main: MainWindow, payload: dict[str, Any]) -> None:
         return
     main.chat_transcript.append(_format_chat_line(main, "assistant", text))
     main._chat_history.append({"role": "assistant", "content": text})
+    _remember_live_chat(main, "assistant", text)
     main.chat_feedback_helpful_btn.setEnabled(True)
     main.chat_feedback_not_btn.setEnabled(True)
     refresh_chat_goal_view(main)
@@ -893,6 +1059,11 @@ def clear_chat_session(main: MainWindow) -> None:
     main._chat_history.clear()
     main.chat_transcript.clear()
     main._chat_block_payloads = {}
+    main._live_chat_seen = set()
+    try:
+        _reset_live_follow_offsets(main, main._api._root())
+    except Exception:
+        pass
     main.chat_feedback_helpful_btn.setEnabled(False)
     main.chat_feedback_not_btn.setEnabled(False)
     refresh_chat_goal_view(main)

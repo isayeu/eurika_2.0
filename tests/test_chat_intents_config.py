@@ -297,3 +297,5 @@ def test_git_status_not_commit_handler(tmp_path: Path) -> None:
     assert resolve_direct_handler(tmp_path, "git diff")[0] == "host_shell"
     assert resolve_direct_handler(tmp_path, "покажи diff")[0] is None
     assert resolve_direct_handler(tmp_path, "собери коммит")[0] == "git_commit"
+    assert resolve_direct_handler(tmp_path, "закоммить и запушь")[0] == "git_commit"
+    assert resolve_direct_handler(tmp_path, "запушь")[0] == "git_push"

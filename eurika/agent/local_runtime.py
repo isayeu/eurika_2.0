@@ -95,6 +95,7 @@ class LocalAgentRuntime:
                 "approval/preview",
                 "approval/save",
                 "command/run",
+                "activity/recent",
                 "$/cancelRequest",
             ],
             "tools": TOOL_CONTRACTS,
@@ -172,7 +173,9 @@ class LocalAgentRuntime:
                 self._sessions.pop(session.id, None)
             return {"sessionId": session.id, "closed": True}
         if method == "session/chat":
-            return self._chat(params, cancel=cancel, emit=emit)
+            return self._with_live_activity(
+                method, params, lambda: self._chat(params, cancel=cancel, emit=emit)
+            )
         if method == "session/history":
             limit = params.get("limit", 80)
             if not isinstance(limit, int) or isinstance(limit, bool) or limit < 0:
@@ -196,17 +199,25 @@ class LocalAgentRuntime:
             ]
             return {"files": sorted(files)[:5000], "truncated": len(files) > 5000}
         if method == "tool/call":
-            return self._call_tool(params, cancel=cancel, emit=emit)
+            return self._with_live_activity(
+                method, params, lambda: self._call_tool(params, cancel=cancel, emit=emit)
+            )
         if method == "agent/run":
-            return self._run_calls(params, cancel=cancel, emit=emit)
+            return self._with_live_activity(
+                method, params, lambda: self._run_calls(params, cancel=cancel, emit=emit)
+            )
         if method == "proposal/prepare":
             return self.proposals.prepare(params)
         if method == "proposal/get":
             return self.proposals.get(params.get("proposalId"), params.get("path"))
         if method == "proposal/apply":
-            return self.proposals.apply(params, cancel=cancel)
+            return self._with_live_activity(
+                method, params, lambda: self.proposals.apply(params, cancel=cancel)
+            )
         if method == "proposal/reject":
-            return self.proposals.reject(params)
+            return self._with_live_activity(
+                method, params, lambda: self.proposals.reject(params)
+            )
         if method == "checkpoint/list":
             return self.proposals.list_checkpoints()
         if method == "checkpoint/restore":
@@ -218,12 +229,40 @@ class LocalAgentRuntime:
         if method == "approval/save":
             return self.panels.approval_save(params)
         if method == "command/run":
-            return self.panels.command_run(
+            return self._with_live_activity(
+                method,
                 params,
-                cancel=cancel,
-                emit=lambda event, data: emit(event, None, data),
+                lambda: self.panels.command_run(
+                    params,
+                    cancel=cancel,
+                    emit=lambda event, data: emit(event, None, data),
+                ),
             )
+        if method == "activity/recent":
+            from .live_activity import recent as live_recent
+
+            after = params.get("afterOffset", 0)
+            if not isinstance(after, int) or isinstance(after, bool) or after < 0:
+                raise RpcError(ERR_INVALID_PARAMS, "afterOffset must be a non-negative integer")
+            limit = params.get("limit", 80)
+            if not isinstance(limit, int) or isinstance(limit, bool) or limit < 0:
+                raise RpcError(ERR_INVALID_PARAMS, "limit must be a non-negative integer")
+            return live_recent(self.workspace_root, after_offset=after, limit=limit)
         raise RpcError(ERR_METHOD_NOT_FOUND, f"Method not found: {method}")
+
+    def _with_live_activity(self, method: str, params: dict[str, Any], fn):
+        from .live_activity import publish_done, publish_start, should_mirror_rpc
+
+        if not should_mirror_rpc(method):
+            return fn()
+        started = publish_start(self.workspace_root, method, params, client="agent")
+        try:
+            result = fn()
+        except Exception as exc:
+            publish_done(self.workspace_root, started, ok=False, error=str(exc))
+            raise
+        publish_done(self.workspace_root, started, ok=True, result=result)
+        return result
 
     def _chat(
         self,
