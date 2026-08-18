@@ -767,6 +767,8 @@ class ChatWorker(QThread):
         openai_base_url: str = "",
         run_command_with_result: Any = None,
         privilege_prompt: Any = None,
+        cursor_model: str = "",
+        cursor_optimize: str = "",
     ) -> None:
         super().__init__()
         self._api = api
@@ -777,6 +779,8 @@ class ChatWorker(QThread):
         self._ollama_model = ollama_model
         self._timeout_sec = timeout_sec
         self._openai_base_url = openai_base_url
+        self._cursor_model = cursor_model
+        self._cursor_optimize = cursor_optimize
         self._run_command_with_result = run_command_with_result
         self._privilege_prompt = privilege_prompt
         self._cancelled = False
@@ -802,6 +806,8 @@ class ChatWorker(QThread):
                 ollama_model=self._ollama_model,
                 timeout_sec=self._timeout_sec,
                 openai_base_url=self._openai_base_url,
+                cursor_model=self._cursor_model,
+                cursor_optimize=self._cursor_optimize,
                 on_system_action=_on_action,
                 run_command_with_result=self._run_command_with_result,
                 privilege_prompt=self._privilege_prompt,

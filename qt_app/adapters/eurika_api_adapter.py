@@ -117,6 +117,8 @@ class EurikaApiAdapter:
         ollama_model: str,
         timeout_sec: int,
         openai_base_url: str = "",
+        cursor_model: str = "",
+        cursor_optimize: str = "",
     ):
         keys = (
             "OPENAI_API_KEY",
@@ -126,6 +128,9 @@ class EurikaApiAdapter:
             "EURIKA_LLM_TIMEOUT_SEC",
             "EURIKA_OLLAMA_CLI_TIMEOUT_SEC",
             "EURIKA_CHAT_PROVIDER",
+            "CURSOR_MODEL",
+            "CURSOR_OPTIMIZE_FOR",
+            "EURIKA_CURSOR_CWD",
         )
         old_values = {key: os.environ.get(key) for key in keys}
         try:
@@ -135,10 +140,18 @@ class EurikaApiAdapter:
                 cli_timeout = max(cli_timeout, 120)
             os.environ["EURIKA_OLLAMA_CLI_TIMEOUT_SEC"] = str(cli_timeout)
             os.environ["EURIKA_CHAT_PROVIDER"] = provider
+            os.environ["EURIKA_CURSOR_CWD"] = str(self._root())
             base = (openai_base_url or "").strip()
             if base and provider in {"auto", "openai", "codex"}:
                 os.environ["OPENAI_BASE_URL"] = base
-            if provider in {"openai", "codex"}:
+            if provider == "cursor":
+                if cursor_model.strip():
+                    os.environ["CURSOR_MODEL"] = cursor_model.strip()
+                if cursor_optimize.strip():
+                    os.environ["CURSOR_OPTIMIZE_FOR"] = cursor_optimize.strip()
+                else:
+                    os.environ.pop("CURSOR_OPTIMIZE_FOR", None)
+            elif provider in {"openai", "codex"}:
                 if openai_model.strip():
                     os.environ["OPENAI_MODEL"] = openai_model.strip()
                 elif provider == "codex" and not (os.environ.get("OPENAI_MODEL") or "").strip():
@@ -178,6 +191,8 @@ class EurikaApiAdapter:
         ollama_model: str = "",
         timeout_sec: int = 20,
         openai_base_url: str = "",
+        cursor_model: str = "",
+        cursor_optimize: str = "",
         on_system_action: Callable[[str], None] | None = None,
         run_command_with_result: Callable[[str], tuple[str, int]] | None = None,
         privilege_prompt: PrivilegePrompt | None = None,
@@ -188,6 +203,8 @@ class EurikaApiAdapter:
             ollama_model=ollama_model,
             timeout_sec=timeout_sec,
             openai_base_url=openai_base_url,
+            cursor_model=cursor_model,
+            cursor_optimize=cursor_optimize,
         ):
             return _chat_send(
                 self._root(),

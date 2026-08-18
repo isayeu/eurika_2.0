@@ -280,12 +280,178 @@ def refresh_chat_mention_candidates(main: "MainWindow") -> None:
     main.chat_input.refresh_mentions_from_root(root or None)
 
 
+def current_chat_provider(main: MainWindow) -> str:
+    combo = getattr(main, "chat_provider_combo", None)
+    if combo is None:
+        return "auto"
+    data = combo.currentData()
+    if isinstance(data, str) and data.strip():
+        return data.strip()
+    text = (combo.currentText() or "").strip().lower()
+    if text in {"auto", "openai", "ollama", "codex", "cursor"}:
+        return text
+    return "auto"
+
+
+def set_chat_provider(main: MainWindow, provider: str) -> None:
+    combo = getattr(main, "chat_provider_combo", None)
+    if combo is None:
+        return
+    wanted = (provider or "auto").strip()
+    idx = combo.findData(wanted)
+    if idx < 0:
+        idx = combo.findText(wanted)
+    combo.setCurrentIndex(idx if idx >= 0 else 0)
+
+
+def sync_chat_provider_panels(main: MainWindow) -> None:
+    """Show only the settings that belong to the selected chat source."""
+    provider = current_chat_provider(main)
+    cloud = getattr(main, "chat_cloud_box", None)
+    ollama = getattr(main, "chat_ollama_box", None)
+    cursor = getattr(main, "chat_cursor_box", None)
+    if cloud is not None:
+        cloud.setVisible(provider in {"auto", "openai", "codex"})
+    if ollama is not None:
+        ollama.setVisible(provider in {"auto", "ollama"})
+    if cursor is not None:
+        cursor.setVisible(provider == "cursor")
+    hint = getattr(main, "chat_provider_hint", None)
+    if hint is not None:
+        hint.setText(
+            {
+                "auto": "Сначала облако (Groq и т.п.), если ключа нет — Ollama.",
+                "openai": "Только облако. Ollama и Cursor не вызываются.",
+                "codex": "Только Codex / OpenAI API.",
+                "ollama": "Только локальная Ollama.",
+                "cursor": "Ответ через Cursor. Groq и Ollama не используются.",
+            }.get(provider, "")
+        )
+    sync_cursor_router_enabled(main)
+
+
+def on_chat_provider_changed(main: MainWindow, *_args: object) -> None:
+    sync_chat_provider_panels(main)
+    save_chat_preferences(main)
+    if hasattr(main, "_refresh_openai_api_status"):
+        main._refresh_openai_api_status()
+    refresh_cursor_api_status(main)
+
+
+def _fill_cursor_model_combo(main: MainWindow, catalog: list[dict[str, str]], selected: str) -> None:
+    combo = getattr(main, "chat_cursor_model_combo", None)
+    if combo is None:
+        return
+    combo.blockSignals(True)
+    combo.clear()
+    seen: set[str] = set()
+    for item in catalog:
+        mid = str(item.get("id") or "").strip()
+        if not mid or mid in seen:
+            continue
+        seen.add(mid)
+        combo.addItem(str(item.get("label") or mid), mid)
+    if selected and combo.findData(selected) < 0:
+        combo.addItem(selected, selected)
+    idx = combo.findData(selected) if selected else -1
+    combo.setCurrentIndex(idx if idx >= 0 else 0)
+    combo.blockSignals(False)
+    sync_cursor_router_enabled(main)
+
+
+def _load_cursor_model_prefs(main: MainWindow, data: dict) -> None:
+    if not hasattr(main, "chat_cursor_model_combo"):
+        return
+    from eurika.agent.cursor_judge import DEFAULT_CURSOR_MODEL, stub_model_catalog
+
+    saved = str(data.get("chat_cursor_model") or "").strip() or DEFAULT_CURSOR_MODEL
+    if saved in {"auto-smart", "auto"}:
+        saved = "default"
+    _fill_cursor_model_combo(main, stub_model_catalog(), saved)
+    router = str(data.get("chat_cursor_router") or "").strip()
+    if hasattr(main, "chat_cursor_router_combo"):
+        combo = main.chat_cursor_router_combo
+        combo.blockSignals(True)
+        idx = combo.findData(router)
+        combo.setCurrentIndex(idx if idx >= 0 else 0)
+        combo.blockSignals(False)
+    refresh_cursor_api_status(main)
+    sync_cursor_router_enabled(main)
+
+
+def sync_cursor_router_enabled(main: MainWindow) -> None:
+    if not hasattr(main, "chat_cursor_router_combo") or not hasattr(main, "chat_cursor_model_combo"):
+        return
+    from eurika.agent.cursor_judge import is_router_model
+
+    mid = str(main.chat_cursor_model_combo.currentData() or "")
+    enabled = is_router_model(mid)
+    main.chat_cursor_router_combo.setEnabled(enabled)
+    form = getattr(main, "chat_cursor_form", None)
+    if form is not None:
+        try:
+            form.setRowVisible(main.chat_cursor_router_combo, enabled)
+        except Exception:
+            main.chat_cursor_router_combo.setVisible(enabled)
+
+
+def refresh_cursor_api_status(main: MainWindow) -> None:
+    label = getattr(main, "cursor_api_status", None)
+    if label is None:
+        return
+    from eurika.agent.cursor_judge import cursor_key_status
+
+    root = "."
+    try:
+        root = str(main._settings.get_project_root() or "").strip() or "."
+    except Exception:
+        root = "."
+    st = cursor_key_status(root)
+    if st.get("api_key_set"):
+        mid = ""
+        if hasattr(main, "chat_cursor_model_combo"):
+            mid = str(main.chat_cursor_model_combo.currentData() or "")
+        label.setText(f"Cursor API: ключ есть · {mid or '—'}")
+        label.setToolTip("CURSOR_API_KEY в .env. Refresh подтягивает каталог моделей аккаунта.")
+    else:
+        label.setText("Cursor API: нет ключа — CURSOR_API_KEY в .env")
+        label.setToolTip("Ключ не коммитится. Models → Cursor model станет живым после Refresh.")
+
+
+def refresh_cursor_models(main: MainWindow) -> None:
+    """Fetch Cursor model catalog; keep current selection when possible."""
+    from eurika.agent.cursor_judge import list_model_catalog, stub_model_catalog
+
+    combo = getattr(main, "chat_cursor_model_combo", None)
+    if combo is None:
+        return
+    selected = str(combo.currentData() or "")
+    root = "."
+    try:
+        root = str(main._settings.get_project_root() or "").strip() or "."
+    except Exception:
+        root = "."
+    try:
+        catalog = list_model_catalog(root)
+        if not catalog:
+            catalog = stub_model_catalog()
+        _fill_cursor_model_combo(main, catalog, selected)
+        refresh_cursor_api_status(main)
+        save_chat_preferences(main)
+    except Exception as exc:
+        refresh_cursor_api_status(main)
+        label = getattr(main, "cursor_api_status", None)
+        if label is not None:
+            label.setText(f"Cursor API: ошибка каталога ({type(exc).__name__})")
+            label.setToolTip(str(exc))
+
+
 def load_chat_preferences(main: MainWindow) -> None:
     data = main._settings.load()
     provider = str(data.get("chat_provider", "auto"))
-    if provider not in {"auto", "openai", "ollama", "codex"}:
+    if provider not in {"auto", "openai", "ollama", "codex", "cursor"}:
         provider = "auto"
-    main.chat_provider_combo.setCurrentText(provider)
+    set_chat_provider(main, provider)
     main.chat_openai_model.setText(str(data.get("chat_openai_model", "")))
     if hasattr(main, "chat_api_preset_combo"):
         from eurika.utils.llm_presets import detect_llm_api_preset, get_llm_api_preset
@@ -308,6 +474,7 @@ def load_chat_preferences(main: MainWindow) -> None:
         if combo.findText(saved_ollama) < 0:
             combo.addItem(saved_ollama)
         combo.setCurrentText(saved_ollama)
+    _load_cursor_model_prefs(main, data)
     timeout_val = data.get("chat_timeout_sec", 120)
     try:
         timeout = int(timeout_val)
@@ -352,6 +519,7 @@ def load_chat_preferences(main: MainWindow) -> None:
     from . import ml_handlers
 
     ml_handlers.load_ml_preferences(main)
+    sync_chat_provider_panels(main)
 
 
 def focus_agent_mode(main: MainWindow) -> None:
@@ -574,11 +742,15 @@ def refresh_chat_goal_view(main: MainWindow) -> None:
 
 def save_chat_preferences(main: MainWindow) -> None:
     data = main._settings.load()
-    data["chat_provider"] = main.chat_provider_combo.currentText()
+    data["chat_provider"] = current_chat_provider(main)
     data["chat_openai_model"] = main.chat_openai_model.text().strip()
     if hasattr(main, "chat_api_preset_combo"):
         data["chat_api_preset"] = str(main.chat_api_preset_combo.currentData() or "")
     data["chat_ollama_model"] = main.chat_ollama_model.currentText().strip()
+    if hasattr(main, "chat_cursor_model_combo"):
+        data["chat_cursor_model"] = str(main.chat_cursor_model_combo.currentData() or "")
+    if hasattr(main, "chat_cursor_router_combo"):
+        data["chat_cursor_router"] = str(main.chat_cursor_router_combo.currentData() or "")
     data["chat_timeout_sec"] = main.chat_timeout_spin.value()
     data["ollama_hsa_override_gfx"] = main.ollama_hsa_edit.text().strip()
     data["ollama_rocr_visible_devices"] = main.ollama_rocr_edit.text().strip()
@@ -609,8 +781,9 @@ def on_chat_api_preset_changed(main: MainWindow, *_args: object) -> None:
         return
     main.chat_openai_model.setText(preset.default_model)
     # Cloud preset implies remote OpenAI-compatible path.
-    if main.chat_provider_combo.currentText() in {"auto", "ollama"}:
-        main.chat_provider_combo.setCurrentText("openai")
+    if current_chat_provider(main) in {"auto", "ollama"}:
+        set_chat_provider(main, "openai")
+        sync_chat_provider_panels(main)
     save_chat_preferences(main)
     if hasattr(main, "_refresh_openai_api_status"):
         main._refresh_openai_api_status()
@@ -743,11 +916,17 @@ def dispatch_chat_message(main: MainWindow, message: str) -> None:
         QMessageBox.information(main, "Chat", "Chat request already in progress.")
         return
     save_chat_preferences(main)
-    provider = main.chat_provider_combo.currentText()
+    provider = current_chat_provider(main)
     openai_model = main.chat_openai_model.text().strip()
     ollama_model = main.chat_ollama_model.currentText().strip()
     timeout_sec = main.chat_timeout_spin.value()
     openai_base_url = current_chat_openai_base_url(main)
+    cursor_model = ""
+    cursor_optimize = ""
+    if hasattr(main, "chat_cursor_model_combo"):
+        cursor_model = str(main.chat_cursor_model_combo.currentData() or "")
+    if hasattr(main, "chat_cursor_router_combo"):
+        cursor_optimize = str(main.chat_cursor_router_combo.currentData() or "")
     main.chat_transcript.append(_format_chat_line(main, "user", message))
     main._chat_history.append({"role": "user", "content": message})
     _remember_live_chat(main, "user", message)
@@ -769,6 +948,8 @@ def dispatch_chat_message(main: MainWindow, message: str) -> None:
         ollama_model=ollama_model,
         timeout_sec=timeout_sec,
         openai_base_url=openai_base_url,
+        cursor_model=cursor_model,
+        cursor_optimize=cursor_optimize,
         run_command_with_result=lambda cmd: _run_command_subprocess(cmd, str(main._api._root())),
         privilege_prompt=privilege_prompt_from_bridge(bridge),
     )

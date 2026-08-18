@@ -36,6 +36,19 @@ def test_qt_main_window_smoke() -> None:
         assert window.chat_reject_btn is not None
         assert window.chat_pending_label is not None
         assert window.chat_provider_combo is not None
+        assert window.chat_cursor_model_combo is not None
+        assert window.chat_cursor_router_combo is not None
+        assert window.chat_cloud_box is not None
+        assert window.chat_cursor_box is not None
+        from qt_app.ui.handlers import chat_handlers
+        chat_handlers.set_chat_provider(window, "cursor")
+        chat_handlers.sync_chat_provider_panels(window)
+        assert not window.chat_cursor_box.isHidden()
+        assert window.chat_cloud_box.isHidden()
+        chat_handlers.set_chat_provider(window, "openai")
+        chat_handlers.sync_chat_provider_panels(window)
+        assert not window.chat_cloud_box.isHidden()
+        assert window.chat_cursor_box.isHidden()
         assert window.learning_widget_text is not None
         assert window.chat_goal_view is not None
         assert window.ollama_start_btn is not None

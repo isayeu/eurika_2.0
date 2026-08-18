@@ -1,6 +1,7 @@
 """Chat endpoint for UI (ROADMAP 3.5.11.A, 3.5.11.B, 3.5.11.C). P0.4: split into chat_*, chat_direct."""
 from __future__ import annotations
 import json
+import os
 import shlex
 from collections import deque
 from datetime import datetime, timezone
@@ -146,6 +147,7 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     # Same LLM routing as the Qt / CLI entrypoints: without this the API path
     # ignores OPENAI_* from the project .env and falls back to local Ollama.
     _load_project_env_once(root)
+    os.environ["EURIKA_CURSOR_CWD"] = str(root)
     state = _load_dialog_state(root)
     # Confirm/deny pending scan typo before other intents («да» after scsn).
     pending_scan = state.get('pending_scan_confirm') if isinstance(state, dict) else None

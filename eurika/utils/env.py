@@ -29,6 +29,9 @@ _PROJECT_ENV_KEYS = (
     "EURIKA_USE_ML_INTENT",
     "EURIKA_USE_VECTOR_INTENT",
     "EURIKA_TORCH_DEVICE",
+    "CURSOR_API_KEY",
+    "CURSOR_MODEL",
+    "CURSOR_OPTIMIZE_FOR",
 )
 
 # Subset for callers that only need LLM routing and must not flip feature flags
@@ -41,6 +44,9 @@ LLM_ROUTING_ENV_KEYS = (
     "OLLAMA_OPENAI_API_KEY",
     "OLLAMA_OPENAI_MODEL",
     "OLLAMA_OPENAI_BASE_URL",
+    "CURSOR_API_KEY",
+    "CURSOR_MODEL",
+    "CURSOR_OPTIMIZE_FOR",
 )
 
 

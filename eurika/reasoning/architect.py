@@ -393,10 +393,10 @@ def _call_ollama_cli(model: str, prompt: str, timeout_override: int | None=None)
         return (None, str(e))
 
 def _chat_llm_provider() -> str:
-    """Chat routing: auto | openai | codex | ollama (set by Qt adapter or tests)."""
+    """Chat routing: auto | openai | codex | ollama | cursor (set by Qt adapter or tests)."""
     import os
     raw = (os.environ.get("EURIKA_CHAT_PROVIDER") or "auto").strip().lower()
-    if raw in {"openai", "codex", "ollama", "auto"}:
+    if raw in {"openai", "codex", "ollama", "auto", "cursor"}:
         return raw
     return "auto"
 
@@ -492,7 +492,11 @@ def humanize_llm_error(err: str | None) -> str:
         return format_rate_limit_user_message(raw, local_failed=True)
     compact = " ".join(raw.split())
     low = compact.lower()
-    if "error 1010" in low or "cloudflare" in low or "cf-ray" in low:
+    if "cannot use this model" in low:
+        return (
+            "Эта модель Cursor недоступна на аккаунте (Router / auto-smart — только Teams). "
+            "В Models выбери Composer 2.5 или Auto и повтори."
+        )
         return (
             "Groq недоступен (Cloudflare 1010/403). Включите VPN и повторите. "
             "Локальный Ollama для Desktop agent-loop обычно не тянет prompt."
@@ -704,6 +708,10 @@ def call_llm_with_prompt(prompt: str, max_tokens: int=1024) -> tuple[str | None,
     """Call LLM with custom prompt. Local Ollama: CLI first (fast), then HTTP. Remote: primary/litellm → ollama.
     ROADMAP 3.5.11: chat_send uses this."""
     provider = _chat_llm_provider()
+    if provider == "cursor":
+        from eurika.agent.cursor_judge import complete_chat
+
+        return complete_chat(prompt)
     if provider in {"openai", "codex"}:
         return _call_remote_openai_chat(prompt, max_tokens)
     if provider == "ollama":

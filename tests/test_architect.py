@@ -267,6 +267,17 @@ def test_humanize_llm_error_compact_cloudflare_block() -> None:
     assert "x" * 100 not in text
 
 
+def test_humanize_llm_error_cursor_auto_smart_unavailable() -> None:
+    from eurika.reasoning.architect import humanize_llm_error
+
+    text = humanize_llm_error(
+        "invalid_argument: Cannot use this model: auto-smart. Available models: default, composer-2.5"
+    )
+    assert "Composer 2.5" in text
+    assert "auto-smart" in text.lower() or "Router" in text
+    assert "Available models:" not in text
+
+
 def test_call_ollama_cli_connection_error_requires_manual_start() -> None:
     """On connection error, _call_ollama_cli should not auto-start daemon."""
     first = type("R", (), {"returncode": 1, "stderr": "Error: could not connect to ollama server", "stdout": ""})()

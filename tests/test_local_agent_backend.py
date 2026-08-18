@@ -793,6 +793,17 @@ def test_parse_model_response_executes_unclosed_fenced_tool_calls() -> None:
     assert parsed["toolCalls"][0]["arguments"]["query"] == "LocalAgentRuntime"
 
 
+def test_parse_model_response_same_line_fence_with_nested_arguments() -> None:
+    raw = (
+        '```json {"type":"tool_calls","toolCalls":'
+        '[{"tool":"search","arguments":{"query":"Qt Chat HITL git commit"}}]} ```'
+    )
+    parsed = LocalAgentRuntime._parse_model_response(raw)
+    assert parsed["type"] == "tool_calls"
+    assert parsed["toolCalls"][0]["tool"] == "search"
+    assert parsed["toolCalls"][0]["arguments"]["query"] == "Qt Chat HITL git commit"
+
+
 def test_session_chat_rejects_test_file_as_implementation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

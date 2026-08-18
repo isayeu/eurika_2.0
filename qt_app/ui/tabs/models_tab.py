@@ -166,60 +166,105 @@ def _build_llm_subtab(main: MainWindow) -> QWidget:
     ollama_layout.addRow("Output", main.ollama_output)
     layout.addWidget(ollama_box)
 
-    controls = QGroupBox("Chat model settings")
-    controls_layout = QFormLayout(controls)
+    controls = QGroupBox("Кто отвечает в Chat")
+    controls_layout = QVBoxLayout(controls)
+    source_form = QFormLayout()
     main.chat_provider_combo = QComboBox()
-    main.chat_provider_combo.addItems(["auto", "ollama", "openai", "codex"])
     main.chat_provider_combo.setMaximumWidth(COMBO_MAX_WIDTH)
+    for value, label in (
+        ("auto", "Авто: облако, иначе Ollama"),
+        ("openai", "Облако (Groq / OpenRouter / …)"),
+        ("ollama", "Ollama — локально"),
+        ("cursor", "Cursor"),
+        ("codex", "Codex API"),
+    ):
+        main.chat_provider_combo.addItem(label, value)
     main.chat_provider_combo.setToolTip(
-        "auto: Ollama локально или OpenAI-compatible если задан OPENAI_API_KEY\n"
-        "ollama: только локальная модель\n"
-        "openai: OpenAI-compatible API (Groq/OpenRouter/Gemini/… через preset)\n"
-        "codex: OpenAI API (модель Codex/GPT из поля ниже)"
+        "Один источник ответа. Остальные блоки ниже скрываются.\n"
+        "Авто: Groq/облако если есть OPENAI_API_KEY, иначе Ollama.\n"
+        "Cursor: модели аккаунта Cursor (CURSOR_API_KEY в .env)."
     )
-    controls_layout.addRow("Provider", main.chat_provider_combo)
+    source_form.addRow("Источник", main.chat_provider_combo)
+    main.chat_provider_hint = QLabel("")
+    main.chat_provider_hint.setWordWrap(True)
+    main.chat_provider_hint.setStyleSheet(get_secondary_hint())
+    source_form.addRow("", main.chat_provider_hint)
+    controls_layout.addLayout(source_form)
 
     from eurika.utils.llm_presets import list_llm_api_presets
 
+    main.chat_cloud_box = QGroupBox("Облако")
+    cloud_layout = QFormLayout(main.chat_cloud_box)
     main.chat_api_preset_combo = QComboBox()
     main.chat_api_preset_combo.setMaximumWidth(COMBO_MAX_WIDTH)
     main.chat_api_preset_combo.addItem("(из .env)", "")
     for preset in list_llm_api_presets():
         main.chat_api_preset_combo.addItem(preset.label, preset.id)
     main.chat_api_preset_combo.setToolTip(
-        "Пресет OPENAI_BASE_URL для free/cloud API.\n"
-        "Ключ всегда в OPENAI_API_KEY (.env) — сюда не пишется.\n"
-        "Provider лучше поставить openai (или auto при наличии ключа)."
+        "Пресет OPENAI_BASE_URL. Ключ только в .env как OPENAI_API_KEY."
     )
-    controls_layout.addRow("API preset", main.chat_api_preset_combo)
-
-    main.openai_api_status = QLabel("OpenAI API: unknown")
-    controls_layout.addRow("API status", main.openai_api_status)
+    cloud_layout.addRow("Сервис", main.chat_api_preset_combo)
+    main.openai_api_status = QLabel("API: unknown")
+    cloud_layout.addRow("Статус", main.openai_api_status)
     main.chat_openai_model = QLineEdit()
-    main.chat_openai_model.setPlaceholderText("e.g. openai/gpt-oss-120b, gemini-2.0-flash, …")
+    main.chat_openai_model.setPlaceholderText("openai/gpt-oss-120b, gemini-2.0-flash, …")
     main.chat_openai_model.setMaximumWidth(INPUT_MAX_WIDTH)
-    controls_layout.addRow("Remote model", main.chat_openai_model)
+    cloud_layout.addRow("Модель", main.chat_openai_model)
+    controls_layout.addWidget(main.chat_cloud_box)
+
+    main.chat_ollama_box = QGroupBox("Ollama")
+    ollama_chat_layout = QFormLayout(main.chat_ollama_box)
     chat_ollama_row = QHBoxLayout()
     main.chat_ollama_model = QComboBox()
     main.chat_ollama_model.setEditable(True)
     main.chat_ollama_model.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
     chat_ollama_edit = main.chat_ollama_model.lineEdit()
     if chat_ollama_edit is not None:
-        chat_ollama_edit.setPlaceholderText("installed models or custom name")
+        chat_ollama_edit.setPlaceholderText("установленная модель")
     main.chat_ollama_model.addItem("(no local models)")
     main.chat_ollama_model.setMaximumWidth(COMBO_MAX_WIDTH)
     main.chat_ollama_refresh_btn = QPushButton("Refresh")
     main.chat_ollama_refresh_btn.setMaximumWidth(BTN_SMALL_WIDTH)
-    main.chat_ollama_refresh_btn.setToolTip("Reload installed models from Ollama API")
+    main.chat_ollama_refresh_btn.setToolTip("Список моделей с Ollama API")
     chat_ollama_row.addWidget(main.chat_ollama_model, 1)
     chat_ollama_row.addWidget(main.chat_ollama_refresh_btn)
-    controls_layout.addRow("Ollama model", chat_ollama_row)
+    ollama_chat_layout.addRow("Модель", chat_ollama_row)
+    controls_layout.addWidget(main.chat_ollama_box)
+
+    main.chat_cursor_box = QGroupBox("Cursor")
+    cursor_layout = QFormLayout(main.chat_cursor_box)
+    main.cursor_api_status = QLabel("ключ не проверен")
+    cursor_layout.addRow("Статус", main.cursor_api_status)
+    cursor_row = QHBoxLayout()
+    main.chat_cursor_model_combo = QComboBox()
+    main.chat_cursor_model_combo.setMaximumWidth(COMBO_MAX_WIDTH)
+    main.chat_cursor_model_combo.setToolTip("Composer — конкретная модель. Auto + Router — Cursor сам выбирает.")
+    main.chat_cursor_refresh_btn = QPushButton("Refresh")
+    main.chat_cursor_refresh_btn.setMaximumWidth(BTN_SMALL_WIDTH)
+    main.chat_cursor_refresh_btn.setToolTip("Каталог моделей аккаунта по CURSOR_API_KEY")
+    cursor_row.addWidget(main.chat_cursor_model_combo, 1)
+    cursor_row.addWidget(main.chat_cursor_refresh_btn)
+    cursor_layout.addRow("Модель", cursor_row)
+    main.chat_cursor_router_combo = QComboBox()
+    main.chat_cursor_router_combo.setMaximumWidth(COMBO_MAX_WIDTH)
+    main.chat_cursor_router_combo.addItem("—", "")
+    main.chat_cursor_router_combo.addItem("Cost", "cost")
+    main.chat_cursor_router_combo.addItem("Balance", "balanced")
+    main.chat_cursor_router_combo.addItem("Intelligence", "intelligence")
+    main.chat_cursor_router_combo.setToolTip("Только для Auto + Router. На Individual плана Router часто нет.")
+    main.chat_cursor_form = cursor_layout
+    cursor_layout.addRow("Режим Router", main.chat_cursor_router_combo)
+    controls_layout.addWidget(main.chat_cursor_box)
+
+    timeout_form = QFormLayout()
     main.chat_timeout_spin = QSpinBox()
     main.chat_timeout_spin.setRange(0, 9999)
     main.chat_timeout_spin.setSpecialValueText("∞ (unlimited)")
     main.chat_timeout_spin.setValue(120)
     main.chat_timeout_spin.setMaximumWidth(SPIN_MAX_WIDTH)
-    controls_layout.addRow("Timeout sec", main.chat_timeout_spin)
+    main.chat_timeout_spin.setToolTip("Для Cursor лучше 180–300 с.")
+    timeout_form.addRow("Timeout сек", main.chat_timeout_spin)
+    controls_layout.addLayout(timeout_form)
     layout.addWidget(controls)
     layout.addStretch(1)
     return page

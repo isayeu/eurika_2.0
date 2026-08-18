@@ -299,3 +299,26 @@ def test_git_status_not_commit_handler(tmp_path: Path) -> None:
     assert resolve_direct_handler(tmp_path, "собери коммит")[0] == "git_commit"
     assert resolve_direct_handler(tmp_path, "закоммить и запушь")[0] == "git_commit"
     assert resolve_direct_handler(tmp_path, "запушь")[0] == "git_push"
+
+
+def test_long_eval_brief_does_not_hijack_git_or_reject(tmp_path: Path) -> None:
+    from eurika.api.chat_direct import (
+        is_git_commit_request,
+        is_git_push_request,
+        is_reject_confirmation,
+        resolve_direct_handler,
+    )
+
+    brief = (
+        "Сравни Qt Chat и Desktop по git HITL.\n"
+        "Qt: chat_handlers git_commit / git_push, pending, применяй.\n"
+        "Desktop: есть ли тот же preview перед git commit и git push?\n"
+        "Упомяни Apply/Reject только как UI-кнопки. Не пиши файлы."
+    )
+    assert is_git_commit_request(brief) is False
+    assert is_git_push_request(brief) is False
+    assert is_reject_confirmation(brief) is False
+    assert is_reject_confirmation("отклонить") is True
+    assert resolve_direct_handler(tmp_path, brief)[0] is None
+    assert resolve_direct_handler(tmp_path, "отклонить")[0] is None
+    assert resolve_direct_handler(tmp_path, "собери коммит")[0] == "git_commit"

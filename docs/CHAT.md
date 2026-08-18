@@ -125,7 +125,7 @@
 
 | Переменная | Назначение |
 |------------|------------|
-| `EURIKA_CHAT_PROVIDER` | `auto` \| `ollama` \| `openai` \| `codex` — маршрутизация чата |
+| `EURIKA_CHAT_PROVIDER` | `auto` \| `ollama` \| `openai` \| `codex` \| `cursor` — маршрутизация чата |
 | `OPENAI_API_KEY` | Ключ OpenAI **или** любого OpenAI-compatible API (Groq/OpenRouter/Gemini/…) |
 | `OPENAI_MODEL` | Модель (например `gpt-4o-mini`, `openai/gpt-oss-120b`, `gemini-2.0-flash`) |
 | `OPENAI_BASE_URL` | Базовый URL API (по умолчанию OpenAI; см. пресеты ниже) |
@@ -134,8 +134,11 @@
 | `OLLAMA_OPENAI_API_KEY` | Для Ollama часто `ollama` |
 | `EURIKA_OLLAMA_CLI_TIMEOUT_SEC` | Таймаут CLI Ollama, сек. (по умолчанию `120`; CPU-модели медленные) |
 | `EURIKA_OLLAMA_PROGRESS` | `1` / `0` — спиннер прогресса в терминале при Ollama CLI |
+| `CURSOR_API_KEY` | User API key Cursor (gitignored `.env`) |
+| `CURSOR_MODEL` | id модели (`composer-2.5`, `auto-smart`, …) |
+| `CURSOR_OPTIMIZE_FOR` | Router: `cost` \| `balanced` \| `intelligence` (только Auto / auto-smart) |
 
-**Поведение `auto`:** при наличии `OPENAI_API_KEY` — remote OpenAI-compatible API; иначе Ollama. `codex` — только remote API, без fallback на Ollama.
+**Поведение `auto`:** при наличии `OPENAI_API_KEY` — remote OpenAI-compatible API; иначе Ollama. `codex` — только remote API, без fallback на Ollama. `cursor` — модели Cursor SDK (`CURSOR_API_KEY` в `.env`; вкладка Models → Cursor model / Router).
 
 ### Free / cloud LLM presets
 

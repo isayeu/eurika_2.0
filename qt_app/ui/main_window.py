@@ -302,6 +302,15 @@ class MainWindow(
         self.ollama_vulkan_check.toggled.connect(lambda c: ollama_handlers.on_ollama_vulkan_toggled(self, c))
         self.ollama_refresh_models_btn.clicked.connect(lambda: ollama_handlers.refresh_ollama_models(self, user_initiated=True))
         self.chat_ollama_refresh_btn.clicked.connect(lambda: ollama_handlers.refresh_ollama_models(self, user_initiated=True))
+        self.chat_provider_combo.currentIndexChanged.connect(
+            lambda *_: chat_handlers.on_chat_provider_changed(self)
+        )
+        if hasattr(self, "chat_cursor_refresh_btn"):
+            self.chat_cursor_refresh_btn.clicked.connect(lambda: chat_handlers.refresh_cursor_models(self))
+        if hasattr(self, "chat_cursor_model_combo"):
+            self.chat_cursor_model_combo.currentIndexChanged.connect(
+                lambda *_: chat_handlers.sync_cursor_router_enabled(self)
+            )
         if hasattr(self, "chat_api_preset_combo"):
             self.chat_api_preset_combo.currentIndexChanged.connect(
                 lambda *_: chat_handlers.on_chat_api_preset_changed(self)

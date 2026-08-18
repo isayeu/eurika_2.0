@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 
 import pytest
@@ -70,3 +71,21 @@ def test_parse_env_file_and_chat_provider_key(tmp_path, monkeypatch: pytest.Monk
     load_project_dotenv(tmp_path)
     assert os.environ["OPENAI_API_KEY"] == "groq-test-key"
     assert os.environ["EURIKA_CHAT_PROVIDER"] == "openai"
+
+
+def test_load_project_dotenv_loads_cursor_key(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / ".env").write_text("CURSOR_API_KEY=crsr_test_not_real\n", encoding="utf-8")
+    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
+    load_project_dotenv(tmp_path)
+    assert os.environ["CURSOR_API_KEY"] == "crsr_test_not_real"
+
+
+def test_cursor_key_status_does_not_leak_secret(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from eurika.agent.cursor_judge import cursor_key_status
+
+    secret = "crsr_leakcheck_secret_value"
+    (tmp_path / ".env").write_text(f"CURSOR_API_KEY={secret}\n", encoding="utf-8")
+    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
+    st = cursor_key_status(tmp_path)
+    assert st["api_key_set"] is True
+    assert secret not in json.dumps(st)

@@ -5,6 +5,8 @@ from __future__ import annotations
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QFormLayout,
+    QGroupBox,
     QLabel,
     QLineEdit,
     QProgressBar,
@@ -48,11 +50,20 @@ class ModelsTabAttrs:
     ollama_output: QTextEdit
 
     chat_provider_combo: QComboBox
+    chat_provider_hint: QLabel
+    chat_cloud_box: QGroupBox
     chat_api_preset_combo: QComboBox
     openai_api_status: QLabel
     chat_openai_model: QLineEdit
+    chat_ollama_box: QGroupBox
     chat_ollama_model: QComboBox
     chat_ollama_refresh_btn: QPushButton
+    chat_cursor_box: QGroupBox
+    chat_cursor_form: QFormLayout
+    cursor_api_status: QLabel
+    chat_cursor_model_combo: QComboBox
+    chat_cursor_refresh_btn: QPushButton
+    chat_cursor_router_combo: QComboBox
     chat_timeout_spin: QSpinBox
 
     ml_policy_hint: QLabel

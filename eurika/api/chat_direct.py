@@ -79,10 +79,16 @@ def extract_confirmation_token(message: str) -> str:
 
 
 def is_reject_confirmation(message: str) -> bool:
-    """Detect explicit rejection/cancel for pending plan."""
-    msg = _norm_msg(message)
-    if not msg:
+    """Detect explicit rejection/cancel for pending plan.
+
+    Long eval/find briefs may mention Apply/Reject as nouns — those are not rejects.
+    """
+    raw = (message or "").strip()
+    if not raw:
         return False
+    if len(raw) > 96 or "\n" in raw:
+        return False
+    msg = _norm_msg(raw)
     markers = ("отклонить", "отмена", "cancel", "reject")
     return any(m in msg for m in markers)
 
@@ -987,7 +993,10 @@ def is_force_push_request(message: str) -> bool:
 
 def is_git_commit_and_push_request(message: str) -> bool:
     """Detect combined commit+push (HITL → apply does both)."""
-    msg = _norm_msg(message)
+    span = _command_like_intent_span(message)
+    if span is None:
+        return False
+    msg = _norm_msg(span)
     if not msg:
         return False
     phrases = (
@@ -1008,9 +1017,28 @@ def is_git_commit_and_push_request(message: str) -> bool:
     return is_git_commit_request(message) and is_git_push_request(message)
 
 
+def _command_like_intent_span(message: str) -> str | None:
+    """Skill detectors see a short command, not a multi-line eval brief.
+
+    Returns None when the message is a long instruction (find/train), not a skill.
+    """
+    raw = (message or "").strip()
+    if not raw:
+        return None
+    if "\n" in raw or len(raw) > 200:
+        first = raw.split("\n", 1)[0].strip()
+        if len(first) > 88:
+            return None
+        return first
+    return raw
+
+
 def is_git_push_request(message: str) -> bool:
     """Detect git push request (HITL → ``применяй``; never auto-push)."""
-    msg = _norm_msg(message)
+    span = _command_like_intent_span(message)
+    if span is None:
+        return False
+    msg = _norm_msg(span)
     if not msg:
         return False
     if re.search(r"^(что|как|зачем|why|what|how)\s", msg):
@@ -1035,8 +1063,12 @@ def is_git_commit_request(message: str) -> bool:
 
     Read-only ``git status`` / ``git diff`` are *not* commit requests — they go
     to the LLM tool-loop (or bare ``host_shell``).
+    Long find/eval briefs that mention those words are also not commit skills.
     """
-    msg = _norm_msg(message)
+    span = _command_like_intent_span(message)
+    if span is None:
+        return False
+    msg = _norm_msg(span)
     if not msg:
         return False
     keywords = (

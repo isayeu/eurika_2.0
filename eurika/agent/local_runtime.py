@@ -625,9 +625,11 @@ class LocalAgentRuntime:
     @staticmethod
     def _unwrap_json_payload(value: str) -> str:
         text = (value or "").strip()
-        fence = re.search(r"```(?:json)?\s*([\{\[][\s\S]*?[\}\]])\s*```", text, flags=re.IGNORECASE)
-        if fence:
-            return fence.group(1)
+        # Take the whole fence body. A non-greedy `{ ... }` cut stops at the first
+        # nested object (search arguments) and then the tool-call is treated as final text.
+        fenced = re.match(r"```(?:json)?\s*([\s\S]*?)\s*```", text, flags=re.IGNORECASE)
+        if fenced:
+            return fenced.group(1).strip()
         opened = re.match(r"```(?:json)?\s*", text, flags=re.IGNORECASE)
         if opened:
             text = text[opened.end() :]

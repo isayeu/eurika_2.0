@@ -70,6 +70,37 @@ def test_chat_send_uses_codex_provider(monkeypatch) -> None:
     assert captured["ollama_model"] is None
 
 
+def test_chat_send_uses_cursor_provider(monkeypatch) -> None:
+    captured = {}
+
+    def _fake_chat_send(_root, _message, _history, **kwargs):
+        import os
+
+        captured["provider"] = os.environ.get("EURIKA_CHAT_PROVIDER")
+        captured["cursor_model"] = os.environ.get("CURSOR_MODEL")
+        captured["cursor_opt"] = os.environ.get("CURSOR_OPTIMIZE_FOR")
+        captured["cursor_cwd"] = os.environ.get("EURIKA_CURSOR_CWD")
+        return {"text": "ok", "error": None}
+
+    monkeypatch.setattr(adapter_mod, "_chat_send", _fake_chat_send)
+    api = EurikaApiAdapter(".")
+    out = api.chat_send(
+        message="hello",
+        history=[],
+        provider="cursor",
+        openai_model="",
+        ollama_model="",
+        timeout_sec=60,
+        cursor_model="auto-smart",
+        cursor_optimize="balanced",
+    )
+    assert out["error"] is None
+    assert captured["provider"] == "cursor"
+    assert captured["cursor_model"] == "auto-smart"
+    assert captured["cursor_opt"] == "balanced"
+    assert captured["cursor_cwd"]
+
+
 def test_list_ollama_models_parses_tags_payload(monkeypatch) -> None:
     class _Resp:
         def __enter__(self):
