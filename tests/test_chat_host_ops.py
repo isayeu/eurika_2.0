@@ -368,6 +368,25 @@ def test_soft_scan_not_invented_for_ml_training_question() -> None:
     assert resolve_direct_handler(Path("."), msg)[0] is None
 
 
+def test_list_docs_rejected_for_external_url_with_docs_path() -> None:
+    from eurika.api.chat_direct import _accept_soft_handler, resolve_direct_handler
+    from pathlib import Path
+
+    msg = (
+        "посмотри в интернете https://cursor.com/docs/account/pricing, "
+        "какая самая дешевая модель"
+    )
+    assert _accept_soft_handler("list_docs", msg) is False
+    assert resolve_direct_handler(Path("."), msg)[0] is None
+
+
+def test_plain_web_search_hard_routed() -> None:
+    from eurika.api.chat_direct import resolve_direct_handler
+    from pathlib import Path
+
+    assert resolve_direct_handler(Path("."), "поищи в интернете kivy sqlite")[0] == "web_search"
+
+
 def test_record_and_load_tool_turn_experience(tmp_path: Path) -> None:
     from eurika.api.chat_host_ops import (
         infer_tool_turn_hint,

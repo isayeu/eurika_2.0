@@ -129,6 +129,16 @@ def _load_project_env_once(root: Path) -> None:
     except Exception:
         pass
 
+
+def _apply_chat_llm_routing() -> None:
+    """Qt Models source wins over ``.env`` unless ChatWorker locked this call."""
+    try:
+        from eurika.utils.env import apply_qt_chat_routing
+
+        apply_qt_chat_routing()
+    except Exception:
+        pass
+
 def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str, str]]]=None, on_system_action: Optional[Callable[[str], None]]=None, run_command_with_result: Optional[Callable[[str], tuple[str, int]]]=None, privilege_prompt: Optional[PrivilegePrompt]=None) -> Dict[str, Any]:
     """
     Send user message through Eurika layer to LLM; return response.
@@ -147,6 +157,7 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     # Same LLM routing as the Qt / CLI entrypoints: without this the API path
     # ignores OPENAI_* from the project .env and falls back to local Ollama.
     _load_project_env_once(root)
+    _apply_chat_llm_routing()
     os.environ["EURIKA_CURSOR_CWD"] = str(root)
     state = _load_dialog_state(root)
     # Confirm/deny pending scan typo before other intents («да» after scsn).
@@ -482,6 +493,22 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         topics = _knowledge_topics_for_chat(intent or '', scope)
         if topics:
             knowledge_snippet = _fetch_knowledge_for_chat(root, topics)
+    except Exception:
+        pass
+    try:
+        from eurika.api.chat_direct import looks_like_web_page_question
+        from eurika.utils.web_search import extract_http_urls, format_web_pages_for_prompt
+
+        if looks_like_web_page_question(msg):
+            urls = extract_http_urls(msg)
+            if urls:
+                page_text = format_web_pages_for_prompt(urls)
+                if page_text:
+                    knowledge_snippet = (
+                        (knowledge_snippet + "\n\n" + page_text).strip()
+                        if knowledge_snippet
+                        else page_text
+                    )
     except Exception:
         pass
     save_target = target if intent == 'save' else None

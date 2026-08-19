@@ -80,7 +80,40 @@ def test_format_chat_line_roles() -> None:
     assert "#ef4444" in err or "#b91c1c" in err
 
 
-def test_numbered_list_uses_explicit_markers_not_ol() -> None:
+def test_gfm_pipe_table_renders_grid() -> None:
+    html_out = render_chat_markdown(
+        "перед\n"
+        "| Роль | Файлы |\n"
+        "|------|--------|\n"
+        "| Статус | `root.py` |\n"
+        "| **Обучение** | market_model.py |\n"
+        "после"
+    )
+    assert "<table" in html_out
+    assert "<th" in html_out
+    assert "<td" in html_out
+    assert "Роль" in html_out
+    assert "root.py" in html_out
+    assert "<b>Обучение</b>" in html_out
+    assert "<hr" not in html_out
+    assert html_out.count("<tr>") == 3
+
+
+def test_pipe_sentence_is_not_a_table() -> None:
+    html_out = render_chat_markdown("Spot|Futures|Both без сетки")
+    assert "<th" not in html_out
+    assert "Spot|Futures|Both" in html_out
+
+
+def test_table_alignment_markers() -> None:
+    html_out = render_chat_markdown(
+        "| L | C | R |\n"
+        "| :--- | :---: | ---: |\n"
+        "| a | b | c |\n"
+    )
+    assert "text-align:left" in html_out
+    assert "text-align:center" in html_out
+    assert "text-align:right" in html_out
     html_out = render_chat_markdown("1. alpha\n\n1. beta\n\n1. gamma")
     assert "<ol" not in html_out
     assert "<ul" not in html_out

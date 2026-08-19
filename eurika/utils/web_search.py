@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 _USER_AGENT = "Eurika/3.0 (web-search; +https://github.com/eurika)"
+_HTTP_URL_RE = re.compile(r"https?://[^\s<>\"')\],]+", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,42 @@ def resolve_web_search_provider(explicit: str = "auto") -> str:
     return "duckduckgo"
 
 
+def extract_http_urls(message: str) -> List[str]:
+    """Return http(s) URLs from a user message (deduped, order preserved)."""
+    seen: set[str] = set()
+    out: List[str] = []
+    for m in _HTTP_URL_RE.finditer(message or ""):
+        url = m.group(0).rstrip(".,;:!?)")
+        if url and url not in seen:
+            seen.add(url)
+            out.append(url)
+    return out
+
+
+def fetch_web_page_text(url: str, *, max_chars: int = 8000, timeout: float = 10.0) -> Optional[str]:
+    """Fetch a public web page as plain text (stdlib, HTML stripped)."""
+    from eurika.knowledge.base import _fetch_url
+
+    return _fetch_url(url, timeout=timeout, max_chars=max_chars)
+
+
+def format_web_pages_for_prompt(urls: List[str], *, max_chars_per_page: int = 6000) -> str:
+    """Build a prompt block from explicit URLs in the user message."""
+    parts: List[str] = []
+    for url in urls[:2]:
+        text = fetch_web_page_text(url, max_chars=max_chars_per_page)
+        if text:
+            parts.append(f"[Web page: {url}]\n{text}")
+    return "\n\n".join(parts)
+
+
+def _strip_urls(text: str) -> str:
+    out = text or ""
+    for url in extract_http_urls(out):
+        out = out.replace(url, " ")
+    return re.sub(r"\s+", " ", out).strip(" ,;:.—–-?!.")
+
+
 def extract_web_search_query(message: str) -> str:
     """Strip search-intent prefixes and return the query."""
     msg = (message or "").strip()
@@ -56,6 +93,7 @@ def extract_web_search_query(message: str) -> str:
     patterns = (
         # Allow «поищи в интернете, какие…» / «…интернете: …» / «…про …».
         r"^(?:найди|поищи|search|find)\s+(?:в\s+)?(?:интернете|internet|web|google)\s*[,:;]?\s*(?:про|о|about|for)?\s*(.+)$",
+        r"^(?:посмотри|открой|зайди)\s+(?:в\s+)?(?:интернете|internet|web|сайт|на\s+сайт)\s*[,:;]?\s*(.+)$",
         r"^(?:погугли|загугли|google)\s+(.+)$",
         r"^web\s+search\s+(.+)$",
         r"^search\s+the\s+web\s+(?:for\s+)?(.+)$",
@@ -65,11 +103,10 @@ def extract_web_search_query(message: str) -> str:
     for pat in patterns:
         m = re.match(pat, lowered, flags=re.IGNORECASE)
         if m:
-            # Preserve original casing from tail of message where possible.
             tail = msg[m.start(1) :].strip()
-            tail = tail.lstrip(" \t,;:.—–-?!.").rstrip(" ?!.")
-            return tail
-    return msg.strip(" ?!.")
+            tail = _strip_urls(tail.lstrip(" \t,;:.—–-?!.").rstrip(" ?!."))
+            return tail or _strip_urls(msg)
+    return _strip_urls(msg.strip(" ?!."))
 
 
 def _http_json(

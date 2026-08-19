@@ -53,13 +53,19 @@ def is_apply_confirmation(message: str) -> bool:
     """Detect explicit confirmation to execute a pending action.
 
     Avoid bare substring ``apply`` — it false-positives on commit texts like
-    ``собери коммит: Gate Apply after Diff``.
+    ``собери коммит: Gate Apply after Diff``. Long eval briefs that mention
+    the HITL verb inside instructions are not confirms (same gate as reject).
     """
-    msg = _norm_msg(message)
+    raw = (message or "").strip()
+    if not raw:
+        return False
+    if len(raw) > 96 or "\n" in raw:
+        return False
+    msg = _norm_msg(raw)
     if not msg:
         return False
     # Commit/push intents win over HITL apply (message may contain the word Apply).
-    if is_git_commit_request(message) or is_git_push_request(message):
+    if is_git_commit_request(raw) or is_git_push_request(raw):
         return False
     if any(m in msg for m in ("применяй", "выполняй", "это подтверждение")):
         return True
@@ -320,6 +326,8 @@ _LLM_DIRECTIVE = re.compile(
 # Soft-match may invent web_search; require an explicit internet cue.
 _WEB_SEARCH_MARKERS = (
     "в интернете",
+    "посмотри в интернете",
+    "открой в интернете",
     "погугли",
     "загугли",
     "web search",
@@ -347,6 +355,18 @@ def looks_like_web_search_request(message: str) -> bool:
     if not msg:
         return False
     return any(m in msg for m in _WEB_SEARCH_MARKERS)
+
+
+def looks_like_web_page_question(message: str) -> bool:
+    """Internet cue + explicit URL → fetch page and answer via LLM, not list_docs."""
+    if not looks_like_web_search_request(message):
+        return False
+    try:
+        from eurika.utils.web_search import extract_http_urls
+
+        return bool(extract_http_urls(message))
+    except Exception:
+        return False
 
 
 def looks_like_market_ml_scope_request(message: str) -> bool:
@@ -419,6 +439,15 @@ def _accept_soft_handler(handler_id: Optional[str], msg: str) -> bool:
     }:
         return False
     if handler_id == "list_docs":
+        if looks_like_web_search_request(msg):
+            return False
+        try:
+            from eurika.utils.web_search import extract_http_urls
+
+            if extract_http_urls(msg):
+                return False
+        except Exception:
+            pass
         n = _norm_msg(msg)
         if not any(
             x in n
@@ -497,8 +526,14 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
             pass
         elif hid == "git_commit" and not is_git_commit_request(msg) and not is_git_commit_and_push_request(msg):
             pass
+        elif hid == "roadmap_verify" and not is_roadmap_verify_request(msg):
+            pass
+        elif hid == "web_search" and looks_like_web_page_question(msg):
+            pass
         else:
             return matched
+    if looks_like_web_search_request(msg) and not looks_like_web_page_question(msg):
+        return ("web_search", None)
     # Factual handlers before soft-match — otherwise "что за проект?" goes to LLM.
     if is_identity_question(msg):
         return ("identity", None)
@@ -884,17 +919,26 @@ def is_release_check_request(message: str) -> bool:
 
 
 def is_roadmap_verify_request(message: str) -> bool:
-    """True only with explicit ROADMAP/phase cues (not OS «операционка»)."""
-    msg = _norm_msg(message)
+    """True only with an explicit phase-check command (not a plan-doc mention)."""
+    raw = (message or "").strip()
+    if not raw:
+        return False
+    if is_os_env_check_request(raw):
+        return False
+    msg = _norm_msg(raw)
     if not msg:
         return False
-    if is_os_env_check_request(message):
-        return False
-    # Require a phase/roadmap cue — bare «проверь» must not hit this skill.
     if re.search(
-        r"(?:фаз[ауеы]?\b|phase\b|roadmap\b|verify\s+phase|сверк\w*\s+roadmap|"
-        r"roadmap\s+verify|проверка\s+фаз|фаза\s+реализован|реализац\w+|"
-        r"\bcr-[a-z]\d*\b)",
+        r"(?:"
+        r"провер(?:ь|ите|ить)\s+фаз|"
+        r"verify\s+phase|"
+        r"check\s+phase|"
+        r"свер(?:ь|ьте|ить|ка|ку|ки|кой)\s+roadmap|"
+        r"сверк\w*\s+roadmap|"
+        r"roadmap\s+verify|"
+        r"verify\s+roadmap|"
+        r"проверка\s+фаз"
+        r")",
         msg,
         re.I,
     ):

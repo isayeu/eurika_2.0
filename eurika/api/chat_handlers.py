@@ -220,7 +220,9 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         return {'text': text, 'error': None}
     if handler_id == 'web_search':
         from eurika.utils.web_search import (
+            extract_http_urls,
             extract_web_search_query,
+            format_web_pages_for_prompt,
             format_web_search_results,
             search_web,
             web_search_enabled,
@@ -230,6 +232,14 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             append_safe(root, 'user', msg, None)
             append_safe(root, 'assistant', text, None)
             return {'text': text, 'error': None}
+        urls = extract_http_urls(msg)
+        if urls:
+            page_text = format_web_pages_for_prompt(urls)
+            if page_text:
+                text = page_text
+                append_safe(root, 'user', msg, None)
+                append_safe(root, 'assistant', text, None)
+                return {'text': text, 'error': None}
         query = extract_web_search_query(msg)
         results, provider, note = search_web(query)
         text = format_web_search_results(query, results, provider=provider, note=note)

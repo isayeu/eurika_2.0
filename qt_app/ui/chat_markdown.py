@@ -1,6 +1,6 @@
 """Lightweight markdown → HTML for the Qt chat transcript.
 
-Not full CommonMark: fenced code frames, inline code, bold, simple lists,
+Not full CommonMark: fenced code frames, GFM pipe tables, inline code, bold, simple lists,
 paragraphs. Fenced blocks register payloads for Copy / Run link actions.
 """
 
@@ -64,6 +64,7 @@ _LIST_ITEM_RE = re.compile(r"^(\s*)([-*]|\d+\.)\s+(.*)$")
 _HEADING_RE = re.compile(r"^(#{1,3})\s+(.*)$")
 _QUOTE_RE = re.compile(r"^>\s?(.*)$")
 _HR_RE = re.compile(r"^(-{3,}|\*{3,})\s*$")
+_TABLE_SEP_CELL_RE = re.compile(r"^:?-{3,}:?$")
 _IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 _LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+|file:[^)\s]+)\)")
 _IMAGE_LINE_RE = re.compile(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$")
@@ -258,6 +259,97 @@ def _render_inline(text: str, image_root: Path | None = None) -> str:
     return out
 
 
+def _split_table_cells(line: str) -> list[str]:
+    text = line.strip()
+    if text.startswith("|"):
+        text = text[1:]
+    if text.endswith("|"):
+        text = text[:-1]
+    return [cell.strip() for cell in text.split("|")]
+
+
+def _table_alignments(sep_cells: list[str]) -> list[str]:
+    out: list[str] = []
+    for cell in sep_cells:
+        token = cell.strip()
+        if token.startswith(":") and token.endswith(":"):
+            out.append("center")
+        elif token.endswith(":"):
+            out.append("right")
+        else:
+            out.append("left")
+    return out
+
+
+def _is_table_separator(line: str) -> bool:
+    if "|" not in line:
+        return False
+    cells = _split_table_cells(line)
+    if len(cells) < 2:
+        return False
+    return all(_TABLE_SEP_CELL_RE.match(cell.replace(" ", "")) for cell in cells if cell)
+
+
+def _is_table_row(line: str) -> bool:
+    if "|" not in line or _is_table_separator(line):
+        return False
+    return len(_split_table_cells(line)) >= 2
+
+
+def _render_table_html(rows: list[list[str]], aligns: list[str], image_root: Path | None) -> str:
+    width = max((len(row) for row in rows), default=0)
+    if width < 2 or len(rows) < 1:
+        return ""
+    while len(aligns) < width:
+        aligns.append("left")
+
+    def _cell(tag: str, text: str, col: int) -> str:
+        align = aligns[col] if col < len(aligns) else "left"
+        return (
+            f'<{tag} style="border:1px solid #475569; padding:5px 8px; '
+            f'text-align:{align}; vertical-align:top;">'
+            f"{_render_inline(text, image_root)}</{tag}>"
+        )
+
+    header = rows[0] + [""] * (width - len(rows[0]))
+    body_rows = [row + [""] * (width - len(row)) for row in rows[1:]]
+    head_html = "".join(_cell("th", header[i], i) for i in range(width))
+    body_html = "".join(
+        "<tr>" + "".join(_cell("td", row[i], i) for i in range(width)) + "</tr>"
+        for row in body_rows
+    )
+    return (
+        '<table cellspacing="0" cellpadding="0" '
+        'style="border-collapse:collapse; margin:8px 0; width:100%;">'
+        f"<tr>{head_html}</tr>{body_html}</table>"
+    )
+
+
+def _try_parse_table(
+    lines: list[str],
+    start: int,
+    image_root: Path | None,
+) -> tuple[str, int] | None:
+    """GFM pipe table starting at ``start``. Returns HTML and line count."""
+    if start + 1 >= len(lines):
+        return None
+    header_line = lines[start]
+    sep_line = lines[start + 1]
+    if not _is_table_row(header_line) or not _is_table_separator(sep_line):
+        return None
+    header = _split_table_cells(header_line)
+    aligns = _table_alignments(_split_table_cells(sep_line))
+    body: list[list[str]] = []
+    i = start + 2
+    while i < len(lines) and _is_table_row(lines[i]):
+        body.append(_split_table_cells(lines[i]))
+        i += 1
+    html_out = _render_table_html([header, *body], aligns, image_root)
+    if not html_out:
+        return None
+    return html_out, i - start
+
+
 def _next_nonempty(lines: list[str], start: int) -> str | None:
     for look in lines[start:]:
         if look.strip():
@@ -266,7 +358,7 @@ def _next_nonempty(lines: list[str], start: int) -> str | None:
 
 
 def _render_text_block(text: str, image_root: Path | None = None) -> str:
-    """Paragraphs, headings, quotes, images, lists (no ``<ol>`` — Qt leaks numbering)."""
+    """Paragraphs, headings, quotes, images, GFM tables, lists (no ``<ol>`` — Qt leaks numbering)."""
     if not text.strip():
         return ""
     lines = text.split("\n")
@@ -280,8 +372,8 @@ def _render_text_block(text: str, image_root: Path | None = None) -> str:
             return
         ordered = bool(list_ordered)
         rows: list[str] = []
-        for i, item in enumerate(list_buf, start=1):
-            marker = f"{i}." if ordered else "•"
+        for n, item in enumerate(list_buf, start=1):
+            marker = f"{n}." if ordered else "•"
             rows.append(
                 f'<p style="margin:2px 0 2px 16px;">{html.escape(marker)}&nbsp;'
                 f"{_render_inline(item, image_root)}</p>"
@@ -300,12 +392,23 @@ def _render_text_block(text: str, image_root: Path | None = None) -> str:
         parts.append(f'<p style="margin:4px 0;">{body}</p>')
         para = []
 
-    for idx, line in enumerate(lines):
+    idx = 0
+    while idx < len(lines):
+        parsed = _try_parse_table(lines, idx, image_root)
+        if parsed is not None:
+            html_out, consumed = parsed
+            flush_para()
+            flush_list()
+            parts.append(html_out)
+            idx += consumed
+            continue
+        line = lines[idx]
         img_line = _IMAGE_LINE_RE.match(line.strip())
         if img_line:
             flush_para()
             flush_list()
             parts.append(_render_image_html(img_line.group(1), img_line.group(2), image_root))
+            idx += 1
             continue
         heading = _HEADING_RE.match(line)
         if heading:
@@ -317,11 +420,13 @@ def _render_text_block(text: str, image_root: Path | None = None) -> str:
                 f'<p style="margin:8px 0 4px 0; font-size:{size}px;">'
                 f"<b>{_render_inline(heading.group(2), image_root)}</b></p>"
             )
+            idx += 1
             continue
         if _HR_RE.match(line.strip()):
             flush_para()
             flush_list()
             parts.append('<hr style="border:0; border-top:1px solid #334155; margin:8px 0;" />')
+            idx += 1
             continue
         quote = _QUOTE_RE.match(line)
         if quote:
@@ -331,6 +436,7 @@ def _render_text_block(text: str, image_root: Path | None = None) -> str:
                 f'<p style="margin:4px 0 4px 12px; color:#94a3b8;">'
                 f"{_render_inline(quote.group(1), image_root)}</p>"
             )
+            idx += 1
             continue
         m = _LIST_ITEM_RE.match(line)
         if m:
@@ -341,16 +447,20 @@ def _render_text_block(text: str, image_root: Path | None = None) -> str:
                 flush_list()
             list_ordered = ordered
             list_buf.append(m.group(3))
+            idx += 1
             continue
         if not line.strip():
             nxt = _next_nonempty(lines, idx + 1)
             if list_buf and nxt is not None and _LIST_ITEM_RE.match(nxt):
+                idx += 1
                 continue
             flush_list()
             flush_para()
+            idx += 1
             continue
         flush_list()
         para.append(line)
+        idx += 1
     flush_list()
     flush_para()
     return "".join(parts)

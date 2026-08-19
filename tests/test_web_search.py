@@ -8,6 +8,7 @@ from unittest.mock import patch
 from urllib.response import addinfourl
 
 from eurika.utils.web_search import (
+    extract_http_urls,
     extract_web_search_query,
     format_web_search_results,
     resolve_web_search_provider,
@@ -25,6 +26,17 @@ def test_extract_web_search_query_strips_prefix() -> None:
         == "какие API LLM сейчас доступны бесплатно"
     )
     assert extract_web_search_query("поищи в интернете: groq vs cerebras") == "groq vs cerebras"
+    assert (
+        extract_web_search_query(
+            "посмотри в интернете https://cursor.com/docs/account/pricing, какая самая дешевая модель"
+        )
+        == "какая самая дешевая модель"
+    )
+
+
+def test_extract_http_urls() -> None:
+    msg = "посмотри в интернете https://cursor.com/docs/account/pricing, какая модель"
+    assert extract_http_urls(msg) == ["https://cursor.com/docs/account/pricing"]
 
 
 def test_resolve_provider_prefers_tavily_key(monkeypatch) -> None:
