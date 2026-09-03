@@ -67,6 +67,37 @@ def test_gate_blocks_flat_market_and_passes_expansion() -> None:
     assert "-0.30" in why and "+0.50" in why
 
 
+def test_gate_blocks_high_expansion_when_band_does_not_pay() -> None:
+    gate = {
+        "expansion_min": 2.0,
+        "expected_edge": -0.0001,
+        "required_edge": 0.0012,
+        "covers_cost": False,
+        "cost_mult": 1.5,
+        "samples": 170,
+        "source": "calibrated",
+    }
+    ok, why = ec.cost_gate_ok(_feat(vol_z=3.0, atr_burst=2.5), fee=0.0008, gate=gate)
+    assert ok is False
+    assert "полоса экзамена не окупает комиссию" in why
+    assert "≥ +2.00" in why
+
+
+def test_gate_passes_high_expansion_when_band_pays() -> None:
+    gate = {
+        "expansion_min": 0.5,
+        "expected_edge": 0.002,
+        "required_edge": 0.0012,
+        "covers_cost": True,
+        "cost_mult": 1.5,
+        "samples": 80,
+        "source": "calibrated",
+    }
+    ok, why = ec.cost_gate_ok(_feat(vol_z=1.2, atr_burst=0.9), fee=0.0008, gate=gate)
+    assert ok is True
+    assert why == ""
+
+
 def test_gate_stays_open_when_features_are_unusable() -> None:
     ok, why = ec.cost_gate_ok(None, fee=0.0008, gate={"expansion_min": 0.5})
     assert ok is True

@@ -149,7 +149,7 @@ class MarketTickWorker(QThread):
             self.failed.emit(f"{type(exc).__name__}: {exc}")
 
 
-# Kind badge + body tint for Market transcript (light/dark-ish readable).
+# Kind badge + accent for Market cards (chat-like transcript).
 _KIND_META: dict[str, tuple[str, str]] = {
     "error": ("ошибка", "#b91c1c"),
     "outcome": ("итог", "#0f766e"),
@@ -158,12 +158,18 @@ _KIND_META: dict[str, tuple[str, str]] = {
     "explore": ("исследование", "#a16207"),
     "analysis": ("анализ", "#0f766e"),
     "learn": ("обучение", "#7c3aed"),
+    "cursor_hour": ("LLM 15м", "#6d28d9"),
+    "portfolio_agent": ("Portfolio", "#0e7490"),
     "wait": ("горизонт", "#64748b"),
     "hold": ("ожидание", "#64748b"),
     "skip": ("пропуск", "#94a3b8"),
     "sync": ("синхронизация", "#475569"),
     "info": ("инфо", "#334155"),
+    "digest": ("сводка", "#0f766e"),
 }
+
+# Per-tick noise: fills the feed without changing open/close decisions.
+_NOISE_KINDS = frozenset({"sync", "analysis", "hold", "wait"})
 
 _BODY_HIGHLIGHTS: tuple[tuple[str, str], ...] = (
     ("неудача", "#b91c1c"),
@@ -176,18 +182,42 @@ _BODY_HIGHLIGHTS: tuple[tuple[str, str], ...] = (
     ("горизонт импульса", "#a16207"),
 )
 
+_MD_HINT_RE = re.compile(r"(^|\n)\s{0,3}(#{1,3}\s|[-*]\s|\d+\.\s|>\s|```|\*\*)")
+
+
+def is_market_feed_noise(kind: str | None, message: str = "") -> bool:
+    """True for routine tick spam that should not enter the Market feed/journal."""
+    k = (kind or "info").strip().lower()
+    if k in _NOISE_KINDS:
+        return True
+    if k != "info":
+        return False
+    msg = (message or "").strip()
+    for prefix in ("инфо: ", "info: "):
+        if msg.lower().startswith(prefix):
+            msg = msg[len(prefix) :].strip()
+            break
+    low = msg.lower()
+    if low.startswith("universe"):
+        return True
+    if low.startswith("синхронизация") or low.startswith("sync "):
+        return True
+    return False
+
 
 def _highlight_market_body(escaped: str) -> str:
     """Wrap known tokens in colored spans (input already HTML-escaped)."""
     out = escaped
-    for token, color in _BODY_HIGHLIGHTS:
-        if token not in out:
-            continue
-        out = out.replace(
-            token,
-            f'<b><span style="color:{color}">{token}</span></b>',
-        )
-    # Soft-emphasize burst/break numbers in analysis lines.
+    # Longest-first + placeholders so «неудача» is not re-matched as «удача».
+    ordered = sorted(_BODY_HIGHLIGHTS, key=lambda item: len(item[0]), reverse=True)
+    slots: list[tuple[str, str]] = []
+    for token, color in ordered:
+        while token in out:
+            mark = f"\x00H{len(slots)}\x01"
+            out = out.replace(token, mark, 1)
+            slots.append((mark, f'<b><span style="color:{color}">{token}</span></b>'))
+    for mark, html_bit in slots:
+        out = out.replace(mark, html_bit)
     out = re.sub(
         r"(burst=)([+\-]?\d+\.?\d*)",
         r'\1<b><span style="color:#a16207">\2</span></b>',
@@ -201,36 +231,101 @@ def _highlight_market_body(escaped: str) -> str:
     return out
 
 
+def _strip_kind_prefix(text: str, *, kind: str, badge_ru: str) -> str:
+    body = text or ""
+    prefix = f"{badge_ru}: "
+    if body.startswith(prefix):
+        return body[len(prefix) :]
+    if kind == "error" and body.startswith("ошибка: "):
+        return body[len("ошибка: ") :]
+    if kind == "cursor_hour" and body.startswith("LLM 15м: "):
+        return body[len("LLM 15м: ") :]
+    return body
+
+
+def _market_body_html(body: str, *, kind: str) -> str:
+    """Render body: markdown cards for long/LLM text, token highlights for short lines."""
+    raw = body or ""
+    use_md = kind in {"cursor_hour", "digest"} or ("\n" in raw and bool(_MD_HINT_RE.search(raw)))
+    if use_md:
+        from qt_app.ui.chat_markdown import render_chat_markdown
+
+        return render_chat_markdown(raw)
+    escaped = html.escape(raw).replace("\n", "<br>")
+    return _highlight_market_body(escaped)
+
+
 def _format_market_line(
     text: str,
     *,
     is_error: bool = False,
     kind: str | None = None,
 ) -> str:
-    """Rich HTML line: colored kind badge + highlighted body."""
+    """Chat-like HTML card: accent strip + kind label + body."""
+    from qt_app.ui.styles import is_dark_theme
+
     k = (kind or ("error" if is_error else "info")).strip().lower()
     if is_error:
         k = "error"
-    badge_ru, color = _KIND_META.get(k, ("инфо", "#334155"))
-    # Outcome: green vs red from message text.
+    badge_ru, accent = _KIND_META.get(k, ("инфо", "#334155"))
     if k == "outcome":
         if "неудача" in text:
-            color = "#b91c1c"
+            accent = "#b91c1c"
         elif "удача" in text:
-            color = "#15803d"
+            accent = "#15803d"
 
-    # Avoid double prefix when text already starts with "анализ: …" from format_market_event.
-    body = text
-    prefix = f"{badge_ru}: "
-    if body.startswith(prefix):
-        body = body[len(prefix) :]
-    elif k == "error" and body.startswith("ошибка: "):
-        body = body[len("ошибка: ") :]
+    body = _strip_kind_prefix(text, kind=k, badge_ru=badge_ru)
+    use_dark = is_dark_theme()
+    if k == "error":
+        bg = "#3f1d1d" if use_dark else "#fef2f2"
+        fg = "#fecaca" if use_dark else "#7f1d1d"
+        name_color = "#fca5a5" if use_dark else accent
+    elif k in {"paper", "outcome", "explore"}:
+        bg = "#0f172a" if use_dark else "#eff6ff"
+        fg = "#e5e7eb" if use_dark else "#111827"
+        name_color = accent if not use_dark else "#93c5fd"
+    elif k in {"cursor_hour", "learn", "shadow_outcome", "portfolio_agent"}:
+        bg = "#1e1b4b" if use_dark else "#f5f3ff"
+        fg = "#e5e7eb" if use_dark else "#312e81"
+        name_color = "#c4b5fd" if use_dark else accent
+    else:
+        bg = "#1e293b" if use_dark else "#f8fafc"
+        fg = "#e5e7eb" if use_dark else "#334155"
+        name_color = "#cbd5e1" if use_dark else accent
 
-    escaped = html.escape(body).replace("\n", "<br>")
-    colored_body = _highlight_market_body(escaped)
-    badge = f'<b><span style="color:{color}">{html.escape(badge_ru)}</span></b>'
-    return f"{badge}: {colored_body}"
+    body_html = _market_body_html(body, kind=k)
+    return (
+        f'<table width="100%" cellspacing="0" cellpadding="0" '
+        f'style="margin:0 0 10px 0;">'
+        f"<tr>"
+        f'<td width="4" bgcolor="{accent}">&nbsp;</td>'
+        f'<td bgcolor="{bg}" style="padding:8px 10px;">'
+        f'<p style="margin:0 0 6px 0; font-family:sans-serif; font-size:12px; '
+        f'color:{name_color};"><b>{html.escape(badge_ru)}</b></p>'
+        f'<div style="font-family:sans-serif; font-size:13px; color:{fg};">'
+        f"{body_html}</div>"
+        f"</td></tr></table>"
+        '<p style="margin:0; font-size:1px; color:transparent;">&nbsp;</p>'
+    )
+
+
+def _append_market_html(main: MainWindow, html_line: str) -> None:
+    """Insert an isolated card (same isolation trick as Chat)."""
+    view = getattr(main, "market_transcript", None)
+    if view is None:
+        view = getattr(main, "chat_transcript", None)
+    if view is None or not html_line:
+        return
+    from PySide6.QtGui import QTextBlockFormat, QTextCursor
+
+    cursor = view.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    cursor.insertHtml(html_line)
+    cursor.insertBlock(QTextBlockFormat())
+    view.setTextCursor(cursor)
+    bar = view.verticalScrollBar()
+    if bar:
+        bar.setValue(bar.maximum())
 
 
 def append_market_message(
@@ -247,6 +342,8 @@ def append_market_message(
     extras: dict | None = None,
 ) -> None:
     kind_eff = (kind or ("error" if is_error else "info")).strip() or "info"
+    if not is_error and is_market_feed_noise(kind_eff, text):
+        return
     root = _project_root(main)
     if persist and root:
         try:
@@ -264,19 +361,11 @@ def append_market_message(
             )
         except Exception:
             pass
-    view = getattr(main, "market_transcript", None)
-    if view is None:
-        view = getattr(main, "chat_transcript", None)
-    if view is None:
-        return
-    view.append(_format_market_line(text, is_error=is_error, kind=kind))
-    bar = view.verticalScrollBar()
-    if bar:
-        bar.setValue(bar.maximum())
+    _append_market_html(main, _format_market_line(text, is_error=is_error, kind=kind_eff))
 
 
 def show_session_digest(main: MainWindow, *, mark_seen: bool = True) -> None:
-    """«Пока тебя не было» — в ленту Market (без засорения journal).
+    """«Пока тебя не было» — одна карточка в ленту Market (без journal).
 
     Once per app process/root. Skips empty «just opened» re-runs after mark_seen.
     """
@@ -313,13 +402,29 @@ def show_session_digest(main: MainWindow, *, mark_seen: bool = True) -> None:
     shown = set(shown)
     shown.add(root_key)
     main._session_digest_shown_roots = shown
-    for line in text.splitlines():
-        append_market_message(main, line, kind="info", persist=False)
+    append_market_message(main, text, kind="digest", persist=False)
     if mark_seen:
         try:
             mark_session_seen(root, equity_usdt=data.get("equity_usdt"))
         except Exception:
             pass
+    update_market_status_label(main)
+
+
+def show_market_report(main: MainWindow) -> None:
+    """Append MLP + LLM shadow dashboard tables into the Market feed."""
+    root = _project_root(main)
+    if not root:
+        append_market_message(main, "сначала укажите корень проекта", is_error=True)
+        return
+    try:
+        from eurika.ml.market_report import format_market_dashboard_report
+
+        text = format_market_dashboard_report(root)
+    except Exception as exc:
+        append_market_message(main, f"отчёт: {exc}", is_error=True, persist=False)
+        return
+    append_market_message(main, text, kind="digest", persist=False)
     update_market_status_label(main)
 
 
@@ -353,7 +458,7 @@ def update_market_status_label(main: MainWindow, extra: str = "") -> None:
         live_n: int | None = None
         if root:
             try:
-                from eurika.ml.live_paper import count_live_labels, resolve_explore_enabled
+                from eurika.ml.live_paper import resolve_explore_enabled
 
                 gate = resolve_explore_enabled(root, explore=True, explore_live_cap=cap)
                 live_n = gate.get("live")
@@ -371,6 +476,8 @@ def update_market_status_label(main: MainWindow, extra: str = "") -> None:
                 explore_bits = f"исслед.вкл(до {cap})" if cap > 0 else "исслед.вкл"
         else:
             explore_bits = f"исслед.вкл(до {cap})" if cap > 0 else "исслед.вкл"
+    llm_on = bool(getattr(main, "market_llm_learn_check", None) and main.market_llm_learn_check.isChecked())
+    llm_bits = "llm.вкл" if llm_on else "llm.выкл"
     pnl_bits = ""
     bank_text = "equity=— · маржа — · Δ=—"
     root_pnl = _project_root(main)
@@ -414,7 +521,7 @@ def update_market_status_label(main: MainWindow, extra: str = "") -> None:
     if hasattr(main, "market_bank_label"):
         main.market_bank_label.setText(bank_text)
     parts = [
-        f"{mode} · {mkt} · {scope} {candle} · гор.{horizon} · {explore_bits}{pnl_bits} · без ордеров"
+        f"{mode} · {mkt} · {scope} {candle} · гор.{horizon} · {explore_bits} · {llm_bits}{pnl_bits} · без ордеров"
     ]
     if extra:
         parts.append(extra)
@@ -487,6 +594,21 @@ def _persist_ticker_lists(main: MainWindow) -> None:
     )
 
 
+def _persist_analysis_prefs(main: MainWindow) -> None:
+    root = _project_root(main)
+    if not root:
+        return
+    from eurika.ml.cursor_hourly_brief import save_analysis_prefs
+
+    tf1 = "15m"
+    tf2 = "1h"
+    if hasattr(main, "market_llm_tf1_combo"):
+        tf1 = main.market_llm_tf1_combo.currentText().strip() or "15m"
+    if hasattr(main, "market_llm_tf2_combo"):
+        tf2 = main.market_llm_tf2_combo.currentText().strip() or "1h"
+    save_analysis_prefs(root, tf1, tf2, markets=_market_mode_from_ui(main))
+
+
 def save_market_preferences(main: MainWindow) -> None:
     data = main._settings.load()
     if hasattr(main, "market_live_check"):
@@ -504,6 +626,14 @@ def save_market_preferences(main: MainWindow) -> None:
     data.pop("market_symbol", None)
     if hasattr(main, "market_micro_train_check"):
         data["market_micro_train"] = bool(main.market_micro_train_check.isChecked())
+    if hasattr(main, "market_llm_learn_check"):
+        data["market_llm_learn"] = bool(main.market_llm_learn_check.isChecked())
+    if hasattr(main, "market_portfolio_check"):
+        data["market_portfolio_agent"] = bool(main.market_portfolio_check.isChecked())
+    if hasattr(main, "market_llm_tf1_combo"):
+        data["market_llm_tf1"] = main.market_llm_tf1_combo.currentText().strip() or "15m"
+    if hasattr(main, "market_llm_tf2_combo"):
+        data["market_llm_tf2"] = main.market_llm_tf2_combo.currentText().strip() or "1h"
     if hasattr(main, "market_explore_check"):
         data["market_explore"] = bool(main.market_explore_check.isChecked())
     if hasattr(main, "market_explore_cap_spin"):
@@ -522,6 +652,7 @@ def save_market_preferences(main: MainWindow) -> None:
         data["market_trail_pct"] = float(main.market_trail_spin.value())
     main._settings.save(data)
     _persist_ticker_lists(main)
+    _persist_analysis_prefs(main)
 
 
 def load_market_preferences(main: MainWindow) -> None:
@@ -594,6 +725,26 @@ def load_market_preferences(main: MainWindow) -> None:
         main.market_micro_train_check.blockSignals(True)
         main.market_micro_train_check.setChecked(bool(data.get("market_micro_train", True)))
         main.market_micro_train_check.blockSignals(False)
+    if hasattr(main, "market_llm_learn_check"):
+        main.market_llm_learn_check.blockSignals(True)
+        main.market_llm_learn_check.setChecked(bool(data.get("market_llm_learn", False)))
+        main.market_llm_learn_check.blockSignals(False)
+    if hasattr(main, "market_portfolio_check"):
+        main.market_portfolio_check.blockSignals(True)
+        main.market_portfolio_check.setChecked(bool(data.get("market_portfolio_agent", False)))
+        main.market_portfolio_check.blockSignals(False)
+    if hasattr(main, "market_llm_tf1_combo"):
+        tf1 = str(data.get("market_llm_tf1") or "15m")
+        idx = main.market_llm_tf1_combo.findText(tf1)
+        main.market_llm_tf1_combo.blockSignals(True)
+        main.market_llm_tf1_combo.setCurrentIndex(idx if idx >= 0 else 1)
+        main.market_llm_tf1_combo.blockSignals(False)
+    if hasattr(main, "market_llm_tf2_combo"):
+        tf2 = str(data.get("market_llm_tf2") or "1h")
+        idx = main.market_llm_tf2_combo.findText(tf2)
+        main.market_llm_tf2_combo.blockSignals(True)
+        main.market_llm_tf2_combo.setCurrentIndex(idx if idx >= 0 else 2)
+        main.market_llm_tf2_combo.blockSignals(False)
     if hasattr(main, "market_explore_check"):
         main.market_explore_check.blockSignals(True)
         main.market_explore_check.setChecked(bool(data.get("market_explore", False)))
@@ -611,7 +762,14 @@ def load_market_preferences(main: MainWindow) -> None:
         main.market_live_check.setChecked(bool(data.get("market_live_paper", False)))
         main.market_live_check.blockSignals(False)
     update_market_status_label(main)
+    _sync_market_explore_controls(main)
     _sync_timer(main)
+    _persist_analysis_prefs(main)
+    from . import market_llm_learn
+    from . import market_portfolio_agent
+
+    market_llm_learn.sync_timer(main)
+    market_portfolio_agent.sync_timer(main)
     # Defer digest until transcript widget is ready / prefs applied (once).
     if getattr(main, "_session_digest_scheduled", False):
         return
@@ -622,6 +780,12 @@ def load_market_preferences(main: MainWindow) -> None:
         QTimer.singleShot(600, lambda: show_session_digest(main, mark_seen=True))
     except Exception:
         show_session_digest(main, mark_seen=True)
+
+
+def run_portfolio_agent_once(main: MainWindow) -> None:
+    from . import market_portfolio_agent
+
+    market_portfolio_agent.run_once(main, force=True)
 
 
 def on_market_live_toggled(main: MainWindow, checked: bool) -> None:
@@ -656,10 +820,24 @@ def on_market_auto_toggled(main: MainWindow, _checked: bool = False) -> None:
     _sync_timer(main)
 
 
+def _sync_market_explore_controls(main: MainWindow) -> None:
+    on = bool(getattr(main, "market_explore_check", None) and main.market_explore_check.isChecked())
+    if hasattr(main, "market_explore_cap_spin"):
+        main.market_explore_cap_spin.setEnabled(on)
+    if hasattr(main, "market_explore_reset_btn"):
+        main.market_explore_reset_btn.setEnabled(on)
+
+
 def on_market_prefs_changed(main: MainWindow) -> None:
     save_market_preferences(main)
+    _sync_market_explore_controls(main)
     update_market_status_label(main)
     _sync_timer(main)
+    from . import market_llm_learn
+    from . import market_portfolio_agent
+
+    market_llm_learn.sync_timer(main)
+    market_portfolio_agent.sync_timer(main)
 
 
 def reset_explore_counter(main: MainWindow) -> None:
@@ -909,6 +1087,9 @@ def run_market_tick(main: MainWindow, *, from_timer: bool = False) -> None:
             main.market_tick_btn.setEnabled(True)
         for ev in result.get("events") or []:
             ek = str(ev.get("kind") or "info")
+            raw_msg = str(ev.get("message") or "")
+            if ek != "error" and is_market_feed_noise(ek, raw_msg):
+                continue
             from eurika.ml.market_journal import journal_fields_from_event
 
             fields = journal_fields_from_event(ev if isinstance(ev, dict) else {})

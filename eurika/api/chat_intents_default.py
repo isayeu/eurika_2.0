@@ -24,15 +24,17 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "- Продолжение: «приступай» / «продолжай» — следующий шаг VISION (chat UX), не toggle ML.\n"
         "- Цель агента: «какая цель?», «что получилось?», «итог цели», «сбрось цель».\n"
         "- Документация: «покажи документацию» — список; «прочти всю документацию, что реализовано?» — аудит VISION/ROADMAP (LLM).\n"
-        "- Market: «анализ рынка» — сейчас; «логика маркета» — как устроен paper ML; "
+        "- Market: «успехи на маркете» — полный отчёт (таблицы equity/edge/головы); "
+        "«анализ рынка» — сейчас; «разбор тикера BTCUSDT» — TF1/TF2 + MLP + shadow; "
+        "«логика маркета» — как устроен paper ML; "
         "«пока меня не было» — digest; «одна модель или на каждый тикер?» — scope ML.\n"
         "- Скан: «просканируй проект» (eurika scan .).\n"
         "- Ритуал: «проведи ритуал» (scan → doctor → report-snapshot).\n"
         "- Smoke: «проведи smoke test» (torch + Qt smoke).\n"
         "- Коммит: «собери коммит», подтверждение «применяй». "
         "Статус/diff без коммита — через eurika-cmds (не HITL).\n"
-        "- Успехи обучения market ML — через `.eurika/ml/` "
-        "(format_market_learning_block / meta.json), не через `eurika scan`."
+        "- Успехи обучения market ML — полный отчёт из `.eurika/ml/` "
+        "(format_market_learning_report), не через `eurika scan`; не сжимать в 3 абзаца."
     ),
     "intents": {
         "identity": {
@@ -244,8 +246,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "file_recount": {
             "match_mode": "regex",
             "patterns": [
-                r"сколько\s+(?:\w+\s+){0,6}файл",
-                r"сколько\s+(?:\w+\s+){0,6}модул",
+                r"\bсколько\s+(?:\w+\s+){0,6}файл",
+                r"\bсколько\s+(?:\w+\s+){0,6}модул",
                 r"how\s+many\s+(?:\w+\s+){0,4}files?",
                 r"(?:пере|под|по)счита\w*\s+(?:\w+\s+){0,6}файл",
                 r"\bпересчита",
@@ -451,6 +453,105 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             ],
             "emit": None,
         },
+        "market_learning_report": {
+            "patterns": [
+                "успехи на маркете",
+                "успехи на рынке",
+                "успехи маркета",
+                "успехи market",
+                "успехи paper",
+                "успехи обучения торгов",
+                "обучение торговле",
+                "обучении торговле",
+                "обучении на маркете",
+                "обучение на маркете",
+                "как маркет справляется",
+                "как справляется маркет",
+                "разбор маркета",
+                "аудит маркета",
+                "аудит market",
+                "market exam",
+                "paper exam",
+                "как твои успехи на маркете",
+                "как успехи на маркете",
+            ],
+            "vector_exemplars": [
+                "как твои успехи на маркете и обучении торговле?",
+                "как успехи у Эврики на маркете и обучении?",
+                "полный разбор paper банка и обучения голов",
+            ],
+            "emit": None,
+        },
+        "llm_teacher_execution": {
+            "patterns": [
+                "отработала по совету",
+                "отработала по llm",
+                "отработала по ллм",
+                "исполнила по llm",
+                "исполнила по ллм",
+                "ml хоть раз",
+                "mlp хоть раз",
+                "ml по совету llm",
+                "ml по совету ллм",
+                "по совету llm",
+                "по совету ллм",
+                "следует llm",
+                "следует ллм",
+                "исполняет llm",
+                "исполняет совет llm",
+            ],
+            "vector_exemplars": [
+                "ML хоть раз отработала по совету LLM?",
+                "открывала ли paper MLP сделки по советам LLM-учителя",
+                "does market MLP execute on LLM teacher advice",
+            ],
+            "emit": None,
+        },
+        "llm_teacher_stats": {
+            "patterns": [
+                "прогнозов по ллм",
+                "прогнозов по llm",
+                "прогнозы llm",
+                "llm прогноз",
+                "llm-прогноз",
+                "llm учитель",
+                "llm-учитель",
+                "llm teacher",
+                "сколько прогнозов",
+                "сколько llm",
+                "в плюсе за все",
+                "в плюсе за всё",
+                "прибыльных прогнозов",
+                "успешных прогнозов llm",
+                "исходы llm",
+                "статистика llm",
+            ],
+            "vector_exemplars": [
+                "проверь сколько прогнозов по LLM вышло в плюс за все время",
+                "сколько LLM советов оказались прибыльными",
+                "статистика LLM-учителя settled plus minus",
+            ],
+            "emit": None,
+        },
+        "llm_shadow_report": {
+            "patterns": [
+                "llm shadow",
+                "shadow llm",
+                "как дела у llm shadow",
+                "сколько заработала llm",
+                "сколько заработал llm shadow",
+                "llm shadow portfolio",
+                "теневой банк llm",
+                "теневой портфель llm",
+                "llm shadow доход",
+            ],
+            "vector_exemplars": [
+                "как дела у llm shadow?",
+                "сколько заработала llm сама?",
+                "сравни llm shadow и mlp paper",
+            ],
+            "emit": None,
+        },
         # Architecture of Market — before situation snapshot («что на рынке»).
         "market_logic": {
             "patterns": [
@@ -488,6 +589,74 @@ DEFAULT_CONFIG: Dict[str, Any] = {
                 "объясни архитектуру маркета",
                 "how does the paper market loop work?",
                 "скелет: свечи → фичи → MLP → paper → обучение",
+            ],
+            "emit": None,
+        },
+        # Holistic portfolio agent — before market_situation.
+        "portfolio_agent_once": {
+            "patterns": [
+                "запусти portfolio",
+                "запусти portfolio цикл",
+                "запусти portfolio агент",
+                "portfolio цикл",
+                "portfolio once",
+                "portfolio agent once",
+                "holistic цикл",
+                "holistic portfolio",
+                "агент портфеля",
+                "портфельный цикл",
+                "запусти портфель",
+                "run portfolio cycle",
+                "run portfolio agent",
+            ],
+            "vector_exemplars": [
+                "запусти portfolio цикл сейчас",
+                "сделай один holistic portfolio цикл",
+                "run portfolio agent once",
+            ],
+            "emit": None,
+        },
+        "portfolio_agent_status": {
+            "patterns": [
+                "статус portfolio",
+                "статус портфеля",
+                "portfolio статус",
+                "portfolio status",
+                "holistic статус",
+                "как portfolio агент",
+                "что с portfolio агентом",
+                "книги portfolio",
+                "cash pool portfolio",
+            ],
+            "vector_exemplars": [
+                "статус portfolio агента и cash pool",
+                "как дела у holistic portfolio?",
+            ],
+            "emit": None,
+        },
+        # Before market_situation / market_ml_scope — single-symbol brief ≠ FAQ.
+        "market_ticker_brief": {
+            "patterns": [
+                "разбор тикера",
+                "разбор тикер",
+                "анализ тикера",
+                "анализ тикер",
+                "разбери тикер",
+                "разбери пару",
+                "что по тикеру",
+                "что по паре",
+                "перспектива по",
+                "вход tp",
+                "вход tp/sl",
+                "ticker analysis",
+                "analyze ticker",
+                "analyse ticker",
+            ],
+            "vector_exemplars": [
+                "проведи разбор тикера BTCUSDT на фьючерсах",
+                "анализ BTCUSDT: перспектива, вход, TP/SL",
+                "что по ETHUSDT fut — вход и уровни",
+                "ticker brief BTCUSDT futures entry tp sl",
             ],
             "emit": None,
         },

@@ -88,13 +88,15 @@
 
 **HTF (зафиксировано, не сейчас):** третий ТФ только как **bias 4h** (не 6–8h и не третий вход): sync + фильтр soft-стороны по режиму; journal `htf=…`. После anti-horizon и веса меток по `pnl_usdt` (entry ✅). Пока — копим sized-опыт на dual TF + банк.
 
-**Chat «анализ рынка»:** intent `market_situation` → срез банка / opens / свежих analysis из journal (`format_market_situation_block`). Вопрос «одна модель или per-ticker?» → `market_ml_scope` (MLP 24 фичи, общая policy).
+**Chat «анализ рынка»:** intent `market_situation` → срез банка / opens / свежих analysis из journal (`format_market_situation_block`). **«разбор тикера BTCUSDT»** → `market_ticker_brief` (TF1/TF2 + MLP + LLM shadow). Вопрос «одна модель или per-ticker?» → `market_ml_scope` (MLP 24 фичи, общая policy); слово «тикер» само по себе туда не роутит.
 
-**Session digest:** `.eurika/ml/session_seen.json` — при открытии Qt (`load_market_preferences`) в ленту Market блок «ПОКА ТЕБЯ НЕ БЫЛО» (fill/Σedge/ΣPnL$/выходы/equity Δ); Chat intent `session_digest` («пока меня не было») без сдвига last-seen.
+**Session digest:** `.eurika/ml/session_seen.json` — при открытии Qt (`load_market_preferences`) в ленту Market блок «ПОКА ТЕБЯ НЕ БЫЛО» (**3 банка**: Live/MLP exam, Portfolio/holistic, LLM shadow — equity+Δ; Live fill/Σedge/ΣPnL$/выходы); Chat intent `session_digest` («пока меня не было») без сдвига last-seen.
+
+**LLM 15м (opt-in):** чекбокс Market «LLM обучение» → каждые 15 мин Cursor читает **TF1 и TF2** с вкладки Market (по умолчанию 15m+1h) и **только выбранный рынок** (Spot / Futures / Both — тот же комбо, что и paper). В снимок попадают **все тикеры списка** Market (потолок 40 на случай раздутого universe; open/pending LLM shadow и live book в приоритете). Пишет совет + JSON-метки. Метки снимаются с **полного** ответа до обрезки ленты (`MAX_TEXT_CHARS`), а если модель не выдала JSON — разбираются сами блоки отчёта (`вход/сторона/плечо/TP·SL`, `parse_markdown_samples`); тикер без `[spot]/[fut]` привязывается к снимку, когда книга одна. В ленту JSON не пишется. Оценка **по последующему пути свечей** (TP/SL совета и комиссия площадки), а не «только если MLP сама вошла». Прибыльный путь → вес как у paper (бонус до 2×, если средний edge LLM выше paper). Убыточный BUY/SELL → HOLD. Банк по-прежнему экзамен MLP+ворот: LLM не открывает paper и не подменяет argmax. Отдельно **LLM shadow** (`.eurika/ml/llm_shadow_*.json`): на том же 15м-цикле LLM обязан выдать явные `shadow_actions` (`open`/`place` limit|stop|oco с числами `limit_px`/`stop_px`, либо manage hold/update/cancel/close) — проза ордера не ставит; исполнение fill и TP/SL/trail — по 1m без доп. опроса LLM.
 
 **Chat-first (тонкий срез):** при старте Qt активна вкладка **Chat**; подвкладка **Агент** (бывш. Dialog); полоска режимов → Market / Models→ML; справа на Агенте панель **Контекст** (goal/pending/last run + **авто-Diff** + **Apply после Diff** + прыжки Terminal/Approvals); `chat_mode_status_label` зеркалит краткий статус paper. Автостарт Ollama **не** переключает на Models.
 
-**Тайминг open/close:** при закрытии пишутся `mfe_pct` / `mae_pct` / `entry_timing_score`; entry-модель учит BUY/SELL только если `correct` **и** хороший тайминг (`mfe ≥ TP` или score > 0). **Вес сэмпла** в micro-train: `|pnl_usdt|` (иначе `|edge|`), clamp 0.25…8 — крупные $ влияют сильнее ровных correct. **Burst-fade:** `entry_setup_ok` режет SELL при +burst>2 / BUY при −burst<-2 **только** пока импульс не выдыхается (≥2 из rsi/macd/bb deltas против); после кульминации short/bounce разрешены. Exit-модель `market_exit.pt` (HOLD/CLOSE) на 1m-фичах; CLOSE с +MFE/giveback весят больше при train; может закрыть раньше при edge ≥¼ TP; при вооружённом MFE и отдаче — мягче bank (`should_model_exit` + `mfe_pct`). TP/SL/горизонт остаются жёстким safety. **Time-stop (anti-horizon):** после MFE ≥~0.28×TP, если ход отдан (≤40% MFE или ≤0) — выход `time_stop` до горизонта. Ретро-сэмплы → `.eurika/ml/exit_samples.jsonl` (+ `mfe_pct`/`giveback`). После model-exit — cooldown **20×1m**; после **SL — 40×1m** той же стороны.
+**Тайминг open/close:** при закрытии пишутся `mfe_pct` / `mae_pct` / `entry_timing_score`; entry-модель учит BUY/SELL только если `correct` **и** хороший тайминг (`mfe ≥ TP` или score > 0). **Вес сэмпла** в micro-train: `|pnl_usdt|` (иначе `|edge|`), clamp 0.25…8 — крупные $ влияют сильнее ровных correct. **Burst-fade:** `entry_setup_ok` режет SELL при +burst>2 / BUY при −burst<-2 **только** пока импульс не выдыхается (≥2 из rsi/macd/bb deltas против); после кульминации short/bounce разрешены. Exit-модель `market_exit.pt` (HOLD/CLOSE) на 1m-фичах; CLOSE с +MFE/giveback весят больше при train; может закрыть раньше при edge ≥¼ TP; при вооружённом MFE и отдаче — мягче bank (`should_model_exit` + `mfe_pct`). TP/SL/горизонт остаются жёстким safety. **Time-stop (anti-horizon):** после MFE ≥~0.28×TP, если ход отдан (≤40% MFE или ≤0) — выход `time_stop` до горизонта. Ретро-сэмплы → `.eurika/ml/exit_samples.jsonl` (+ `mfe_pct`/`giveback`). После model-exit — cooldown **20×1m**; после **SL — 40×1m** той же стороны. **Micro-train CPU:** полный дообуч (entry/exit/levels/style/ворота) не чаще **раз в 10 мин**; exit учится на хвосте ≤20k строк `exit_samples` (файл уже >250k).
 
 **Уровни TP/SL/trail:** модель `market_levels.pt` учится по MFE/MAE закрытых сделок (учитель: TP≈0.85·MFE, SL≈1.15·MAE, trail≈0.35·MFE). При открытии: **model → эвристика(vol/burst) → UI**. Спины UI = мягкий потолок / запасной, не жёсткие уровни. В ленте: `TP=… [model|heuristic]`.
 
@@ -117,7 +119,7 @@
 
 Хранение: `.eurika/ml/pending_orders.json` + opens с `entry_style`, `trail_pct`, `trail_extreme`. Обучение: filled → как сейчас (+ style); cancelled → HOLD для entry; trail/TP/SL в `exit_reason`.
 
-**Журнал Market:** каждая строка ленты дописывается в `.eurika/ml/market_journal.jsonl` (`ts`, `kind`, `message` + опционально `reason`, `bar_ts`, `symbol`, `market`, `edge`…). Очистка UI не стирает файл — пишется `журнал очищен`. **Ротация:** раз в 7 дней или при размере ≥16 MiB → `market_journal_YYYYMMDD_HHMMSS.jsonl` (хранятся 2 архива). Это только лента UI, **не** `paper_trades` / веса. Без секретов.
+**Журнал Market:** компактная лента — в `.eurika/ml/market_journal.jsonl` пишутся только важные события (`paper`/`outcome`/`explore`/`learn`/`cursor_hour`/`error`/…); per-tick `sync`/`analysis`/`hold`/`wait` и universe-info в journal/UI не попадают. Строка: `ts`, `kind`, `message` + опционально `reason`, `bar_ts`, `symbol`, `market`, `edge`…. Очистка UI не стирает файл — пишется `журнал очищен`. Кнопка **Отчёт** на Market кладёт в ленту сводку (opens/pending + uPnL, **Portfolio агент** / holistic cash, MLP paper/головы, LLM shadow) без записи в journal. **Ротация:** раз в 7 дней или при размере ≥16 MiB → `market_journal_YYYYMMDD_HHMMSS.jsonl` (хранятся 2 архива). Это только лента UI, **не** `paper_trades` / веса. Без секретов.
 
 **Фичи (24, сырьё для ML, не торговые правила вроде «RSI низкий → buy»):** базовые `ret_1/4`, `ret_window`, `sma_ratio`, `volatility`, `hl_range`, `vol_z`, `atr_burst`, `range_break`, **`rsi_14`**, **`bb_pos`**, **`macd_hist`**; динамика `rsi_delta` / `bb_pos_delta` / `macd_hist_delta`; `bb_width`; структура `dist_to_low/high_{20,40,win}`; MA `sma_slope`, `price_vs_sma_slow`. Entry = MLP(`n→32→3`). Окно фич = 40 баров. При сильном всплеске горизонт paper `max(user_h, 4)`. Старые короткие `feature_vec` паддятся нулями; несовместимые Linear-веса → momentum до ретрейна. **PnL:** Σ `edge` (после fee) — всего / live / spot|fut / сессия с включения Live (`.eurika/ml/live_session.json`); плюс **USDT** (`pnl_usdt`, equity банка) в Models→ML и статус Market.
 
@@ -128,6 +130,51 @@
 Spot/Futures тикеры — **раздельные ручные списки** (`.eurika/ml/ticker_lists.json`); «Заполнить spot» — разово из балансов.
 
 **Сброс исследования:** кнопка «Сброс счётчика» пишет `.eurika/ml/explore_baseline.json` (baseline = текущий total live). Cap считает только новые метки после сброса; `paper_trades` и веса не трогает.
+
+### Якорь экзамена (не забыть через 7 дней)
+
+Машинный срез: `.eurika/ml/exam_checkpoint.json`. Чеклист: [VISION.md](VISION.md) § «Ежедневный разбор journal» п.8.
+
+| | |
+|--|--|
+| **Зафиксировано** | **2026-08-24** (~08:30 UTC) |
+| **Разбор** | **2026-08-31** (или ближайший день после) |
+| **До разбора** | freeze: **не** новый entry / explore on / HTF / live-ордера; Live+тени+LLM-учитель — ок |
+| **Не делать** | «переписать стратегию», потому что банк в минусе |
+
+**Срез 2026-08-24:**
+
+| метрика | значение |
+| --- | --- |
+| equity | 984.38 USDT (старт 1000, Δ=**−15.62**) |
+| live n / mean edge / Σ PnL | 2361 / **−0.059%** / −15.62 USDT |
+| BUY vs SELL | 2029 / 332 |
+| rolling last 50 / 100 / 200 | −1.69$ / −2.01$ / −2.13$ |
+| live opens | 0 |
+| gate `expansion_min` | 2.000 |
+| gate `expected_edge` / `covers_cost` | +0.116% / **нет** |
+| entry MLP samples / in-sample acc / LLM в train | 7433 / 0.618 / 1747 |
+| LLM teacher samples | 4592 (hourly ok) |
+| день 24.08 | 26 закрытий, −0.80$, edge −0.267% |
+| день 23.08 | 5 закрытий, +0.05$ (шум) |
+
+Контекст: 20–21.08 рынок давал сильные ходы (BTC fut ~+8% за 48ч), paper их почти не монетизировал (HOLD/wait + лимиты ниже + gate-shadows). Учёба растёт (сэмплы/acc), экзамен — нет. С 22.08 equity 985.14→984.38, rolling хуже; ворота сменили `covers_cost: да` (+0.184%) → **нет** (+0.116%).
+
+**Критерий на 2026-08-31 — сравнить с якорем:**
+
+1. `covers_cost` и `expected_edge` в `weights/entry_cost_gate.json` (или отчёт «успехи на маркете»).
+2. Rolling **last 200** live: mean edge и Σ `pnl_usdt`.
+3. Equity Δ vs 1000 и vs якоря −15.62.
+
+| исход | действие |
+| --- | --- |
+| `covers_cost` всё ещё **нет** **и** last 200 всё ещё в минусе | **разбор journal по воротам/комиссии** (полоса не платит) — не «новая стратегия»; с 2026-09-02 live не открывается при `covers_cost: false` даже при expansion ≥ порога |
+| last 200 edge > 0 и Σ PnL > 0, equity не хуже якоря | держать скелет; смотреть устойчивость 24–72ч |
+| иначе смешанное | ещё ждать под freeze; не explore on |
+
+Команды на разбор: Chat «успехи на маркете» / «анализ рынка»; кнопка **Отчёт** на Market.
+
+**Assistant / holistic portfolio (не MLP exam):** единый cash pool `.eurika/ml/holistic_portfolio.json` + trade (`assistant_*`). **С 2026-09-03 ops-режим futures-only:** earn/spot actions игнорируются (`PORTFOLIO_FUTURES_ONLY`), банк в `cash_free` под futures margin. Снимок рынка — **весь Binance USDT-M perpetual** (кэш `.eurika/ml/futures_universe_cache.json` + 24h ticker), детальные ТФ-карточки: **opens/pending в приоритете**, затем топ movers (не узкий `ticker_lists.json`). Запуск: Market → **Portfolio агент** / кнопка **Цикл**; чат «запусти portfolio цикл» / «статус portfolio»; CLI `python3 -m eurika.ml.assistant_paper portfolio-loop --interval 900`. Journal: `assistant_journal.jsonl` (`portfolio_cycle`) + строка в `market_journal`.
 
 ---
 

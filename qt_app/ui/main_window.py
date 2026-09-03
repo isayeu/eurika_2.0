@@ -58,6 +58,11 @@ from .main_window_shell_attrs import (
 )
 from .tabs import approve_tab, chat_tab, commands_tab, dashboard_tab, graph_tab, help_tab, models_tab, notes_tab, terminal_tab
 
+# QThreads still in urllib/LLM after closeEvent; dropping the last Python ref
+# aborts ("Destroyed while thread is still running"). qt_app.main os._exit's after exec().
+_LINGERING_QTHREADS: list[Any] = []
+
+
 class MainWindow(
     ModelsTabAttrs,
     ChatTabAttrs,
@@ -91,12 +96,20 @@ class MainWindow(
         self._command_service = CommandService(self)
         self._pending_operations: list[dict[str, Any]] = []
         self._chat_history: list[dict[str, str]] = []
+        self._chat_history_root = ""
+        self._live_chat_seen: set[str] = set()
+        self._live_chat_offset = 0
+        self._live_activity_offset = 0
+        self._live_activity_ids: set[str] = set()
+        self._live_activity_timer: QTimer | None = None
         self._chat_worker: ChatWorker | None = None
         self._chat_block_payloads: dict[str, str] = {}
         self._host_privilege_bridge: HostPrivilegeBridge | None = None
         self._chat_cancelled = False
         self._pending_plan_token = ''
         self._pending_plan_fallback_active = False
+        self._agent_pending_call = None
+        self._agent_session_id: str | None = None
         self._pending_diff_gate_fp = ''
         self._pending_diff_seen_fp = ''
         self._session_digest_shown_roots = set()
@@ -162,7 +175,9 @@ class MainWindow(
         hint_layout.addWidget(self._first_run_hint_label)
         root_layout.addWidget(self._first_run_hint)
         self.tabs = QTabWidget()
-        root_layout.addWidget(self.tabs, 1)
+        from qt_app.ui.workspace_rail import wrap_tabs_with_workspace_rail
+
+        wrap_tabs_with_workspace_rail(self, self.tabs, root_layout)
         # Chat-first: агент в центре; остальные вкладки — вторичные панели.
         chat_tab.build_chat_tab(self)
         terminal_tab.build_terminal_tab(self)
@@ -304,6 +319,13 @@ class MainWindow(
         self.market_live_check.toggled.connect(lambda c: market_handlers.on_market_live_toggled(self, c))
         self.market_auto_check.toggled.connect(lambda c: market_handlers.on_market_auto_toggled(self, c))
         self.market_micro_train_check.toggled.connect(lambda _c: market_handlers.on_market_prefs_changed(self))
+        self.market_llm_learn_check.toggled.connect(lambda _c: market_handlers.on_market_prefs_changed(self))
+        self.market_portfolio_check.toggled.connect(lambda _c: market_handlers.on_market_prefs_changed(self))
+        self.market_portfolio_once_btn.clicked.connect(
+            lambda: market_handlers.run_portfolio_agent_once(self)
+        )
+        self.market_llm_tf1_combo.currentTextChanged.connect(lambda _t: market_handlers.on_market_prefs_changed(self))
+        self.market_llm_tf2_combo.currentTextChanged.connect(lambda _t: market_handlers.on_market_prefs_changed(self))
         self.market_explore_check.toggled.connect(lambda _c: market_handlers.on_market_prefs_changed(self))
         self.market_explore_cap_spin.valueChanged.connect(lambda _v: market_handlers.on_market_prefs_changed(self))
         self.market_explore_reset_btn.clicked.connect(lambda: market_handlers.reset_explore_counter(self))
@@ -324,6 +346,7 @@ class MainWindow(
         self.market_interval_spin.valueChanged.connect(lambda _v: market_handlers.on_market_prefs_changed(self))
         self.market_tick_btn.clicked.connect(lambda: market_handlers.run_market_tick(self))
         self.market_drop_orphans_btn.clicked.connect(lambda: market_handlers.drop_market_orphans(self))
+        self.market_report_btn.clicked.connect(lambda: market_handlers.show_market_report(self))
         self.market_clear_btn.clicked.connect(lambda: market_handlers.clear_market_log(self))
         self.notes_save_btn.clicked.connect(lambda: notes_handlers.save_notes(self))
         self.ollama_start_btn.clicked.connect(lambda: ollama_handlers.start_ollama_server(self))
@@ -406,6 +429,8 @@ class MainWindow(
         self.root_edit.setText(value)
         self._api.set_project_root(value)
         self._settings.set_project_root(value)
+        if (value or "").strip():
+            self._settings.remember_workspace_root(value)
         load_project_dotenv(value or ".")
         self._refresh_openai_api_status()
         is_empty = not (value or '').strip()
@@ -425,6 +450,9 @@ class MainWindow(
         self._sync_preview()
         if self._command_service.state == "idle":
             command_handlers.on_state_changed(self, "idle")
+        from qt_app.ui.workspace_rail import refresh_workspace_rail
+
+        refresh_workspace_rail(self)
 
     def _ensure_gateway(self) -> None:
         """Publish loopback HTTP for this project so Cursor can talk to core Eurika."""
@@ -453,7 +481,7 @@ class MainWindow(
             else:
                 from eurika.agent.http_api import probe_endpoint, read_endpoint
 
-                endpoint = read_endpoint(resolved)
+                endpoint = read_endpoint(Path(resolved))
                 if endpoint and probe_endpoint(endpoint):
                     self.status_label.setText(f"HTTP {endpoint['url']}")
 
@@ -607,8 +635,8 @@ class MainWindow(
         return (self.chat_ollama_model.currentText() or '').strip()
 
     @staticmethod
-    def _force_stop_qthread(worker: Any, *, soft_ms: int = 600, hard_ms: int = 400) -> None:
-        """Stop a QThread on shutdown. LLM/network work ignores soft cancel — terminate after short wait."""
+    def _force_stop_qthread(worker: Any, *, soft_ms: int = 250) -> None:
+        """Stop a QThread on shutdown without terminate()+wait (GIL deadlock)."""
         if worker is None:
             return
         try:
@@ -619,35 +647,27 @@ class MainWindow(
                 cancel()
             else:
                 worker.requestInterruption()
-            if worker.wait(soft_ms):
-                return
-            worker.terminate()
-            worker.wait(hard_ms)
+            if not worker.wait(soft_ms):
+                worker.setParent(None)
+                _LINGERING_QTHREADS.append(worker)
         except RuntimeError:
             pass
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Ensure background workers/processes are terminated before window closes."""
         self._is_closing = True
+        self.hide()
         if self._ollama_health_timer.isActive():
             self._ollama_health_timer.stop()
         timer = getattr(self, "_market_timer", None)
         if timer is not None and timer.isActive():
             timer.stop()
-        # Chat first: default LLM timeout is 10 min; without terminate the process stays alive after the window closes.
-        self._force_stop_qthread(self._chat_worker, soft_ms=400, hard_ms=400)
-        self._chat_worker = None
-        # MarketTickWorker is a QThread child of MainWindow — must finish before destroy
-        # or Qt aborts: "QThread: Destroyed while thread is still running".
-        market_worker = getattr(self, "_market_tick_worker", None)
-        self._force_stop_qthread(market_worker, soft_ms=1200, hard_ms=500)
-        self._market_tick_worker = None
-        self._market_tick_busy = False
-        self._command_service.shutdown(timeout_ms=800)
-        if self._terminal_process is not None:
-            ollama_handlers.shutdown_qprocess(self._terminal_process, timeout_ms=800)
-        ollama_handlers.shutdown_qprocess(self._ollama_task_process, timeout_ms=800)
-        ollama_handlers.shutdown_qprocess(self._ollama_process, timeout_ms=800)
+        from .handlers import market_llm_learn
+        from .handlers import market_portfolio_agent
+
+        market_llm_learn.shutdown(self)
+        market_portfolio_agent.shutdown(self)
+        # Unblock ChatWorker waiting on local-agent /chat before joining QThreads.
         gateway = getattr(self, "_gateway", None)
         if gateway is not None:
             try:
@@ -655,6 +675,23 @@ class MainWindow(
             except Exception:
                 pass
             self._gateway = None
+        self._force_stop_qthread(self._chat_worker)
+        self._chat_worker = None
+        market_worker = getattr(self, "_market_tick_worker", None)
+        self._force_stop_qthread(market_worker)
+        self._market_tick_worker = None
+        self._market_tick_busy = False
+        llm_worker = getattr(self, "_market_llm_worker", None)
+        self._force_stop_qthread(llm_worker)
+        self._market_llm_worker = None
+        portfolio_worker = getattr(self, "_market_portfolio_worker", None)
+        self._force_stop_qthread(portfolio_worker)
+        self._market_portfolio_worker = None
+        self._command_service.shutdown(timeout_ms=400)
+        if self._terminal_process is not None:
+            ollama_handlers.shutdown_qprocess(self._terminal_process, timeout_ms=400)
+        ollama_handlers.shutdown_qprocess(self._ollama_task_process, timeout_ms=400)
+        ollama_handlers.shutdown_qprocess(self._ollama_process, timeout_ms=400)
         if self._graph_web_view is not None:
             try:
                 self._graph_web_view.setHtml('<!DOCTYPE html><html><body></body></html>', 'about:blank')

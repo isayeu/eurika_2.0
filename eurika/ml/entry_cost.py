@@ -100,13 +100,22 @@ def _read_cost_gate(path: Path) -> dict[str, Any]:
             data = None
         if isinstance(data, dict) and data.get("expansion_min") is not None:
             try:
-                return {
+                out: dict[str, Any] = {
                     "expansion_min": float(data["expansion_min"]),
                     "expected_edge": float(data.get("expected_edge") or 0.0),
                     "cost_mult": float(data.get("cost_mult") or DEFAULT_COST_MULT),
                     "samples": int(data.get("samples") or 0),
                     "source": "calibrated",
                 }
+                if data.get("required_edge") is not None:
+                    out["required_edge"] = float(data["required_edge"])
+                if "covers_cost" in data:
+                    out["covers_cost"] = bool(data.get("covers_cost"))
+                if "calibrated" in data:
+                    out["calibrated"] = bool(data.get("calibrated"))
+                if "retained_previous" in data:
+                    out["retained_previous"] = bool(data.get("retained_previous"))
+                return out
             except (TypeError, ValueError):
                 pass
     return {
@@ -116,6 +125,37 @@ def _read_cost_gate(path: Path) -> dict[str, Any]:
         "samples": 0,
         "source": "default",
     }
+
+
+def _required_edge(conf: Mapping[str, Any], fee: float) -> float:
+    raw = conf.get("required_edge")
+    if raw is not None:
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            pass
+    mult = float(conf.get("cost_mult") or DEFAULT_COST_MULT)
+    return mult * max(0.0, float(fee))
+
+
+def _economic_block_reason(conf: Mapping[str, Any], fee: float) -> str | None:
+    """None when economics are OK or the gate file has no measurement yet."""
+    if "covers_cost" not in conf:
+        return None
+    covers = conf.get("covers_cost")
+    try:
+        expected = float(conf.get("expected_edge") or 0.0)
+    except (TypeError, ValueError):
+        expected = 0.0
+    need = _required_edge(conf, fee)
+    if covers is False or expected < need:
+        covers_s = "да" if covers is True else "нет"
+        return (
+            f"полоса экзамена не окупает комиссию "
+            f"(ожидаемый эдж={100 * expected:.3f}% < нужно {100 * need:.3f}%; "
+            f"covers_cost={covers_s})"
+        )
+    return None
 
 
 def cost_gate_ok(
@@ -131,18 +171,23 @@ def cost_gate_ok(
     so a rejected entry can be audited later.
     """
     conf = dict(gate) if gate is not None else load_cost_gate(project_root or ".")
+    fee_f = max(0.0, float(fee))
+    econ = _economic_block_reason(conf, fee_f)
     score = expansion_score(features)
-    if score is None:
-        return True, ""
     threshold = float(conf.get("expansion_min") or DEFAULT_EXPANSION_MIN)
-    if score >= threshold:
+    if score is None:
+        if econ:
+            return False, econ
         return True, ""
-    mult = float(conf.get("cost_mult") or DEFAULT_COST_MULT)
-    need = mult * max(0.0, float(fee))
-    return False, (
-        f"ход не окупает комиссию (расширение {score:+.2f} < {threshold:+.2f}; "
-        f"нужен эдж ≥ {100 * need:.3f}% при комиссии {100 * float(fee):.3f}%)"
-    )
+    if score < threshold:
+        need = _required_edge(conf, fee_f)
+        return False, (
+            f"ход не окупает комиссию (расширение {score:+.2f} < {threshold:+.2f}; "
+            f"нужен эдж ≥ {100 * need:.3f}% при комиссии {100 * fee_f:.3f}%)"
+        )
+    if econ:
+        return False, f"{econ} (расширение {score:+.2f} ≥ {threshold:+.2f})"
+    return True, ""
 
 
 def _gross_edge(row: Mapping[str, Any]) -> float | None:

@@ -70,7 +70,35 @@ def _extracted_block_134(emit_cmd, run_command_with_result):
     terminal_cmd, _out, _code = _run_emit_with_result(emit_cmd, run_command_with_result)
     return terminal_cmd
 
-def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: Dict[str, Any], emit_cmd: Optional[str], emit: Callable[[str], None], append_safe: Callable[[Path, str, str, Optional[str]], None], run_command_with_result: Optional[Callable[[str], tuple[str, int]]], privilege_prompt: Optional[Any] = None) -> Optional[Dict[str, Any]]:
+def terminal_read_source(
+    *,
+    client_terminal_text: str | None,
+    last_execution: dict[str, Any] | None,
+) -> str:
+    """Qt Terminal tab is the source of truth when the client sent a snapshot.
+
+    Empty snapshot (restart / cleared pane) must not fall back to stale
+    ``last_execution.host_log`` from an older tool-loop.
+    """
+    if client_terminal_text is not None:
+        return str(client_terminal_text).strip()
+    if isinstance(last_execution, dict):
+        return str(last_execution.get("host_log") or "").strip()
+    return ""
+
+
+def terminal_visible_output(text: str) -> str:
+    """Drop idle ``$`` prompts so an empty pane is not treated as command output."""
+    kept: list[str] = []
+    for line in str(text or "").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped == "$":
+            continue
+        kept.append(line.rstrip())
+    return "\n".join(kept).strip()
+
+
+def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: Dict[str, Any], emit_cmd: Optional[str], emit: Callable[[str], None], append_safe: Callable[[Path, str, str, Optional[str]], None], run_command_with_result: Optional[Callable[[str], tuple[str, int]]], privilege_prompt: Optional[Any] = None, *, client_terminal_text: Optional[str] = None, history: Optional[list] = None) -> Optional[Dict[str, Any]]:
     """Execute direct handler; return result dict if handled, else None."""
     if not handler_id:
         return None
@@ -234,18 +262,55 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             return {'text': text, 'error': None}
         urls = extract_http_urls(msg)
         if urls:
-            page_text = format_web_pages_for_prompt(urls)
+            page_text = format_web_pages_for_prompt(urls, user_query=msg)
             if page_text:
                 text = page_text
                 append_safe(root, 'user', msg, None)
                 append_safe(root, 'assistant', text, None)
                 return {'text': text, 'error': None}
-        query = extract_web_search_query(msg)
+        from eurika.api.chat_direct import looks_like_cursor_pricing_question
+
+        if looks_like_cursor_pricing_question(msg):
+            query = "site:cursor.com docs account pricing cheapest model Composer 2.5 GPT-5.6 Luna per million tokens"
+        else:
+            query = extract_web_search_query(msg)
         results, provider, note = search_web(query)
         text = format_web_search_results(query, results, provider=provider, note=note)
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         err = note if not results and note else None
+        return {'text': text, 'error': err}
+    if handler_id == 'read_terminal':
+        from eurika.reasoning.architect import call_llm_with_prompt
+
+        last = state.get("last_execution") if isinstance(state, dict) else None
+        combined = terminal_visible_output(
+            terminal_read_source(
+                client_terminal_text=client_terminal_text,
+                last_execution=last if isinstance(last, dict) else None,
+            )
+        )
+        if not combined:
+            text = (
+                "Вкладка Terminal сейчас пустая: только приглашение `$`, вывода команд нет."
+            )
+            append_safe(root, 'user', msg, None)
+            append_safe(root, 'assistant', text, None)
+            return {'text': text, 'error': None}
+        prompt = (
+            "Ты Eurika. Пользователь просит прочитать вкладку Terminal как есть.\n"
+            "Описывай только текст из [Terminal output]. "
+            "Не упоминай темы из истории чата, если их нет в этом выводе. "
+            "Не предлагай команды, которых нет в выводе.\n\n"
+            f"[Terminal output]\n{combined[-12000:]}\n"
+        )
+        raw, err = call_llm_with_prompt(prompt, max_tokens=900)
+        text = (raw or "").strip() or (
+            "Не удалось разобрать вывод терминала."
+            + (f" ({err})" if err else "")
+        )
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': err}
     if handler_id == 'project_ls':
         report_obj = execute_spec(root, build_task_spec(intent='project_ls', message=msg))
@@ -510,7 +575,7 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         )
     if handler_id == 'release_check':
         exit_code = -1
-        term_cmd: Optional[str] = None
+        term_cmd = None
         if run_command_with_result is not None:
             term_cmd, output, exit_code = _run_emit_with_result(
                 emit_cmd or "$ ./scripts/release_check.sh",
@@ -602,14 +667,14 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             run_host_health_probe,
         )
 
-        result = run_host_health_probe()
-        facts = format_host_health_for_chat(result)
+        health = run_host_health_probe()
+        facts = format_host_health_for_chat(health)
         text = enrich_host_health_with_llm(facts, use_llm=True)
         store_last_execution(
             state,
             {
-                "ok": result.ok,
-                "summary": f"host_health level={result.level}",
+                "ok": health.ok,
+                "summary": f"host_health level={health.level}",
                 "artifacts_changed": [],
             },
         )
@@ -620,8 +685,8 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         return _with_terminal(
             {'text': text, 'error': None},
             "$ # host-health read-only (uptime / free / df / journal / …)",
-            result.output,
-            0 if result.ok else 1,
+            health.output,
+            0 if health.ok else 1,
         )
     if handler_id == 'ml_status':
         from eurika.utils.env import env_bool
@@ -659,9 +724,9 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         lines.append('')
         # Market paper learning
         try:
-            from eurika.ml.learning_status import format_market_learning_block
+            from eurika.ml.learning_status import format_market_learning_report
 
-            lines.append(format_market_learning_block(root))
+            lines.append(format_market_learning_report(root))
         except Exception as exc:
             lines.append(f'Market learning: {type(exc).__name__}: {exc}')
         lines.append('')
@@ -689,6 +754,109 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             "Сейчас на рынке (банк/opens) → «анализ рынка».\n"
             "Общая модель vs per-ticker → «одна модель или на каждый тикер?»."
         )
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'market_learning_report':
+        try:
+            from eurika.ml.learning_status import format_market_learning_report
+
+            text = format_market_learning_report(root)
+        except Exception as exc:
+            text = f'Market learning: {type(exc).__name__}: {exc}'
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'llm_teacher_execution':
+        try:
+            from eurika.ml.llm_teacher_stats import format_llm_teacher_execution_report
+            from eurika.ml.root import resolve_market_root
+
+            text = format_llm_teacher_execution_report(resolve_market_root())
+        except Exception as exc:
+            text = f'LLM execution: {type(exc).__name__}: {exc}'
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'llm_teacher_stats':
+        try:
+            from eurika.ml.llm_teacher_stats import format_llm_teacher_stats_report
+            from eurika.ml.root import resolve_market_root
+
+            text = format_llm_teacher_stats_report(resolve_market_root())
+        except Exception as exc:
+            text = f'LLM-учитель: {type(exc).__name__}: {exc}'
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'llm_shadow_report':
+        try:
+            from eurika.ml.llm_teacher_stats import format_llm_shadow_report
+            from eurika.ml.root import resolve_market_root
+
+            text = format_llm_shadow_report(resolve_market_root())
+        except Exception as exc:
+            text = f'LLM shadow: {type(exc).__name__}: {exc}'
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'market_ticker_brief':
+        try:
+            from eurika.ml.ticker_brief import format_ticker_market_brief, parse_ticker_request
+
+            parsed = parse_ticker_request(msg)
+            if not parsed:
+                text = (
+                    "Укажи тикер: например «разбор тикера BTCUSDT на фьючерсах» "
+                    "или «анализ ETHUSDT spot»."
+                )
+            else:
+                symbol, market = parsed
+                text = format_ticker_market_brief(root, symbol, market=market, sync=True)
+        except Exception as exc:
+            text = f'Разбор тикера: {type(exc).__name__}: {exc}'
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'portfolio_agent_status':
+        try:
+            from eurika.ml.portfolio_agent import format_portfolio_status
+
+            text = format_portfolio_status(root)
+        except Exception as exc:
+            text = f'Portfolio статус: {type(exc).__name__}: {exc}'
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'portfolio_agent_once':
+        try:
+            from eurika.agent.cursor_judge import cursor_key_status
+            from eurika.ml.portfolio_agent import run_portfolio_cycle
+
+            if not cursor_key_status(root).get("api_key_set"):
+                text = (
+                    "Portfolio цикл: нет CURSOR_API_KEY в .env — агент не вызовется. "
+                    "Статус без LLM: скажи «статус portfolio»."
+                )
+            else:
+                out = run_portfolio_cycle(root)
+                digest = str(out.get("digest") or "").strip()
+                body = str(out.get("body") or "").strip()
+                if digest:
+                    text = digest
+                    if body:
+                        text = f"{digest}\n\n---\n{body[:3000]}"
+                else:
+                    eq = out.get("holistic_equity_usdt")
+                    bits = (
+                        f"ok={out.get('ok')} actions={out.get('actions_n')} "
+                        f"trade_place={(out.get('trade') or {}).get('place')} "
+                        f"teacher={(out.get('teacher') or {}).get('stored')} "
+                        f"equity={eq}"
+                    )
+                    text = f"Portfolio цикл:\n{bits}\n\n{body[:4000]}"
+        except Exception as exc:
+            text = f'Portfolio цикл: {type(exc).__name__}: {exc}'
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
@@ -727,7 +895,9 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             "Итого: учится «форма движения» рынка в целом; отдельной стратегии на каждый тикер нет.\n"
             "Per-ticker модели — пока не реализованы.\n\n"
             "Срез *что сейчас на рынке* (банк / opens / советы) — спроси: "
-            "«анализ рынка» / «что сейчас на маркете?»."
+            "«анализ рынка» / «что сейчас на маркете?».\n"
+            "Разбор одной пары (свечи TF1/TF2 + MLP + shadow) — "
+            "«разбор тикера BTCUSDT на фьючерсах»."
         )
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)

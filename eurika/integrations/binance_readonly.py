@@ -15,7 +15,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 from eurika.utils.env import binance_credentials_status, env_bool
 
@@ -438,3 +438,210 @@ def probe_readonly(
     if include_balances and result["credentials"].get("ready"):
         result["balances"] = account_balances(timeout=timeout)
     return result
+
+
+def _sapi_get(
+    path: str,
+    *,
+    params: Optional[dict[str, Any]] = None,
+    signed: bool = False,
+    timeout: float = _DEFAULT_TIMEOUT,
+) -> dict[str, Any] | list[Any]:
+    """Spot SAPI (Simple Earn, etc.) — same host as spot REST."""
+    return _http_get(path, params=params, signed=signed, timeout=timeout, base_url=binance_base_url())
+
+
+def _earn_product_row(row: Mapping[str, Any], *, kind: str) -> dict[str, Any] | None:
+    if not isinstance(row, dict):
+        return None
+    asset = str(row.get("asset") or "").strip().upper()
+    if not asset:
+        return None
+    apr_raw = row.get("latestAnnualPercentageRate") or row.get("apr") or row.get("apy")
+    apr = _coerce_float(apr_raw)
+    if apr is None:
+        apr = 0.0
+    elif apr > 1.0:
+        apr = apr / 100.0
+    pid = str(row.get("productId") or row.get("projectId") or f"{kind}:{asset}")
+    min_amt = _coerce_float(row.get("minPurchaseAmount") or row.get("minAmount")) or 0.0
+    return {
+        "asset": asset,
+        "product_id": pid,
+        "kind": kind,
+        "apr": float(apr),
+        "min_amount": float(min_amt),
+        "can_purchase": bool(row.get("canPurchase", True)),
+        "can_redeem": bool(row.get("canRedeem", True)),
+        "duration_days": _coerce_int(row.get("duration")) if kind == "locked" else None,
+    }
+
+
+def simple_earn_flexible_products(
+    *,
+    asset: str | None = None,
+    size: int = 100,
+    current: int = 1,
+    timeout: float = _DEFAULT_TIMEOUT,
+) -> dict[str, Any]:
+    """Flexible Simple Earn products (read-only). Returns {ok, products, error?}."""
+    params: dict[str, Any] = {"size": max(1, min(100, int(size))), "current": max(1, int(current))}
+    if asset:
+        params["asset"] = str(asset).strip().upper()
+    creds = binance_credentials_status()
+    try:
+        data = _sapi_get(
+            "/sapi/v1/simple-earn/flexible/list",
+            params=params,
+            signed=bool(creds.get("ready")),
+            timeout=timeout,
+        )
+        if not isinstance(data, dict):
+            raise RuntimeError("unexpected flexible earn payload")
+        rows = data.get("rows") or []
+        products = [p for r in rows if (p := _earn_product_row(r, kind="flexible"))]
+        return {"ok": True, "products": products, "total": int(data.get("total") or len(products)), "error": None}
+    except Exception as exc:
+        return {"ok": False, "products": [], "total": 0, "error": str(exc)}
+
+
+def simple_earn_locked_products(
+    *,
+    asset: str | None = None,
+    size: int = 100,
+    current: int = 1,
+    timeout: float = _DEFAULT_TIMEOUT,
+) -> dict[str, Any]:
+    """Locked Simple Earn products (read-only). Returns {ok, products, error?}."""
+    params: dict[str, Any] = {"size": max(1, min(100, int(size))), "current": max(1, int(current))}
+    if asset:
+        params["asset"] = str(asset).strip().upper()
+    creds = binance_credentials_status()
+    try:
+        data = _sapi_get(
+            "/sapi/v1/simple-earn/locked/list",
+            params=params,
+            signed=bool(creds.get("ready")),
+            timeout=timeout,
+        )
+        if not isinstance(data, dict):
+            raise RuntimeError("unexpected locked earn payload")
+        rows = data.get("rows") or []
+        products = [p for r in rows if (p := _earn_product_row(r, kind="locked"))]
+        return {"ok": True, "products": products, "total": int(data.get("total") or len(products)), "error": None}
+    except Exception as exc:
+        return {"ok": False, "products": [], "total": 0, "error": str(exc)}
+
+
+def simple_earn_positions(*, timeout: float = _DEFAULT_TIMEOUT) -> dict[str, Any]:
+    """Signed flexible+locked earn positions (read-only, no secrets in output)."""
+    creds = binance_credentials_status()
+    if not creds.get("ready"):
+        return {"ok": False, "flexible": [], "locked": [], "error": "credentials not ready"}
+    out_flex: list[dict[str, Any]] = []
+    out_lock: list[dict[str, Any]] = []
+    try:
+        flex = _sapi_get("/sapi/v1/simple-earn/flexible/position", params={"size": 100}, signed=True, timeout=timeout)
+        if isinstance(flex, dict):
+            for row in flex.get("rows") or []:
+                if not isinstance(row, dict):
+                    continue
+                asset = str(row.get("asset") or "").upper()
+                amt = _coerce_float(row.get("totalAmount") or row.get("amount")) or 0.0
+                if asset and amt > 0:
+                    out_flex.append({"asset": asset, "amount": amt, "product_id": row.get("productId")})
+        locked = _sapi_get("/sapi/v1/simple-earn/locked/position", params={"size": 100}, signed=True, timeout=timeout)
+        if isinstance(locked, dict):
+            for row in locked.get("rows") or []:
+                if not isinstance(row, dict):
+                    continue
+                asset = str(row.get("asset") or "").upper()
+                amt = _coerce_float(row.get("amount") or row.get("totalAmount")) or 0.0
+                if asset and amt > 0:
+                    out_lock.append(
+                        {
+                            "asset": asset,
+                            "amount": amt,
+                            "product_id": row.get("projectId") or row.get("productId"),
+                            "duration_days": _coerce_int(row.get("duration")),
+                        }
+                    )
+        return {"ok": True, "flexible": out_flex, "locked": out_lock, "error": None}
+    except Exception as exc:
+        return {"ok": False, "flexible": out_flex, "locked": out_lock, "error": str(exc)}
+
+
+def futures_exchange_info(*, timeout: float = _DEFAULT_TIMEOUT) -> dict[str, Any]:
+    """Public USD-M ``/fapi/v1/exchangeInfo``. Returns {ok, symbols[raw], error?}."""
+    try:
+        data = _http_get("/fapi/v1/exchangeInfo", timeout=timeout, base_url=futures_base_url())
+        if not isinstance(data, dict):
+            raise RuntimeError("unexpected exchangeInfo payload")
+        symbols = data.get("symbols") if isinstance(data.get("symbols"), list) else []
+        return {"ok": True, "symbols": symbols, "error": None}
+    except Exception as exc:
+        return {"ok": False, "symbols": [], "error": str(exc)}
+
+
+def list_usdtm_perpetuals(*, timeout: float = _DEFAULT_TIMEOUT) -> dict[str, Any]:
+    """USDT-M perpetual symbols in TRADING status (public)."""
+    info = futures_exchange_info(timeout=timeout)
+    if not info.get("ok"):
+        return {"ok": False, "symbols": [], "error": info.get("error")}
+    out: list[str] = []
+    seen: set[str] = set()
+    for row in info.get("symbols") or []:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("contractType") or "").upper() != "PERPETUAL":
+            continue
+        if str(row.get("quoteAsset") or "").upper() != "USDT":
+            continue
+        if str(row.get("status") or "").upper() != "TRADING":
+            continue
+        sym = str(row.get("symbol") or "").strip().upper()
+        if not sym or sym in seen:
+            continue
+        seen.add(sym)
+        out.append(sym)
+    out.sort()
+    return {"ok": True, "symbols": out, "count": len(out), "error": None}
+
+
+def futures_ticker_24hr(
+    symbol: str | None = None,
+    *,
+    timeout: float = _DEFAULT_TIMEOUT,
+) -> dict[str, Any]:
+    """Public ``/fapi/v1/ticker/24hr`` — one symbol or all when ``symbol`` is None."""
+    params: dict[str, Any] = {}
+    if symbol:
+        params["symbol"] = str(symbol).strip().upper()
+    try:
+        data = _http_get(
+            "/fapi/v1/ticker/24hr",
+            params=params or None,
+            timeout=timeout,
+            base_url=futures_base_url(),
+        )
+        rows_raw = data if isinstance(data, list) else ([data] if isinstance(data, dict) else [])
+        rows: list[dict[str, Any]] = []
+        for row in rows_raw:
+            if not isinstance(row, dict):
+                continue
+            sym = str(row.get("symbol") or "").strip().upper()
+            if not sym:
+                continue
+            rows.append(
+                {
+                    "symbol": sym,
+                    "last_price": _coerce_float(row.get("lastPrice")),
+                    "price_change_pct": _coerce_float(row.get("priceChangePercent")),
+                    "quote_volume": _coerce_float(row.get("quoteVolume")),
+                    "high_price": _coerce_float(row.get("highPrice")),
+                    "low_price": _coerce_float(row.get("lowPrice")),
+                }
+            )
+        return {"ok": True, "rows": rows, "count": len(rows), "error": None}
+    except Exception as exc:
+        return {"ok": False, "rows": [], "count": 0, "error": str(exc)}

@@ -170,3 +170,72 @@ def test_futures_premium_index_and_funding_history(monkeypatch: pytest.MonkeyPat
     assert hist["ok"] is True
     assert hist["count"] == 2
     assert hist["rows"][0]["funding_rate"] == pytest.approx(0.0002)
+
+
+def test_list_usdtm_perpetuals_filters(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(br, "futures_base_url", lambda: "https://fapi.binance.com")
+
+    def fake_urlopen(req: object, timeout: float = 0) -> _FakeResp:
+        url = getattr(req, "full_url", "") or str(req)
+        if "exchangeInfo" in url:
+            return _FakeResp(
+                {
+                    "symbols": [
+                        {
+                            "symbol": "BTCUSDT",
+                            "status": "TRADING",
+                            "contractType": "PERPETUAL",
+                            "quoteAsset": "USDT",
+                        },
+                        {
+                            "symbol": "ETHUSDT_1231",
+                            "status": "TRADING",
+                            "contractType": "CURRENT_QUARTER",
+                            "quoteAsset": "USDT",
+                        },
+                        {
+                            "symbol": "ADAUSDT",
+                            "status": "TRADING",
+                            "contractType": "PERPETUAL",
+                            "quoteAsset": "USDT",
+                        },
+                        {
+                            "symbol": "BTCBUSD",
+                            "status": "TRADING",
+                            "contractType": "PERPETUAL",
+                            "quoteAsset": "BUSD",
+                        },
+                    ]
+                }
+            )
+        return _FakeResp({})
+
+    monkeypatch.setattr(br.urllib.request, "urlopen", fake_urlopen)
+    out = br.list_usdtm_perpetuals()
+    assert out["ok"] is True
+    assert out["symbols"] == ["ADAUSDT", "BTCUSDT"]
+
+
+def test_futures_ticker_24hr_all(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(br, "futures_base_url", lambda: "https://fapi.binance.com")
+
+    def fake_urlopen(req: object, timeout: float = 0) -> _FakeResp:
+        return _FakeResp(
+            [
+                {
+                    "symbol": "BTCUSDT",
+                    "lastPrice": "65000",
+                    "priceChangePercent": "1.5",
+                    "quoteVolume": "1000000",
+                    "highPrice": "66000",
+                    "lowPrice": "64000",
+                }
+            ]
+        )
+
+    monkeypatch.setattr(br.urllib.request, "urlopen", fake_urlopen)
+    out = br.futures_ticker_24hr()
+    assert out["ok"] is True
+    assert out["count"] == 1
+    assert out["rows"][0]["symbol"] == "BTCUSDT"
+    assert out["rows"][0]["price_change_pct"] == pytest.approx(1.5)

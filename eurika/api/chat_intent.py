@@ -152,6 +152,109 @@ def _extract_create_content(message: str) -> tuple[str, str] | None:
     return target, content + "\n"
 
 
+def looks_like_terminal_paste(msg: str) -> bool:
+    """Host/Qt Terminal dumps are not coding-agent implement requests."""
+    low = (msg or "").strip().lower()
+    if not low:
+        return False
+    return (
+        low.startswith("$ ")
+        or "[stderr]" in low
+        or "[done] exit_code=" in low
+        or low.startswith("sudo:")
+    )
+
+
+def _looks_like_models_tab_layout_request(msg: str) -> bool:
+    low = (msg or "").lower()
+    if not low:
+        return False
+    has_models = any(x in low for x in ("models", "llm", "модел"))
+    has_pain = any(
+        x in low
+        for x in (
+            "не нрав",
+            "эргоном",
+            "улучш",
+            "свободн",
+            "прокруч",
+            "scroll",
+            "компакт",
+            "layout",
+            "справа",
+            "место",
+        )
+    )
+    has_tab = bool(re.search(r"\bвклад\w*\b", low)) or "models/llm" in low.replace(" ", "")
+    return has_models and has_pain and (has_tab or "models/llm" in low.replace(" ", ""))
+
+
+def looks_like_qt_ui_layout_request(msg: str) -> bool:
+    """Concrete Qt shell/layout ask — not an ambiguous «сделай лучше»."""
+    low = (msg or "").lower()
+    if not low or looks_like_terminal_paste(low):
+        return False
+    if _looks_like_models_tab_layout_request(low):
+        return True
+    has_panel = any(
+        token in low
+        for token in (
+            "sidebar",
+            "боков",
+            "панел",
+            "сворач",
+            "сверн",
+            "разворач",
+            "разверн",
+            "воркспейс",
+            "воркспес",
+            "workspace",
+            "переимен",
+            "пкм",
+        )
+    )
+    has_place = any(
+        token in low
+        for token in (
+            "слева",
+            "project root",
+            "новый чат",
+            "подканал",
+            "кнопк",
+            "root",
+            "рут",
+            "списк",
+            "фиксирован",
+            "вверх",
+        )
+    )
+    return has_panel and has_place
+
+
+def looks_like_independent_followup(msg: str) -> bool:
+    """New task, not an answer to a pending «уточни файл» clarification."""
+    low = (msg or "").lower()
+    if not low:
+        return False
+    if looks_like_qt_ui_layout_request(low) or looks_like_terminal_paste(low):
+        return True
+    if re.search(r"\b(mypy|ruff|pytest)\b", low):
+        return True
+    if "прочти терминал" in low or "прочитай терминал" in low:
+        return True
+    if re.search(r"исправ.{0,24}ошиб", low):
+        return True
+    return False
+
+
+_IMPERATIVE_RE = re.compile(
+    r"(?iu)(?<![а-яёa-z])("
+    r"сделай|почини|исправь|добавь|перепиши|реализуй|улучши|оптимизируй|"
+    r"optimize|fix\s+it|do\s+it"
+    r")(?![а-яёa-z])"
+)
+
+
 def interpret_task(message: str, history: Optional[List[Dict[str, str]]] = None) -> TaskInterpretation:
     """Interpret user request with confidence and clarification hints."""
     msg_raw = (message or "").strip()
@@ -313,22 +416,30 @@ def interpret_task(message: str, history: Optional[List[Dict[str, str]]] = None)
             plan_steps=_plan_for_intent(intent, target),
         )
 
-    # Ambiguous imperative-like requests should ask clarification instead of hallucinating.
-    # Русский приоритет: маркеры на русском первыми.
-    imperative_markers = (
-        "сделай",
-        "почини",
-        "исправь",
-        "добавь",
-        "перепиши",
-        "реализуй",
-        "улучши",
-        "оптимизируй",
-        "optimize",
-        "fix it",
-        "do it",
-    )
-    if any(marker in msg for marker in imperative_markers):
+    # Concrete Qt layout (Models/LLM, workspace rail) is not ambiguous.
+    if looks_like_qt_ui_layout_request(msg):
+        ui_target = (
+            "qt_app/ui/tabs/models_tab.py"
+            if _looks_like_models_tab_layout_request(msg)
+            else "qt_app/ui/workspace_rail.py"
+        )
+        return TaskInterpretation(
+            intent=None,
+            confidence=0.88,
+            goal=sectioned.get("goal", "") or msg_raw[:200],
+            constraints=sectioned.get("constraints", ""),
+            actions=sectioned.get("actions_lines", []),
+            risk_level="medium",
+            requires_confirmation=False,
+            entities={"ui_target": ui_target},
+            plan_steps=[
+                f"read {ui_target}",
+                "propose Qt layout change",
+                "queue patch for Approvals",
+            ],
+        )
+
+    if _IMPERATIVE_RE.search(msg) and not looks_like_terminal_paste(msg):
         return TaskInterpretation(
             intent="ambiguous_request",
             confidence=0.35,

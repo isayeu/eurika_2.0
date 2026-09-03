@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from eurika.api.chat_intents_config import clear_cache, match_direct_intent
@@ -18,7 +19,72 @@ def test_digest_empty_lookback(tmp_path: Path) -> None:
     assert data["filled"] == 0
     text = sd.format_session_digest(data)
     assert "ПОКА ТЕБЯ НЕ БЫЛО" in text
+    assert "банки (3 отдельных" in text
+    assert "Live/MLP exam" in text
+    assert "Portfolio/holistic" in text
+    assert "LLM shadow" in text
     assert "сделок не было" in text or "fill=0" in text
+
+
+def test_digest_three_banks_deltas(tmp_path: Path) -> None:
+    from eurika.ml.earn_monitor import save_earn_positions
+    from eurika.ml.holistic_portfolio import ensure_holistic, save_holistic
+    from eurika.ml.llm_shadow import ensure_shadow_portfolio, save_shadow_portfolio
+
+    ensure_portfolio(tmp_path)
+    ensure_holistic(tmp_path)
+    ensure_shadow_portfolio(tmp_path)
+    save_earn_positions(
+        tmp_path,
+        [
+            {
+                "id": "earn-test",
+                "asset": "USDT",
+                "kind": "flexible",
+                "amount": 800.0,
+                "apr": 0.0275,
+                "accrued_usdt": 0.0,
+            }
+        ],
+    )
+    h = ensure_holistic(tmp_path)
+    h["cash_free_usdt"] = 200.17
+    h["earn_principal_usdt"] = 800.0
+    h["earn_accrued_usdt"] = 0.0
+    h["trade_margin_usdt"] = 0.0
+    h["trade_realized_pnl_usdt"] = 0.17
+    h["equity_usdt"] = 1000.17
+    h["migrated_legacy"] = False
+    h["legacy_margin_repaired"] = True
+    save_holistic(tmp_path, h)
+    sh = ensure_shadow_portfolio(tmp_path)
+    sh["equity_usdt"] = 994.0
+    save_shadow_portfolio(tmp_path, sh)
+
+    t0 = 1_700_000_000_000
+    path = sd.session_seen_path(tmp_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "seen_ms": t0,
+                "equity_usdt": 1000.0,
+                "equity_portfolio_usdt": 1000.0,
+                "equity_shadow_usdt": 1000.0,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    data = sd.build_session_digest(tmp_path, now_ms=t0 + 60_000, mark_seen=False)
+    assert "banks" in data
+    assert abs(float(data["banks"]["portfolio"]["equity_usdt"]) - 1000.17) < 0.01
+    assert abs(float(data["banks"]["portfolio"]["delta_usdt"]) - 0.17) < 0.01
+    assert abs(float(data["banks"]["shadow"]["delta_usdt"]) - (-6.0)) < 0.01
+    text = sd.format_session_digest(data)
+    assert "Portfolio/holistic" in text
+    assert "LLM shadow" in text
+    assert "earn=800" in text
 
 
 def test_digest_since_last_seen_with_trades(tmp_path: Path) -> None:

@@ -2,7 +2,7 @@
 
 Справочник для вкладки **Chat** в `eurika-qt` и для `eurika.api.chat_send`.
 
-Чат работает с **текущим Project root** (поле пути в Qt). Сменили каталог — все команды «про проект» относятся к новому пути.
+Чат работает с **текущим Project root** (воркспейс, как папка в Cursor) и выбранным **чатом** в левой рейке. **Новый чат** открывает диалог каталога; **+** у корня — новый тред в этом root; ПКМ по чату — переименовать/удалить.
 
 ## Два режима ответа
 
@@ -10,7 +10,7 @@
 |-------|--------|--------|
 | **Прямой обработчик** | Узкий ритуал / HITL (scan, ritual, коммит→применяй, …) | «проведи ритуал» |
 | **Голая shell-строка** | Сообщение целиком — команда (`pwd`, `sudo whoami`, `ls -la`), без русского текста и без «покажи пример…» | `sudo whoami` → запуск + диалог sudo |
-| **LLM + tool-loop (по умолчанию)** | Факты о машине **и о проекте** (`ls`/дерево/`git status`): модель сама запускает команды через `eurika-cmds` и отвечает по выводу | «покажи содержимое каталога», «какое устройство…» |
+| **Локальный coding-agent** | Правки кода / layout UI (вкладка Models, боковая панель воркспейсов, IMPLEMENT) | Qt: очередь в **Approvals**. Не «уточни файл», если цель уже Qt UI. |
 
 Прямые ответы — для ритуалов и HITL. Списки файлов / дерево больше не шаблонизируются: тот же tool-loop, что и для host facts (A1 chat-first).
 
@@ -22,7 +22,7 @@
 2. Eurika выполняет их сама через `bash -c` (**без** binary allowlist), пишет `$ cmd` + вывод во вкладку **Terminal**. Если нужны права — Qt предлагает: пароль sudo / продолжить без пароля (с ограничениями) / пропустить.
 3. Вывод возвращается модели, она отвечает своими словами. Пустой блок `eurika-cmds` — модели сообщают об этом, и она может повторить. Если вместо проверки хоста модель выдала лекцию (`netstat`/`ifconfig`/Activity Monitor) — цикл один раз требует реальный `eurika-cmds`. Если на вопрос про Wi‑Fi/VPN она сняла только порты (`ss`/`lsof`/`netstat`) — цикл требует `nmcli`/`ip`. Обычные ```` ```bash ```` / ```` ```python ```` **не** автозапускаются (для UI Copy/Run).
 4. Удачные tool-turns пишутся в `.eurika/chat_tool_turns.jsonl` (команды + `outcome_hint`) и подмешиваются в промпт **по релевантности** к текущему сообщению (не только хвост файла; не YAML phrase-book).
-5. В каждый промпт кладётся `[Host identity]` (`uname` / os-release) — чтобы не выдумывать macOS. Вопросы про **успехи обучения market ML** — факты из `resolve_market_root()` (`[Market facts]` + строка **вердикт** по equity/net edge). Иначе — `format_market_learning_block(resolve_market_root())` / weights meta, **не** `eurika scan`. Убыток по банку нельзя смягчать через accuracy.
+5. В каждый промпт кладётся `[Host identity]` (`uname` / os-release) — чтобы не выдумывать macOS. Вопросы про **успехи обучения market ML** — факты из `resolve_market_root()` (`[Market facts]` = `format_market_learning_report`: таблицы банк / live / тени / головы / ворота / LLM-учитель + **вердикт** по equity/net edge). Прямой интент «успехи на маркете» отдаёт тот же отчёт без сжатия LLM. **Не** `eurika scan`. Убыток по банку нельзя смягчать через accuracy.
 
 Ответ пользователю формирует **только LLM** — в коде нет шаблонов вроде «Проверка на хосте», подсказок «напиши проверь» и пост-фильтров над текстом модели. Блоки `eurika-cmds` вырезаются из финального ответа (это синтаксис протокола); обычные code fence остаются для рамки Copy/Run.
 
@@ -53,7 +53,7 @@
 
 | Фраза | Действие |
 |-------|----------|
-| `что за проект?`, `какой проект открыт?` | Обзор: тип, файлы, scan (self_map.json) |
+| `что за проект?`, `какой проект открыт?` | Обзор: README/PROMPT, точка входа, структура каталогов, scan |
 | `что дальше по развитию?`, `просмотри roadmap`, бэклог | Выжимка из `docs/VISION.md` (fallback ROADMAP) |
 | `приступай`, `продолжай` | Компактный следующий шаг VISION A1 + цель `continue_dev` |
 | `сколько файлов?`, `пересчитай файлы`, `сколько всего там файлов?` | Подсчёт файлов с диска |
@@ -85,7 +85,9 @@
 | `включи EURIKA_USE_ML_INTENT=1` | Записать флаг в `.env`, обучить chat-роутер |
 | `выключи EURIKA_USE_ML_INTENT` | Выключить ML-роутер |
 | `проверь включен ли ML_INTENT`, `статус EURIKA_USE_ML_INTENT` | Показать флаг / `.env` / acc роутера |
-| `проверь статус ML`, `статус ML` | Сводка: PyTorch + ML_INTENT + VECTOR + Market learning |
+| `проверь статус ML`, `статус ML` | Сводка: PyTorch + ML_INTENT + VECTOR + полный Market-отчёт |
+| `успехи на маркете`, `как твои успехи на маркете и обучении торговле?` | Полный paper-экзамен: таблицы equity/edge/головы/ворота/LLM-учитель |
+| `ML хоть раз отработала по совету LLM?` | Нет: LLM только метки/train; проверка `paper_trades` vs teacher |
 | `включен ли VECTOR_INTENT` | Статус `EURIKA_USE_VECTOR_INTENT` |
 | `включи EURIKA_USE_VECTOR_INTENT=1` | Fuzzy embeddings (нужен `nomic-embed-text`) |
 | вопрос про тикеры / общую модель market ML | Прямой ответ из кода (без LLM) |
@@ -99,6 +101,7 @@
 | `собери коммит` | Status+diff + предложение сообщения → **применяй** (HITL) |
 | `git status` / `git diff` / «покажи git status» | Голый `git status` → host_shell; фразы → LLM tool-loop |
 | `применяй` | Подтверждение pending-плана или коммита |
+| «сделай вкладку Models/LLM эргономичнее» | Локальный агент: полный патч → **Approvals** → Load pending plan (не N× Chat Apply) |
 
 ### Интернет
 
@@ -167,7 +170,7 @@
 
 Ключи в `.env` + read-only probe (`eurika.integrations.binance_readonly`): ping, ticker, балансы без ордеров. `eurika self-check` печатает блок **BINANCE (read-only)**. Live-ордера не подключены.
 
-**Qt Chat:** подвкладки **Агент** (архитектура/LLM; полоска режимов) и **Market** (live paper). Market: Live paper / Авто / **Дообучение** / **LLM обучение** (opt-in: каждые 15 мин, TF1+TF2 и рынок Spot|Futures|Both с вкладки Market → метки MLP; оценка по пути свечей; paper-вход только MLP+ворота) / **Исследование** (авто-стоп после N live-меток, по умолчанию 80; 0 = без лимита) / **Spot|Futures|Both** / **два списка тикеров** (Spot и Futures независимо, +/−; кнопка **Заполнить spot** из балансов — разово) / **Сброс сирот** (убрать opens вне списков) / свечи `15m`/`1h`, горизонт (при сильном ATR-burst/range-break авто-удлинение до 4) / **1m** (вход market/limit/stop/OCO; **TP/SL/trail ставит ML** `market_levels.pt`, спины UI = потолок; выход TP/SL/трейлинг/горизонт/модель). Лента событий цветная по типу (сделка / итог / анализ / исследование / ошибка) + подсветка ПОКУПКА/ПРОДАЖА и удача/неудача. Свечи spot/futures хранятся раздельно; entry `market_policy.pt` + exit `market_exit.pt` + levels `market_levels.pt`. Статус ML — live/opens с разбивкой spot/fut и **PnL Σ edge** (всего / live / сессия с вкл. Live); статус Market показывает `live/cap` и PnL сессии. Idle без событий — тихо. Ордера на биржу не уходят. Прогресс: **Models → ML**.
+**Qt Chat:** подвкладки **Агент** (архитектура/LLM; полоска режимов) и **Market** (live paper). Market: Live paper / Авто / **Дообучение** / **LLM обучение** (opt-in: каждые 15 мин, TF1+TF2 и рынок Spot|Futures|Both с вкладки Market → метки MLP; оценка по пути свечей; paper-вход только MLP+ворота) / **Portfolio агент** (opt-in 15 мин + кнопка **Цикл**: holistic spot/fut/earn paper, единый cash pool, teacher labels; не live и не MLP exam) / **Исследование** (авто-стоп после N live-меток, по умолчанию 80; 0 = без лимита) / **Spot|Futures|Both** / **два списка тикеров** (Spot и Futures независимо, +/−; кнопка **Заполнить spot** из балансов — разово) / **Сброс сирот** (убрать opens вне списков) / **Отчёт** (карточка в ленту: opens/pending + uPnL, Portfolio агент/holistic, MLP paper/обучение голов, LLM shadow) / свечи `15m`/`1h`, горизонт (при сильном ATR-burst/range-break авто-удлинение до 4) / **1m** (вход market/limit/stop/OCO; **TP/SL/trail ставит ML** `market_levels.pt`, спины UI = потолок; выход TP/SL/трейлинг/горизонт/модель). **Лента компактная:** в UI и journal только важное (сделка / итог / исследование / обучение / LLM / Portfolio / ошибка / сводка) — без per-tick sync/analysis/hold/wait; карточки как в Chat (markdown для LLM). Свечи spot/futures хранятся раздельно; entry `market_policy.pt` + exit `market_exit.pt` + levels `market_levels.pt`. Статус ML — live/opens с разбивкой spot/fut и **PnL Σ edge** (всего / live / сессия с вкл. Live); статус Market показывает `live/cap` и PnL сессии. Idle без событий — тихо. Ордера на биржу не уходят. Прогресс: **Models → ML**.
 
 Рабочий торговый бот — **не локальный**, а на сервере `prodg.winex.org` (`~/lbot`, SSH host `prodg`). Статус: `eurika.integrations.remote_lbot` / блок **LBOT (remote read-only)** в self-check (процесс, tmux, open trades, хвост лога; без start/stop/ордеров).
 

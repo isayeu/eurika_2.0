@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from qt_app.ui.main_window_helpers import ChatInputEdit
 from qt_app.ui.scroll import VerticalScrollArea
-from qt_app.ui.styles import TAB_MARGINS
+from qt_app.ui.styles import SPIN_MAX_WIDTH, TAB_MARGINS, get_secondary_hint
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -13,11 +13,13 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QSplitter,
     QTabWidget,
@@ -216,31 +218,186 @@ def _build_dialog_page(main: MainWindow) -> QWidget:
     return page
 
 
+def _fixed_field(widget: QWidget, width: int = SPIN_MAX_WIDTH) -> QWidget:
+    widget.setMaximumWidth(width)
+    wrap = QWidget()
+    row = QHBoxLayout(wrap)
+    row.setContentsMargins(0, 0, 0, 0)
+    row.setSpacing(0)
+    row.addWidget(widget)
+    row.addStretch(1)
+    return wrap
+
+
+def _market_hbox(*widgets: QWidget) -> QHBoxLayout:
+    row = QHBoxLayout()
+    row.setContentsMargins(0, 0, 0, 0)
+    row.setSpacing(6)
+    for widget in widgets:
+        row.addWidget(widget)
+    row.addStretch(1)
+    return row
+
+
+def _build_ticker_column(
+    *,
+    title: str,
+    list_widget: QListWidget,
+    edit: QLineEdit,
+    add_btn: QPushButton,
+    del_btn: QPushButton,
+    extra_btn: QPushButton | None = None,
+) -> QWidget:
+    col = QVBoxLayout()
+    col.setContentsMargins(0, 0, 0, 0)
+    col.setSpacing(4)
+    col.addWidget(QLabel(title))
+    col.addWidget(list_widget, 1)
+    edit_row = QHBoxLayout()
+    edit_row.setSpacing(4)
+    edit_row.addWidget(edit, 1)
+    edit_row.addWidget(add_btn)
+    edit_row.addWidget(del_btn)
+    if extra_btn is not None:
+        edit_row.addWidget(extra_btn)
+    col.addLayout(edit_row)
+    wrap = QWidget()
+    wrap.setLayout(col)
+    return wrap
+
+
 def _build_market_page(main: MainWindow) -> QWidget:
-    """Live paper market: controls + own event log (not mixed into Dialog)."""
+    """Live paper: always-visible ops bar + event log; settings on the side."""
     page = QWidget()
     layout = QVBoxLayout(page)
     layout.setContentsMargins(0, 6, 0, 0)
     layout.setSpacing(6)
 
-    controls = QWidget()
-    form = QFormLayout(controls)
-    form.setContentsMargins(0, 0, 0, 0)
-    form.setSpacing(4)
-
-    toggles = QHBoxLayout()
-    main.market_live_check = QCheckBox()
-    main.market_live_check.setText("Live paper")
+    main.market_live_check = QCheckBox("Live paper")
     main.market_live_check.setToolTip("Тики по свечам Binance; ордера на биржу не уходят")
-    main.market_auto_check = QCheckBox()
-    main.market_auto_check.setText("Авто")
+    main.market_auto_check = QCheckBox("Авто")
     main.market_auto_check.setToolTip("Периодический тик при включённом Live paper")
-    main.market_micro_train_check = QCheckBox()
-    main.market_micro_train_check.setText("Дообучение")
+    main.market_tick_btn = QPushButton("Тик")
+    main.market_tick_btn.setMinimumWidth(72)
+    main.market_tick_btn.setToolTip("Один цикл: sync → анализ → бумага → итог")
+    main.market_kind_combo = QComboBox()
+    main.market_kind_combo.addItems(["Spot", "Futures", "Both"])
+    main.market_kind_combo.setCurrentText("Spot")
+    main.market_kind_combo.setMaximumWidth(96)
+    main.market_kind_combo.setToolTip(
+        "Spot / USD-M Futures / оба. Тикеры — в панели справа. Без ордеров."
+    )
+    main.market_candle_combo = QComboBox()
+    main.market_candle_combo.addItems(["15m", "1h"])
+    main.market_candle_combo.setCurrentText("15m")
+    main.market_candle_combo.setMaximumWidth(64)
+    main.market_candle_combo.setToolTip("Таймфрейм свечей (15m быстрее даёт итоги)")
+    main.market_horizon_spin = QSpinBox()
+    main.market_horizon_spin.setRange(1, 24)
+    main.market_horizon_spin.setValue(2)
+    main.market_horizon_spin.setPrefix("гор. ")
+    main.market_horizon_spin.setMaximumWidth(88)
+    main.market_horizon_spin.setToolTip(
+        "Макс. удержание в барах основного ТФ (если TP/SL не сработали раньше на 1m)"
+    )
+    main.market_exec_1m_check = QCheckBox("1m TP/SL")
+    main.market_exec_1m_check.setChecked(True)
+    main.market_exec_1m_check.setToolTip(
+        "Сигнал на 15m/1h, вход/выход на 1m: TP/SL/trail ставит ML (спины — потолок/запасной)"
+    )
+    main.market_interval_spin = QSpinBox()
+    main.market_interval_spin.setRange(15, 3600)
+    main.market_interval_spin.setValue(60)
+    main.market_interval_spin.setPrefix("каждые ")
+    main.market_interval_spin.setSuffix(" с")
+    main.market_interval_spin.setMaximumWidth(130)
+    main.market_interval_spin.setToolTip("Интервал авто-тика")
+    main.market_drop_orphans_btn = QPushButton("Сброс сирот")
+    main.market_drop_orphans_btn.setToolTip(
+        "Удалить открытые paper вне текущих списков Spot/Futures (без метки, сразу)"
+    )
+    main.market_report_btn = QPushButton("Отчёт")
+    main.market_report_btn.setToolTip(
+        "Сводка в ленту: opens/pending, Portfolio агент (holistic), MLP paper, обучение голов, LLM shadow"
+    )
+    main.market_clear_btn = QPushButton("Очистить")
+    main.market_clear_btn.setToolTip("Очистить ленту Market (Dialog не трогает)")
+
+    header = QWidget()
+    header.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+    header_layout = QVBoxLayout(header)
+    header_layout.setContentsMargins(0, 0, 0, 0)
+    header_layout.setSpacing(4)
+    header_layout.addLayout(
+        _market_hbox(
+            main.market_live_check,
+            main.market_auto_check,
+            main.market_tick_btn,
+            main.market_kind_combo,
+            main.market_candle_combo,
+            main.market_horizon_spin,
+            main.market_exec_1m_check,
+        )
+    )
+    header_layout.addLayout(
+        _market_hbox(
+            main.market_interval_spin,
+            main.market_drop_orphans_btn,
+            main.market_report_btn,
+            main.market_clear_btn,
+        )
+    )
+
+    main.market_bank_label = QLabel("equity=— · маржа — · Δ=—")
+    main.market_bank_label.setWordWrap(True)
+    main.market_bank_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+    main.market_bank_label.setStyleSheet("font-weight: 600;")
+    main.market_bank_label.setToolTip(
+        "Бумажный банк (старт 1000 USDT): equity, занятая маржа, Δ от старта, PnL$ live"
+    )
+    header_layout.addWidget(main.market_bank_label)
+
+    main.market_status_label = QLabel("выкл · BTCUSDT 1h · без ордеров на биржу")
+    main.market_status_label.setWordWrap(True)
+    main.market_status_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+    main.market_status_label.setStyleSheet(get_secondary_hint())
+    header_layout.addWidget(main.market_status_label)
+    layout.addWidget(header)
+
+    main.market_transcript = QTextEdit()
+    main.market_transcript.setReadOnly(True)
+    main.market_transcript.setAcceptRichText(True)
+    main.market_transcript.setPlaceholderText(
+        "Лента: сделки · итоги · обучение · LLM · ошибки (без sync/analysis/hold на каждый тик)"
+    )
+    main.market_transcript.setMinimumHeight(80)
+
+    main.market_micro_train_check = QCheckBox("Дообучение")
     main.market_micro_train_check.setChecked(True)
     main.market_micro_train_check.setToolTip("После итога — короткий train на CPU")
-    main.market_explore_check = QCheckBox()
-    main.market_explore_check.setText("Исследование")
+    main.market_llm_learn_check = QCheckBox("LLM обучение")
+    main.market_llm_learn_check.setChecked(False)
+    main.market_llm_learn_check.setToolTip(
+        "Каждые 15 мин Cursor читает TF1 и TF2 (ниже) и учит MLP. "
+        "Не ордер и не замена argmax"
+    )
+    main.market_portfolio_check = QCheckBox("Portfolio агент")
+    main.market_portfolio_check.setChecked(False)
+    main.market_portfolio_check.setToolTip(
+        "Каждые 15 мин holistic агент: spot/fut/earn paper, единый cash pool, "
+        "метки в teacher. Не live-ордера и не MLP exam"
+    )
+    main.market_portfolio_once_btn = QPushButton("Цикл")
+    main.market_portfolio_once_btn.setToolTip("Один portfolio-цикл сейчас (нужен CURSOR_API_KEY)")
+    main.market_llm_tf1_combo = QComboBox()
+    main.market_llm_tf1_combo.addItems(["5m", "15m", "1h", "4h"])
+    main.market_llm_tf1_combo.setCurrentText("15m")
+    main.market_llm_tf1_combo.setToolTip("Первый ТФ для LLM-разбора (обязательно оба)")
+    main.market_llm_tf2_combo = QComboBox()
+    main.market_llm_tf2_combo.addItems(["5m", "15m", "1h", "4h"])
+    main.market_llm_tf2_combo.setCurrentText("1h")
+    main.market_llm_tf2_combo.setToolTip("Второй ТФ для LLM-разбора (обязательно оба)")
+    main.market_explore_check = QCheckBox("Исследование")
     main.market_explore_check.setChecked(False)
     main.market_explore_check.setToolTip(
         "Если модель говорит ДЕРЖАТЬ — теневой BUY/SELL для меток (без риска для бумажного банка)"
@@ -253,48 +410,33 @@ def _build_market_page(main: MainWindow) -> QWidget:
     )
     main.market_explore_cap_spin.setPrefix("до ")
     main.market_explore_cap_spin.setSuffix(" live")
-    main.market_explore_cap_spin.setMaximumWidth(110)
     main.market_explore_reset_btn = QPushButton("Сброс счётчика")
     main.market_explore_reset_btn.setToolTip(
         "Обнулить счётчик исследования (live к cap). История paper и веса ML не удаляются."
     )
-    toggles.addWidget(main.market_live_check)
-    toggles.addWidget(main.market_auto_check)
-    toggles.addWidget(main.market_micro_train_check)
-    toggles.addWidget(main.market_explore_check)
-    toggles.addWidget(main.market_explore_cap_spin)
-    toggles.addWidget(main.market_explore_reset_btn)
-    toggles.addStretch(1)
-    form.addRow("Режим", toggles)
+    main.market_explore_cap_spin.setEnabled(False)
+    main.market_explore_reset_btn.setEnabled(False)
 
-    run_row = QHBoxLayout()
-    main.market_kind_combo = QComboBox()
-    main.market_kind_combo.addItems(["Spot", "Futures", "Both"])
-    main.market_kind_combo.setCurrentText("Spot")
-    main.market_kind_combo.setToolTip(
-        "Spot / USD-M Futures / оба. Тикеры задаются отдельными списками ниже. Без ордеров."
-    )
-    main.market_candle_combo = QComboBox()
-    main.market_candle_combo.addItems(["15m", "1h"])
-    main.market_candle_combo.setCurrentText("15m")
-    main.market_candle_combo.setToolTip("Таймфрейм свечей (15m быстрее даёт итоги)")
-    main.market_horizon_spin = QSpinBox()
-    main.market_horizon_spin.setRange(1, 24)
-    main.market_horizon_spin.setValue(2)
-    main.market_horizon_spin.setToolTip(
-        "Макс. удержание в барах основного ТФ (если TP/SL не сработали раньше на 1m)"
-    )
-    main.market_exec_1m_check = QCheckBox("1m TP/SL")
-    main.market_exec_1m_check.setChecked(True)
-    main.market_exec_1m_check.setToolTip(
-        "Сигнал на 15m/1h, вход/выход на 1m: TP/SL/trail ставит ML (спины — потолок/запасной)"
-    )
+    learn_box = QGroupBox("Обучение")
+    learn_form = QFormLayout(learn_box)
+    learn_form.setContentsMargins(8, 8, 8, 8)
+    learn_form.setSpacing(4)
+    learn_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
+    learn_form.addRow(main.market_micro_train_check)
+    learn_form.addRow(main.market_llm_learn_check)
+    learn_form.addRow(main.market_portfolio_check)
+    learn_form.addRow("", main.market_portfolio_once_btn)
+    learn_form.addRow("TF1", _fixed_field(main.market_llm_tf1_combo, 72))
+    learn_form.addRow("TF2", _fixed_field(main.market_llm_tf2_combo, 72))
+    learn_form.addRow(main.market_explore_check)
+    learn_form.addRow("Лимит", _fixed_field(main.market_explore_cap_spin, 110))
+    learn_form.addRow("", main.market_explore_reset_btn)
+
     main.market_tp_spin = QDoubleSpinBox()
     main.market_tp_spin.setRange(0.0, 10.0)
     main.market_tp_spin.setSingleStep(0.1)
     main.market_tp_spin.setValue(1.0)
     main.market_tp_spin.setSuffix(" %")
-    main.market_tp_spin.setMaximumWidth(80)
     main.market_tp_spin.setToolTip(
         "Потолок TP % (ML ставит сама; 0 = без потолка, только модель/эвристика)"
     )
@@ -303,65 +445,28 @@ def _build_market_page(main: MainWindow) -> QWidget:
     main.market_sl_spin.setSingleStep(0.1)
     main.market_sl_spin.setValue(1.0)
     main.market_sl_spin.setSuffix(" %")
-    main.market_sl_spin.setMaximumWidth(80)
-    main.market_sl_spin.setToolTip(
-        "Потолок SL % (ML ставит сама; 0 = без потолка)"
-    )
+    main.market_sl_spin.setToolTip("Потолок SL % (ML ставит сама; 0 = без потолка)")
     main.market_trail_spin = QDoubleSpinBox()
     main.market_trail_spin.setRange(0.0, 10.0)
     main.market_trail_spin.setSingleStep(0.1)
     main.market_trail_spin.setValue(0.8)
     main.market_trail_spin.setSuffix(" %")
-    main.market_trail_spin.setMaximumWidth(80)
-    main.market_trail_spin.setToolTip(
-        "Потолок trailing % (ML ставит сама; 0 = без потолка)"
-    )
-    main.market_interval_spin = QSpinBox()
-    main.market_interval_spin.setRange(15, 3600)
-    main.market_interval_spin.setValue(60)
-    main.market_interval_spin.setSuffix(" с")
-    main.market_interval_spin.setToolTip("Интервал авто-тика")
-    main.market_tick_btn = QPushButton("Тик")
-    main.market_tick_btn.setToolTip("Один цикл: sync → анализ → бумага → итог")
-    main.market_drop_orphans_btn = QPushButton("Сброс сирот")
-    main.market_drop_orphans_btn.setToolTip(
-        "Удалить открытые paper вне текущих списков Spot/Futures (без метки, сразу)"
-    )
-    main.market_clear_btn = QPushButton("Очистить")
-    main.market_clear_btn.setToolTip("Очистить ленту Market (Dialog не трогает)")
-    run_row.addWidget(main.market_kind_combo)
-    run_row.addWidget(main.market_candle_combo)
-    run_row.addWidget(QLabel("гор."))
-    run_row.addWidget(main.market_horizon_spin)
-    run_row.addWidget(main.market_exec_1m_check)
-    run_row.addWidget(QLabel("TP"))
-    run_row.addWidget(main.market_tp_spin)
-    run_row.addWidget(QLabel("SL"))
-    run_row.addWidget(main.market_sl_spin)
-    run_row.addWidget(QLabel("trail"))
-    run_row.addWidget(main.market_trail_spin)
-    run_row.addWidget(QLabel("каждые"))
-    run_row.addWidget(main.market_interval_spin)
-    run_row.addWidget(main.market_tick_btn)
-    run_row.addWidget(main.market_drop_orphans_btn)
-    run_row.addWidget(main.market_clear_btn)
-    run_row.addStretch(1)
-    form.addRow("Рынок", run_row)
+    main.market_trail_spin.setToolTip("Потолок trailing % (ML ставит сама; 0 = без потолка)")
 
-    # Spot | Futures ticker lists side by side
-    tickers_row = QHBoxLayout()
-    tickers_row.setSpacing(10)
+    levels_box = QGroupBox("Потолки TP/SL")
+    levels_form = QFormLayout(levels_box)
+    levels_form.setContentsMargins(8, 8, 8, 8)
+    levels_form.setSpacing(4)
+    levels_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
+    levels_form.addRow("TP", _fixed_field(main.market_tp_spin))
+    levels_form.addRow("SL", _fixed_field(main.market_sl_spin))
+    levels_form.addRow("trail", _fixed_field(main.market_trail_spin))
 
-    spot_col = QVBoxLayout()
-    spot_col.setSpacing(2)
-    spot_col.addWidget(QLabel("Spot"))
     main.market_spot_list = QListWidget()
-    main.market_spot_list.setMaximumHeight(88)
+    main.market_spot_list.setMinimumHeight(72)
     main.market_spot_list.setToolTip("Spot-тикеры для обучения (добавляйте вручную)")
-    spot_edit_row = QHBoxLayout()
     main.market_spot_edit = QLineEdit()
     main.market_spot_edit.setPlaceholderText("BTCUSDT")
-    main.market_spot_edit.setMaximumWidth(110)
     main.market_spot_add_btn = QPushButton("+")
     main.market_spot_add_btn.setFixedWidth(28)
     main.market_spot_add_btn.setToolTip("Добавить spot-тикер")
@@ -372,70 +477,67 @@ def _build_market_page(main: MainWindow) -> QWidget:
     main.market_spot_fill_btn.setToolTip(
         "Один раз подставить пары из spot-балансов (до 8). Дальше правите вручную."
     )
-    spot_edit_row.addWidget(main.market_spot_edit)
-    spot_edit_row.addWidget(main.market_spot_add_btn)
-    spot_edit_row.addWidget(main.market_spot_del_btn)
-    spot_edit_row.addWidget(main.market_spot_fill_btn)
-    spot_edit_row.addStretch(1)
-    spot_col.addWidget(main.market_spot_list)
-    spot_col.addLayout(spot_edit_row)
-    spot_wrap = QWidget()
-    spot_wrap.setLayout(spot_col)
-
-    fut_col = QVBoxLayout()
-    fut_col.setSpacing(2)
-    fut_col.addWidget(QLabel("Futures"))
     main.market_futures_list = QListWidget()
-    main.market_futures_list.setMaximumHeight(88)
+    main.market_futures_list.setMinimumHeight(72)
     main.market_futures_list.setToolTip("USD-M Futures тикеры (отдельно от spot)")
-    fut_edit_row = QHBoxLayout()
     main.market_futures_edit = QLineEdit()
     main.market_futures_edit.setPlaceholderText("BTCUSDT")
-    main.market_futures_edit.setMaximumWidth(110)
     main.market_futures_add_btn = QPushButton("+")
     main.market_futures_add_btn.setFixedWidth(28)
     main.market_futures_add_btn.setToolTip("Добавить futures-тикер (проверка fapi)")
     main.market_futures_del_btn = QPushButton("−")
     main.market_futures_del_btn.setFixedWidth(28)
     main.market_futures_del_btn.setToolTip("Удалить выбранный futures-тикер")
-    fut_edit_row.addWidget(main.market_futures_edit)
-    fut_edit_row.addWidget(main.market_futures_add_btn)
-    fut_edit_row.addWidget(main.market_futures_del_btn)
-    fut_edit_row.addStretch(1)
-    fut_col.addWidget(main.market_futures_list)
-    fut_col.addLayout(fut_edit_row)
-    fut_wrap = QWidget()
-    fut_wrap.setLayout(fut_col)
 
-    tickers_row.addWidget(spot_wrap, 1)
-    tickers_row.addWidget(fut_wrap, 1)
-    tickers_wrap = QWidget()
-    tickers_wrap.setLayout(tickers_row)
-    form.addRow("Тикеры", tickers_wrap)
-
-    main.market_bank_label = QLabel("equity=— · маржа — · Δ=—")
-    main.market_bank_label.setWordWrap(True)
-    main.market_bank_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-    main.market_bank_label.setToolTip(
-        "Бумажный банк (старт 1000 USDT): equity, занятая маржа, Δ от старта, PnL$ live"
+    tickers_box = QGroupBox("Тикеры")
+    tickers_row = QHBoxLayout(tickers_box)
+    tickers_row.setContentsMargins(8, 8, 8, 8)
+    tickers_row.setSpacing(8)
+    tickers_row.addWidget(
+        _build_ticker_column(
+            title="Spot",
+            list_widget=main.market_spot_list,
+            edit=main.market_spot_edit,
+            add_btn=main.market_spot_add_btn,
+            del_btn=main.market_spot_del_btn,
+            extra_btn=main.market_spot_fill_btn,
+        ),
+        1,
     )
-    form.addRow("Банк", main.market_bank_label)
-
-    main.market_status_label = QLabel("выкл · BTCUSDT 1h · без ордеров на биржу")
-    main.market_status_label.setWordWrap(True)
-    main.market_status_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-    form.addRow("Статус", main.market_status_label)
-    layout.addWidget(VerticalScrollArea(controls, hint_height=220))
-
-    main.market_transcript = QTextEdit()
-    main.market_transcript.setReadOnly(True)
-    main.market_transcript.setAcceptRichText(True)
-    main.market_transcript.setPlaceholderText(
-        "События: анализ · бумажная покупка/продажа · горизонт · итог · обучение"
+    tickers_row.addWidget(
+        _build_ticker_column(
+            title="Futures",
+            list_widget=main.market_futures_list,
+            edit=main.market_futures_edit,
+            add_btn=main.market_futures_add_btn,
+            del_btn=main.market_futures_del_btn,
+        ),
+        1,
     )
-    layout.addWidget(main.market_transcript, 1)
+
+    settings = QWidget()
+    settings_layout = QVBoxLayout(settings)
+    settings_layout.setContentsMargins(0, 0, 0, 0)
+    settings_layout.setSpacing(8)
+    settings_layout.addWidget(tickers_box, 1)
+    settings_layout.addWidget(learn_box)
+    settings_layout.addWidget(levels_box)
+    settings_scroll = VerticalScrollArea(settings, hint_width=320, hint_height=180)
+
+    split = QSplitter(Qt.Orientation.Horizontal)
+    split.addWidget(main.market_transcript)
+    split.addWidget(settings_scroll)
+    split.setChildrenCollapsible(False)
+    split.setCollapsible(1, True)
+    split.setStretchFactor(0, 3)
+    split.setStretchFactor(1, 1)
+    split.setSizes([720, 320])
+    layout.addWidget(split, 1)
 
     main._market_timer = None
     main._market_tick_busy = False
     main._market_tick_worker = None
+    main._market_llm_timer = None
+    main._market_llm_worker = None
+    main._market_llm_warned_no_key = False
     return page
