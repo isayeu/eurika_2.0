@@ -75,11 +75,19 @@ def test_agent_http_chat_executes_bare_tool_json(
 
 
 def test_health_hit_is_written_to_live_activity(agent_http: AgentHttpService, tmp_path: Path) -> None:
+    import time
+
     from eurika.agent.live_activity import recent
 
     client = AgentHttpClient(agent_http.url, agent_http.token)
     assert client.health()["ok"] is True
-    titles = [event.get("title") for event in recent(tmp_path)["events"]]
+    titles: list[object] = []
+    deadline = time.monotonic() + 1.0
+    while time.monotonic() < deadline:
+        titles = [event.get("title") for event in recent(tmp_path)["events"]]
+        if any(isinstance(title, str) and "GET /health" in title for title in titles):
+            break
+        time.sleep(0.02)
     assert any(isinstance(title, str) and "GET /health" in title for title in titles)
 
 
@@ -88,8 +96,54 @@ def test_agent_http_stops_and_removes_endpoint(tmp_path: Path) -> None:
     service = AgentHttpService(runtime, port=0)
     service.start()
     assert read_endpoint(tmp_path) is not None
+    assert service._httpd is not None
+    assert service._httpd.daemon_threads is True
+    assert service._httpd.block_on_close is False
     service.stop()
     assert read_endpoint(tmp_path) is None
+
+
+def test_agent_http_stop_does_not_wait_for_in_flight_chat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import threading
+    import time
+
+    started = threading.Event()
+    release = threading.Event()
+    runtime = LocalAgentRuntime(tmp_path)
+    service = AgentHttpService(runtime, port=0)
+
+    def slow_chat(_body: object) -> dict:
+        started.set()
+        release.wait(timeout=30)
+        return {
+            "ok": True,
+            "sessionId": "s",
+            "text": "late",
+            "pendingToolCalls": [],
+            "metrics": {},
+            "events": [],
+        }
+
+    service.start()
+    monkeypatch.setattr(service, "handle_chat", slow_chat)
+    client = AgentHttpClient(service.url, service.token)
+
+    def call() -> None:
+        try:
+            client.agent_chat("slow")
+        except Exception:
+            pass
+
+    waiter = threading.Thread(target=call, daemon=True)
+    waiter.start()
+    assert started.wait(timeout=5)
+    t0 = time.monotonic()
+    service.stop()
+    elapsed = time.monotonic() - t0
+    release.set()
+    assert elapsed < 2.0, f"stop() blocked {elapsed:.1f}s on in-flight /chat"
 
 
 def test_agent_http_client_discover_waits_for_running_server(tmp_path: Path) -> None:

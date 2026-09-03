@@ -219,6 +219,32 @@ def test_preview_operation_llm_extract_block(tmp_path: Path) -> None:
     assert "helper" in result.get("new_content", "")
 
 
+def test_preview_operation_agent_edit(tmp_path: Path) -> None:
+    (tmp_path / "mod.py").write_text("def f(): return 1\n", encoding="utf-8")
+    op = {
+        "target_file": "mod.py",
+        "kind": "agent_edit",
+        "params": {"new_content": "def f(): return 2\n"},
+    }
+    result = preview_operation(tmp_path, op)
+    assert "error" not in result
+    assert "return 2" in result.get("new_content", "")
+    assert "return 1" in result.get("unified_diff", "")
+    assert "return 2" in result.get("unified_diff", "")
+
+
+def test_preview_operation_agent_edit_create(tmp_path: Path) -> None:
+    op = {
+        "target_file": "new_mod.py",
+        "kind": "agent_edit",
+        "params": {"new_content": "print(1)\n"},
+    }
+    result = preview_operation(tmp_path, op)
+    assert "error" not in result
+    assert result.get("old_content") == ""
+    assert "print(1)" in result.get("new_content", "")
+
+
 def test_preview_operation_extract_class(tmp_path: Path) -> None:
     """preview_operation returns unified_diff for extract_class when params present."""
     (tmp_path / "big.py").write_text(

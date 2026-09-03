@@ -96,3 +96,41 @@ def test_chat_send_works_with_preexisting_corrupted_chat_jsonl(tmp_path: Path, m
     # Ensure new valid line can still be appended after corrupted content.
     lines = (chat_dir / "chat.jsonl").read_text(encoding="utf-8").splitlines()
     assert len(lines) >= 3
+
+
+def test_extra_chat_thread_writes_separate_transcript(tmp_path: Path) -> None:
+    from eurika.api.chat import append_chat_history, load_chat_history
+    from eurika.api.chat_sessions import add_chat, transcript_path
+
+    append_chat_history(tmp_path, "user", "default-thread")
+    created = add_chat(tmp_path, "чат 2")
+    append_chat_history(tmp_path, "user", "second-thread")
+    extra = transcript_path(tmp_path, created["id"])
+    assert extra != tmp_path / ".eurika" / "chat_history" / "chat.jsonl"
+    assert "second-thread" in extra.read_text(encoding="utf-8")
+    assert "default-thread" not in extra.read_text(encoding="utf-8")
+    assert load_chat_history(tmp_path) == [{"role": "user", "content": "second-thread"}]
+
+
+def test_rename_and_remove_extra_chat(tmp_path: Path) -> None:
+    from eurika.api.chat_sessions import (
+        add_chat,
+        list_chats,
+        remove_chat,
+        rename_chat,
+        transcript_path,
+    )
+
+    created = add_chat(tmp_path, "чат 2")
+    extra = transcript_path(tmp_path, created["id"])
+    extra.parent.mkdir(parents=True, exist_ok=True)
+    extra.write_text("{}\n", encoding="utf-8")
+    renamed = rename_chat(tmp_path, created["id"], "архив")
+    assert renamed is not None
+    assert renamed["title"] == "архив"
+    assert any(item["title"] == "архив" for item in list_chats(tmp_path))
+    assert remove_chat(tmp_path, created["id"]) is True
+    assert extra.exists() is False
+    assert len(list_chats(tmp_path)) == 1
+    assert remove_chat(tmp_path, "default") is False
+

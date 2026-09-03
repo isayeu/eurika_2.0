@@ -89,6 +89,7 @@
 5. Открытые paper и pending — нет ли зависших; legacy opens без margin → дождаться закрытия
 6. **Экономика:** валовый PnL vs сумма комиссий; нетто-эдж на сделку; сколько входов отсеяли ворота и какой порог выбрала калибровка
 7. **Обучение:** строк `shadow: true` за сутки (должно быть в разы больше реальных — иначе поток меток пересох); не растёт ли `shadow_open.json` монотонно (значит тени зависают, а не разрешаются); эдж теней ниже порога — если он стабильно окупает комиссию, ворота откроются сами, и это ожидаемо
+8. **Якорь экзамена 2026-08-24 → разбор 2026-08-31:** см. [MEMORY.md](MEMORY.md) § «Якорь экзамена» и `.eurika/ml/exam_checkpoint.json`. Сверить `covers_cost` / `expected_edge`, rolling last 200 live, equity Δ. Если ворота всё ещё `covers_cost: нет` и last 200 в минусе — разбор ворот/комиссии по journal, **не** новый entry / explore on / HTF.
 
 Считать честно: `edge` уже за вычетом комиссии, поэтому «win rate 62%» ничего не значит без отношения средней прибыли к среднему убытку (на неделе 1:2.15 → безубыток требует 68.2%).
 
@@ -121,10 +122,11 @@
 11. ~~**Plugin hooks** `after_*`~~ ✅ (2026-08-08, v1) — versioned JSON-safe immutable `HookContext`; canonical `after_scan/plan/apply/verify` (не CLI/Qt wrappers); конфиг `.eurika/plugins.toml` / `pyproject`; ordered + dedupe + fail-open; результаты в `report.plugin_hooks` и `.eurika/events.json`. Trusted in-process plugins, не sandbox.
 12. **Telegram-канал** к тому же агенту (`eurika` v1 `telegram_bot`).
 13. ~~**Goals / reflection / nudges (v1)**~~ частично ✅ — `goal_status` / `clear_goal` (чистит и last_execution) / `goal_reflection` + nudge; после scan/ritual/Apply цель отпускается, итог остаётся для «что получилось?».
+14. **Саморазвитие через полигон (HITL)** — Architecture Freeze запрещает тихий rewrite боевого ядра, **не** самоэксперименты: песочница / `eurika/polygon/` / отдельный worktree + LLM/интернет → verify → **предложить** изменения человеку → apply только после разрешения. Детали: [ROADMAP.md](ROADMAP.md) §4.6 (уточнение 2026-09-03), [Architecture.md](Architecture.md) §2, [BOUNDED_EVOLUTION.md](BOUNDED_EVOLUTION.md).
 
 ### Не брать
 Live-ордера / ключи / freqtrade с prodg; indicator-правила «RSI→buy» / «памп→buy» как ML-логика; OPT/aviation/vpn как домен; третий ТФ как отдельный торговый движок.
 
 ## Не сейчас
 
-Новые алгоритмы входа, explore on ради меток, HTF в коде до стабилизации equity, live-биржевые ордера, большой рефактор вкладок «ради красоты» без chat-first ядра.
+Новые алгоритмы входа, explore on ради меток, HTF в коде до стабилизации equity, live-биржевые ордера, большой рефактор вкладок «ради красоты» без chat-first ядра; **silent** self-rewriting / онлайн-патчинг живого ядра без proposal+approve (полигон→HITL — можно, см. C.14).

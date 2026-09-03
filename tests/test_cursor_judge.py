@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from eurika.agent.cursor_judge import (
     DEFAULT_CURSOR_MODEL,
     _unavailable_model_id,
@@ -11,6 +13,20 @@ from eurika.agent.cursor_judge import (
     selected_optimize_for,
     stub_model_catalog,
 )
+
+
+def test_load_cursor_key_does_not_clobber_chat_provider(tmp_path, monkeypatch) -> None:
+    from eurika.agent.cursor_judge import load_cursor_key
+
+    (tmp_path / ".env").write_text(
+        "CURSOR_API_KEY=crsr_test_not_real\nEURIKA_CHAT_PROVIDER=openai\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("EURIKA_CHAT_PROVIDER", "cursor")
+    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
+    key = load_cursor_key(tmp_path)
+    assert key == "crsr_test_not_real"
+    assert os.environ["EURIKA_CHAT_PROVIDER"] == "cursor"
 
 
 def test_unavailable_model_id_strips_trailing_dot() -> None:

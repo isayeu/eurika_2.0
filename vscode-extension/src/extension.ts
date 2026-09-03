@@ -154,6 +154,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     const label = call.tool === "tests"
       ? "run workspace tests"
+      : call.tool === "git_commit"
+      ? `commit ${String(call.arguments?.message ?? "").trim() || "selected files"}`
+      : call.tool === "git_push"
+      ? "push the current branch to origin"
       : `run ${JSON.stringify(call.arguments?.argv ?? [])}`;
     const choice = await vscode.window.showWarningMessage(
       `Eurika wants to ${label}.`,
@@ -231,7 +235,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         });
         toolResult = staged;
       } else {
-        toolResult = call.tool === "terminal" || call.tool === "tests"
+        toolResult = call.tool === "terminal" || call.tool === "tests" || call.tool === "git_commit" || call.tool === "git_push"
         ? await executeApprovedBackendTool(call)
         : await handleTool({
             call: {

@@ -54,9 +54,11 @@ let activeVersion: string | undefined;
 let loadedContent: string | undefined;
 let currentProposal: Proposal | undefined;
 let currentPendingCall: PendingCall | undefined;
+let currentProposalSelection = new Set<string>();
 let chatRequestId: string | undefined;
 let streamMessage: HTMLElement | undefined;
 let fileTree: FileTreeNode[] = [];
+const activeToolCalls = new Map<string, { tool: string; arguments?: Record<string, unknown> }>();
 const expandedFolders = new Set<string>();
 const seenChatKeys = new Set<string>();
 const seenActivityKeys = new Set<string>();
@@ -438,9 +440,20 @@ function renderToolApproval(call: PendingCall): void {
   const heading = document.createElement("strong");
   heading.textContent = `Approval required: ${call.tool}`;
   const details = document.createElement("pre");
-  details.textContent = JSON.stringify(call.arguments ?? {}, null, 2);
+  if (call.tool === "git_commit") {
+    const message = String(call.arguments?.message ?? "").trim() || "(empty message)";
+    const paths = Array.isArray(call.arguments?.paths)
+      ? (call.arguments?.paths as unknown[]).map((item) => String(item))
+      : [];
+    details.textContent = [`message: ${message}`, `paths: ${paths.length ? paths.join(", ") : "(safe dirty files)"}`].join("\n");
+  } else if (call.tool === "git_push") {
+    details.textContent = "Push current branch to origin.\nNever --force / --force-with-lease.";
+  } else {
+    details.textContent = JSON.stringify(call.arguments ?? {}, null, 2);
+  }
   const approve = document.createElement("button");
-  approve.textContent = call.tool === "tests" ? "Run tests" : "Run approved";
+  approve.textContent =
+    call.tool === "tests" ? "Run tests" : call.tool === "git_commit" ? "Commit" : call.tool === "git_push" ? "Push" : "Run approved";
   approve.onclick = () => void runUi(() => decideToolApproval(true));
   const reject = document.createElement("button");
   reject.textContent = "Reject";
@@ -492,17 +505,44 @@ async function hydrateProposal(descriptor: Proposal): Promise<Proposal> {
   return { proposalId: descriptor.proposalId, files };
 }
 
+function selectedProposalPaths(proposal: Proposal): string[] {
+  const picked = proposal.files
+    .map((file) => file.path)
+    .filter((path) => currentProposalSelection.has(path));
+  return picked.length ? picked : proposal.files.map((file) => file.path);
+}
+
+function renderReadOnlyDiff(title: string, text: string): void {
+  if (currentProposal) return;
+  proposalElement.replaceChildren();
+  const heading = document.createElement("strong");
+  heading.textContent = title;
+  const details = document.createElement("pre");
+  details.textContent = text.trim() || "(clean)";
+  proposalElement.append(heading, details);
+}
+
 function renderProposal(proposal: Proposal, pendingCall?: PendingCall): void {
   currentProposal = proposal;
   currentPendingCall = pendingCall;
+  currentProposalSelection = new Set(proposal.files.map((file) => file.path));
   proposalElement.replaceChildren();
   const heading = document.createElement("strong");
   heading.textContent = `Proposed changes (${proposal.files.length})`;
   proposalElement.append(heading);
   for (const file of proposal.files) {
-    const row = document.createElement("button");
-    row.textContent = file.path;
-    row.onclick = () => {
+    const row = document.createElement("div");
+    row.className = "proposal-row";
+    const pick = document.createElement("input");
+    pick.type = "checkbox";
+    pick.checked = true;
+    pick.onchange = () => {
+      if (pick.checked) currentProposalSelection.add(file.path);
+      else currentProposalSelection.delete(file.path);
+    };
+    const preview = document.createElement("button");
+    preview.textContent = file.path;
+    preview.onclick = () => {
       if (
         file.path === activePath &&
         editor &&
@@ -515,16 +555,17 @@ function renderProposal(proposal: Proposal, pendingCall?: PendingCall): void {
       }
       showDiff(file);
     };
+    row.append(pick, preview);
     proposalElement.append(row);
   }
   const apply = document.createElement("button");
-  apply.textContent = "Apply all";
+  apply.textContent = "Apply selected";
   apply.onclick = () => void runUi(() => decideProposal(true));
   const reject = document.createElement("button");
-  reject.textContent = "Reject all";
+  reject.textContent = "Reject selected";
   reject.onclick = () => void runUi(() => decideProposal(false));
   proposalElement.append(apply, reject);
-  const first = proposal.files[0];
+  const first = proposal.files.find((file) => currentProposalSelection.has(file.path)) ?? proposal.files[0];
   const dirtyConflict =
     first.path === activePath &&
     editor &&
@@ -544,7 +585,9 @@ async function decideProposal(apply: boolean): Promise<void> {
   if (!currentProposal) return;
   const proposalId = currentProposal.proposalId;
   const pendingCall = currentPendingCall;
-  let outcome: unknown;
+  const selected = selectedProposalPaths(currentProposal);
+  if (!selected.length) throw new Error("Select at least one file in the proposal first");
+  let outcome: { applied?: string[]; rejected?: string[]; remaining?: string[] };
   if (apply) {
     const activeProposal = currentProposal.files.find((file) => file.path === activePath);
     if (
@@ -556,17 +599,33 @@ async function decideProposal(apply: boolean): Promise<void> {
     ) {
       throw new Error(`Save or discard the dirty editor buffer before applying ${activePath}`);
     }
-    outcome = await window.eurika.request("proposal/apply", { proposalId, approval: true });
-    appendMessage("assistant", "Changes applied. A restore checkpoint was created.");
+    outcome = await window.eurika.request("proposal/apply", { proposalId, paths: selected, approval: true });
   } else {
-    outcome = await window.eurika.request("proposal/reject", { proposalId });
-    appendMessage("assistant", "Changes rejected.");
+    outcome = await window.eurika.request("proposal/reject", { proposalId, paths: selected });
+  }
+  await refreshFiles();
+  if (activePath) await openFile(activePath);
+  const remaining = Array.isArray(outcome.remaining) ? outcome.remaining : [];
+  if (remaining.length) {
+    const actioned = apply ? (outcome.applied ?? []).length : (outcome.rejected ?? []).length;
+    appendMessage(
+      "assistant",
+      apply
+        ? `Applied ${actioned} file(s). ${remaining.length} file(s) remain in the proposal.`
+        : `Rejected ${actioned} file(s). ${remaining.length} file(s) remain in the proposal.`,
+    );
+    const refreshed = await hydrateProposal({
+      proposalId,
+      files: remaining.map((path) => ({ path })),
+    });
+    renderProposal(refreshed, pendingCall);
+    return;
   }
   currentProposal = undefined;
   currentPendingCall = undefined;
+  currentProposalSelection.clear();
   proposalElement.replaceChildren();
-  await refreshFiles();
-  if (activePath) await openFile(activePath);
+  appendMessage("assistant", apply ? "Changes applied. A restore checkpoint was created." : "Changes rejected.");
   if (pendingCall) {
     const continuation = await window.eurika.request<ChatResult>("session/chat", {
       toolResults: [
@@ -736,14 +795,49 @@ window.eurika.onStatus((status) => {
   if (status === "error") showError("Eurika backend stopped unexpectedly. See terminal output.");
 });
 window.eurika.onEvent((raw) => {
-  const envelope = raw as { method?: string; params?: { event?: string; data?: { text?: string } } };
+  const envelope = raw as {
+    method?: string;
+    params?: {
+      event?: string;
+      data?: {
+        text?: string;
+        callId?: string;
+        tool?: string;
+        arguments?: Record<string, unknown>;
+        result?: { stdout?: string; stderr?: string; status?: string };
+        error?: { message?: string };
+      };
+    };
+  };
   if (envelope.method !== "agent/event") return;
   const event = envelope.params?.event;
-  const text = envelope.params?.data?.text;
+  const data = envelope.params?.data;
+  const text = data?.text;
   if (event === "message_start") {
     if (!streamMessage) streamMessage = appendMessage("assistant", "…");
   } else if ((event === "response/chunk" || event === "message_end") && text) {
     updateStream(text);
+  } else if (event === "tool/started" && data?.callId && data?.tool) {
+    activeToolCalls.set(data.callId, { tool: data.tool, arguments: data.arguments });
+  } else if (event === "tool/completed" && data?.callId && data?.tool) {
+    const started = activeToolCalls.get(data.callId);
+    activeToolCalls.delete(data.callId);
+    if (data.tool === "git_diff") {
+      renderReadOnlyDiff("Workspace git diff", String(data.result?.stdout ?? ""));
+    } else if (data.tool === "git_status") {
+      const status = String(data.result?.status ?? data.result?.stdout ?? "");
+      renderReadOnlyDiff("Workspace git status", status);
+    } else if (started?.tool === "terminal") {
+      const argv = Array.isArray(started.arguments?.argv) ? started.arguments?.argv : [];
+      if (argv[0] === "git" && (argv[1] === "diff" || argv[1] === "status")) {
+        renderReadOnlyDiff(`git ${argv[1]}`, String(data.result?.stdout ?? ""));
+      }
+    }
+  } else if (event === "tool/failed" && data?.callId) {
+    activeToolCalls.delete(data.callId);
+    if (data.tool === "git_diff" && data.error?.message) {
+      renderReadOnlyDiff("Workspace git diff", data.error.message);
+    }
   }
 });
 window.eurika.onLog((line) => {

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QProcess
 from PySide6.QtWidgets import QFileDialog, QMessageBox
@@ -184,16 +184,21 @@ def run_release_check(main: MainWindow) -> None:
     main._command_service.run_release_check(project_root=root, ollama_model=ollama_model)
 
 
-def run_apply_approved(main: MainWindow) -> None:
+def run_apply_approved(main: Any) -> None:
     root = main.root_edit.text().strip() or "."
     ok, msg = validate_project_root(root)
     if not ok:
         QMessageBox.warning(main, "Invalid project root", msg)
         return
     if main._pending_operations:
-        main._pending_operations = []
         from . import approve_handlers
-        approve_handlers.render_approvals_table(main)
+
+        result = approve_handlers.persist_table_decisions(main)
+        if result.get("error"):
+            QMessageBox.warning(
+                main, "Approvals", result.get("error", "Failed to save approvals")
+            )
+            return
     main.tabs.setCurrentIndex(main.tabs.indexOf(main.commands_tab))
     main._command_service.run_apply_approved(project_root=root)
 
@@ -244,9 +249,9 @@ def on_command_finished(main: MainWindow, exit_code: int) -> None:
         if summary:
             main.terminal_emulator_output.append(summary)
     if "apply-approved" in cmd:
-        main._pending_operations = []
         from . import approve_handlers
-        approve_handlers.render_approvals_table(main)
+
+        approve_handlers.reload_pending_plan_after_apply(main)
     from .dashboard_handlers import refresh_dashboard
 
     refresh_dashboard(main)

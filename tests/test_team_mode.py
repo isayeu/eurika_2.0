@@ -77,6 +77,7 @@ def test_update_team_decisions(tmp_path: Path) -> None:
     assert data["operations"][0]["approved_by"] == "ui"
     assert data["operations"][1]["team_decision"] == "reject"
     assert data["operations"][1]["approved_by"] is None
+    assert data["patch_plan"]["operations"][0]["team_decision"] == "approve"
 
 
 def test_update_team_decisions_supports_approval_state(tmp_path: Path) -> None:

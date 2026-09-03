@@ -10,7 +10,7 @@
 |-------|--------|--------|
 | **Прямой обработчик** | Узкий ритуал / HITL (scan, ritual, коммит→применяй, …) | «проведи ритуал» |
 | **Голая shell-строка** | Сообщение целиком — команда (`pwd`, `sudo whoami`, `ls -la`), без русского текста и без «покажи пример…» | `sudo whoami` → запуск + диалог sudo |
-| **Локальный coding-agent** | Правки кода / layout UI (вкладка Models, боковая панель воркспейсов, IMPLEMENT) | Qt: очередь в **Approvals**. Не «уточни файл», если цель уже Qt UI. |
+| **Локальный coding-agent** | Правки кода / layout UI (вкладка Models, боковая панель воркспейсов, IMPLEMENT) | Qt: очередь в **Approvals** (автофокус при `approvalsQueued>0`). Без agent HTTP — явная ошибка, не fallback в обычный chat. |
 
 Прямые ответы — для ритуалов и HITL. Списки файлов / дерево больше не шаблонизируются: тот же tool-loop, что и для host facts (A1 chat-first).
 
@@ -101,7 +101,7 @@
 | `собери коммит` | Status+diff + предложение сообщения → **применяй** (HITL) |
 | `git status` / `git diff` / «покажи git status» | Голый `git status` → host_shell; фразы → LLM tool-loop |
 | `применяй` | Подтверждение pending-плана или коммита |
-| «сделай вкладку Models/LLM эргономичнее» | Локальный агент: полный патч → **Approvals** → Load pending plan (не N× Chat Apply) |
+| «сделай вкладку Models/LLM эргономичнее» | Локальный агент: полный патч → **Approvals** (вкладка открывается сама) → approve / apply-approved; git commit/push — после apply |
 
 ### Интернет
 

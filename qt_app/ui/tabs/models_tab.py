@@ -8,8 +8,6 @@ from qt_app.ui.styles import (
     BTN_SMALL_WIDTH,
     COMBO_MAX_WIDTH,
     get_secondary_hint,
-    INPUT_MAX_WIDTH,
-    SPIN_MAX_WIDTH,
     TAB_MARGINS,
 )
 
@@ -34,6 +32,13 @@ if TYPE_CHECKING:
     from ..main_window import MainWindow
 
 
+def _llm_form_compact(form: QFormLayout) -> None:
+    form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+    # Long env-var labels would otherwise pin a two-column page wider than the
+    # viewport, and the scroll wrapper has no horizontal bar to reach the rest.
+    form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+
+
 def build_models_tab(main: MainWindow) -> None:
     """Build Models tab with LLM (Ollama/chat) and ML (PyTorch) sub-tabs."""
     tab = QWidget()
@@ -55,12 +60,24 @@ def build_models_tab(main: MainWindow) -> None:
 def _build_llm_subtab(main: MainWindow) -> QWidget:
     """Ollama server + chat provider settings (GPU via Vulkan/CUDA)."""
     page = QWidget()
-    layout = QVBoxLayout(page)
-    layout.setContentsMargins(0, 8, 0, 0)
-    layout.setSpacing(8)
+    root = QVBoxLayout(page)
+    root.setContentsMargins(0, 8, 0, 0)
+    root.setSpacing(8)
+
+    columns = QHBoxLayout()
+    columns.setSpacing(12)
+    left_wrap = QWidget()
+    left_layout = QVBoxLayout(left_wrap)
+    left_layout.setContentsMargins(0, 0, 0, 0)
+    left_layout.setSpacing(8)
+    right_wrap = QWidget()
+    right_layout = QVBoxLayout(right_wrap)
+    right_layout.setContentsMargins(0, 0, 0, 0)
+    right_layout.setSpacing(8)
 
     ollama_box = QGroupBox("Ollama server")
     ollama_layout = QFormLayout(ollama_box)
+    _llm_form_compact(ollama_layout)
     main.ollama_cuda_check = QCheckBox("Use NVIDIA CUDA")
     main.ollama_cuda_check.setChecked(False)
     main.ollama_cuda_check.setToolTip(
@@ -70,7 +87,6 @@ def _build_llm_subtab(main: MainWindow) -> QWidget:
     ollama_layout.addRow("NVIDIA CUDA", main.ollama_cuda_check)
     main.ollama_cuda_devices_edit = QLineEdit("0")
     main.ollama_cuda_devices_edit.setPlaceholderText("0  или  0,1")
-    main.ollama_cuda_devices_edit.setMaximumWidth(INPUT_MAX_WIDTH)
     main.ollama_cuda_devices_edit.setToolTip(
         "CUDA_VISIBLE_DEVICES — индекс GPU (nvidia-smi). Пусто = все видимые CUDA-устройства."
     )
@@ -84,27 +100,29 @@ def _build_llm_subtab(main: MainWindow) -> QWidget:
     ollama_layout.addRow("OLLAMA_VULKAN", main.ollama_vulkan_check)
     main.ollama_vk_devices_edit = QLineEdit("")
     main.ollama_vk_devices_edit.setPlaceholderText("пусто = auto; Optimus NVIDIA часто 1")
-    main.ollama_vk_devices_edit.setMaximumWidth(INPUT_MAX_WIDTH)
     main.ollama_vk_devices_edit.setToolTip(
         "GGML_VK_VISIBLE_DEVICES — индекс Vulkan-устройства (vulkaninfo --summary). "
         "Intel iGPU обычно 0, NVIDIA 940MX на Optimus — 1."
     )
     ollama_layout.addRow("GGML_VK_VISIBLE_DEVICES", main.ollama_vk_devices_edit)
+    amd_box = QGroupBox("Advanced (AMD)")
+    amd_box.setCheckable(True)
+    amd_box.setChecked(False)
+    amd_form = QFormLayout(amd_box)
+    _llm_form_compact(amd_form)
     main.ollama_hsa_edit = QLineEdit("")
     main.ollama_hsa_edit.setPlaceholderText("только AMD, напр. 10.3.0")
-    main.ollama_hsa_edit.setMaximumWidth(INPUT_MAX_WIDTH)
     main.ollama_hsa_edit.setToolTip(
         "HSA_OVERRIDE_GFX_VERSION — только для AMD ROCm/Vulkan. На NVIDIA оставьте пустым."
     )
     main.ollama_rocr_edit = QLineEdit("")
     main.ollama_rocr_edit.setPlaceholderText("только AMD")
-    main.ollama_rocr_edit.setMaximumWidth(INPUT_MAX_WIDTH)
     main.ollama_hip_edit = QLineEdit("")
     main.ollama_hip_edit.setPlaceholderText("только AMD")
-    main.ollama_hip_edit.setMaximumWidth(INPUT_MAX_WIDTH)
-    ollama_layout.addRow("HSA_OVERRIDE_GFX_VERSION", main.ollama_hsa_edit)
-    ollama_layout.addRow("ROCR_VISIBLE_DEVICES", main.ollama_rocr_edit)
-    ollama_layout.addRow("HIP_VISIBLE_DEVICES", main.ollama_hip_edit)
+    amd_form.addRow("HSA_OVERRIDE_GFX_VERSION", main.ollama_hsa_edit)
+    amd_form.addRow("ROCR_VISIBLE_DEVICES", main.ollama_rocr_edit)
+    amd_form.addRow("HIP_VISIBLE_DEVICES", main.ollama_hip_edit)
+    ollama_layout.addRow("", amd_box)
     main.ollama_gpu_hint = QLabel(
         "GPU: CUDA для NVIDIA, Vulkan для AMD/fallback. Оба выкл. = CPU. После смены — Stop/Start Ollama."
     )
@@ -125,7 +143,6 @@ def _build_llm_subtab(main: MainWindow) -> QWidget:
     main.ollama_installed_combo = QComboBox()
     main.ollama_installed_combo.setEditable(False)
     main.ollama_installed_combo.addItem("(no local models)")
-    main.ollama_installed_combo.setMaximumWidth(COMBO_MAX_WIDTH)
     refresh_models_row = QHBoxLayout()
     main.ollama_refresh_models_btn = QPushButton("Refresh installed")
     main.ollama_refresh_models_btn.setMaximumWidth(BTN_SMALL_WIDTH)
@@ -133,11 +150,9 @@ def _build_llm_subtab(main: MainWindow) -> QWidget:
     refresh_models_row.addWidget(main.ollama_refresh_models_btn)
     ollama_layout.addRow("Installed", refresh_models_row)
     main.ollama_available_combo = QComboBox()
-    main.ollama_available_combo.setMaximumWidth(COMBO_MAX_WIDTH)
     install_row = QHBoxLayout()
     main.ollama_custom_model_edit = QLineEdit()
     main.ollama_custom_model_edit.setPlaceholderText("custom model (e.g. deepseek-r1:14b)")
-    main.ollama_custom_model_edit.setMaximumWidth(INPUT_MAX_WIDTH)
     main.ollama_install_btn = QPushButton("Install selected")
     main.ollama_install_btn.setMaximumWidth(BTN_SMALL_WIDTH)
     install_row.addWidget(main.ollama_custom_model_edit)
@@ -159,19 +174,19 @@ def _build_llm_subtab(main: MainWindow) -> QWidget:
     pull_progress_layout.addWidget(main.ollama_pull_progress_label)
     main.ollama_pull_progress_row = pull_progress_row
     main.ollama_pull_progress_row.setVisible(False)
-    ollama_layout.addRow("Pull progress", main.ollama_pull_progress_row)
     main.ollama_output = QTextEdit()
     main.ollama_output.setReadOnly(True)
     main.ollama_output.setPlaceholderText("`ollama serve` output will appear here.")
     main.ollama_output.setMinimumHeight(48)
-    ollama_layout.addRow("Output", main.ollama_output)
-    layout.addWidget(ollama_box)
+    main.ollama_output.setMaximumHeight(88)
+    left_layout.addWidget(ollama_box)
+    left_layout.addStretch(1)
 
     controls = QGroupBox("Кто отвечает в Chat")
     controls_layout = QVBoxLayout(controls)
     source_form = QFormLayout()
+    _llm_form_compact(source_form)
     main.chat_provider_combo = QComboBox()
-    main.chat_provider_combo.setMaximumWidth(COMBO_MAX_WIDTH)
     for value, label in (
         ("auto", "Авто: облако, иначе Ollama"),
         ("openai", "Облако (Groq / OpenRouter / …)"),
@@ -196,8 +211,8 @@ def _build_llm_subtab(main: MainWindow) -> QWidget:
 
     main.chat_cloud_box = QGroupBox("Облако")
     cloud_layout = QFormLayout(main.chat_cloud_box)
+    _llm_form_compact(cloud_layout)
     main.chat_api_preset_combo = QComboBox()
-    main.chat_api_preset_combo.setMaximumWidth(COMBO_MAX_WIDTH)
     main.chat_api_preset_combo.addItem("(из .env)", "")
     for preset in list_llm_api_presets():
         main.chat_api_preset_combo.addItem(preset.label, preset.id)
@@ -209,12 +224,12 @@ def _build_llm_subtab(main: MainWindow) -> QWidget:
     cloud_layout.addRow("Статус", main.openai_api_status)
     main.chat_openai_model = QLineEdit()
     main.chat_openai_model.setPlaceholderText("openai/gpt-oss-120b, gemini-2.0-flash, …")
-    main.chat_openai_model.setMaximumWidth(INPUT_MAX_WIDTH)
     cloud_layout.addRow("Модель", main.chat_openai_model)
     controls_layout.addWidget(main.chat_cloud_box)
 
     main.chat_ollama_box = QGroupBox("Ollama")
     ollama_chat_layout = QFormLayout(main.chat_ollama_box)
+    _llm_form_compact(ollama_chat_layout)
     chat_ollama_row = QHBoxLayout()
     main.chat_ollama_model = QComboBox()
     main.chat_ollama_model.setEditable(True)
@@ -223,7 +238,6 @@ def _build_llm_subtab(main: MainWindow) -> QWidget:
     if chat_ollama_edit is not None:
         chat_ollama_edit.setPlaceholderText("установленная модель")
     main.chat_ollama_model.addItem("(no local models)")
-    main.chat_ollama_model.setMaximumWidth(COMBO_MAX_WIDTH)
     main.chat_ollama_refresh_btn = QPushButton("Refresh")
     main.chat_ollama_refresh_btn.setMaximumWidth(BTN_SMALL_WIDTH)
     main.chat_ollama_refresh_btn.setToolTip("Список моделей с Ollama API")
@@ -234,11 +248,11 @@ def _build_llm_subtab(main: MainWindow) -> QWidget:
 
     main.chat_cursor_box = QGroupBox("Cursor")
     cursor_layout = QFormLayout(main.chat_cursor_box)
+    _llm_form_compact(cursor_layout)
     main.cursor_api_status = QLabel("ключ не проверен")
     cursor_layout.addRow("Статус", main.cursor_api_status)
     cursor_row = QHBoxLayout()
     main.chat_cursor_model_combo = QComboBox()
-    main.chat_cursor_model_combo.setMaximumWidth(COMBO_MAX_WIDTH)
     main.chat_cursor_model_combo.setToolTip("Composer — конкретная модель. Auto + Router — Cursor сам выбирает.")
     main.chat_cursor_refresh_btn = QPushButton("Refresh")
     main.chat_cursor_refresh_btn.setMaximumWidth(BTN_SMALL_WIDTH)
@@ -247,7 +261,6 @@ def _build_llm_subtab(main: MainWindow) -> QWidget:
     cursor_row.addWidget(main.chat_cursor_refresh_btn)
     cursor_layout.addRow("Модель", cursor_row)
     main.chat_cursor_router_combo = QComboBox()
-    main.chat_cursor_router_combo.setMaximumWidth(COMBO_MAX_WIDTH)
     main.chat_cursor_router_combo.addItem("—", "")
     main.chat_cursor_router_combo.addItem("Cost", "cost")
     main.chat_cursor_router_combo.addItem("Balance", "balanced")
@@ -258,16 +271,23 @@ def _build_llm_subtab(main: MainWindow) -> QWidget:
     controls_layout.addWidget(main.chat_cursor_box)
 
     timeout_form = QFormLayout()
+    _llm_form_compact(timeout_form)
     main.chat_timeout_spin = QSpinBox()
     main.chat_timeout_spin.setRange(0, 9999)
     main.chat_timeout_spin.setSpecialValueText("∞ (unlimited)")
     main.chat_timeout_spin.setValue(600)
-    main.chat_timeout_spin.setMaximumWidth(SPIN_MAX_WIDTH)
     main.chat_timeout_spin.setToolTip("Для Cursor implement — 600 с (10 мин). 0 = без лимита.")
     timeout_form.addRow("Timeout сек", main.chat_timeout_spin)
     controls_layout.addLayout(timeout_form)
-    layout.addWidget(controls)
-    layout.addStretch(1)
+    right_layout.addWidget(controls)
+    right_layout.addStretch(1)
+    columns.addWidget(left_wrap, 1)
+    columns.addWidget(right_wrap, 1)
+    root.addLayout(columns, 1)
+    root.addWidget(main.ollama_pull_progress_row)
+    root.addWidget(main.ollama_output)
+    # Without the scroll wrapper this page's sizeHint becomes the window's
+    # minimum height, so the window no longer fits a short screen.
     return VerticalScrollArea(page)
 
 

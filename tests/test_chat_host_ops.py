@@ -335,7 +335,7 @@ def test_tool_protocol_has_no_allowlist_dump() -> None:
     assert "бинарного allowlist НЕТ" in text
     assert "корень текущего проекта" in text or "cwd" in text.lower()
     assert "ls" in text
-    assert "format_market_learning_block" in text
+    assert "format_market_learning_report" in text
     assert "resolve_market_root" in text
     assert "eurika scan" in text
     assert "запахи кода" in text or "не через" in text.lower() or "НЕ через" in text
@@ -385,6 +385,31 @@ def test_plain_web_search_hard_routed() -> None:
     from pathlib import Path
 
     assert resolve_direct_handler(Path("."), "поищи в интернете kivy sqlite")[0] == "web_search"
+
+
+def test_cursor_pricing_routes_to_web_search() -> None:
+    from eurika.api.chat_direct import resolve_direct_handler
+    from pathlib import Path
+
+    msg = "В настройках моделей Курсор, какой самый дешовый?"
+    assert resolve_direct_handler(Path("."), msg)[0] == "web_search"
+
+
+def test_cursor_pricing_url_goes_to_llm_not_list_docs() -> None:
+    from eurika.api.chat_direct import _accept_soft_handler, looks_like_web_page_question, resolve_direct_handler
+    from pathlib import Path
+
+    msg = "посмотри в интернете https://cursor.com/docs/account/pricing, какая самая дешевая модель"
+    assert looks_like_web_page_question(msg) is True
+    assert _accept_soft_handler("list_docs", msg) is False
+    assert resolve_direct_handler(Path("."), msg)[0] is None
+
+
+def test_read_terminal_hard_routed() -> None:
+    from eurika.api.chat_direct import resolve_direct_handler
+    from pathlib import Path
+
+    assert resolve_direct_handler(Path("."), "прочти терминал")[0] == "read_terminal"
 
 
 def test_record_and_load_tool_turn_experience(tmp_path: Path) -> None:

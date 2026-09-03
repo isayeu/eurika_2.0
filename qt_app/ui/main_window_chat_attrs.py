@@ -7,14 +7,17 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
+    QFrame,
     QLabel,
     QLineEdit,
     QListWidget,
     QPushButton,
+    QSplitter,
     QSpinBox,
     QTabWidget,
     QTextBrowser,
     QTextEdit,
+    QTreeWidget,
     QWidget,
 )
 
@@ -45,8 +48,15 @@ class ChatTabAttrs:
     chat_focus_terminal_btn: QPushButton
     chat_focus_approvals_btn: QPushButton
     chat_transcript: QTextBrowser
+    _chat_history: list[dict[str, str]]
+    _chat_history_root: str
     _chat_block_payloads: dict[str, str]
     _host_privilege_bridge: HostPrivilegeBridge | None
+    _live_chat_seen: set[str]
+    _live_chat_offset: int
+    _live_activity_offset: int
+    _live_activity_ids: set[str]
+    _live_activity_timer: QTimer | None
     chat_input: ChatInputEdit
     chat_pending_label: QLabel
     chat_typing_label: QLabel
@@ -61,6 +71,9 @@ class ChatTabAttrs:
     market_live_check: QCheckBox
     market_auto_check: QCheckBox
     market_micro_train_check: QCheckBox
+    market_llm_learn_check: QCheckBox
+    market_llm_tf1_combo: QComboBox
+    market_llm_tf2_combo: QComboBox
     market_explore_check: QCheckBox
     market_explore_cap_spin: QSpinBox
     market_explore_reset_btn: QPushButton
@@ -90,6 +103,13 @@ class ChatTabAttrs:
     _market_timer: QTimer | None
     _market_tick_busy: bool
     _market_tick_worker: object | None
+    _market_llm_timer: QTimer | None
+    _market_llm_worker: object | None
+    _market_llm_warned_no_key: bool
+    workspace_rail: QFrame
+    workspace_toggle_btn: QPushButton
+    workspace_tree: QTreeWidget
+    workspace_splitter: QSplitter
 
 
 class TerminalTabAttrs:

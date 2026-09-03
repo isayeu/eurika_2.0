@@ -178,6 +178,37 @@ def test_apply_llm_extract_block_replaces_file(tmp_path: Path) -> None:
     assert "return _helper(1, 2)" in content
 
 
+def test_apply_agent_edit_replaces_file(tmp_path: Path) -> None:
+    (tmp_path / "m.py").write_text("old\n", encoding="utf-8")
+    plan = {
+        "operations": [
+            {
+                "target_file": "m.py",
+                "kind": "agent_edit",
+                "params": {"new_content": "new\n"},
+            }
+        ]
+    }
+    report = apply_patch_plan(tmp_path, plan, dry_run=False, backup=False)
+    assert report["modified"] == ["m.py"]
+    assert (tmp_path / "m.py").read_text(encoding="utf-8") == "new\n"
+
+
+def test_apply_agent_edit_creates_file(tmp_path: Path) -> None:
+    plan = {
+        "operations": [
+            {
+                "target_file": "nested/new.py",
+                "kind": "agent_edit",
+                "params": {"new_content": "x = 1\n"},
+            }
+        ]
+    }
+    report = apply_patch_plan(tmp_path, plan, dry_run=False, backup=False)
+    assert report["modified"] == ["nested/new.py"]
+    assert (tmp_path / "nested" / "new.py").read_text(encoding="utf-8") == "x = 1\n"
+
+
 def test_apply_extract_nested_function_reports_diagnostic_skip_reason(tmp_path: Path) -> None:
     """When extraction fails, skipped_reasons should contain a concrete diagnostic reason."""
     (tmp_path / "m.py").write_text("def long_foo():\n    return 1\n")

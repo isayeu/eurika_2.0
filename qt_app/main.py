@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 
 from PySide6.QtWidgets import QApplication
@@ -10,7 +11,7 @@ from qt_app.services.settings_service import SettingsService
 from qt_app.ui.main_window import MainWindow
 from qt_app.ui.styles import set_theme_dark
 from qt_app.ui.theme import apply_app_theme
-from eurika.utils.env import load_project_dotenv
+from eurika.utils.env import apply_qt_chat_routing, load_project_dotenv
 
 
 def main() -> int:
@@ -20,6 +21,7 @@ def main() -> int:
     app.setApplicationName("Eurika")
     app.setDesktopFileName("eurika")
     load_project_dotenv(".")
+    apply_qt_chat_routing()
     settings = SettingsService()
     theme = settings.get_theme()
     is_dark = theme == "dark"
@@ -27,7 +29,11 @@ def main() -> int:
     apply_app_theme(app, is_dark)
     win = MainWindow()
     win.show()
-    return app.exec()
+    code = int(app.exec())
+    # ChatWorker / gateway request threads can still be blocked in urllib after the
+    # window closed; a normal return waits on them (up to the 10 min HTTP timeout).
+    os._exit(code)
+    return code
 
 
 if __name__ == "__main__":

@@ -48,6 +48,49 @@ def render_approvals_table(main: MainWindow) -> None:
         main.approvals_table.setCellWidget(index, 4, combo)
 
 
+def collect_approval_payload(main: Any) -> list[dict[str, Any]]:
+    """Read Decision combos from the table (not yet written to disk)."""
+    payload_ops: list[dict[str, Any]] = []
+    for index, op in enumerate(main._pending_operations):
+        decision_widget = main.approvals_table.cellWidget(index, 4)
+        decision = "pending"
+        if decision_widget is not None and hasattr(decision_widget, "currentText"):
+            decision = str(decision_widget.currentText() or "pending")
+        payload_ops.append(
+            {
+                "index": index + 1,
+                "team_decision": decision,
+                "approved_by": "qt-user",
+                "target_file": op.get("target_file"),
+                "kind": op.get("kind"),
+            }
+        )
+    return payload_ops
+
+
+def persist_table_decisions(main: Any) -> dict[str, Any]:
+    """Write table combos into pending_plan.json so --apply-approved can see approve."""
+    if not main._pending_operations:
+        return {"ok": True, "saved": 0, "approved": 0}
+    return main._api.save_approvals(collect_approval_payload(main))
+
+
+def reload_pending_plan_after_apply(main: MainWindow) -> None:
+    """Refresh the table from disk; empty it if the plan file was cleared."""
+    payload = main._api.get_pending_plan()
+    if payload.get("error"):
+        main._pending_operations = []
+        render_approvals_table(main)
+        return
+    operations = payload.get("operations") or []
+    if not isinstance(operations, list):
+        main._pending_operations = []
+        render_approvals_table(main)
+        return
+    main._pending_operations = [op for op in operations if isinstance(op, dict)]
+    render_approvals_table(main)
+
+
 def on_approval_row_selected(main: MainWindow) -> None:
     rows = main.approvals_table.selectionModel().selectedRows()
     if not rows or not main._pending_operations:
@@ -85,29 +128,14 @@ def save_approvals(main: MainWindow) -> None:
     if not main._pending_operations:
         QMessageBox.information(main, "Approvals", "No pending operations loaded.")
         return
-    payload_ops: list[dict[str, Any]] = []
-    for index, op in enumerate(main._pending_operations):
-        decision_widget = main.approvals_table.cellWidget(index, 4)
-        decision = "pending"
-        if isinstance(decision_widget, QComboBox):
-            decision = decision_widget.currentText()
-        payload_ops.append(
-            {
-                "index": index + 1,
-                "team_decision": decision,
-                "approved_by": "qt-user",
-                "target_file": op.get("target_file"),
-                "kind": op.get("kind"),
-            }
-        )
-    result = main._api.save_approvals(payload_ops)
+    result = persist_table_decisions(main)
     if result.get("error"):
         QMessageBox.warning(
             main, "Approvals", result.get("error", "Failed to save approvals")
         )
         return
     approved = result.get("approved", 0)
-    saved = result.get("saved", len(payload_ops))
+    saved = result.get("saved", 0)
     rejected = saved - approved
     msg = f"Saved. {approved} approved, {rejected} rejected. Run apply-approved when ready."
     QMessageBox.information(main, "Approvals", msg)

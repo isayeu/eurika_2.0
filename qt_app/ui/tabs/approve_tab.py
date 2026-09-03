@@ -19,7 +19,12 @@ def build_approve_tab(main: MainWindow) -> None:
     layout = QVBoxLayout(tab)
     layout.setContentsMargins(*TAB_MARGINS)
     layout.setSpacing(8)
-    hint = QLabel('Team-mode: Run fix --team-mode → Load plan → Approve/reject → Save → Run apply-approved. Or: Run fix --dry-run (Commands) → Run apply-from-report to apply without re-scan.')
+    hint = QLabel(
+        "Chat agent: Load pending plan → в строке Approve → Save или сразу Run apply-approved "
+        "(кнопка Apply сама записывает выбор в pending_plan.json). "
+        "Team-mode: Run fix --team-mode, then the same review. "
+        "Or: Run fix --dry-run (Commands) → Run apply-from-report."
+    )
     hint.setWordWrap(True)
     main.approve_hint = hint
     hint.setStyleSheet(get_secondary_hint())
@@ -43,11 +48,11 @@ def build_approve_tab(main: MainWindow) -> None:
     main.approvals_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
     main.approvals_table.setHorizontalHeaderLabels(['#', 'Target', 'Kind', 'Risk', 'Decision'])
     header = main.approvals_table.horizontalHeader()
-    header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-    header.setSectionResizeMode(1, QHeaderView.Stretch)
-    header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-    header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
-    header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+    header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+    header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+    header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+    header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+    header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
     layout.addWidget(main.approvals_table, 1)
     diff_row = QHBoxLayout()
     diff_label = QLabel('Diff preview (click row or file name):')

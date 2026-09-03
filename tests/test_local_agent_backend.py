@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 
 from eurika.agent.contracts import TOOL_CONTRACTS
-from eurika.agent.local_runtime import LocalAgentRuntime
+from eurika.agent.local_runtime import LocalAgentRuntime, LocalSession
 from eurika.agent.protocol import (
     ERR_APPROVAL_REQUIRED,
     ERR_CANCELLED,
@@ -50,10 +50,14 @@ def test_handshake_advertises_versioned_structured_capabilities(tmp_path: Path) 
     assert "proposal/apply" in result["methods"]
     assert result["methodContracts"]["proposal/apply"]["requiresApproval"] is True
     assert set(result["tools"]) == {
-        "search", "read", "market_status", "edit", "terminal", "diagnostics", "tests", "git_diff"
+        "search", "read", "market_status", "edit", "terminal", "diagnostics", "tests",
+        "git_diff", "git_status", "git_commit", "git_push",
     }
     assert TOOL_CONTRACTS["edit"]["requiresApproval"] is True
     assert TOOL_CONTRACTS["read"]["requiresApproval"] is False
+    assert TOOL_CONTRACTS["git_commit"]["requiresApproval"] is True
+    assert TOOL_CONTRACTS["git_push"]["requiresApproval"] is True
+    assert TOOL_CONTRACTS["git_status"]["requiresApproval"] is False
 
 
 @pytest.mark.parametrize(
@@ -384,12 +388,109 @@ def test_session_continues_after_approved_edit_with_structured_result(
 
     assert target.read_text(encoding="utf-8") == "new"
     assert completed["text"] == "The approved change is complete."
-    assert "use the edit tool and return the proposal for approval" in prompts[0]
+    assert "use the edit tool" in prompts[0]
     assert '"decision": "applied"' in prompts[-1]
     assert _runtime_call(runtime, "session/history", {}, [])["messages"] == [
         {"role": "user", "content": "Update the sample"},
         {"role": "assistant", "content": "The approved change is complete."},
     ]
+
+
+def test_session_continues_edit_without_path_reuses_applied_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "sample.txt"
+    target.write_text("old\nkeep\n", encoding="utf-8")
+    runtime = LocalAgentRuntime(tmp_path)
+    replies = iter(
+        [
+            json.dumps(
+                {
+                    "type": "tool_calls",
+                    "toolCalls": [
+                        {
+                            "callId": "edit-1",
+                            "tool": "edit",
+                            "arguments": {
+                                "path": "sample.txt",
+                                "oldText": "old",
+                                "newText": "new",
+                            },
+                        }
+                    ],
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "tool_calls",
+                    "toolCalls": [
+                        {
+                            "tool": "edit",
+                            "arguments": {"oldText": "keep", "newText": "kept"},
+                        }
+                    ],
+                }
+            ),
+        ]
+    )
+    monkeypatch.setattr(runtime, "_call_model", lambda prompt: (next(replies), None))
+    session_id = _runtime_call(runtime, "session/create", {}, [])["sessionId"]
+    prepared = _runtime_call(
+        runtime,
+        "session/chat",
+        {"sessionId": session_id, "message": "Update the sample"},
+        [],
+    )
+    pending = prepared["pendingToolCalls"][0]
+    outcome = _runtime_call(
+        runtime,
+        "proposal/apply",
+        {"proposalId": pending["proposal"]["proposalId"], "approval": True},
+        [],
+    )
+    continued = _runtime_call(
+        runtime,
+        "session/chat",
+        {
+            "sessionId": session_id,
+            "toolResults": [
+                {
+                    "callId": pending["callId"],
+                    "tool": pending["tool"],
+                    "result": {"decision": "applied", "outcome": outcome},
+                }
+            ],
+        },
+        [],
+    )
+    second = continued["pendingToolCalls"][0]
+    assert second["tool"] == "edit"
+    assert second["arguments"]["path"] == "sample.txt"
+    assert second["proposal"]["files"][0]["path"] == "sample.txt"
+
+
+def test_session_chat_edit_without_path_stays_in_loop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    runtime = LocalAgentRuntime(tmp_path)
+    replies = iter(
+        [
+            json.dumps(
+                {
+                    "type": "tool_calls",
+                    "toolCalls": [{"tool": "edit", "arguments": {"content": "x"}}],
+                }
+            ),
+            '{"type":"final","text":"Need a workspace-relative path to edit."}',
+        ]
+    )
+    monkeypatch.setattr(runtime, "_call_model", lambda prompt: (next(replies), None))
+    result = _runtime_call(
+        runtime,
+        "session/chat",
+        {"message": "Update the sample"},
+        [],
+    )
+    assert result["pendingToolCalls"] == []
+    assert "path" in result["text"].lower() or "Need a workspace-relative path" in result["text"]
 
 
 def test_session_chat_executes_reads_but_returns_edits_for_client_approval(
@@ -446,6 +547,159 @@ def test_session_chat_executes_reads_but_returns_edits_for_client_approval(
         [],
     )
     assert preview["files"][0]["after"] == "new"
+
+
+def test_qt_review_in_approvals_composes_edits_into_pending_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "sample.txt"
+    target.write_text("one\ntwo\n", encoding="utf-8")
+    runtime = LocalAgentRuntime(tmp_path)
+    replies = iter(
+        [
+            json.dumps(
+                {
+                    "type": "tool_calls",
+                    "toolCalls": [
+                        {
+                            "tool": "edit",
+                            "arguments": {
+                                "path": "sample.txt",
+                                "oldText": "one",
+                                "newText": "ONE",
+                            },
+                        }
+                    ],
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "tool_calls",
+                    "toolCalls": [
+                        {
+                            "tool": "edit",
+                            "arguments": {
+                                "path": "sample.txt",
+                                "oldText": "two",
+                                "newText": "TWO",
+                            },
+                        }
+                    ],
+                }
+            ),
+            '{"type":"final","text":"Queued sample.txt for Approvals."}',
+        ]
+    )
+    monkeypatch.setattr(runtime, "_call_model", lambda prompt: (next(replies), None))
+    result = _runtime_call(
+        runtime,
+        "session/chat",
+        {
+            "message": "Update sample.txt",
+            "context": {"reviewInApprovals": True, "client": "qt"},
+        },
+        [],
+    )
+    assert target.read_text(encoding="utf-8") == "one\ntwo\n"
+    assert result["pendingToolCalls"] == []
+    assert result["approvalsQueued"] == 1
+    assert "Load pending plan" in result["text"]
+    plan_path = tmp_path / ".eurika" / "pending_plan.json"
+    payload = json.loads(plan_path.read_text(encoding="utf-8"))
+    ops = payload["operations"]
+    assert len(ops) == 1
+    assert ops[0]["kind"] == "agent_edit"
+    assert ops[0]["params"]["new_content"] == "ONE\nTWO\n"
+
+
+def test_session_chat_rejects_plan_only_final_then_edits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "sample.txt"
+    target.write_text("old\n", encoding="utf-8")
+    runtime = LocalAgentRuntime(tmp_path)
+    replies = iter(
+        [
+            '{"type":"final","text":"In this turn only final, no toolCalls. Open Approvals."}',
+            json.dumps(
+                {
+                    "type": "tool_calls",
+                    "toolCalls": [
+                        {
+                            "tool": "edit",
+                            "arguments": {
+                                "path": "sample.txt",
+                                "oldText": "old",
+                                "newText": "new",
+                            },
+                        }
+                    ],
+                }
+            ),
+            '{"type":"final","text":"Queued sample.txt for Approvals."}',
+        ]
+    )
+    monkeypatch.setattr(runtime, "_call_model", lambda prompt: (next(replies), None))
+    result = _runtime_call(
+        runtime,
+        "session/chat",
+        {
+            "message": (
+                "исправь кнопку свернуть панель воркспесов и новый чат"
+            ),
+            "context": {"reviewInApprovals": True, "client": "qt"},
+        },
+        [],
+    )
+    assert result["pendingToolCalls"] == []
+    assert result["approvalsQueued"] == 1
+    payload = json.loads((tmp_path / ".eurika" / "pending_plan.json").read_text(encoding="utf-8"))
+    assert payload["operations"][0]["params"]["new_content"] == "new\n"
+
+
+def test_qt_review_in_approvals_defers_git_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "sample.txt"
+    target.write_text("old", encoding="utf-8")
+    runtime = LocalAgentRuntime(tmp_path)
+    replies = iter(
+        [
+            json.dumps(
+                {
+                    "type": "tool_calls",
+                    "toolCalls": [
+                        {
+                            "tool": "edit",
+                            "arguments": {
+                                "path": "sample.txt",
+                                "oldText": "old",
+                                "newText": "new",
+                            },
+                        },
+                        {
+                            "tool": "git_commit",
+                            "arguments": {"message": "wip", "paths": ["sample.txt"]},
+                        },
+                    ],
+                }
+            ),
+            '{"type":"final","text":"Queued sample.txt for Approvals."}',
+        ]
+    )
+    monkeypatch.setattr(runtime, "_call_model", lambda prompt: (next(replies), None))
+    result = _runtime_call(
+        runtime,
+        "session/chat",
+        {
+            "message": "Update sample.txt",
+            "context": {"reviewInApprovals": True},
+        },
+        [],
+    )
+    assert result["pendingToolCalls"] == []
+    assert result["approvalsQueued"] == 1
+    assert target.read_text(encoding="utf-8") == "old"
 
 
 def test_implement_request_nudges_model_to_emit_edit(
@@ -833,6 +1087,24 @@ def test_parse_model_response_executes_unclosed_fenced_tool_calls() -> None:
     assert parsed["toolCalls"][0]["arguments"]["query"] == "LocalAgentRuntime"
 
 
+def test_parse_model_response_lifts_edit_path_from_call_root() -> None:
+    parsed = LocalAgentRuntime._parse_model_response(
+        json.dumps(
+            {
+                "type": "tool_calls",
+                "toolCalls": [
+                    {
+                        "tool": "edit",
+                        "path": "qt_app/ui/tabs/models_tab.py",
+                        "arguments": {"oldText": "a", "newText": "b"},
+                    }
+                ],
+            }
+        )
+    )
+    assert parsed["toolCalls"][0]["arguments"]["path"] == "qt_app/ui/tabs/models_tab.py"
+
+
 def test_parse_model_response_same_line_fence_with_nested_arguments() -> None:
     raw = (
         '```json {"type":"tool_calls","toolCalls":'
@@ -1163,9 +1435,10 @@ def test_redirect_library_stdout_keeps_rpc_channel_clean(monkeypatch: pytest.Mon
     writer = redirect_library_stdout()
     print("LiteLLM.Info: If you need to debug this error")
     writer.write('{"jsonrpc":"2.0"}\n')
-    assert "LiteLLM" not in writer.getvalue()
+    assert writer is rpc
+    assert "LiteLLM" not in rpc.getvalue()
     assert "LiteLLM" in err.getvalue()
-    assert '{"jsonrpc":"2.0"}' in writer.getvalue()
+    assert '{"jsonrpc":"2.0"}' in rpc.getvalue()
 
 
 def test_stdio_server_emits_jsonrpc_handshake_response(tmp_path: Path) -> None:
@@ -1221,3 +1494,84 @@ def test_stdio_server_cancels_active_request(tmp_path: Path) -> None:
     messages = [json.loads(line) for line in writer.getvalue().splitlines()]
     response = next(message for message in messages if message.get("id") == 9)
     assert response["error"]["code"] == ERR_CANCELLED
+
+
+def test_system_prompt_contains_key_nudges(tmp_path: Path) -> None:
+    rt = LocalAgentRuntime(tmp_path)
+    session = LocalSession(id="test-nudge")
+    prompt = rt._chat_prompt(session, {}, [])
+    assert "self-developing" in prompt
+    assert "workspace-relative" in prompt
+    assert "NEVER use absolute paths" in prompt
+    assert "ALWAYS read the target file first" in prompt
+    assert "git_commit" in prompt
+    assert "Never --force" in prompt
+
+
+def test_workspace_git_tools_live_on_mixin() -> None:
+    import inspect
+
+    from eurika.agent.workspace import WorkspaceTools
+    from eurika.agent.workspace_git import WorkspaceGitMixin
+
+    assert issubclass(WorkspaceTools, WorkspaceGitMixin)
+    assert inspect.getmodule(WorkspaceTools.git_commit) is inspect.getmodule(WorkspaceGitMixin.git_commit)
+
+
+def test_workspace_process_tools_live_on_mixin() -> None:
+    import inspect
+
+    from eurika.agent.workspace import WorkspaceTools
+    from eurika.agent.workspace_process import WorkspaceProcessMixin
+
+    assert issubclass(WorkspaceTools, WorkspaceProcessMixin)
+    assert inspect.getmodule(WorkspaceTools.terminal) is inspect.getmodule(WorkspaceProcessMixin.terminal)
+
+
+def _init_git_repo(root: Path) -> None:
+    subprocess.run(["git", "init"], cwd=str(root), capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.email", "test@test"], cwd=str(root), capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=str(root), capture_output=True, check=True)
+    (root / "README").write_text("init\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README"], cwd=str(root), capture_output=True, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=str(root), capture_output=True, check=True)
+
+
+def test_git_commit_requires_approval_and_commits_listed_paths(tmp_path: Path) -> None:
+    _init_git_repo(tmp_path)
+    (tmp_path / "note.txt").write_text("hello\n", encoding="utf-8")
+    tools = WorkspaceTools(tmp_path)
+    events: list[tuple[str, dict[str, Any]]] = []
+    with pytest.raises(RpcError) as blocked:
+        tools.git_commit(
+            {"message": "add note", "paths": ["note.txt"]},
+            cancel=threading.Event(),
+            emit=lambda event, data: events.append((event, data)),
+        )
+    assert blocked.value.code == ERR_APPROVAL_REQUIRED
+    result = tools.git_commit(
+        {"message": "add note", "paths": ["note.txt"], "approval": True},
+        cancel=threading.Event(),
+        emit=lambda event, data: events.append((event, data)),
+    )
+    assert result["ok"] is True
+    log = subprocess.run(
+        ["git", "log", "-1", "--pretty=%s"],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert log.stdout.strip() == "add note"
+
+
+def test_git_push_requires_approval(tmp_path: Path) -> None:
+    _init_git_repo(tmp_path)
+    tools = WorkspaceTools(tmp_path)
+    with pytest.raises(RpcError) as blocked:
+        tools.git_push({}, cancel=threading.Event(), emit=lambda *_: None)
+    assert blocked.value.code == ERR_APPROVAL_REQUIRED
+    with pytest.raises(RpcError) as failed:
+        tools.git_push({"approval": True}, cancel=threading.Event(), emit=lambda *_: None)
+    assert failed.value.code != ERR_APPROVAL_REQUIRED
+    assert "origin" in str(failed.value.message).lower() or "push" in str(failed.value.message).lower()

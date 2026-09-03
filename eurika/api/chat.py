@@ -37,20 +37,23 @@ def _terminal_fields_for_report(report: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 def append_chat_history(project_root: Path, role: str, content: str, context_snapshot: Optional[str]=None) -> None:
-    """Append one message to .eurika/chat_history/chat.jsonl (ROADMAP 3.5.11.A.3)."""
+    """Append one message to the active chat transcript (ROADMAP 3.5.11.A.3)."""
+    from eurika.api.chat_sessions import transcript_path
+
     root = Path(project_root).resolve()
-    chat_dir = root / '.eurika' / 'chat_history'
-    chat_dir.mkdir(parents=True, exist_ok=True)
-    log_path = chat_dir / 'chat.jsonl'
+    log_path = transcript_path(root)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
     record = {'ts': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'), 'role': role, 'content': content[:10000], 'context_snapshot': context_snapshot[:500] if context_snapshot else None}
     with open(log_path, 'a', encoding='utf-8') as f:
         f.write(json.dumps(record, ensure_ascii=False) + '\n')
 
 def load_chat_history(project_root: Path, limit: int = 80) -> List[Dict[str, str]]:
     """Load recent valid user/assistant messages for UI and LLM context."""
+    from eurika.api.chat_sessions import transcript_path
+
     if limit <= 0:
         return []
-    path = Path(project_root).resolve() / '.eurika' / 'chat_history' / 'chat.jsonl'
+    path = transcript_path(Path(project_root).resolve())
     if not path.is_file():
         return []
     recent: deque[Dict[str, str]] = deque(maxlen=limit)
@@ -74,7 +77,9 @@ def load_chat_history(project_root: Path, limit: int = 80) -> List[Dict[str, str
 
 def clear_chat_history(project_root: Path) -> None:
     """Clear persisted conversation while keeping prompt recall separate."""
-    path = Path(project_root).resolve() / '.eurika' / 'chat_history' / 'chat.jsonl'
+    from eurika.api.chat_sessions import transcript_path
+
+    path = transcript_path(Path(project_root).resolve())
     try:
         path.unlink(missing_ok=True)
     except OSError:
@@ -139,7 +144,7 @@ def _apply_chat_llm_routing() -> None:
     except Exception:
         pass
 
-def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str, str]]]=None, on_system_action: Optional[Callable[[str], None]]=None, run_command_with_result: Optional[Callable[[str], tuple[str, int]]]=None, privilege_prompt: Optional[PrivilegePrompt]=None) -> Dict[str, Any]:
+def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str, str]]]=None, on_system_action: Optional[Callable[[str], None]]=None, run_command_with_result: Optional[Callable[[str], tuple[str, int]]]=None, privilege_prompt: Optional[PrivilegePrompt]=None, client_terminal_text: Optional[str]=None) -> Dict[str, Any]:
     """
     Send user message through Eurika layer to LLM; return response.
 
@@ -166,18 +171,20 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         if _is_short_affirmation(msg):
             state['pending_scan_confirm'] = {}
             _save_dialog_state(root, state)
-            handler_id, emit_cmd = 'scan', '$ eurika scan .'
+            scan_handler, scan_emit = 'scan', '$ eurika scan .'
             _record_chat_metric(root, 'intent_match', handler='scan', message=msg[:240])
-            if emit_cmd:
-                _emit(emit_cmd, on_system_action)
+            if scan_emit:
+                _emit(scan_emit, on_system_action)
 
             def _emit_one_scan(cmd: str) -> None:
                 _emit(cmd, on_system_action)
 
             direct_result = _run_direct_handlers(
-                handler_id, root, 'scan', state, emit_cmd, _emit_one_scan,
+                scan_handler, root, 'scan', state, scan_emit, _emit_one_scan,
                 _append_chat_history_safe, run_command_with_result,
                 privilege_prompt=privilege_prompt,
+                client_terminal_text=client_terminal_text,
+                history=history,
             )
             if direct_result is not None:
                 return direct_result
@@ -245,6 +252,8 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
             _append_chat_history_safe,
             run_command_with_result,
             privilege_prompt=privilege_prompt,
+            client_terminal_text=client_terminal_text,
+            history=history,
         )
         if direct_result is not None:
             return direct_result
@@ -255,7 +264,16 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     if isinstance(pending, dict):
         original = str(pending.get('original') or '').strip()
         if original and msg.lower() not in {'отмена', 'cancel', 'стоп'}:
-            effective_msg = f'{original}\nУточнение: {msg}'
+            from eurika.api.chat_intent import looks_like_independent_followup
+
+            stale_or_new_task = looks_like_independent_followup(original) or looks_like_independent_followup(
+                msg
+            ) or len(msg.strip()) > 80
+            if stale_or_new_task:
+                state.pop('pending_clarification', None)
+                _save_dialog_state(root, state)
+            else:
+                effective_msg = f'{original}\nУточнение: {msg}'
     try:
         from eurika.api.chat_intent import interpret_task
         interpretation = interpret_task(effective_msg, history=history)
@@ -496,19 +514,39 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     except Exception:
         pass
     try:
-        from eurika.api.chat_direct import looks_like_web_page_question
-        from eurika.utils.web_search import extract_http_urls, format_web_pages_for_prompt
+        from eurika.api.chat_direct import (
+            looks_like_cursor_pricing_question,
+            looks_like_web_page_question,
+        )
+        from eurika.utils.web_search import (
+            extract_http_urls,
+            format_web_pages_for_prompt,
+            format_web_search_results,
+            search_web,
+        )
 
         if looks_like_web_page_question(msg):
             urls = extract_http_urls(msg)
             if urls:
-                page_text = format_web_pages_for_prompt(urls)
+                page_text = format_web_pages_for_prompt(urls, user_query=msg)
                 if page_text:
                     knowledge_snippet = (
                         (knowledge_snippet + "\n\n" + page_text).strip()
                         if knowledge_snippet
                         else page_text
                     )
+            elif looks_like_cursor_pricing_question(msg):
+                q = (
+                    "site:cursor.com docs account pricing cheapest model "
+                    "Composer 2.5 GPT-5.6 Luna per million tokens"
+                )
+                results, provider, note = search_web(q)
+                search_text = format_web_search_results(q, results, provider=provider, note=note)
+                knowledge_snippet = (
+                    (knowledge_snippet + "\n\n" + search_text).strip()
+                    if knowledge_snippet
+                    else search_text
+                )
     except Exception:
         pass
     save_target = target if intent == 'save' else None
@@ -525,6 +563,16 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         tool_experience = load_tool_turn_experience(root, message=msg) or ''
     except Exception:
         pass
+    ui_task_snippet = ''
+    terminal_snippet = ''
+    try:
+        from eurika.api.chat_prompt import ui_layout_task_snippet
+
+        ui_task_snippet = ui_layout_task_snippet(msg) or ''
+    except Exception:
+        pass
+    if (client_terminal_text or '').strip():
+        terminal_snippet = (client_terminal_text or '').strip()[-12000:]
     prompt = _build_chat_prompt(
         msg,
         context,
@@ -536,6 +584,8 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         rules_snippet=rules_snippet or None,
         intent_hints=intent_hints,
         tool_experience=tool_experience or None,
+        ui_task_snippet=ui_task_snippet or None,
+        terminal_snippet=terminal_snippet or None,
     )
     tool_loop = None
     if save_target:

@@ -1,7 +1,6 @@
 """Chat preferences, send, apply/reject handlers. ROADMAP 3.1-arch.3."""
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -15,6 +14,39 @@ from ..tabs import terminal_tab
 
 if TYPE_CHECKING:
     from ..main_window import MainWindow
+
+from .chat_pending_handlers import (
+    _apply_allowed_for_pending,
+    _mark_pending_diff_seen,
+    _pending_diff_was_seen,
+    _pending_preview_fingerprint,
+    _sync_pending_diff_gate,
+    activate_pending_controls_from_response,
+    apply_pending_chat_plan,
+    extract_pending_token_from_text,
+    preview_pending_chat_plan,
+    refresh_chat_goal_view,
+    reject_pending_chat_plan,
+    response_requests_confirmation,
+)
+from .chat_provider_handlers import (
+    _chat_source_label,
+    _chat_source_tooltip,
+    _fill_cursor_model_combo,
+    _load_cursor_model_prefs,
+    _sync_chat_llm_badge,
+    current_chat_api_preset_id,
+    current_chat_openai_base_url,
+    current_chat_provider,
+    on_chat_api_preset_changed,
+    on_chat_provider_changed,
+    refresh_cursor_api_status,
+    refresh_cursor_models,
+    save_chat_preferences,
+    set_chat_provider,
+    sync_chat_provider_panels,
+    sync_cursor_router_enabled,
+)
 
 
 def _chat_prompt_history_path(main: "MainWindow") -> Path | None:
@@ -76,19 +108,26 @@ def _save_chat_prompt_history(main: "MainWindow") -> None:
         pass
 
 
-def _restore_chat_session(main: "MainWindow") -> None:
-    """Restore recent project-local conversation after launch/root change."""
+def _restore_chat_session(main: "MainWindow", *, force: bool = False) -> None:
+    """Restore recent project-local conversation after launch/root/chat change."""
     try:
         root = str(main._settings.get_project_root() or "").strip()
     except Exception:
         root = ""
     root_key = str(Path(root).resolve()) if root else ""
-    if getattr(main, "_chat_history_root", None) == root_key:
+    chat_id = ""
+    if root_key:
+        from eurika.api.chat_sessions import active_chat_id
+
+        chat_id = active_chat_id(Path(root_key))
+    session_key = f"{root_key}::{chat_id}" if root_key else ""
+    if not force and getattr(main, "_chat_history_root", None) == session_key:
         return
-    main._chat_history_root = root_key
+    main._chat_history_root = session_key
     main._chat_history.clear()
     main.chat_transcript.clear()
     main._chat_block_payloads = {}
+    main._live_chat_seen = set()
     if not root_key:
         return
     from eurika.api.chat import load_chat_history
@@ -104,6 +143,11 @@ def _restore_chat_session(main: "MainWindow") -> None:
         _scroll_transcript_to_bottom(main)
     _reset_live_follow_offsets(main, Path(root_key))
     start_live_activity_follow(main)
+
+
+def reload_chat_session(main: "MainWindow") -> None:
+    """Reload transcript after switching chat thread in the same project root."""
+    _restore_chat_session(main, force=True)
 
 
 def _live_chat_key(role: str, content: str) -> str:
@@ -213,12 +257,24 @@ def _maybe_show_chat_tab(main: "MainWindow") -> None:
         inner.setCurrentIndex(main.chat_dialog_subtab_index)
 
 
+def _live_event_echoes_in_chat(event: dict[str, Any]) -> bool:
+    """False for session/chat: transcript already has the user line from Send / chat.jsonl."""
+    kind = str(event.get("kind") or "")
+    method = str(event.get("method") or event.get("title") or "")
+    if kind == "chat":
+        return False
+    if method.startswith("session/chat") or method.startswith("POST /api/chat"):
+        return False
+    return True
+
+
 def _apply_live_activity_event(main: "MainWindow", event: dict[str, Any]) -> None:
     title = str(event.get("title") or event.get("method") or "API").strip()
     phase = str(event.get("phase") or "")
     client = str(event.get("client") or "api")
     kind = str(event.get("kind") or "")
     visible = phase == "start" or kind == "http"
+    echo_chat = _live_event_echoes_in_chat(event)
     if visible:
         suffix = ""
         if phase == "done" and event.get("ok") is False:
@@ -228,12 +284,13 @@ def _apply_live_activity_event(main: "MainWindow", event: dict[str, Any]) -> Non
         line = f"[API {client}] {title}{suffix}"
         if hasattr(main, "status_label"):
             main.status_label.setText(line[:120])
-        if hasattr(main, "terminal_emulator_output") and main.terminal_emulator_output:
-            main.terminal_emulator_output.append(line)
-        _append_transcript(main, _format_chat_line(main, "assistant", line))
-        _scroll_transcript_to_bottom(main)
-        if kind in {"chat", "http"}:
-            _maybe_show_chat_tab(main)
+        if echo_chat:
+            if hasattr(main, "terminal_emulator_output") and main.terminal_emulator_output:
+                main.terminal_emulator_output.append(line)
+            _append_transcript(main, _format_chat_line(main, "assistant", line))
+            _scroll_transcript_to_bottom(main)
+            if kind == "http":
+                _maybe_show_chat_tab(main)
         if phase == "start":
             return
     if phase != "done":
@@ -280,224 +337,6 @@ def refresh_chat_mention_candidates(main: "MainWindow") -> None:
     main.chat_input.refresh_mentions_from_root(root or None)
     if hasattr(main.chat_input, "set_project_root"):
         main.chat_input.set_project_root(root or None)
-
-
-def current_chat_provider(main: MainWindow) -> str:
-    combo = getattr(main, "chat_provider_combo", None)
-    if combo is None:
-        return "auto"
-    data = combo.currentData()
-    if isinstance(data, str) and data.strip():
-        return data.strip()
-    text = (combo.currentText() or "").strip().lower()
-    if text in {"auto", "openai", "ollama", "codex", "cursor"}:
-        return text
-    return "auto"
-
-
-def set_chat_provider(main: MainWindow, provider: str) -> None:
-    combo = getattr(main, "chat_provider_combo", None)
-    if combo is None:
-        return
-    wanted = (provider or "auto").strip()
-    idx = combo.findData(wanted)
-    if idx < 0:
-        idx = combo.findText(wanted)
-    combo.setCurrentIndex(idx if idx >= 0 else 0)
-
-
-def _chat_source_label(provider: str) -> str:
-    return {
-        "auto": "LLM: авто",
-        "openai": "LLM: облако",
-        "codex": "LLM: Codex",
-        "ollama": "LLM: Ollama",
-        "cursor": "LLM: Cursor",
-    }.get((provider or "auto").strip().lower(), "LLM: —")
-
-
-def _chat_source_tooltip(main: MainWindow, provider: str) -> str:
-    base = "Активный источник ответа (Models → Источник)"
-    key = (provider or "auto").strip().lower()
-    if key == "cursor":
-        combo = getattr(main, "chat_cursor_model_combo", None)
-        model = str(combo.currentText() if combo is not None else "").strip()
-        router_combo = getattr(main, "chat_cursor_router_combo", None)
-        router = str(router_combo.currentText() if router_combo is not None else "").strip()
-        lines = [base]
-        if model:
-            lines.append(f"Модель: {model}")
-        if router and router_combo is not None and router_combo.isEnabled():
-            lines.append(f"Router: {router}")
-        return "\n".join(lines)
-    if key in {"openai", "codex"}:
-        field = getattr(main, "chat_openai_model", None)
-        model = field.text().strip() if field is not None else ""
-        return f"{base}\nМодель: {model}" if model else base
-    if key == "ollama":
-        combo = getattr(main, "chat_ollama_model", None)
-        model = str(combo.currentText() if combo is not None else "").strip()
-        return f"{base}\nМодель: {model}" if model else base
-    return base
-
-
-def _sync_chat_llm_badge(main: MainWindow) -> None:
-    badge = getattr(main, "chat_llm_source_label", None)
-    if badge is None:
-        return
-    provider = current_chat_provider(main)
-    badge.setText(_chat_source_label(provider))
-    badge.setToolTip(_chat_source_tooltip(main, provider))
-
-
-def sync_chat_provider_panels(main: MainWindow) -> None:
-    """Show only the settings that belong to the selected chat source."""
-    provider = current_chat_provider(main)
-    cloud = getattr(main, "chat_cloud_box", None)
-    ollama = getattr(main, "chat_ollama_box", None)
-    cursor = getattr(main, "chat_cursor_box", None)
-    if cloud is not None:
-        cloud.setVisible(provider in {"auto", "openai", "codex"})
-    if ollama is not None:
-        ollama.setVisible(provider in {"auto", "ollama"})
-    if cursor is not None:
-        cursor.setVisible(provider == "cursor")
-    hint = getattr(main, "chat_provider_hint", None)
-    if hint is not None:
-        hint.setText(
-            {
-                "auto": "Сначала облако (Groq и т.п.), если ключа нет — Ollama.",
-                "openai": "Только облако. Ollama и Cursor не вызываются.",
-                "codex": "Только Codex / OpenAI API.",
-                "ollama": "Только локальная Ollama.",
-                "cursor": "Ответ через Cursor. Groq и Ollama не используются.",
-            }.get(provider, "")
-        )
-    _sync_chat_llm_badge(main)
-    sync_cursor_router_enabled(main)
-
-
-def on_chat_provider_changed(main: MainWindow, *_args: object) -> None:
-    sync_chat_provider_panels(main)
-    save_chat_preferences(main)
-    try:
-        from eurika.utils.env import apply_qt_chat_routing
-
-        apply_qt_chat_routing()
-    except Exception:
-        pass
-    if hasattr(main, "_refresh_openai_api_status"):
-        main._refresh_openai_api_status()
-    refresh_cursor_api_status(main)
-
-
-def _fill_cursor_model_combo(main: MainWindow, catalog: list[dict[str, str]], selected: str) -> None:
-    combo = getattr(main, "chat_cursor_model_combo", None)
-    if combo is None:
-        return
-    combo.blockSignals(True)
-    combo.clear()
-    seen: set[str] = set()
-    for item in catalog:
-        mid = str(item.get("id") or "").strip()
-        if not mid or mid in seen:
-            continue
-        seen.add(mid)
-        combo.addItem(str(item.get("label") or mid), mid)
-    if selected and combo.findData(selected) < 0:
-        combo.addItem(selected, selected)
-    idx = combo.findData(selected) if selected else -1
-    combo.setCurrentIndex(idx if idx >= 0 else 0)
-    combo.blockSignals(False)
-    sync_cursor_router_enabled(main)
-
-
-def _load_cursor_model_prefs(main: MainWindow, data: dict) -> None:
-    if not hasattr(main, "chat_cursor_model_combo"):
-        return
-    from eurika.agent.cursor_judge import DEFAULT_CURSOR_MODEL, stub_model_catalog
-
-    saved = str(data.get("chat_cursor_model") or "").strip() or DEFAULT_CURSOR_MODEL
-    if saved in {"auto-smart", "auto"}:
-        saved = "default"
-    _fill_cursor_model_combo(main, stub_model_catalog(), saved)
-    router = str(data.get("chat_cursor_router") or "").strip()
-    if hasattr(main, "chat_cursor_router_combo"):
-        combo = main.chat_cursor_router_combo
-        combo.blockSignals(True)
-        idx = combo.findData(router)
-        combo.setCurrentIndex(idx if idx >= 0 else 0)
-        combo.blockSignals(False)
-    refresh_cursor_api_status(main)
-    sync_cursor_router_enabled(main)
-
-
-def sync_cursor_router_enabled(main: MainWindow) -> None:
-    if not hasattr(main, "chat_cursor_router_combo") or not hasattr(main, "chat_cursor_model_combo"):
-        return
-    from eurika.agent.cursor_judge import is_router_model
-
-    mid = str(main.chat_cursor_model_combo.currentData() or "")
-    enabled = is_router_model(mid)
-    main.chat_cursor_router_combo.setEnabled(enabled)
-    form = getattr(main, "chat_cursor_form", None)
-    if form is not None:
-        try:
-            form.setRowVisible(main.chat_cursor_router_combo, enabled)
-        except Exception:
-            main.chat_cursor_router_combo.setVisible(enabled)
-    _sync_chat_llm_badge(main)
-
-
-def refresh_cursor_api_status(main: MainWindow) -> None:
-    label = getattr(main, "cursor_api_status", None)
-    if label is None:
-        return
-    from eurika.agent.cursor_judge import cursor_key_status
-
-    root = "."
-    try:
-        root = str(main._settings.get_project_root() or "").strip() or "."
-    except Exception:
-        root = "."
-    st = cursor_key_status(root)
-    if st.get("api_key_set"):
-        mid = ""
-        if hasattr(main, "chat_cursor_model_combo"):
-            mid = str(main.chat_cursor_model_combo.currentData() or "")
-        label.setText(f"Cursor API: ключ есть · {mid or '—'}")
-        label.setToolTip("CURSOR_API_KEY в .env. Refresh подтягивает каталог моделей аккаунта.")
-    else:
-        label.setText("Cursor API: нет ключа — CURSOR_API_KEY в .env")
-        label.setToolTip("Ключ не коммитится. Models → Cursor model станет живым после Refresh.")
-
-
-def refresh_cursor_models(main: MainWindow) -> None:
-    """Fetch Cursor model catalog; keep current selection when possible."""
-    from eurika.agent.cursor_judge import list_model_catalog, stub_model_catalog
-
-    combo = getattr(main, "chat_cursor_model_combo", None)
-    if combo is None:
-        return
-    selected = str(combo.currentData() or "")
-    root = "."
-    try:
-        root = str(main._settings.get_project_root() or "").strip() or "."
-    except Exception:
-        root = "."
-    try:
-        catalog = list_model_catalog(root)
-        if not catalog:
-            catalog = stub_model_catalog()
-        _fill_cursor_model_combo(main, catalog, selected)
-        refresh_cursor_api_status(main)
-        save_chat_preferences(main)
-    except Exception as exc:
-        refresh_cursor_api_status(main)
-        label = getattr(main, "cursor_api_status", None)
-        if label is not None:
-            label.setText(f"Cursor API: ошибка каталога ({type(exc).__name__})")
-            label.setToolTip(str(exc))
 
 
 def load_chat_preferences(main: MainWindow) -> None:
@@ -625,234 +464,15 @@ def focus_approvals_mode(main: MainWindow) -> None:
         pass
 
 
-def _pending_preview_fingerprint(
-    pending_plan: dict[str, Any] | None,
-    pending_git: dict[str, Any] | None,
-) -> str:
-    """Stable id for the current HITL pending item (plan or git commit)."""
-    if isinstance(pending_plan, dict) and pending_plan:
-        token = str(pending_plan.get("token") or "").strip()
-        if token:
-            return f"plan:{token}"
-        intent = str(pending_plan.get("intent") or "").strip()
-        target = str(pending_plan.get("target") or "").strip()
-        return f"plan:{intent}:{target}"
-    if isinstance(pending_git, dict) and pending_git.get("message"):
-        token = str(pending_git.get("token") or "").strip()
-        if token:
-            return f"git:{token}"
-        return f"git:{str(pending_git.get('message') or '')[:64]}"
-    return ""
-
-
-def _sync_pending_diff_gate(main: MainWindow, fingerprint: str) -> None:
-    """Reset Diff-seen flag when pending fingerprint changes."""
-    prev = str(getattr(main, "_pending_diff_gate_fp", "") or "")
-    if fingerprint != prev:
-        main._pending_diff_gate_fp = fingerprint
-        main._pending_diff_seen_fp = ""
-    if not fingerprint:
-        main._pending_diff_gate_fp = ""
-        main._pending_diff_seen_fp = ""
-
-
-def _mark_pending_diff_seen(main: MainWindow, fingerprint: str) -> None:
-    if fingerprint:
-        main._pending_diff_seen_fp = fingerprint
-
-
-def _pending_diff_was_seen(main: MainWindow, fingerprint: str) -> bool:
-    return bool(fingerprint) and str(getattr(main, "_pending_diff_seen_fp", "") or "") == fingerprint
-
-
-def _apply_allowed_for_pending(
-    main: MainWindow,
-    *,
-    has_effective_pending: bool,
-    previewable: bool,
-    fingerprint: str,
-) -> bool:
-    """Apply only after Diff preview for this pending (fallback without preview stays allowed)."""
-    if not has_effective_pending:
-        return False
-    if not previewable:
-        return True
-    return _pending_diff_was_seen(main, fingerprint)
-
-
-def refresh_chat_goal_view(main: MainWindow) -> None:
-    from eurika.api.chat_context import format_agent_context_panel
-    from eurika.api.task_executor import is_pending_plan_valid
-
-    state = main._api.get_chat_dialog_state()
-    state_dict: dict[str, Any] = state if isinstance(state, dict) else {}
-    raw_pending_plan = state_dict.get("pending_plan")
-    pending_plan: dict[str, Any] = (
-        raw_pending_plan if isinstance(raw_pending_plan, dict) else {}
-    )
-    plan_valid = bool(pending_plan) and is_pending_plan_valid(pending_plan)
-    plan_stale = bool(pending_plan) and not plan_valid
-    if plan_valid:
-        main._pending_plan_token = str(pending_plan.get("token") or "")
-    main.chat_goal_view.setPlainText(
-        format_agent_context_panel(
-            state_dict, plan_valid=plan_valid, plan_stale=plan_stale
-        )
-    )
-    raw_pending_git = state_dict.get("pending_git_commit")
-    pending_git = raw_pending_git if isinstance(raw_pending_git, dict) else None
-    has_pending_plan = plan_valid
-    has_pending_git = isinstance(pending_git, dict) and bool(pending_git.get("message"))
-    has_effective_pending = has_pending_plan or has_pending_git or main._pending_plan_fallback_active
-    can_preview = bool(pending_plan) or has_pending_git
-    gate_plan = pending_plan if bool(pending_plan) else None
-    gate_git = pending_git if has_pending_git and not bool(pending_plan) else None
-    fingerprint = _pending_preview_fingerprint(gate_plan, gate_git)
-    _sync_pending_diff_gate(main, fingerprint)
-    if hasattr(main, "chat_diff_btn"):
-        main.chat_diff_btn.setEnabled(can_preview)
-    if can_preview:
-        preview_pending_chat_plan(main)
-    elif hasattr(main, "chat_diff_view"):
-        main.chat_diff_view.clear()
-    # Expired plan: Diff for view only — never unlock Apply.
-    allow_apply = (not plan_stale) and _apply_allowed_for_pending(
-        main,
-        has_effective_pending=has_effective_pending,
-        previewable=can_preview and not plan_stale,
-        fingerprint=fingerprint,
-    )
-    main.chat_apply_btn.setEnabled(allow_apply)
-    main.chat_reject_btn.setEnabled(
-        has_effective_pending or plan_stale
-    )
-    if has_pending_plan:
-        pending_intent = str(pending_plan.get("intent") or "-")
-        pending_target = str(pending_plan.get("target") or "").strip()
-        if pending_target:
-            main.chat_pending_label.setText(
-                f"Pending plan: intent={pending_intent}, target={pending_target}"
-            )
-        else:
-            main.chat_pending_label.setText(f"Pending plan: intent={pending_intent}")
-        steps = pending_plan.get("steps") or []
-        if isinstance(steps, list) and steps:
-            tooltip = "Plan steps:\n" + "\n".join(
-                (f"- {str(step)}" for step in steps[:6])
-            )
-            main.chat_pending_label.setToolTip(tooltip)
-            main.chat_reject_btn.setToolTip(tooltip)
-        else:
-            main.chat_pending_label.setToolTip("")
-            main.chat_reject_btn.setToolTip("")
-        if allow_apply:
-            main.chat_apply_btn.setToolTip("Apply pending plan (Diff уже просмотрен)")
-        else:
-            main.chat_apply_btn.setToolTip("Сначала Diff — Apply откроется после preview")
-        if hasattr(main, "chat_diff_btn"):
-            main.chat_diff_btn.setToolTip("Обновить unified diff pending-плана")
-    elif plan_stale:
-        pending_intent = str(pending_plan.get("intent") or "-")
-        main.chat_pending_label.setText(f"Pending plan: expired ({pending_intent})")
-        main.chat_pending_label.setToolTip("Plan TTL expired — Reject to clear.")
-        main.chat_apply_btn.setToolTip("Cannot apply: plan expired")
-        main.chat_reject_btn.setToolTip("Clear expired pending plan")
-        if hasattr(main, "chat_diff_btn"):
-            main.chat_diff_btn.setToolTip("Обновить diff expired плана (только просмотр)")
-    elif has_pending_git and isinstance(pending_git, dict):
-        main._pending_plan_token = str(pending_git.get("token") or "")
-        msg_preview = str(pending_git.get("message", ""))[:50]
-        main.chat_pending_label.setText(f"Pending git commit: {msg_preview}...")
-        main.chat_pending_label.setToolTip(f"Commit message: {pending_git.get('message', '-')}")
-        if allow_apply:
-            main.chat_apply_btn.setToolTip("Apply git commit (preview уже просмотрен)")
-        else:
-            main.chat_apply_btn.setToolTip("Сначала Diff — Apply откроется после preview")
-        main.chat_reject_btn.setToolTip("Reject git commit")
-        if hasattr(main, "chat_diff_btn"):
-            main.chat_diff_btn.setToolTip("Обновить preview pending git commit")
-    elif main._pending_plan_fallback_active:
-        if main._pending_plan_token:
-            main.chat_pending_label.setText(
-                f"Pending plan: token={main._pending_plan_token}"
-            )
-        else:
-            main.chat_pending_label.setText("Pending plan: awaiting confirmation")
-        main.chat_pending_label.setToolTip("Awaiting confirmation from chat response.")
-        main.chat_apply_btn.setToolTip("Apply pending action")
-        main.chat_reject_btn.setToolTip("Reject pending action")
-        if hasattr(main, "chat_diff_btn"):
-            main.chat_diff_btn.setEnabled(False)
-            main.chat_diff_btn.setToolTip("Diff недоступен до синхронизации dialog_state")
-    else:
-        main._pending_plan_token = ""
-        main.chat_pending_label.setText("Pending plan: none")
-        main.chat_pending_label.setToolTip("")
-        main.chat_apply_btn.setToolTip("")
-        main.chat_reject_btn.setToolTip("")
-        if hasattr(main, "chat_diff_btn"):
-            main.chat_diff_btn.setToolTip("Нет pending-плана для Diff")
-
-
-def save_chat_preferences(main: MainWindow) -> None:
-    data = main._settings.load()
-    data["chat_provider"] = current_chat_provider(main)
-    data["chat_openai_model"] = main.chat_openai_model.text().strip()
-    if hasattr(main, "chat_api_preset_combo"):
-        data["chat_api_preset"] = str(main.chat_api_preset_combo.currentData() or "")
-    data["chat_ollama_model"] = main.chat_ollama_model.currentText().strip()
-    if hasattr(main, "chat_cursor_model_combo"):
-        data["chat_cursor_model"] = str(main.chat_cursor_model_combo.currentData() or "")
-    if hasattr(main, "chat_cursor_router_combo"):
-        data["chat_cursor_router"] = str(main.chat_cursor_router_combo.currentData() or "")
-    data["chat_timeout_sec"] = main.chat_timeout_spin.value()
-    data["ollama_hsa_override_gfx"] = main.ollama_hsa_edit.text().strip()
-    data["ollama_rocr_visible_devices"] = main.ollama_rocr_edit.text().strip()
-    data["ollama_hip_visible_devices"] = main.ollama_hip_edit.text().strip()
-    data["ollama_cuda"] = bool(main.ollama_cuda_check.isChecked())
-    data["ollama_vulkan"] = bool(main.ollama_vulkan_check.isChecked())
-    data["ollama_cuda_visible_devices"] = main.ollama_cuda_devices_edit.text().strip()
-    data["ollama_vk_visible_devices"] = main.ollama_vk_devices_edit.text().strip()
-    data["ollama_custom_model"] = main.ollama_custom_model_edit.text().strip()
-    data["ollama_available_model"] = main.ollama_available_combo.currentText().strip()
-    if hasattr(main, "ml_torch_device_combo"):
-        data["torch_device"] = main.ml_torch_device_combo.currentText().strip() or "cpu"
-    main._settings.save(data)
-
-
-def on_chat_api_preset_changed(main: MainWindow, *_args: object) -> None:
-    """Fill remote model + nudge provider when user picks a cloud preset."""
-    if not hasattr(main, "chat_api_preset_combo"):
+def maybe_focus_approvals_after_agent(main: MainWindow, payload: dict[str, Any]) -> None:
+    """After local-agent parks edits, open Approvals and load the pending plan."""
+    try:
+        queued = int((payload or {}).get("approvalsQueued") or 0)
+    except (TypeError, ValueError):
+        queued = 0
+    if queued <= 0:
         return
-    from eurika.utils.llm_presets import get_llm_api_preset
-
-    preset_id = str(main.chat_api_preset_combo.currentData() or "")
-    preset = get_llm_api_preset(preset_id)
-    if preset is None:
-        save_chat_preferences(main)
-        if hasattr(main, "_refresh_openai_api_status"):
-            main._refresh_openai_api_status()
-        return
-    main.chat_openai_model.setText(preset.default_model)
-    # Cloud preset implies remote OpenAI-compatible path.
-    if current_chat_provider(main) in {"auto", "ollama"}:
-        set_chat_provider(main, "openai")
-        sync_chat_provider_panels(main)
-    save_chat_preferences(main)
-    if hasattr(main, "_refresh_openai_api_status"):
-        main._refresh_openai_api_status()
-
-
-def current_chat_api_preset_id(main: MainWindow) -> str:
-    if not hasattr(main, "chat_api_preset_combo"):
-        return ""
-    return str(main.chat_api_preset_combo.currentData() or "")
-
-
-def current_chat_openai_base_url(main: MainWindow) -> str:
-    from eurika.utils.llm_presets import resolve_preset_base_url
-
-    return resolve_preset_base_url(current_chat_api_preset_id(main))
+    QTimer.singleShot(0, lambda: focus_approvals_mode(main))
 
 
 def _chat_block_payloads(main: "MainWindow") -> dict[str, str]:
@@ -1005,6 +625,21 @@ def _set_chat_busy(main: MainWindow, *, busy: bool) -> None:
         _hide_chat_typing(main)
 
 
+def _terminal_context_for_chat(main: MainWindow, *, max_chars: int = 12000) -> str:
+    """Tail of Qt Terminal tab for «прочти терминал» follow-ups."""
+    view = getattr(main, "terminal_emulator_output", None)
+    if view is None:
+        return ""
+    try:
+        text = view.toPlainText()
+    except Exception:
+        return ""
+    text = (text or "").strip()
+    if not text:
+        return ""
+    return text[-max_chars:]
+
+
 def dispatch_chat_message(main: MainWindow, message: str) -> None:
     if not message:
         return
@@ -1048,6 +683,7 @@ def dispatch_chat_message(main: MainWindow, message: str) -> None:
         cursor_optimize=cursor_optimize,
         run_command_with_result=lambda cmd: _run_command_subprocess(cmd, str(main._api._root())),
         privilege_prompt=privilege_prompt_from_bridge(bridge),
+        client_terminal_text=_terminal_context_for_chat(main),
     )
     main._chat_worker = worker
     worker.finished_payload.connect(lambda p: on_chat_result(main, p))
@@ -1077,109 +713,6 @@ def cancel_chat_request(main: MainWindow) -> None:
         label.setText("Отмена…")
         label.setVisible(True)
     main.chat_cancel_btn.setEnabled(False)
-
-
-def apply_pending_chat_plan(main: MainWindow) -> None:
-    state = main._api.get_chat_dialog_state()
-    state_dict: dict[str, Any] = state if isinstance(state, dict) else {}
-    raw_plan = state_dict.get("pending_plan")
-    pending_plan = raw_plan if isinstance(raw_plan, dict) else {}
-    raw_git = state_dict.get("pending_git_commit")
-    pending_git = raw_git if isinstance(raw_git, dict) else None
-    has_git = isinstance(pending_git, dict) and bool(pending_git.get("message"))
-    previewable = bool(pending_plan) or has_git
-    gate_git = pending_git if has_git and not bool(pending_plan) else None
-    fingerprint = _pending_preview_fingerprint(
-        pending_plan if pending_plan else None, gate_git
-    )
-    if previewable and not _pending_diff_was_seen(main, fingerprint):
-        preview_pending_chat_plan(main)
-        if not _pending_diff_was_seen(main, fingerprint):
-            QMessageBox.information(
-                main,
-                "Chat",
-                "Сначала посмотри Diff в панели Контекст, затем Apply.",
-            )
-            return
-    token = main._pending_plan_token.strip()
-    msg = f"применяй token:{token}" if token else "применяй"
-    main._pending_plan_fallback_active = False
-    dispatch_chat_message(main, msg)
-
-
-def reject_pending_chat_plan(main: MainWindow) -> None:
-    main._pending_plan_fallback_active = False
-    main._pending_diff_seen_fp = ""
-    main._pending_diff_gate_fp = ""
-    dispatch_chat_message(main, "отклонить")
-
-
-def preview_pending_chat_plan(main: MainWindow) -> None:
-    """Show unified diff / summary for chat pending_plan in the Agent context panel."""
-    if not hasattr(main, "chat_diff_view"):
-        return
-    state = main._api.get_chat_dialog_state()
-    pending_plan = state.get("pending_plan") if isinstance(state, dict) else None
-    pending_git = state.get("pending_git_commit") if isinstance(state, dict) else None
-    has_plan = isinstance(pending_plan, dict) and bool(pending_plan)
-    has_git = isinstance(pending_git, dict) and bool(pending_git.get("message"))
-    gate_git = pending_git if has_git and not has_plan else None
-    fingerprint = _pending_preview_fingerprint(
-        pending_plan if has_plan else None, gate_git
-    )
-    if isinstance(pending_git, dict) and pending_git.get("message") and not has_plan:
-        msg = str(pending_git.get("message") or "")
-        token = str(pending_git.get("token") or "")
-        main.chat_diff_view.setPlainText(
-            f"Pending git commit\ntoken={token or '-'}\n\n{msg}"
-        )
-        _mark_pending_diff_seen(main, fingerprint)
-        if fingerprint and (
-            main._pending_plan_fallback_active
-            or has_git
-            or bool(getattr(main, "_pending_plan_token", ""))
-        ):
-            main.chat_apply_btn.setEnabled(True)
-            main.chat_apply_btn.setToolTip("Apply git commit (preview уже просмотрен)")
-        return
-    try:
-        result = main._api.preview_chat_pending_plan(
-            pending_plan if isinstance(pending_plan, dict) else None
-        )
-    except Exception as exc:
-        main.chat_diff_view.setPlainText(f"Preview error: {exc}")
-        _mark_pending_diff_seen(main, fingerprint)
-        return
-    if not isinstance(result, dict):
-        main.chat_diff_view.setPlainText("Preview error: empty result")
-        _mark_pending_diff_seen(main, fingerprint)
-        return
-    header_bits = [
-        f"intent={result.get('intent') or '-'}",
-        f"target={result.get('target') or '-'}",
-    ]
-    if result.get("expired"):
-        header_bits.append("expired=yes")
-    if result.get("token"):
-        header_bits.append(f"token={result.get('token')}")
-    body = str(result.get("unified_diff") or result.get("summary") or "").strip()
-    err = result.get("error")
-    parts = [" | ".join(header_bits)]
-    if err:
-        parts.append(f"error: {err}")
-    if body:
-        parts.append("")
-        parts.append(body)
-    elif not err:
-        parts.append("(no diff)")
-    main.chat_diff_view.setPlainText("\n".join(parts))
-    _mark_pending_diff_seen(main, fingerprint)
-    from eurika.api.task_executor import is_pending_plan_valid
-
-    plan_ok = has_plan and is_pending_plan_valid(pending_plan)  # type: ignore[arg-type]
-    if plan_ok or has_git:
-        main.chat_apply_btn.setEnabled(True)
-        main.chat_apply_btn.setToolTip("Apply pending (Diff уже просмотрен)")
 
 
 def _run_command_subprocess(cmd: str, project_root: str) -> tuple[str, int]:
@@ -1246,6 +779,10 @@ def on_chat_result(main: MainWindow, payload: dict[str, Any]) -> None:
             _format_chat_line(main, "assistant", f"[note]: {err_s}", is_error=True)
         )
     if not text:
+        from . import agent_hitl_handlers
+
+        agent_hitl_handlers.bind_from_payload(main, payload)
+        maybe_focus_approvals_after_agent(main, payload)
         _append_transcript(main, _format_chat_line(main, "assistant", "(empty response)"))
         refresh_chat_goal_view(main)
         return
@@ -1254,6 +791,10 @@ def on_chat_result(main: MainWindow, payload: dict[str, Any]) -> None:
     _remember_live_chat(main, "assistant", text)
     main.chat_feedback_helpful_btn.setEnabled(True)
     main.chat_feedback_not_btn.setEnabled(True)
+    from . import agent_hitl_handlers
+
+    agent_hitl_handlers.bind_from_payload(main, payload)
+    maybe_focus_approvals_after_agent(main, payload)
     refresh_chat_goal_view(main)
     activate_pending_controls_from_response(main, text)
     QTimer.singleShot(100, lambda: refresh_chat_goal_view(main))
@@ -1264,42 +805,6 @@ def on_chat_error(main: MainWindow, error: str) -> None:
         return
     _append_transcript(main, _format_chat_line(main, "assistant", f"[exception]: {error}", is_error=True))
     refresh_chat_goal_view(main)
-
-
-def activate_pending_controls_from_response(main: MainWindow, text: str) -> None:
-    raw = str(text or "")
-    if not response_requests_confirmation(raw):
-        main._pending_plan_fallback_active = False
-        return
-    token = extract_pending_token_from_text(raw)
-    if not token:
-        main._pending_plan_fallback_active = False
-        return
-    main._pending_plan_token = token
-    main._pending_plan_fallback_active = True
-    main.chat_reject_btn.setEnabled(True)
-    main.chat_pending_label.setText(f"Pending plan: token={token}")
-    # Re-run gate: auto-Diff may already unlock Apply for this token.
-    refresh_chat_goal_view(main)
-    _append_transcript(main,
-        _format_chat_line(
-            main,
-            "assistant",
-            "Доступны действия: [Reject] сразу; [Apply] после Diff в панели Контекст.",
-        )
-    )
-
-
-def extract_pending_token_from_text(text: str) -> str:
-    m = re.search(r"token:([a-fA-F0-9]{8,32})", str(text or ""))
-    if not m:
-        return ""
-    return str(m.group(1))
-
-
-def response_requests_confirmation(text: str) -> bool:
-    lowered = str(text or "").lower()
-    return "применяй token:" in lowered
 
 
 def on_chat_cancelled(main: MainWindow) -> None:

@@ -34,6 +34,7 @@ from patch_apply_backup import (
     write_single_file_change as _write_single_file_change,
 )
 from patch_apply_handlers import (
+    handle_agent_edit,
     handle_create_module_stub,
     handle_fix_import,
     handle_non_default_kind,
@@ -89,6 +90,23 @@ def apply_patch_plan(
         def _skip(reason: str) -> None:
             skipped.append(target_file)
             skipped_reasons[target_file] = reason
+
+        handled, backup_dir = handle_agent_edit(
+            kind=kind,
+            root=root,
+            path=path,
+            target_file=target_file,
+            params=params,
+            dry_run=dry_run,
+            run_id=run_id,
+            backup_dir=backup_dir,
+            do_backup=do_backup,
+            modified=modified,
+            skip_cb=_skip,
+            errors=errors,
+        )
+        if handled:
+            continue
 
         if handle_create_module_stub(
             kind, path, target_file, content, dry_run, modified, _skip, errors

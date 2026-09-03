@@ -70,6 +70,19 @@ main {
   border: 0;
   background: transparent;
 }
+.proposal-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0;
+}
+.proposal-row > input {
+  flex: 0 0 auto;
+}
+.proposal-row > button {
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .tree-row {
   display: flex;
   align-items: center;

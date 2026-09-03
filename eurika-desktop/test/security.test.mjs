@@ -52,6 +52,32 @@ test("approved or rejected edits continue the model tool-loop", () => {
   assert.match(renderer, /await renderChatResult\(continuation\)/);
 });
 
+test("desktop can apply or reject only selected proposal files", () => {
+  assert.match(renderer, /currentProposalSelection/);
+  assert.match(renderer, /function selectedProposalPaths/);
+  assert.match(renderer, /paths: selected/);
+  assert.match(renderer, /Apply selected/);
+  assert.match(renderer, /Reject selected/);
+  assert.match(renderer, /file\(s\) remain in the proposal/);
+});
+
+test("desktop surfaces read-only git diffs from agent tool events", () => {
+  assert.match(renderer, /activeToolCalls/);
+  assert.match(renderer, /event === "tool\/started"/);
+  assert.match(renderer, /event === "tool\/completed"/);
+  assert.match(renderer, /data\.tool === "git_diff"/);
+  assert.match(renderer, /data\.tool === "git_status"/);
+  assert.match(renderer, /renderReadOnlyDiff\("Workspace git diff"/);
+});
+
+test("desktop git commit and push wait for an explicit HITL decision", () => {
+  assert.match(renderer, /call\.tool === "git_commit"/);
+  assert.match(renderer, /call\.tool === "git_push"/);
+  assert.match(renderer, /"Commit"/);
+  assert.match(renderer, /"Push"/);
+  assert.match(renderer, /Never --force/);
+});
+
 test("terminal and test tools require an explicit Desktop decision", () => {
   assert.match(renderer, /function renderToolApproval/);
   assert.match(renderer, /function decideToolApproval/);
@@ -67,6 +93,9 @@ test("sidecar dogfood covers independent apply, restore conflict, and terminal a
   assert.match(dogfood, /code === -32001/);
   assert.match(dogfood, /panel\/state/);
   assert.match(dogfood, /structured diagnostics/);
+  assert.match(dogfood, /tool: "git_commit"/);
+  assert.match(dogfood, /tool: "git_push"/);
+  assert.match(dogfood, /git_commit ran without explicit approval/);
   assert.match(dogfood, /AbortController/);
 });
 

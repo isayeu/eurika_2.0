@@ -343,8 +343,8 @@ eurika/
 * **Core ≠ Intelligence** — Core only orchestrates lifecycle and contracts
 * **No magic** — every decision is traceable and reproducible
 * **Isolation first** — modules are dumb, explicit, testable
-* **No self-modifying code** — only proposals, never execution
-* **Human-in-the-loop** by design
+* **No silent self-modifying code** — эксперименты в sandbox/polygon допустимы; в основное дерево только **proposals**, apply после явного HITL (не онлайн-патчинг ядра «само собой»)
+* **Human-in-the-loop** by design — в т.ч. саморазвитие: удачный полигон → предложение человеку → разрешить или нет
 
 ### Цель продукта 1.0 (по archive/review.md)
 

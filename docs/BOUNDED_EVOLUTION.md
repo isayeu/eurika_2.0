@@ -149,8 +149,22 @@ Eurika склонна к усложнению — это сила и риск. B
 
 ---
 
+## 8. Саморазвитие: полигон → proposal → HITL (2026-09-03)
+
+Architecture Freeze **не** означает «Eurika не трогает свой код». Запрещён только **тихий** rewrite боевого ядра и онлайн-патчинг без контроля.
+
+**Разрешённый контур:**
+1. Эксперимент в песочнице / `eurika/polygon/` / отдельном worktree (LLM + интернет для идей и проверки — ок).
+2. Apply+verify только внутри полигона.
+3. При удачном варианте — **предложить** патч человеку.
+4. В основное дерево — только после явного разрешения (approve / reject).
+
+См. ROADMAP §4.6 (уточнение), Architecture.md §2, VISION.md C.14.
+
+---
+
 ## Ссылки
 
-- **ROADMAP.md** §5 — Bounded evolution, EURIKA_MAX_OPS_PER_CYCLE
+- **ROADMAP.md** §4.6 / §5 — Architecture Freeze + Bounded evolution, EURIKA_MAX_OPS_PER_CYCLE
 - **archive/review.md** §1 — bounded learning, границы эволюции
 - **.eurika/rules/bounded-evolution.mdc** — правило для агента

@@ -357,8 +357,65 @@ def looks_like_web_search_request(message: str) -> bool:
     return any(m in msg for m in _WEB_SEARCH_MARKERS)
 
 
+def _extract_http_urls(message: str) -> list[str]:
+    try:
+        from eurika.utils.web_search import extract_http_urls
+
+        return extract_http_urls(message)
+    except Exception:
+        return []
+
+
+def looks_like_http_url_question(message: str) -> bool:
+    """Explicit http(s) URL + question — treat as external page, not local docs/."""
+    if not _extract_http_urls(message):
+        return False
+    msg = _norm_msg(message)
+    cues = (
+        "какая",
+        "какой",
+        "какие",
+        "сколько",
+        "what",
+        "which",
+        "how much",
+        "cheapest",
+        "дешев",
+        "дешёв",
+    )
+    return any(c in msg for c in cues)
+
+
+def looks_like_cursor_pricing_question(message: str) -> bool:
+    """Cursor model/pricing questions (with or without URL)."""
+    msg = _norm_msg(message)
+    if not msg:
+        return False
+    product = any(x in msg for x in ("cursor", "курсор", "composer"))
+    price = any(
+        x in msg
+        for x in (
+            "дешев",
+            "дешёв",
+            "cheapest",
+            "дорог",
+            "прайс",
+            "pricing",
+            "стоим",
+            "тариф",
+            "модел",
+            "model",
+        )
+    )
+    return product and price
+
+
 def looks_like_web_page_question(message: str) -> bool:
-    """Internet cue + explicit URL → fetch page and answer via LLM, not list_docs."""
+    """External page question → prefetch/search + LLM, not list_docs."""
+    if looks_like_cursor_pricing_question(message):
+        return True
+    if looks_like_http_url_question(message):
+        return True
     if not looks_like_web_search_request(message):
         return False
     try:
@@ -369,14 +426,35 @@ def looks_like_web_page_question(message: str) -> bool:
         return False
 
 
-def looks_like_market_ml_scope_request(message: str) -> bool:
-    """Hard cues for «одна модель vs per-ticker» — not bare «проблемы?»."""
+def is_read_terminal_request(message: str) -> bool:
+    """User asks to interpret Terminal tab output (follow-up after host tools)."""
     msg = _norm_msg(message)
     if not msg:
         return False
     cues = (
-        "тикер",
-        "ticker",
+        "прочти терминал",
+        "посмотри терминал",
+        "посмотри вывод терминал",
+        "прочитай терминал",
+        "что в терминале",
+        "что показал терминал",
+        "read terminal",
+        "read the terminal",
+        "terminal output",
+    )
+    return any(c in msg for c in cues)
+
+
+def looks_like_market_ml_scope_request(message: str) -> bool:
+    """Hard cues for «одна модель vs per-ticker» — not bare «разбор тикера BTC».
+
+    Bare «тикер»/«ticker» alone is too broad: ticker analysis asks share that
+    word and must not soft-accept into the architecture FAQ.
+    """
+    msg = _norm_msg(message)
+    if not msg:
+        return False
+    cues = (
         "per-ticker",
         "per ticker",
         "market_policy",
@@ -389,8 +467,10 @@ def looks_like_market_ml_scope_request(message: str) -> bool:
         "policy на все",
         "на каждый тикер",
         "каждого тикера",
-        "для рынка",
         "по разным тикерам",
+        "стратегию каждого",
+        "в целом для рынка",
+        "в отдельности",
     )
     return any(c in msg for c in cues)
 
@@ -465,7 +545,19 @@ def _accept_soft_handler(handler_id: Optional[str], msg: str) -> bool:
         return False
     if handler_id == "market_ml_scope" and not looks_like_market_ml_scope_request(msg):
         return False
-    if handler_id in {"market_situation", "market_logic", "session_digest", "ml_status"}:
+    if handler_id in {
+        "market_situation",
+        "market_ticker_brief",
+        "portfolio_agent_once",
+        "portfolio_agent_status",
+        "market_logic",
+        "session_digest",
+        "ml_status",
+        "market_learning_report",
+        "llm_teacher_execution",
+        "llm_teacher_stats",
+        "llm_shadow_report",
+    }:
         return False
     # Host OS phrases must not soft-map to project skills.
     if is_host_health_request(msg) and handler_id in {
@@ -532,6 +624,10 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
             pass
         else:
             return matched
+    if is_read_terminal_request(msg):
+        return ("read_terminal", None)
+    if looks_like_cursor_pricing_question(msg) and not _extract_http_urls(msg):
+        return ("web_search", None)
     if looks_like_web_search_request(msg) and not looks_like_web_page_question(msg):
         return ("web_search", None)
     # Factual handlers before soft-match — otherwise "что за проект?" goes to LLM.
@@ -1384,9 +1480,9 @@ def is_file_recount_request(message: str) -> bool:
     if not msg:
         return False
     # Allow filler words: «сколько всего там файлов?», «сколько в проекте файлов?»
-    if re.search(r"сколько\s+(?:\w+\s+){0,6}файл", msg):
+    if re.search(r"\bсколько\s+(?:\w+\s+){0,6}файл", msg):
         return True
-    if re.search(r"сколько\s+(?:\w+\s+){0,6}модул", msg):
+    if re.search(r"\bсколько\s+(?:\w+\s+){0,6}модул", msg):
         return True
     if re.search(r"how\s+many\s+(?:\w+\s+){0,4}files?", msg):
         return True

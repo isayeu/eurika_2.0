@@ -32,6 +32,23 @@ def test_defaults_apply_for_arbitrary_project(tmp_path: Path) -> None:
     assert match_direct_intent(tmp_path, "что у нас дальше по развитию проекта?") == ("roadmap_next", None)
 
 
+def test_neskolko_failov_is_not_file_recount(tmp_path: Path) -> None:
+    """«несколько файлов» contains «сколько» as a substring — must not dump a file inventory."""
+    from eurika.api.chat_direct import resolve_direct_handler
+
+    msg = (
+        "думаю правильно будет так, разберем на примере крайнего редактирования.\n"
+        "1) ты поготавливаешь полный патч, возможно несколько файлов.\n"
+        "2) говоришь, готово мой друг.\n"
+        "3) Я иду во вкладку Approvals, Загружаю план, просматриваю и решаю применять или нет.\n"
+        "бедет ли так лучше?"
+    )
+    assert match_direct_intent(tmp_path, msg) != ("file_recount", None)
+    assert match_direct_intent(tmp_path, "возможно несколько файлов") != ("file_recount", None)
+    assert resolve_direct_handler(tmp_path, msg)[0] != "file_recount"
+    assert match_direct_intent(tmp_path, "сколько файлов?") == ("file_recount", None)
+
+
 def test_project_ls_does_not_match_inside_goals(tmp_path: Path) -> None:
     """Space-padded « ls » must not fire on the letters inside «goals»."""
     from eurika.api.chat_direct import resolve_direct_handler
@@ -303,9 +320,11 @@ def test_git_status_not_commit_handler(tmp_path: Path) -> None:
 
 def test_long_eval_brief_does_not_hijack_git_or_reject(tmp_path: Path) -> None:
     from eurika.api.chat_direct import (
+        is_apply_confirmation,
         is_git_commit_request,
         is_git_push_request,
         is_reject_confirmation,
+        is_roadmap_verify_request,
         resolve_direct_handler,
     )
 
@@ -318,7 +337,37 @@ def test_long_eval_brief_does_not_hijack_git_or_reject(tmp_path: Path) -> None:
     assert is_git_commit_request(brief) is False
     assert is_git_push_request(brief) is False
     assert is_reject_confirmation(brief) is False
+    assert is_apply_confirmation(brief) is False
     assert is_reject_confirmation("отклонить") is True
     assert resolve_direct_handler(tmp_path, brief)[0] is None
     assert resolve_direct_handler(tmp_path, "отклонить")[0] is None
     assert resolve_direct_handler(tmp_path, "собери коммит")[0] == "git_commit"
+
+
+def test_long_brief_does_not_hijack_apply_or_roadmap_verify() -> None:
+    from eurika.api.chat_direct import is_apply_confirmation, is_roadmap_verify_request
+
+    apply_brief = (
+        "Задача: саморазвитие, файлы не меняй и ops не применяй.\n"
+        "1) freeze Market\n"
+        "2) только doctor --no-llm"
+    )
+    assert is_apply_confirmation(apply_brief) is False
+    assert is_apply_confirmation("применяй") is True
+    assert is_apply_confirmation("применяй token:abcd1234") is True
+    assert is_apply_confirmation("apply token:abcd1234") is True
+
+    plan_brief = (
+        "Задача саморазвития, только диагностика, файлы репозитория не меняй.\n"
+        "Контекст: ROADMAP — работа над своим кодом (scan/doctor, план без записи).\n"
+        "VISION — freeze Market ML."
+    )
+    assert is_roadmap_verify_request(plan_brief) is False
+    assert is_roadmap_verify_request("проверь фазу 2.7") is True
+    assert is_roadmap_verify_request("проверь фазу CR-B") is True
+    assert is_roadmap_verify_request("verify phase 3.0") is True
+    assert is_roadmap_verify_request("сверь roadmap") is True
+    from eurika.api.chat_direct import resolve_direct_handler
+
+    assert resolve_direct_handler(Path("."), plan_brief)[0] is None
+    assert resolve_direct_handler(Path("."), "проверь фазу 2.7")[0] == "roadmap_verify"

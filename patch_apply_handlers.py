@@ -138,6 +138,61 @@ def _apply_content_replacement(
     return True, backup_dir
 
 
+def handle_agent_edit(
+    *,
+    kind: str,
+    root: Path,
+    path: Path,
+    target_file: str,
+    params: Dict[str, Any],
+    dry_run: bool,
+    run_id: str,
+    backup_dir: str | None,
+    do_backup: bool,
+    modified: List[str],
+    skip_cb: Callable[[str], None],
+    errors: List[str],
+) -> tuple[bool, str | None]:
+    """Apply agent_edit before the exists-file gate so creates work."""
+    if kind != "agent_edit":
+        return False, backup_dir
+    new_content = params.get("new_content")
+    if not isinstance(new_content, str):
+        skip_cb("agent_edit: no new_content")
+        return True, backup_dir
+    if dry_run:
+        modified.append(target_file)
+        return True, backup_dir
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        errors.append(f"{target_file}: {exc}")
+        return True, backup_dir
+    if path.exists() and not path.is_file():
+        skip_cb("path not a file")
+        return True, backup_dir
+    if path.exists():
+        return _apply_content_replacement(
+            root=root,
+            path=path,
+            target_file=target_file,
+            new_content=new_content,
+            run_id=run_id,
+            backup_dir=backup_dir,
+            do_backup=do_backup,
+            modified=modified,
+            skip_cb=skip_cb,
+            errors=errors,
+            skip_reason="agent_edit: no new_content",
+        )
+    try:
+        path.write_text(new_content, encoding="utf-8")
+        modified.append(target_file)
+    except OSError as exc:
+        errors.append(f"{target_file}: {exc}")
+    return True, backup_dir
+
+
 def handle_non_default_kind(
     *,
     root: Path,
@@ -330,6 +385,21 @@ def handle_non_default_kind(
             skip_cb=skip_cb,
             errors=errors,
             skip_reason="llm_extract_block: no new_content",
+        )
+
+    if kind == "agent_edit" and params.get("new_content"):
+        return _apply_content_replacement(
+            root=root,
+            path=path,
+            target_file=target_file,
+            new_content=params["new_content"],
+            run_id=run_id,
+            backup_dir=backup_dir,
+            do_backup=do_backup,
+            modified=modified,
+            skip_cb=skip_cb,
+            errors=errors,
+            skip_reason="agent_edit: no new_content",
         )
 
     if kind == "extract_class" and params.get("target_class") and params.get("methods_to_extract"):

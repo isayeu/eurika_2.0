@@ -19,6 +19,15 @@ def test_settings_service_roundtrip_project_root(tmp_path: Path) -> None:
     assert svc.get_project_root() == "/tmp/demo"
 
 
+def test_settings_service_remembers_workspace_roots(tmp_path: Path) -> None:
+    settings_path = tmp_path / "qt_settings.json"
+    svc = SettingsService(settings_path=settings_path)
+    svc.remember_workspace_root("/tmp/eurika")
+    svc.remember_workspace_root("/tmp/binance")
+    svc.remember_workspace_root("/tmp/eurika")
+    assert svc.list_workspace_roots() == ["/tmp/eurika", "/tmp/binance"]
+
+
 def test_settings_service_handles_invalid_json(tmp_path: Path) -> None:
     settings_path = tmp_path / "qt_settings.json"
     settings_path.write_text("{bad json", encoding="utf-8")

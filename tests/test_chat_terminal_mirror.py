@@ -217,3 +217,68 @@ def test_chat_ls_phrase_uses_tool_loop(tmp_path: Path, monkeypatch) -> None:
     row = json.loads(line)
     assert row.get("event") == "tool_turn"
     assert any("ls" in str(c) for c in row.get("commands") or [])
+
+
+def test_terminal_read_source_qt_empty_ignores_stale_host_log() -> None:
+    from eurika.api.chat_handlers import terminal_read_source
+
+    stale = {"host_log": "=== HOST TOOL LOOP ===\n$ systemctl is-active gpm\ninactive"}
+    assert terminal_read_source(client_terminal_text="", last_execution=stale) == ""
+    assert "gpm" in terminal_read_source(client_terminal_text=None, last_execution=stale)
+    assert terminal_read_source(client_terminal_text="$ mypy eurika cli\nSuccess", last_execution=stale) == (
+        "$ mypy eurika cli\nSuccess"
+    )
+
+
+def test_terminal_visible_output_strips_idle_prompt() -> None:
+    from eurika.api.chat_handlers import terminal_visible_output
+
+    assert terminal_visible_output("$") == ""
+    assert terminal_visible_output("$ \n$ ") == ""
+    assert "Success" in terminal_visible_output("$ mypy eurika cli\nSuccess\n$ ")
+
+
+def test_read_terminal_idle_prompt_ignores_chat_history(tmp_path: Path, monkeypatch) -> None:
+    import eurika.api.chat as chat_mod
+
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("LLM should not run on idle $")),
+    )
+    out = chat_mod.chat_send(
+        tmp_path,
+        "прочти терминал",
+        history=[{"role": "user", "content": "mypy (32 ошибки в 10 файлах) - исправь ошибки"}],
+        client_terminal_text="$ ",
+    )
+    text = (out.get("text") or "").lower()
+    assert "mypy" not in text
+    assert "пуст" in text or "приглашен" in text or "$" in (out.get("text") or "")
+
+
+def test_read_terminal_empty_qt_pane_does_not_use_host_log(tmp_path: Path, monkeypatch) -> None:
+    import eurika.api.chat as chat_mod
+    from eurika.api.chat_context import save_dialog_state
+
+    hist = tmp_path / ".eurika" / "chat_history"
+    hist.mkdir(parents=True)
+    save_dialog_state(
+        tmp_path,
+        {
+            "last_execution": {
+                "ok": False,
+                "summary": "host_tools",
+                "host_log": "=== HOST TOOL LOOP ===\ngpm inactive\n",
+            }
+        },
+    )
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("LLM should not see stale gpm")),
+    )
+    out = chat_mod.chat_send(tmp_path, "прочти терминал", client_terminal_text="")
+    text = out.get("text") or ""
+    assert out.get("error") is None
+    assert "gpm" not in text.lower()
+    assert "нет вывода" in text.lower() or "пуст" in text.lower() or "пока нет" in text.lower()
+

@@ -23,14 +23,19 @@ def test_chat_source_label_maps_providers() -> None:
 
 def test_chat_source_tooltip_includes_cursor_model() -> None:
     from types import SimpleNamespace
+    from typing import cast
 
     from qt_app.ui.handlers.chat_handlers import _chat_source_tooltip
+    from qt_app.ui.main_window import MainWindow
 
-    main = SimpleNamespace(
-        chat_cursor_model_combo=SimpleNamespace(currentText=lambda: "Composer 2.5"),
-        chat_cursor_router_combo=SimpleNamespace(
-            currentText=lambda: "cost",
-            isEnabled=lambda: True,
+    main = cast(
+        MainWindow,
+        SimpleNamespace(
+            chat_cursor_model_combo=SimpleNamespace(currentText=lambda: "Composer 2.5"),
+            chat_cursor_router_combo=SimpleNamespace(
+                currentText=lambda: "cost",
+                isEnabled=lambda: True,
+            ),
         ),
     )
     tip = _chat_source_tooltip(main, "cursor")
@@ -70,6 +75,22 @@ def test_apply_qt_chat_routing_overrides_env(tmp_path, monkeypatch) -> None:
     assert applied == "cursor"
     assert os.environ["EURIKA_CHAT_PROVIDER"] == "cursor"
     assert os.environ["CURSOR_MODEL"] == "composer-2.5"
+
+
+def test_apply_qt_chat_routing_loads_cursor_key_from_dotenv(tmp_path, monkeypatch) -> None:
+    settings = tmp_path / "qt_settings.json"
+    settings.write_text(
+        json.dumps({"chat_provider": "cursor", "chat_cursor_model": "composer-2.5"}),
+        encoding="utf-8",
+    )
+    (tmp_path / ".env").write_text("CURSOR_API_KEY=crsr_from_env\n", encoding="utf-8")
+    monkeypatch.setenv("EURIKA_QT_SETTINGS_PATH", str(settings))
+    monkeypatch.delenv(LLM_ENV_LOCK_KEY, raising=False)
+    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
+    applied = apply_qt_chat_routing()
+    assert applied == "cursor"
+    assert os.environ.get("CURSOR_API_KEY") == "crsr_from_env"
 
 
 def test_apply_qt_chat_routing_respects_lock(tmp_path, monkeypatch) -> None:

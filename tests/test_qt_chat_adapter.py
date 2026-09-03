@@ -80,6 +80,7 @@ def test_chat_send_uses_cursor_provider(monkeypatch) -> None:
         captured["cursor_model"] = os.environ.get("CURSOR_MODEL")
         captured["cursor_opt"] = os.environ.get("CURSOR_OPTIMIZE_FOR")
         captured["cursor_cwd"] = os.environ.get("EURIKA_CURSOR_CWD")
+        captured["locked"] = os.environ.get("EURIKA_LLM_ENV_LOCKED")
         return {"text": "ok", "error": None}
 
     monkeypatch.setattr(adapter_mod, "_chat_send", _fake_chat_send)
@@ -99,6 +100,7 @@ def test_chat_send_uses_cursor_provider(monkeypatch) -> None:
     assert captured["cursor_model"] == "auto-smart"
     assert captured["cursor_opt"] == "balanced"
     assert captured["cursor_cwd"]
+    assert captured["locked"] == "1"
 
 
 def test_list_ollama_models_parses_tags_payload(monkeypatch) -> None:

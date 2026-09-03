@@ -144,7 +144,9 @@ UI.md ✓; README ✓; критерии **B.7–B.14** выполнены. Оц�
 
 **P1–P9 выполнены.** Ритуалы: dogfooding после сессии (§4.3), очистка .eurika_backups перед release.
 
-**Architecture Freeze (S0) — активно:** следующие 1–2 релиза только упрощение и рефакторинг. Новые фичи, smell, self-rewriting, онлайн-патчинг — не добавлять (review III).
+**Architecture Freeze (S0) — активно:** следующие 1–2 релиза только упрощение и рефакторинг. Новые фичи, smell, **тихий** self-rewriting / онлайн-патчинг **боевого ядра** — не добавлять (review III).
+
+**Уточнение (2026-09-03):** freeze **не** запрещает саморазвитие. Разрешённый путь: эксперименты в **песочнице / полигоне** (отдельный worktree, `eurika/polygon/`, sandbox apply+verify) с LLM и интернетом → при удачном варианте **предложить** патч человеку → apply только после явного разрешения (HITL). Запрещено: менять живое ядро без предложения и approve, автопереписывание модулей «на лету», silent online-patching.
 
 **Доказательство цикла:** `eurika prove-cycle .` — синтетический drill (remove_unused_import → verify → learning), без LLM и approvals.
 
@@ -385,7 +387,7 @@ while True:
 
 3. **Самокоррекция** — анализ *решений* (почему план провалился, какая гипотеза не сработала), не только кода. failure_reason в patch/learn events; architect получает failure в recent_events; planner deprioritize: get_recent_failures → sort_and_reindex_by_learning(recent_failures=...) — ops с metrics_worsened/simulation_errors/verify_failed идут последними.
 
-**Чего не делать сейчас:** онлайн-патчинг, self-rewriting modules, автоматическое изменение архитектуры, 50 новых классов.
+**Чего не делать сейчас:** онлайн-патчинг и self-rewriting **боевого** ядра без HITL; автоматическое изменение архитектуры «в проде»; 50 новых классов. **Можно:** полигон/песочница → verify → proposal → человек разрешает или нет (см. §4.6 уточнение 2026-09-03).
 
 **Bounded evolution (review §1):** EURIKA_MAX_OPS_PER_CYCLE (default 12) — cap операций за fix cycle; 0 = без лимита. **Доказательство адаптации ✓** (100 циклов, CYCLE_REPORT #123). **Следующий целевой вектор:** bounded evolution → часть execution model; EnergyModel → resource constraint (energy budget, caps) — контракт §7 в docs/BOUNDED_EVOLUTION.md ✓. Реализация — по мере пробелов.
 
@@ -485,7 +487,7 @@ while True:
 | S3 | Orchestration | Только eurika/orchestration; CLI вызывает ✅ |
 | S4 | Упростить planner | engine, actions, heuristics, models; analysis, filter_policy, hints_provider — вынос/объединение. ✅ core_extracted → graph_analysis; planner_patch_ops → planner/patch_ops |
 | S5 | Память 3 слоя | session_memory (bounded), experience_store (context), state_store (atomic) ✅ |
-| **S0** | **Architecture Freeze** | 3 релиза: не добавлять фичи, только упрощать. **Активно (март 2026):** следующие 1–2 релиза — только упрощение и рефакторинг. Chat/RV/goal view не откатывать. |
+| **S0** | **Architecture Freeze** | Не наращивать тихий rewrite ядра. Упрощение/рефакторинг в приоритете. Самоэксперименты — только sandbox/polygon → proposal → HITL (§4.6). Chat/RV/goal view не откатывать. |
 
 #### Концептуальные модели (long-term, после 5 метрик)
 
@@ -517,7 +519,7 @@ while True:
 | RV14 | Patch safety layer | patch_guard: syntax, tests, coverage |
 | RV15 | Plugin version contract | явный контракт для plugins |
 
-**Чего избегать:** новые фичи до стабилизации; genome/gravity/evolution до базовых 5 метрик. **Главный совет:** Architecture Freeze — 3 релиза только упрощение. **Текущий режим (март 2026):** следующие 1–2 релиза — только simplification/refactoring, без новых фич.
+**Чего избегать:** раздувание ядра новыми фичами до стабилизации; genome/gravity/evolution до базовых 5 метрик; silent self-patch боевого кода. **Главный совет:** Architecture Freeze = упрощение ядра + самоправки через полигон/HITL, не «стоп саморазвитию».
 
 **Multi-agent vision (риск №10):** architect, analyzer, refactor, critic как отдельные агенты — backlog; пока один planner.
 

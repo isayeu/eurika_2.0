@@ -54,6 +54,32 @@ def preview_operation(project_root: Path, op: Dict[str, Any]) -> Dict[str, Any]:
     if not target_file or not kind:
         return {"error": "target_file and kind required"}
     path = root / target_file
+    if kind == "agent_edit":
+        edited = params.get("new_content")
+        if not isinstance(edited, str):
+            return {"error": "agent_edit: new_content required"}
+        old_content = ""
+        if path.exists() and path.is_file():
+            try:
+                old_content = path.read_text(encoding="utf-8")
+            except OSError as e:
+                return {"error": f"read failed: {e}"}
+        unified_lines = list(
+            difflib.unified_diff(
+                old_content.splitlines(keepends=True),
+                edited.splitlines(keepends=True),
+                fromfile=f"a/{target_file}",
+                tofile=f"b/{target_file}",
+                lineterm="",
+            )
+        )
+        return {
+            "target_file": target_file,
+            "kind": kind,
+            "old_content": old_content,
+            "new_content": edited,
+            "unified_diff": "".join(unified_lines) if unified_lines else "",
+        }
     if not path.exists() or not path.is_file():
         return {"error": f"file not found: {target_file}"}
     supported = {"remove_unused_import", "remove_cyclic_import", "extract_block_to_helper", "extract_nested_function", "fix_import", "llm_extract_block", "extract_class"}

@@ -42,6 +42,8 @@ class HostPrivilegeBridge(QObject):
         """Return ``password\\n…``, ``continue``, or ``skip`` (BlockingQueuedConnection-safe)."""
         raw_parent = self.parent()
         parent = raw_parent if isinstance(raw_parent, QWidget) else None
+        if parent is not None and getattr(parent, "_is_closing", False):
+            return "skip"
         box = QMessageBox(parent)
         box.setIcon(QMessageBox.Icon.Warning)
         box.setWindowTitle("Нужны права")
@@ -557,7 +559,7 @@ class ChatInputEdit(QTextEdit):
             return None
         name = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}.png"
         path = folder / name
-        if not scaled.save(str(path), "PNG"):
+        if not scaled.save(str(path)):
             return None
         try:
             return path.relative_to(root).as_posix()
@@ -892,6 +894,7 @@ class ChatWorker(QThread):
         privilege_prompt: Any = None,
         cursor_model: str = "",
         cursor_optimize: str = "",
+        client_terminal_text: str = "",
     ) -> None:
         super().__init__()
         self._api = api
@@ -906,6 +909,7 @@ class ChatWorker(QThread):
         self._cursor_optimize = cursor_optimize
         self._run_command_with_result = run_command_with_result
         self._privilege_prompt = privilege_prompt
+        self._client_terminal_text = client_terminal_text
         self._cancelled = False
 
     def cancel(self) -> None:
@@ -934,6 +938,7 @@ class ChatWorker(QThread):
                 on_system_action=_on_action,
                 run_command_with_result=self._run_command_with_result,
                 privilege_prompt=self._privilege_prompt,
+                client_terminal_text=self._client_terminal_text,
             )
             if self._is_cancelled():
                 self.cancelled.emit()

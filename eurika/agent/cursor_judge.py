@@ -26,10 +26,10 @@ def _workspace(path: str | Path) -> Path:
 
 
 def load_cursor_key(workspace: str | Path) -> str:
-    from eurika.utils.env import load_project_dotenv
+    from eurika.utils.env import CURSOR_SECRET_ENV_KEYS, load_project_dotenv
 
     root = _workspace(workspace)
-    load_project_dotenv(root)
+    load_project_dotenv(root, keys=CURSOR_SECRET_ENV_KEYS)
     key = (os.environ.get("CURSOR_API_KEY") or "").strip()
     if not key:
         raise RuntimeError(
@@ -41,10 +41,10 @@ def load_cursor_key(workspace: str | Path) -> str:
 
 def cursor_key_status(workspace: str | Path = ".") -> dict[str, Any]:
     """Presence check — never returns the secret."""
-    from eurika.utils.env import load_project_dotenv
+    from eurika.utils.env import CURSOR_SECRET_ENV_KEYS, load_project_dotenv
 
     root = _workspace(workspace)
-    load_project_dotenv(root)
+    load_project_dotenv(root, keys=CURSOR_SECRET_ENV_KEYS)
     key = (os.environ.get("CURSOR_API_KEY") or "").strip()
     return {"api_key_set": bool(key), "prefix": (key[:4] + "…") if key else ""}
 

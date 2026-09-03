@@ -10,7 +10,11 @@ from eurika.api.chat_host_ops import (
     _tokenize_for_tool_exp,
     host_identity_prompt_facts,
     market_learning_prompt_facts,
+    message_asks_llm_teacher_stats,
     message_asks_market_learning,
+    llm_teacher_prompt_facts,
+    llm_teacher_execution_prompt_facts,
+    message_asks_llm_teacher_execution,
     tool_protocol_instructions,
 )
 
@@ -225,6 +229,43 @@ def _user_prefers_russian(message: str, history: Optional[List[Dict[str, str]]] 
     return bool(re.search(r"[а-яёА-ЯЁ]", " ".join(parts)))
 
 
+def ui_layout_task_snippet(message: str) -> str:
+    """Concrete Qt layout task — avoid generic «уточни задачу»."""
+    from eurika.api.chat_intent import (
+        _looks_like_models_tab_layout_request,
+        looks_like_qt_ui_layout_request,
+    )
+
+    msg = (message or "").strip()
+    if _looks_like_models_tab_layout_request(msg):
+        return (
+            "[UI task — qt_app/ui/tabs/models_tab.py]\n"
+            "Пользователь просит улучшить вкладку Models/LLM (компактнее, меньше пустого места справа, "
+            "меньше вертикальной прокрутки). Сразу правь `qt_app/ui/tabs/models_tab.py` через edit "
+            "(очередь в Approvals). Не пиши план без tool=edit и не проси «уточни файл».\n"
+            f"Жалоба пользователя: {msg[:400]}\n"
+        )
+    if looks_like_qt_ui_layout_request(msg):
+        return (
+            "[UI task — qt_app/ui/workspace_rail.py]\n"
+            "Сворачиваемая рейка воркспейсов: папка = Project root, дети = чаты (как Cursor). "
+            "Сразу правь `workspace_rail.py` (+ сессии в `eurika/api/chat_sessions.py` при "
+            "переименовать/удалить). Не уточняй файл, не перечисляй все файлы проекта, "
+            "не отвечай type:final без edit.\n"
+            f"Запрос: {msg[:400]}\n"
+        )
+    return ""
+
+
+def ui_models_tab_task_snippet(message: str) -> str:
+    """Back-compat alias for Models/LLM layout snippet."""
+    from eurika.api.chat_intent import _looks_like_models_tab_layout_request
+
+    if not _looks_like_models_tab_layout_request(message or ""):
+        return ""
+    return ui_layout_task_snippet(message)
+
+
 def build_chat_prompt(
     message: str,
     context: str,
@@ -236,6 +277,8 @@ def build_chat_prompt(
     rules_snippet: Optional[str] = None,
     intent_hints: Optional[str] = None,
     tool_experience: Optional[str] = None,
+    ui_task_snippet: Optional[str] = None,
+    terminal_snippet: Optional[str] = None,
 ) -> str:
     """Build system + user prompt for chat."""
     if save_target:
@@ -272,10 +315,14 @@ def build_chat_prompt(
 - Refactor → «рефактори» + path, or eurika fix .
 - List files / дерево → через ```eurika-cmds``` (ls -la, find/tree); не угадывай список.
 - Живые факты о хосте (сеть, устройства, процессы) → ```eurika-cmds``` (nmcli/ip/ss); не советуй macOS/Activity Monitor.
-- Успехи обучения market ML → [Market facts] / format_market_learning_block; суди по вердикту/equity/edge, не accuracy (не eurika scan)."""
+- Успехи обучения market ML → [Market facts] / format_market_learning_report (таблицы целиком); суди по вердикту/equity/edge, не accuracy (не eurika scan)."""
     hints = intent_hints if intent_hints is not None else default_hints
     context_block += f"\n[Intent interpretation]\n{hints}\n\n"
-    if not save_target and message_asks_market_learning(message):
+    if not save_target and message_asks_llm_teacher_execution(message):
+        context_block += "\n" + llm_teacher_execution_prompt_facts() + "\n\n"
+    elif not save_target and message_asks_llm_teacher_stats(message):
+        context_block += "\n" + llm_teacher_prompt_facts() + "\n\n"
+    elif not save_target and message_asks_market_learning(message):
         context_block += "\n" + market_learning_prompt_facts() + "\n\n"
     if feedback_snippet:
         context_block += feedback_snippet
@@ -283,6 +330,10 @@ def build_chat_prompt(
         context_block += rag_examples
     if knowledge_snippet:
         context_block += f"\n[Reference (from documentation)]:\n{knowledge_snippet}\n\n"
+    if ui_task_snippet:
+        context_block += f"\n{ui_task_snippet}\n"
+    if terminal_snippet:
+        context_block += f"\n[Terminal output (Qt)]:\n{terminal_snippet[:12000]}\n\n"
     if save_target:
         context_block += (
             f"\n[CRITICAL] User requested code to be saved to {save_target}. "

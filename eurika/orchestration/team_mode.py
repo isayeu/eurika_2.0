@@ -291,6 +291,9 @@ def update_team_decisions(
                 m["approved_by"] = None
             merged.append(m)
         data["operations"] = merged
+        patch_plan = data.get("patch_plan")
+        if isinstance(patch_plan, dict):
+            data["patch_plan"] = dict(patch_plan, operations=merged)
         path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
         return True, "saved"
     except Exception as e:

@@ -6,13 +6,13 @@
 
 | Вкладка | Назначение |
 |---------|------------|
-| **Chat** (первая) | Chat-first: подвкладки **Агент** / **Market**. На Агенте — полоска режимов (Агент / Market / Обучение), статус paper и справа панель **Контекст** (goal/pending/last run, **авто-Diff**, Apply после Diff, Terminal / Approvals). Транскрипт: лёгкий markdown — **рамки кода** с **Copy**, **GFM-таблицы** сеткой; для `bash`/`sh` ещё **Run** → вкладка Terminal. Market: Live paper, Spot\|Futures\|Both, тикеры, исследование, **LLM обучение** (opt-in, тот же рынок), 15m/1h, лента. Без live-ордеров. См. [CHAT.md](CHAT.md) |
+| **Chat** (первая) | Chat-first: слева **рейка как в Cursor** — воркспейс = Project root, дети = чаты; **‹/›** сворачивает панель; **Новый чат** выбирает каталог; **+** — тред в этом root; ПКМ по чату — переименовать/удалить. Подвкладки **Агент** / **Market**. Правки агента → **Approvals**. Market: Live paper, без live-ордеров. См. [CHAT.md](CHAT.md) |
 | **Terminal** | Классический экран: ввод после `$ ` (Enter = Run), Stop/Clear сверху; вывод Commands + shell |
 | **Models** | Подвкладки **LLM** / **ML**. LLM: Ollama, GPU, chat provider. ML: PyTorch + **Market learning**. См. [CHAT.md](CHAT.md) / [HARDWARE.md](HARDWARE.md) |
 | **Commands** | scan/doctor/fix/cycle/explain/…, Run/Stop; Quality: Ruff, Mypy, Release check |
 | **Dashboard** | Summary (modules, deps, cycles, risk, maturity, trends, **Energy**), Top risks, Operational metrics, Learning insights, **ARCHITECTURE METRICS** (blast radius, dependency_density, fragility heatmap 🟢🟡🔴 RV10); Energy — MetricVector (ROADMAP §5.7); автообновление при смене project root |
 | **Graph** | Интерактивный граф зависимостей. Требует `eurika scan .` перед использованием. |
-| **Approvals** | Run fix (team-mode), Load plan, approve/reject per row, **diff preview** при выборе строки (ROADMAP 3.6.7), Save, Run apply-approved. Для extract_block/extract_nested — OSS Reference (Learning from GitHub) блок с примерами из pattern_library. |
+| **Approvals** | Chat-агент (Qt, `reviewInApprovals`) кладёт полный патч (`agent_edit`) в `.eurika/pending_plan.json`; после ответа с `approvalsQueued>0` вкладка открывается сама. Load plan → **approve** → **Save** или **Run apply-approved**. `git_commit`/`git_push` в этом режиме **отложены** до apply на диск (потом отдельный HITL / повторный запрос). Также team-mode `eurika fix`. Для extract_block/extract_nested — OSS Reference (Learning from GitHub). |
 | **Terminal** | Классический экран (inline `$ `), Stop/Clear сверху; Commands + shell (ls, pwd, eurika scan .) |
 | **Notes** | Персональные заметки во время работы. Сохраняются в `.eurika/notes.txt` проекта (или `~/.eurika/notes.txt` без проекта). Загрузка при смене project root. |
 | **Помощь** | Индекс документов: Architecture, CLI, **CHAT**, ROADMAP, MEMORY, TROUBLESHOOTING и др. Кнопка Open — открыть в редакторе. |
@@ -137,7 +137,7 @@ Evolution report: тренды (complexity, smells, centralization), регре�
 ### Chat
 Чат с Eurika через прослойку Ollama: введите сообщение, получите ответ с учётом контекста проекта (summary, recent events). RAG: при похожем запросе — прошлые обмены в промпт.
 
-На Агенте: **Apply / Reject / Diff** для HITL pending-плана (`dialog_state`); Diff в **Контекст** открывается **автоматически** при pending; **Apply** активен только после Diff (кнопка Diff — обновить). Не путать с team-mode Approvals.
+На Агенте: **Apply / Reject / Diff** для HITL pending-плана (`dialog_state`) и для agent `pendingToolCalls` (git Commit/Push, edit без Approvals-режима). Diff в **Контекст** открывается **автоматически** при pending; **Apply** активен только после Diff (кнопка Diff — обновить). Основной путь правок кода в Qt — вкладка **Approvals** (`agent_edit`), не путать с Chat Apply.
 
 **Agent intents (3.5.11.C):**
 

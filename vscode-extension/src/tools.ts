@@ -13,7 +13,7 @@ export class ToolDispatcher {
   ) {}
 
   async dispatch(call: ToolCall): Promise<unknown> {
-    if (!vscode.workspace.isTrusted && ["edit", "terminal", "tests"].includes(call.name)) {
+    if (!vscode.workspace.isTrusted && ["edit", "terminal", "tests", "git_commit", "git_push"].includes(call.name)) {
       throw new Error(`Tool '${call.name}' requires workspace trust`);
     }
     const args = call.arguments ?? {};

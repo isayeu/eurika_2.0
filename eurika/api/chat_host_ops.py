@@ -48,17 +48,18 @@ _GROUND_FACTS = (
     "«несколько подключений» и не считай localhost/loopback ответом про интернет. "
     "Ответ — обычным текстом (1–5 предложений), БЕЗ блоков ```bash``` / ```code``` и без "
     "повторного eurika-cmds: не оформляй вывод команд как code fence. "
-    "Если есть MARKET LEARNING / строка «вердикт:» — копируй экономический вердикт: "
-    "убыток/отрицательный equity Δ / отрицательный net edge = плохо для paper; "
-    "не говори «неплохо/хорошо/потенциал», подменяя убыток accuracy. Accuracy ≠ прибыль. "
-    "Если есть строка «дальше:» — копируй её: убыток при работающих воротах ≠ "
-    "«пересмотреть стратегию»."
+    "Если есть MARKET LEARNING / Paper-экзамен / строка «вердикт:» — не сжимай "
+    "ответ в 3 абзаца: сохрани markdown-таблицы (банк, live, головы, ворота, LLM-учитель) "
+    "и экономический вердикт. Убыток/отрицательный equity Δ / отрицательный net edge = "
+    "плохо для paper; не говори «неплохо/хорошо/потенциал», подменяя убыток accuracy. "
+    "Accuracy ≠ прибыль. Если есть строка «дальше:» / «Дальше:» — копируй её: "
+    "убыток при работающих воротах ≠ «пересмотреть стратегию»."
 )
 
 _MARKET_LEARNING_CMD = (
     'python -c "from eurika.ml.root import resolve_market_root; '
-    "from eurika.ml.learning_status import format_market_learning_block; "
-    'print(format_market_learning_block(resolve_market_root()))"'
+    "from eurika.ml.learning_status import format_market_learning_report; "
+    'print(format_market_learning_report(resolve_market_root()))"'
 )
 
 _MARKET_ASK_RE = re.compile(
@@ -68,6 +69,22 @@ _MARKET_ASK_RE = re.compile(
     r"(обучен|learning).{0,20}(ml|мл|market|маркет)|"
     r"(разбор|аудит|статус|pnl|прибыл|убыт|equity|банк|стратег).{0,40}(маркет|market|paper|обучен|ml)|"
     r"(маркет|market|paper).{0,40}(разбор|аудит|успех|статус|pnl|прибыл|убыт|стратег)"
+    r")"
+)
+
+_LLM_TEACHER_ASK_RE = re.compile(
+    r"(?is)("
+    r"(llm|ллм).{0,30}(прогноз|учител|teacher|в плюс|прибыл|исход)|"
+    r"(прогноз).{0,30}(llm|ллм|учител)"
+    r")"
+)
+
+_LLM_TEACHER_EXEC_ASK_RE = re.compile(
+    r"(?is)("
+    r"(ml|mlp).{0,25}(совет|llm|ллм|учител|teacher)|"
+    r"(отработал|исполнил|следует|execut).{0,25}(llm|ллм|учител|teacher|совет)|"
+    r"по совету.{0,15}(llm|ллм)|"
+    r"(хоть раз).{0,20}(llm|ллм|совет)"
     r")"
 )
 _BARE_FILE_READ = re.compile(
@@ -481,11 +498,54 @@ def message_asks_market_learning(message: str) -> bool:
     return bool(_MARKET_ASK_RE.search(message or ""))
 
 
+def message_asks_llm_teacher_stats(message: str) -> bool:
+    """True when the user asks for settled LLM teacher win/loss counts."""
+    return bool(_LLM_TEACHER_ASK_RE.search(message or ""))
+
+
+def message_asks_llm_teacher_execution(message: str) -> bool:
+    """True when the user asks if paper MLP ever traded on LLM advice."""
+    return bool(_LLM_TEACHER_EXEC_ASK_RE.search(message or ""))
+
+
+def llm_teacher_execution_prompt_facts() -> str:
+    try:
+        from eurika.ml.llm_teacher_stats import format_llm_teacher_execution_report
+        from eurika.ml.root import resolve_market_root
+
+        root = resolve_market_root()
+        block = format_llm_teacher_execution_report(root)
+        return (
+            f"[LLM execution facts — root={root}]\n{block}\n"
+            "Правило ответа: paper MLP не исполняет LLM; назови 0 llm-tagged trades и архитектуру. "
+            "Не запускай rg/python/shell для этого."
+        )
+    except Exception as exc:
+        return f"[LLM execution facts]\n{type(exc).__name__}: {exc}"
+
+
+def llm_teacher_prompt_facts() -> str:
+    """Inject LLM teacher aggregate stats (no shell)."""
+    try:
+        from eurika.ml.llm_teacher_stats import format_llm_teacher_stats_report
+        from eurika.ml.root import resolve_market_root
+
+        root = resolve_market_root()
+        block = format_llm_teacher_stats_report(root, refresh=False)
+        return (
+            f"[LLM teacher facts — root={root}]\n{block}\n"
+            "Правило ответа: назови n+ / n− / graded из таблицы; не запускай python/cat/shell. "
+            "Не путай всего строк в файле с числом прибыльных прогнозов."
+        )
+    except Exception as exc:
+        return f"[LLM teacher facts]\nне удалось прочитать: {type(exc).__name__}: {exc}"
+
+
 def market_learning_prompt_facts() -> str:
     """Inject live paper facts from the stable Market root (no shell, no Path('.'))."""
     try:
         from eurika.ml.learning_status import (
-            format_market_learning_block,
+            format_market_learning_report,
             market_economic_verdict,
             market_learning_status,
         )
@@ -494,11 +554,14 @@ def market_learning_prompt_facts() -> str:
         root = resolve_market_root()
         st = market_learning_status(root)
         verdict = market_economic_verdict(st)
-        block = format_market_learning_block(st)
+        block = format_market_learning_report(st)
         return (
             f"[Market facts — root={root}]\n{block}\n"
             f"Правило ответа: экономический вердикт = «{verdict.get('label')}». "
             f"Следующий шаг = «{verdict.get('next_step')}». "
+            "Ответ пользователю — полный markdown с таблицами из блока выше "
+            "(банк, live, тени, открытые, головы, ворота, LLM-учитель). "
+            "Не сжимай в 3 абзаца и не выкидывай таблицы. "
             "Не смягчай убыток словами «неплохо/хорошо»; accuracy сама по себе не успех. "
             "Не предлагай «пересмотреть стратегию», новый entry или explore on только из-за "
             "отрицательного банка — это экзамен под воротами. "
@@ -610,8 +673,10 @@ def tool_protocol_instructions(experience_snippet: str | None = None) -> str:
         "не собирай таблицу пробелами и ASCII-рамкой. "
         "Вопрос про внешний сайт / «посмотри в интернете» + http(s) URL — не открывай "
         "локальные docs/ проекта (URL с /docs/ — это не наш каталог). "
-        "Если в промпте есть [Web page: …] — ответь по этой странице; "
-        "иначе `curl -fsSL 'URL' | head -c 12000` в ```eurika-cmds```. "
+        "Если в промпте есть [Web page: …] или «Результаты поиска» — ответь по ним; "
+        "не повторяй curl по 300+ КБ Next.js-каркаса без цен. "
+        "cursor.com/docs и /pricing — SPA: plain curl не видит таблицы; "
+        "используй уже подставленный web search или скажи открыть Settings → Models. "
         "Не проси пользователя запускать команды вручную, если можешь сделать это "
         "через eurika-cmds. Если команде нужны права root, UI может запросить пароль "
         "или продолжить с ограничениями без sudo.\n"
@@ -688,6 +753,7 @@ def infer_tool_turn_hint(
     hay = blob + "\n" + ans
     if (
         "format_market_learning_block" in hay
+        or "format_market_learning_report" in hay
         or "learning_status" in hay
         or "entry_cost_gate" in hay
         or "weights/meta.json" in hay
@@ -757,7 +823,11 @@ def _score_tool_turn(row: dict, query_tokens: set[str]) -> int:
             score += 2 if len(tok) >= 5 else 1
     # Prefer turns that already solved ML-learning without scan when query smells like it.
     if {"обучен", "обучения", "ml", "маркет", "market"}.intersection(query_tokens):
-        if "format_market_learning_block" in hay or "learning_status" in hay:
+        if (
+            "format_market_learning_block" in hay
+            or "format_market_learning_report" in hay
+            or "learning_status" in hay
+        ):
             score += 6
         if "eurika scan" in hay and "не eurika scan" not in hay:
             score -= 4

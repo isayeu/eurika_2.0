@@ -19,7 +19,6 @@ from .protocol import (
     ERR_INVALID_PARAMS,
     ERR_PARSE,
     ERR_TIMEOUT,
-    JSONRPC_VERSION,
     RpcError,
     error_response,
     event_notification,
@@ -84,10 +83,13 @@ class JsonRpcStdioServer:
             active.timer.cancel()
         try:
             result = future.result()
-        except RpcError as exc:
-            if active.timed_out.is_set():
-                exc = RpcError(ERR_TIMEOUT, "Request timed out")
-            self._write(error_response(request_id, exc))
+        except RpcError as rpc_error:
+            err = (
+                RpcError(ERR_TIMEOUT, "Request timed out")
+                if active.timed_out.is_set()
+                else rpc_error
+            )
+            self._write(error_response(request_id, err))
         except Exception as exc:  # pragma: no cover - final containment boundary
             detail = f"{type(exc).__name__}: {exc}"
             print(f"[eurika-rpc] request {request_id} failed: {detail}", file=sys.stderr, flush=True)

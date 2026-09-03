@@ -99,6 +99,8 @@ class AgentHttpService:
         if self._httpd is None:
             raise RuntimeError("agent HTTP is not running")
         host, port = self._httpd.server_address[:2]
+        if isinstance(host, (bytes, bytearray)):
+            host = host.decode()
         return f"http://{host}:{port}"
 
     @property
@@ -291,12 +293,21 @@ class AgentHttpService:
         httpd = self._httpd
         self._httpd = None
         if httpd is not None:
-            httpd.shutdown()
-            httpd.server_close()
+            # Default ThreadingMixIn.server_close() joins in-flight /chat threads
+            # (local-agent LLM). Closing the Qt window must not wait for that.
+            httpd.block_on_close = False
+            try:
+                httpd.shutdown()
+            except Exception:
+                pass
+            try:
+                httpd.server_close()
+            except Exception:
+                pass
         thread = self._thread
         self._thread = None
         if thread is not None:
-            thread.join(timeout=2)
+            thread.join(timeout=1)
         path = endpoint_path(self.runtime.workspace_root)
         try:
             current = json.loads(path.read_text(encoding="utf-8"))
@@ -353,12 +364,14 @@ class AgentHttpService:
         )
         if "error" in rpc:
             return {"ok": False, **rpc}
-        result = rpc.get("result") if isinstance(rpc.get("result"), dict) else {}
+        raw_result = rpc.get("result")
+        result: dict[str, Any] = raw_result if isinstance(raw_result, dict) else {}
         return {
             "ok": True,
             "sessionId": result.get("sessionId") or params.get("sessionId"),
             "text": result.get("text", ""),
             "pendingToolCalls": result.get("pendingToolCalls") or [],
+            "approvalsQueued": result.get("approvalsQueued") or 0,
             "metrics": result.get("metrics") or {},
             "events": rpc.get("events") or [],
         }
@@ -413,14 +426,20 @@ class AgentHttpService:
             except ValueError:
                 preferred = DEFAULT_PORT
         if preferred == 0:
-            return ThreadingHTTPServer((self.host, 0), handler)
+            return self._configure_httpd(ThreadingHTTPServer((self.host, 0), handler))
         last_error: OSError | None = None
         for port in range(preferred, preferred + 10):
             try:
-                return ThreadingHTTPServer((self.host, port), handler)
+                return self._configure_httpd(ThreadingHTTPServer((self.host, port), handler))
             except OSError as exc:
                 last_error = exc
         raise OSError(f"Could not bind agent HTTP near port {preferred}: {last_error}") from last_error
+
+    @staticmethod
+    def _configure_httpd(httpd: ThreadingHTTPServer) -> ThreadingHTTPServer:
+        httpd.daemon_threads = True
+        httpd.block_on_close = False
+        return httpd
 
     @staticmethod
     def _read_body(handler: BaseHTTPRequestHandler) -> Any:

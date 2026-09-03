@@ -1,6 +1,8 @@
 """Chat file ops and formatting (P0.4 split from chat.py)."""
 from __future__ import annotations
+import ast
 import json
+import re
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -216,44 +218,289 @@ def count_project_files(root: Path) -> Dict[str, int]:
     return counts
 
 
-def _detect_project_kind(root: Path) -> str:
-    if any(root.rglob('*.kv')):
-        return 'Kivy-приложение (Python + KV)'
-    if (root / 'qt_app').is_dir():
-        return 'Eurika/Qt-проект'
-    if (root / 'pyproject.toml').exists():
-        return 'Python-пакет (`pyproject.toml`)'
-    if (root / 'app.py').exists() or (root / 'main.py').exists():
-        return 'Python-приложение'
-    return 'проект на диске'
+_OVERVIEW_DOC_NAMES = (
+    'README.md',
+    'README.rst',
+    'README.txt',
+    'README',
+    'PROMPT.md',
+    'ABOUT.md',
+    'docs/README.md',
+    'doc/README.md',
+)
+_OVERVIEW_ENTRY_FILES = ('main.py', 'app.py', '__main__.py', 'src/main.py', 'src/app.py')
+_LAYOUT_SKIP = _SKIP_DIR_NAMES | {'.vscode', '.idea', '.git', '.cursor'}
+
+
+def _read_text_head(path: Path, *, max_chars: int = 8000) -> str | None:
+    try:
+        raw = path.read_text(encoding='utf-8', errors='replace')
+    except OSError:
+        return None
+    return raw[:max_chars] if raw else None
+
+
+def _pyproject_blurb(root: Path) -> dict[str, str]:
+    path = root / 'pyproject.toml'
+    if not path.is_file():
+        return {}
+    try:
+        import tomllib
+
+        data = tomllib.loads(path.read_text(encoding='utf-8'))
+    except Exception:
+        return {}
+    project = data.get('project') if isinstance(data, dict) else None
+    if not isinstance(project, dict):
+        return {}
+    out: dict[str, str] = {}
+    for key in ('name', 'description', 'version'):
+        val = project.get(key)
+        if isinstance(val, str) and val.strip():
+            out[key] = val.strip()
+    return out
+
+
+def _extract_markdown_purpose(text: str, *, max_paras: int = 3) -> list[str]:
+    """First substantive paragraphs from markdown — quoted facts, not guesses."""
+    paras: list[str] = []
+    buf: list[str] = []
+    in_fence = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith('```'):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if not stripped or stripped == '---':
+            if buf:
+                paras.append(' '.join(buf))
+                buf = []
+            if len(paras) >= max_paras:
+                break
+            continue
+        if stripped.startswith('#'):
+            if buf:
+                paras.append(' '.join(buf))
+                buf = []
+            if len(paras) >= max_paras:
+                break
+            continue
+        if stripped.startswith('|'):
+            continue
+        if stripped.startswith('- '):
+            buf.append(stripped[2:].strip())
+        else:
+            buf.append(stripped)
+        if len(' '.join(buf)) > 500:
+            paras.append(' '.join(buf))
+            buf = []
+            if len(paras) >= max_paras:
+                break
+    if buf and len(paras) < max_paras:
+        paras.append(' '.join(buf))
+    cleaned: list[str] = []
+    skip_re = re.compile(
+        r"(?i)(скопируй блок|связанный бот|не трогать|не импортировать|вставить в новый)"
+    )
+    for p in paras:
+        p = re.sub(r'\s+', ' ', p).strip()
+        if len(p) < 12:
+            continue
+        if skip_re.search(p):
+            continue
+        cleaned.append(p[:520] + ('…' if len(p) > 520 else ''))
+    return cleaned[:max_paras]
+
+
+def _purpose_from_docs(root: Path) -> list[tuple[str, list[str]]]:
+    found: list[tuple[str, list[str]]] = []
+    seen: set[str] = set()
+    candidates: list[Path] = []
+    for name in _OVERVIEW_DOC_NAMES:
+        p = root / name
+        if p.is_file():
+            candidates.append(p)
+    try:
+        discovered, _total = discover_project_docs(root, limit=8)
+        for items in discovered.values():
+            for path, _heading in items:
+                if path.name.upper().startswith('README') or path.name == 'PROMPT.md':
+                    candidates.append(path)
+    except Exception:
+        pass
+    for path in candidates:
+        rel = str(path.relative_to(root))
+        if rel in seen:
+            continue
+        text = _read_text_head(path)
+        if not text:
+            continue
+        paras = _extract_markdown_purpose(text)
+        if paras:
+            seen.add(rel)
+            found.append((rel, paras))
+        if len(found) >= 2:
+            break
+    return found
+
+
+def _module_docstring(path: Path) -> str | None:
+    text = _read_text_head(path, max_chars=16000)
+    if not text:
+        return None
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return None
+    doc = ast.get_docstring(tree)
+    if isinstance(doc, str) and doc.strip():
+        one = re.sub(r'\s+', ' ', doc.strip())
+        return one[:400] + ('…' if len(one) > 400 else '')
+    return None
+
+
+def _argparse_description(path: Path) -> str | None:
+    text = _read_text_head(path, max_chars=16000)
+    if not text:
+        return None
+    m = re.search(
+        r'ArgumentParser\s*\([^)]*description\s*=\s*(["\'])(.+?)\1',
+        text,
+        re.DOTALL,
+    )
+    if not m:
+        return None
+    desc = re.sub(r'\s+', ' ', m.group(2).strip())
+    return desc[:400] + ('…' if len(desc) > 400 else '')
+
+
+def _entry_point_summary(root: Path) -> tuple[str, str] | None:
+    for rel in _OVERVIEW_ENTRY_FILES:
+        path = root / rel
+        if not path.is_file():
+            continue
+        desc = _argparse_description(path) or _module_docstring(path)
+        if desc:
+            return rel, desc
+    return None
+
+
+def _requirements_packages(root: Path, *, limit: int = 8) -> list[str]:
+    path = root / 'requirements.txt'
+    if not path.is_file():
+        return []
+    pkgs: list[str] = []
+    try:
+        for line in path.read_text(encoding='utf-8', errors='replace').splitlines():
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            name = re.split(r'[<>=!~\[]', line, maxsplit=1)[0].strip()
+            if name:
+                pkgs.append(name)
+            if len(pkgs) >= limit:
+                break
+    except OSError:
+        return []
+    return pkgs
+
+
+def _top_level_layout(root: Path) -> list[str]:
+    rows: list[str] = []
+    try:
+        entries = sorted(root.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+    except OSError:
+        return rows
+    for path in entries:
+        name = path.name
+        if name.startswith('.') or name in _LAYOUT_SKIP:
+            continue
+        if path.is_file():
+            if path.suffix.lower() in ('.py', '.toml', '.json', '.sh') or name in _INFO_ARTIFACTS:
+                rows.append(f'`{name}`')
+            continue
+        if not path.is_dir():
+            continue
+        py_files = sorted(p.name for p in path.glob('*.py') if p.is_file())
+        if not py_files:
+            continue
+        shown = ', '.join(f'`{n}`' for n in py_files[:6])
+        more = len(py_files) - min(len(py_files), 6)
+        suffix = f' (+{more})' if more > 0 else ''
+        rows.append(f'`{name}/` — {shown}{suffix}')
+        if len(rows) >= 10:
+            break
+    return rows
 
 
 def format_project_overview(root: Path) -> str:
-    """Structured project description from filesystem + self_map."""
+    """Project purpose from README/docs/entry point + layout + optional scan."""
     from eurika.api import get_summary
+
+    root = root.resolve()
+    meta = _pyproject_blurb(root)
+    title = meta.get('name') or root.name
+    lines = [f'## {title}', f'`{root}`', '']
+
+    purpose_bits: list[str] = []
+    if meta.get('description'):
+        purpose_bits.append(meta['description'])
+    for rel, paras in _purpose_from_docs(root):
+        for para in paras:
+            purpose_bits.append(f'_{rel}:_ {para}')
+    entry = _entry_point_summary(root)
+    if entry:
+        rel, desc = entry
+        purpose_bits.append(f'Точка входа `{rel}`: {desc}')
+
+    if purpose_bits:
+        lines.append('**Что делает**')
+        for bit in purpose_bits[:4]:
+            lines.append(f'- {bit}')
+        lines.append('')
+    else:
+        lines.extend(
+            [
+                '**Что делает**',
+                '- В корне нет README/PROMPT и у точки входа нет описания — '
+                'положи `README.md` или запусти `eurika scan .` для архитектуры.',
+                '',
+            ]
+        )
+
+    layout = _top_level_layout(root)
+    if layout:
+        lines.append('**Структура**')
+        for row in layout:
+            lines.append(f'- {row}')
+        lines.append('')
+
+    deps = _requirements_packages(root)
+    if deps:
+        lines.append(f"**Зависимости** (`requirements.txt`): {', '.join(deps)}")
+        lines.append('')
 
     counts = count_project_files(root)
     total = sum(counts.values())
     py_files = counts.get('.py', 0)
-    kind = _detect_project_kind(root)
-    lines = [
-        f'Проект `{root}` — {kind}.',
-        '',
-        f'**Файлы:** {total} всего' + (f', из них {py_files} `.py`' if py_files else ''),
-    ]
-    if counts:
-        by_ext = ', '.join(f'{ext}: {n}' for ext, n in sorted(counts.items(), key=lambda x: (-x[1], x[0])))
-        lines.append(f'По типам: {by_ext}.')
+    if total:
+        lines.append(
+            f'**Файлы на диске:** {total}'
+            + (f' (`.py`: {py_files})' if py_files else '')
+        )
+
     summary = get_summary(root)
     if summary and not summary.get('error'):
         sys_info = summary.get('system') or {}
         modules = sys_info.get('modules', '?')
-        deps = sys_info.get('dependencies', '?')
+        deps_n = sys_info.get('dependencies', '?')
         cycles = sys_info.get('cycles', '?')
         lines.extend(
             [
                 '',
-                f'**Архитектура (scan):** {modules} модулей, {deps} зависимостей, {cycles} циклов.',
+                f'**Архитектура (scan):** {modules} модулей, {deps_n} зависимостей, {cycles} циклов.',
             ]
         )
         maturity = summary.get('maturity')
@@ -265,12 +512,12 @@ def format_project_overview(root: Path) -> str:
             lines.append(f'Ключевые модули: {", ".join(names)}.')
         if py_files and isinstance(modules, int) and py_files != modules:
             lines.append(
-                f'Примечание: на диске {py_files} `.py`-файлов, в scan — {modules} модулей '
+                f'На диске {py_files} `.py`, в scan — {modules} модулей '
                 '(часть файлов может не входить в граф импортов).'
             )
     else:
         err = (summary or {}).get('error', 'нет self_map.json')
-        lines.extend(['', f'Архитектурных данных нет ({err}). Запусти: `eurika scan .`'])
+        lines.extend(['', f'**Scan:** архитектурных данных нет ({err}). Запусти: `eurika scan .`'])
     return '\n'.join(lines)
 
 

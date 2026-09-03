@@ -44,6 +44,67 @@ def test_interpret_task_marks_ambiguous_imperative_for_clarification() -> None:
     assert out.clarifying_question
 
 
+def test_interpret_models_tab_layout_not_ambiguous() -> None:
+    msg = (
+        "Мне не нравится как выглядит вкладка Models/LLM, слишком много свободного места справа, "
+        "но при этом приходится прокручивать вниз. Сделай более эргономичной."
+    )
+    out = interpret_task(msg)
+    assert out.needs_clarification is False
+    assert out.intent is None
+    assert out.entities.get("ui_target") == "qt_app/ui/tabs/models_tab.py"
+
+
+def test_interpret_workspace_rail_request_not_ambiguous() -> None:
+    msg = (
+        "Хочу слева боковую панель, которая будет сворачиваться/разворачиваться по кнопке. "
+        "В ней планирую разместить воркспейсы (то что у нас указано в Project root). "
+        "Новый чат, Eurika2.0Qt (подканал), Binance (подканал)."
+    )
+    out = interpret_task(msg)
+    assert out.needs_clarification is False
+    assert out.entities.get("ui_target") == "qt_app/ui/workspace_rail.py"
+
+
+def test_interpret_workspace_rail_bugs_not_ambiguous() -> None:
+    msg = (
+        "1) не работает кнопка свернуть/развернуть панель воркспесов\n"
+        "2) при нажатии новый чат должно появиться окно диалога где будет "
+        "предложено выбрать/создать root каталог\n"
+        "3) при нажатии чат правой кнопкой - меню удалить/переименовать"
+    )
+    out = interpret_task(msg)
+    assert out.needs_clarification is False
+    assert out.intent != "ambiguous_request"
+    assert out.entities.get("ui_target") == "qt_app/ui/workspace_rail.py"
+
+
+def test_interpret_workspace_order_and_mypy_followup() -> None:
+    from eurika.api.chat_intent import looks_like_independent_followup
+
+    msg = (
+        "когда нажимаю на какой-либо воркспейс рут этого воркспейса "
+        "поднимется вверх в списке, не нужно так, пусть они будут "
+        "фиксированно на своих местах"
+    )
+    out = interpret_task(msg)
+    assert out.needs_clarification is False
+    assert looks_like_independent_followup("mypy (32 ошибки) - исправь ошибки")
+    assert looks_like_independent_followup("прочти терминал")
+
+
+def test_interpret_sudo_dobavte_is_not_clarification() -> None:
+    msg = (
+        "$ sudo systemctl enable --now gpm\n"
+        "[stderr] sudo: для ввода пароля требуется терминал; добавьте параметр -S, "
+        "чтобы прочитать пароль из стандартного ввода\n"
+        "[done] exit_code=1"
+    )
+    out = interpret_task(msg)
+    assert out.needs_clarification is False
+    assert out.intent != "ambiguous_request"
+
+
 def test_parse_mentions_extracts_module_and_smell() -> None:
     """Examples from actual scan: god_module @ patch_engine.py, code_awareness.py."""
     m = parse_mentions("рефактори @patch_engine.py с учётом @god_module")

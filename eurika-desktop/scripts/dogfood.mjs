@@ -123,6 +123,28 @@ try {
   }
 
   try {
+    await backend.client.request("tool/call", {
+      sessionId: session.sessionId,
+      tool: "git_commit",
+      arguments: { message: "dogfood", paths: ["hello.txt"] },
+    });
+    throw new Error("git_commit ran without explicit approval");
+  } catch (error) {
+    if (!isApprovalError(error)) throw error;
+  }
+
+  try {
+    await backend.client.request("tool/call", {
+      sessionId: session.sessionId,
+      tool: "git_push",
+      arguments: {},
+    });
+    throw new Error("git_push ran without explicit approval");
+  } catch (error) {
+    if (!isApprovalError(error)) throw error;
+  }
+
+  try {
     await backend.client.request("command/run", { command: "scan" });
     throw new Error("Command ran without explicit approval");
   } catch (error) {

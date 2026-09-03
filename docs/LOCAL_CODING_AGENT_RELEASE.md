@@ -32,9 +32,9 @@ during migration; it is not the primary coding-agent transport.
   `npm --prefix eurika-desktop run dogfood`.
   Covers workspace list, proposal apply, per-file apply of a two-file
   change, clean checkpoint restore, restore conflict on a later user edit,
-  terminal/command refused without explicit approval, shared Approvals/
-  Commands/Market panel state, structured diagnostics after apply, and
-  cancellation of an in-flight terminal tool.
+  terminal/command, git_commit, and git_push refused without explicit
+  approval, shared Approvals/Commands/Market panel state, structured
+  diagnostics after apply, and cancellation of an in-flight terminal tool.
 - Desktop type safety and production bundle:
   `npm --prefix eurika-desktop run check` and
   `npm --prefix eurika-desktop run build`.
@@ -43,8 +43,14 @@ during migration; it is not the primary coding-agent transport.
 
 `tests/fixtures/local_agent_eval_cases.json` defines the first stable task set:
 project questions, symbol retrieval, a focused verified fix, a multi-file
-change, and rollback conflict handling. Case IDs and required tool contracts
-are validated by the Python test suite.
+change, rollback conflict handling, and `git-hitl-commit` (git_commit without
+approval must fail). Case IDs and required tool contracts are validated by the
+Python test suite.
+
+Qt coding path (same core): `reviewInApprovals` parks edits into Approvals;
+Chat auto-focuses that tab when `approvalsQueued > 0`. Missing agent HTTP for a
+coding request fails loudly (no silent core-chat fallback). Covered by
+`tests/test_qt_agent_hitl.py`.
 
 For each dogfood run, record:
 

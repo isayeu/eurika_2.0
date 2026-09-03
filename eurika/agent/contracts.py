@@ -218,4 +218,40 @@ TOOL_CONTRACTS: dict[str, dict[str, Any]] = {
             },
         },
     },
+    "git_status": {
+        "description": "Read git status and a safe commit-path preview (no secrets).",
+        "mutatesWorkspace": False,
+        "requiresApproval": False,
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    "git_commit": {
+        "description": (
+            "Commit listed workspace-relative paths with an explicit message. "
+            "Never add -A, --no-verify, or secret files. Requires approval."
+        ),
+        "mutatesWorkspace": True,
+        "requiresApproval": True,
+        "inputSchema": {
+            "type": "object",
+            "required": ["message", "approval"],
+            "properties": {
+                "message": {"type": "string", "minLength": 1},
+                "paths": {"type": "array", "items": _path_schema()},
+                "approval": {"type": "boolean", "const": True},
+            },
+        },
+    },
+    "git_push": {
+        "description": (
+            "Push the current branch to origin (or git push -u origin HEAD). "
+            "Never --force. Requires approval."
+        ),
+        "mutatesWorkspace": True,
+        "requiresApproval": True,
+        "inputSchema": {
+            "type": "object",
+            "required": ["approval"],
+            "properties": {"approval": {"type": "boolean", "const": True}},
+        },
+    },
 }

@@ -49,6 +49,33 @@ class SettingsService:
         data["project_root"] = project_root
         self.save(data)
 
+    def list_workspace_roots(self) -> list[str]:
+        data = self.load()
+        raw = data.get("workspace_roots")
+        if not isinstance(raw, list):
+            current = self.get_project_root()
+            return [current] if current else []
+        out: list[str] = []
+        seen: set[str] = set()
+        for item in raw:
+            path = str(item or "").strip()
+            if path and path not in seen:
+                seen.add(path)
+                out.append(path)
+        return out[:12]
+
+    def remember_workspace_root(self, project_root: str) -> None:
+        path = str(project_root or "").strip()
+        if not path:
+            return
+        roots = self.list_workspace_roots()
+        if path not in roots:
+            roots.append(path)
+        data = self.load()
+        data["workspace_roots"] = roots[:12]
+        data["project_root"] = path
+        self.save(data)
+
     def get_theme(self) -> str:
         """Return 'light' or 'dark'."""
         data = self.load()

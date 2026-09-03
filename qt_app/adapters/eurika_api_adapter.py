@@ -32,13 +32,15 @@ from eurika.api import get_suggest_plan_data as _get_suggest_plan_data
 from eurika.api.chat import chat_send as _chat_send, save_chat_feedback as _save_chat_feedback
 from eurika.api.chat_host_ops import PrivilegePrompt
 from eurika.utils.env import LLM_ENV_LOCK_KEY
+from qt_app.adapters.agent_gateway import AgentGatewayMixin
 
 
-class EurikaApiAdapter:
+class EurikaApiAdapter(AgentGatewayMixin):
     """Adapter that keeps project_root handling in one place."""
 
     def __init__(self, project_root: str = ".") -> None:
         self._project_root = project_root
+        self._agent_session_id: str | None = None
 
     def set_project_root(self, project_root: str) -> None:
         self._project_root = project_root
@@ -202,7 +204,26 @@ class EurikaApiAdapter:
         on_system_action: Callable[[str], None] | None = None,
         run_command_with_result: Callable[[str], tuple[str, int]] | None = None,
         privilege_prompt: PrivilegePrompt | None = None,
+        client_terminal_text: str | None = None,
     ) -> dict[str, Any]:
+        from qt_app.ui.agent_pending import wants_local_agent
+
+        if wants_local_agent(message):
+            try:
+                return self.agent_chat(message)
+            except FileNotFoundError as exc:
+                return {
+                    "ok": False,
+                    "text": "",
+                    "error": (
+                        "Local agent HTTP недоступен "
+                        f"({exc}). Запустите Qt/Desktop с gateway "
+                        "или поднимите agent HTTP; coding-запрос не "
+                        "уходит в обычный chat втихую."
+                    ),
+                    "pendingToolCalls": [],
+                    "approvalsQueued": 0,
+                }
         with self._temporary_llm_env(
             provider=provider,
             openai_model=openai_model,
@@ -219,6 +240,7 @@ class EurikaApiAdapter:
                 on_system_action=on_system_action,
                 run_command_with_result=run_command_with_result,
                 privilege_prompt=privilege_prompt,
+                client_terminal_text=client_terminal_text,
             )
 
     def save_chat_feedback(

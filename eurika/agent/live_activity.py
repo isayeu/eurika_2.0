@@ -32,7 +32,12 @@ def activity_path(workspace: Path) -> Path:
 
 
 def chat_history_path(workspace: Path) -> Path:
-    return Path(workspace).expanduser().resolve() / ".eurika" / "chat_history" / "chat.jsonl"
+    try:
+        from eurika.api.chat_sessions import transcript_path
+
+        return transcript_path(workspace)
+    except Exception:
+        return Path(workspace).expanduser().resolve() / ".eurika" / "chat_history" / "chat.jsonl"
 
 
 def _now() -> str:
