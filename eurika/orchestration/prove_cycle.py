@@ -2,6 +2,10 @@
 
 Proves that Eurika's execution stack works end-to-end on a synthetic drill file
 under `.eurika/prove_cycle/`. Use before trusting full `eurika fix` on production code.
+
+C.14 HITL mode (`propose=True` / CLI `--propose`): seed `eurika/polygon/imports_ok.py`,
+park one `remove_unused_import` op in Approvals (`.eurika/pending_plan.json`), do not apply.
+Human approves → `eurika fix . --apply-approved`.
 """
 
 from __future__ import annotations
@@ -19,8 +23,10 @@ from .apply_stage import (
 from .contracts import OperationRecord, PatchPlan
 from .deps import load_fix_cycle_deps
 from .pipeline_model import PipelineStage, attach_pipeline_trace
+from .team_mode import PENDING_PLAN_FILE, save_pending_plan
 
 DRILL_REL_PATH = ".eurika/prove_cycle/drill_unused.py"
+POLYGON_IMPORTS_REL = "eurika/polygon/imports_ok.py"
 
 _DRILL_SEED = '''import os
 from pathlib import Path
@@ -31,7 +37,20 @@ def prove_drill_target() -> Path:
     return Path(".")
 '''
 
+_POLYGON_SEED = '''"""DRILL_UNUSED_IMPORTS: remove_unused_import — неиспользуемые импорты, fix удалит."""
+import os
+from pathlib import Path
+
+
+def polygon_imports_ok() -> Path:
+    """После fix остаётся только Path."""
+    return Path(".")
+'''
+
 _DRILL_DESCRIPTION = "Prove-cycle: remove unused import `os` from synthetic drill module."
+_POLYGON_DESCRIPTION = (
+    "C.14 polygon propose: remove unused import `os` from eurika/polygon/imports_ok.py"
+)
 
 
 _VERIFY_SCRIPT = '''"""Verify prove-cycle unused_import drill."""
@@ -94,6 +113,15 @@ def seed_prove_drill_file(root: Path) -> Path:
     return drill_path
 
 
+def seed_polygon_imports_ok(root: Path) -> Path:
+    """Reseed polygon drill with unused `import os` for C.14 HITL propose."""
+    root = root.resolve()
+    target = root / POLYGON_IMPORTS_REL
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(_POLYGON_SEED, encoding="utf-8")
+    return target
+
+
 def build_prove_operation(root: Path) -> OperationRecord:
     """Build a single remove_unused_import op for the drill file."""
     seed_prove_drill_file(root)
@@ -109,18 +137,108 @@ def build_prove_operation(root: Path) -> OperationRecord:
     }
 
 
+def build_polygon_propose_operation(root: Path) -> OperationRecord:
+    """Build a pending remove_unused_import op for polygon imports_ok (HITL)."""
+    seed_polygon_imports_ok(root)
+    return {
+        "target_file": POLYGON_IMPORTS_REL,
+        "kind": "remove_unused_import",
+        "smell_type": "unused_import",
+        "params": {},
+        "description": _POLYGON_DESCRIPTION,
+        "approval_state": "pending",
+        "critic_verdict": "allow",
+        "decision_source": "prove_cycle_propose",
+        "team_decision": "pending",
+    }
+
+
+def run_prove_propose(
+    project_root: Path,
+    *,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Seed polygon drill and park the op in Approvals; never apply."""
+    path = Path(project_root).resolve()
+    if dry_run:
+        preview: OperationRecord = {
+            "target_file": POLYGON_IMPORTS_REL,
+            "kind": "remove_unused_import",
+            "smell_type": "unused_import",
+            "params": {},
+            "description": _POLYGON_DESCRIPTION,
+            "approval_state": "pending",
+            "critic_verdict": "allow",
+            "decision_source": "prove_cycle_propose",
+            "team_decision": "pending",
+        }
+        return {
+            "ok": True,
+            "dry_run": True,
+            "prove_cycle": True,
+            "propose": True,
+            "drill": "polygon_unused_import",
+            "target_file": POLYGON_IMPORTS_REL,
+            "pending_plan": PENDING_PLAN_FILE,
+            "operations": [preview],
+            "modified": [],
+            "verify_success": None,
+            "return_code": 0,
+            "seeded_has_unused_import": None,
+        }
+    operation = build_polygon_propose_operation(path)
+    operations: list[OperationRecord] = [operation]
+    patch_plan: PatchPlan = {"operations": operations}
+    seeded = path / POLYGON_IMPORTS_REL
+    seeded_text = seeded.read_text(encoding="utf-8") if seeded.is_file() else ""
+    pending_path = save_pending_plan(
+        path,
+        patch_plan,
+        operations,
+        policy_decisions=[{"index": 1, "decision": "allow", "reason": "prove_cycle_propose"}],
+        session_id="prove_cycle_propose",
+    )
+    try:
+        pending_rel = str(pending_path.relative_to(path))
+    except ValueError:
+        pending_rel = str(pending_path)
+    return {
+        "ok": True,
+        "prove_cycle": True,
+        "propose": True,
+        "drill": "polygon_unused_import",
+        "target_file": POLYGON_IMPORTS_REL,
+        "pending_plan": pending_rel,
+        "pending_plan_path": str(pending_path),
+        "operations": operations,
+        "modified": [],
+        "verify_success": None,
+        "return_code": 0,
+        "seeded_has_unused_import": "import os" in seeded_text,
+        "instructions": (
+            "Review Approvals / .eurika/pending_plan.json, set team_decision=approve, "
+            "then: eurika fix . --apply-approved"
+        ),
+    }
+
+
 def run_prove_cycle(
     project_root: Path,
     *,
     dry_run: bool = False,
     quiet: bool = False,
     verify_timeout: int | None = 60,
+    propose: bool = False,
 ) -> dict[str, Any]:
     """
     Run one deterministic prove cycle on project_root.
 
     Returns fix-cycle style payload with verify_success, modified, delta_score.
+    With propose=True: seed polygon + save pending plan (HITL), no apply.
     """
+    if propose:
+        return run_prove_propose(project_root, dry_run=dry_run)
+
     path = Path(project_root).resolve()
     operation = build_prove_operation(path)
     operations: list[OperationRecord] = [operation]
@@ -134,14 +252,18 @@ def run_prove_cycle(
         "verify_timeout": verify_timeout,
     }
 
-    result = type("ProveAgentResult", (), {
-        "output": {
-            "policy_decisions": [{"decision": "allow", "reason": "prove_cycle"}],
-            "critic_decisions": [],
-            "summary": {"risks": []},
-            "execution_context": None,
+    result = type(
+        "ProveAgentResult",
+        (),
+        {
+            "output": {
+                "policy_decisions": [{"decision": "allow", "reason": "prove_cycle"}],
+                "critic_decisions": [],
+                "summary": {"risks": []},
+                "execution_context": None,
+            },
         },
-    })()
+    )()
 
     if dry_run:
         dry = build_fix_dry_run_result(path, patch_plan, operations, result, run_params=run_params)
@@ -180,6 +302,24 @@ def run_prove_cycle(
 
 def format_prove_cycle_summary(payload: dict[str, Any]) -> str:
     """Human-readable summary for CLI."""
+    if payload.get("propose"):
+        lines = [
+            "## Prove propose (polygon → Approvals HITL)",
+            "",
+            f"- drill: `polygon_unused_import` → `{payload.get('target_file') or POLYGON_IMPORTS_REL}`",
+            f"- pending_plan: `{payload.get('pending_plan') or PENDING_PLAN_FILE}`",
+            "- modified: (none — waiting for approve)",
+            f"- seeded unused `os`: **{payload.get('seeded_has_unused_import')}**",
+        ]
+        if payload.get("dry_run"):
+            lines.append("- dry-run: pending plan not written; re-run without `--dry-run`")
+        else:
+            lines.append(
+                "- next: Approvals → approve → `eurika fix . --apply-approved` "
+                "(or edit `team_decision` in pending_plan.json)"
+            )
+        return "\n".join(lines)
+
     raw_report = payload.get("report")
     report: dict[str, Any] = raw_report if isinstance(raw_report, dict) else {}
     raw_verify = report.get("verify")

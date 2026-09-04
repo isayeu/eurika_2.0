@@ -190,10 +190,21 @@ def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
 
     prove_cycle_parser = subparsers.add_parser(
         "prove-cycle",
-        help="Deterministic patch→verify→learning on synthetic drill (no LLM, no approvals)",
+        help=(
+            "Deterministic patch→verify→learning on synthetic drill (no LLM). "
+            "With --propose: seed polygon drill into Approvals (HITL), no apply."
+        ),
     )
     prove_cycle_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
     prove_cycle_parser.add_argument("--dry-run", action="store_true", help="Simulate only; do not apply")
+    prove_cycle_parser.add_argument(
+        "--propose",
+        action="store_true",
+        help=(
+            "C.14 HITL: seed eurika/polygon/imports_ok.py and write "
+            ".eurika/pending_plan.json; do not apply (approve in Approvals)"
+        ),
+    )
     prove_cycle_parser.add_argument("--quiet", "-q", action="store_true", help="JSON output only")
     prove_cycle_parser.add_argument(
         "--verify-timeout",

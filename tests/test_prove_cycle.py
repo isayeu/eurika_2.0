@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
-
-import pytest
 
 from eurika.orchestration.prove_cycle import (
     DRILL_REL_PATH,
+    POLYGON_IMPORTS_REL,
+    build_polygon_propose_operation,
     build_prove_operation,
+    format_prove_cycle_summary,
     run_prove_cycle,
     seed_prove_drill_file,
 )
+from eurika.orchestration.team_mode import load_approved_operations
+from eurika.refactor.remove_unused_import import remove_unused_imports
 
 
 def test_seed_prove_drill_has_unused_import(tmp_path: Path) -> None:
@@ -44,3 +48,70 @@ def test_prove_cycle_apply_verify_and_learning(tmp_path: Path) -> None:
     assert "import os" not in text
     assert "from pathlib import Path" in text
     assert DRILL_REL_PATH in (out.get("modified") or [])
+
+
+def test_propose_dry_run_does_not_seed_or_write_plan(tmp_path: Path) -> None:
+    out = run_prove_cycle(tmp_path, dry_run=True, propose=True, quiet=True)
+    assert out.get("propose") is True
+    assert out.get("dry_run") is True
+    assert out.get("modified") == []
+    assert not (tmp_path / POLYGON_IMPORTS_REL).exists()
+    assert not (tmp_path / ".eurika" / "pending_plan.json").exists()
+    assert "Approvals" in format_prove_cycle_summary(out)
+
+
+def test_propose_writes_pending_plan_no_disk_clean(tmp_path: Path) -> None:
+    out = run_prove_cycle(tmp_path, propose=True, quiet=True)
+    assert out.get("ok") is True
+    assert out.get("propose") is True
+    assert out.get("verify_success") is None
+    assert out.get("modified") == []
+    target = tmp_path / POLYGON_IMPORTS_REL
+    assert target.is_file()
+    assert "import os" in target.read_text(encoding="utf-8")
+    pending = tmp_path / ".eurika" / "pending_plan.json"
+    assert pending.is_file()
+    data = json.loads(pending.read_text(encoding="utf-8"))
+    ops = data.get("operations") or []
+    assert len(ops) == 1
+    assert ops[0]["kind"] == "remove_unused_import"
+    assert ops[0]["target_file"] == POLYGON_IMPORTS_REL
+    assert ops[0]["team_decision"] == "pending"
+    assert ops[0].get("approval_state") == "pending"
+
+
+def test_propose_op_shape(tmp_path: Path) -> None:
+    op = build_polygon_propose_operation(tmp_path)
+    assert op["kind"] == "remove_unused_import"
+    assert op["target_file"] == POLYGON_IMPORTS_REL
+    assert op["team_decision"] == "pending"
+    assert op["approval_state"] == "pending"
+    assert op["decision_source"] == "prove_cycle_propose"
+
+
+def test_propose_approve_then_clean_polygon(tmp_path: Path) -> None:
+    run_prove_cycle(tmp_path, propose=True, quiet=True)
+    path = tmp_path / ".eurika" / "pending_plan.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["operations"][0]["team_decision"] = "approve"
+    data["operations"][0]["approved_by"] = "tester"
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    approved, _ = load_approved_operations(tmp_path)
+    assert len(approved) == 1
+    target = tmp_path / POLYGON_IMPORTS_REL
+    before = target.read_text(encoding="utf-8")
+    assert "import os" in before
+    result = remove_unused_imports(target)
+    assert isinstance(result, str)
+    target.write_text(result, encoding="utf-8")
+    after = target.read_text(encoding="utf-8")
+    assert "import os" not in after
+    assert "from pathlib import Path" in after
+    assert "polygon_imports_ok" in after
+
+
+def test_default_prove_cycle_still_sandboxed(tmp_path: Path) -> None:
+    run_prove_cycle(tmp_path, quiet=True, verify_timeout=60)
+    assert (tmp_path / DRILL_REL_PATH).is_file()
+    assert not (tmp_path / "eurika" / "orchestration").exists()
+    assert not (tmp_path / POLYGON_IMPORTS_REL).exists()

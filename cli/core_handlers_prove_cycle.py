@@ -16,6 +16,7 @@ def handle_prove_cycle(args: Any) -> int:
     if _check_path(path) != 0:
         return 1
     dry_run = bool(getattr(args, "dry_run", False))
+    propose = bool(getattr(args, "propose", False))
     quiet = bool(getattr(args, "quiet", False))
     timeout = getattr(args, "verify_timeout", None)
     payload = run_prove_cycle(
@@ -23,6 +24,7 @@ def handle_prove_cycle(args: Any) -> int:
         dry_run=dry_run,
         quiet=quiet,
         verify_timeout=timeout,
+        propose=propose,
     )
     summary = format_prove_cycle_summary(payload)
     if quiet:
@@ -31,16 +33,20 @@ def handle_prove_cycle(args: Any) -> int:
         print(summary)
         if not dry_run:
             print()
-            print(json.dumps(
-                {
-                    "verify_success": payload.get("verify_success"),
-                    "modified": payload.get("modified"),
-                    "return_code": payload.get("return_code"),
-                },
-                ensure_ascii=False,
-                indent=2,
-            ))
+            snippet = {
+                "verify_success": payload.get("verify_success"),
+                "modified": payload.get("modified"),
+                "return_code": payload.get("return_code"),
+            }
+            if propose:
+                snippet["propose"] = True
+                snippet["pending_plan"] = payload.get("pending_plan")
+                snippet["target_file"] = payload.get("target_file")
+            print(json.dumps(snippet, ensure_ascii=False, indent=2))
     rc = payload.get("return_code")
     if rc is None:
-        rc = 0 if payload.get("verify_success") else 1
+        if propose:
+            rc = 0 if payload.get("ok", True) else 1
+        else:
+            rc = 0 if payload.get("verify_success") else 1
     return int(rc)

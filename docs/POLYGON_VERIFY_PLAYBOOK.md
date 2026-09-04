@@ -2,6 +2,19 @@
 
 Как накапливать verify_success по polygon drills (extract_block_to_helper, extract_nested_function) для whitelist и policy.
 
+## C.14 HITL ритуал (самый тонкий контур)
+
+Один deterministic цикл «посеять → предложить → человек решает» (без LLM, без silent apply):
+
+```bash
+eurika prove-cycle . --propose
+# Qt Approvals → Load plan → approve только eurika/polygon/imports_ok.py
+# или вручную team_decision=approve в .eurika/pending_plan.json
+eurika fix . --apply-approved
+```
+
+`--propose` пишет pending plan и **не** применяет патч. Обычный `prove-cycle` (без флага) по-прежнему работает только на `.eurika/prove_cycle/drill_unused.py`.
+
 ## Подготовка
 
 ```bash
