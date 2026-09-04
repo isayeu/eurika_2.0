@@ -519,11 +519,23 @@ def test_chat_send_polygon_propose_parks_approvals(tmp_path: Path, monkeypatch) 
     assert out.get("error") is None
     assert out.get("approvalsQueued") == 1
     assert "Approvals" in text or "pending" in text.lower()
+    assert "prove-cycle" in (out.get("terminal_cmd") or "")
+    assert out.get("terminal_exit_code") == 0
+    assert "pending_plan" in (out.get("terminal_output") or "") or "Approvals" in (
+        out.get("terminal_output") or ""
+    )
     target = tmp_path / "eurika" / "polygon" / "imports_ok.py"
     assert target.is_file()
     assert "import os" in target.read_text(encoding="utf-8")
     pending = tmp_path / ".eurika" / "pending_plan.json"
     assert pending.is_file()
+    activity = tmp_path / ".eurika" / "live_activity.jsonl"
+    assert activity.is_file()
+    lines = [
+        line for line in activity.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
+    assert lines
+    assert any("prove-cycle" in line for line in lines)
 
 
 def test_chat_send_git_commit_request_returns_real_status_without_llm(tmp_path: Path, monkeypatch) -> None:

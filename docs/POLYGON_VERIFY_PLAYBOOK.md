@@ -15,6 +15,8 @@ eurika fix . --apply-approved
 
 `--propose` пишет pending plan и **не** применяет патч. Обычный `prove-cycle` (без флага) по-прежнему работает только на `.eurika/prove_cycle/drill_unused.py`.
 
+Chat «предложи полигон эксперимент»: mirror в Terminal (`$ eurika prove-cycle . --propose`), `live_activity.jsonl`, автофокус вкладки Approvals.
+
 **Важно (2026-09-04):** после apply pytest может быть зелёным, а rescan — увидеть «шум» (грязное дерево / float jitter) и раньше откатывал с `metrics_worsened`. Для **только** `eurika/polygon/*` и для Δ score < `1e-4` откат по метрикам **не** делается — gate остаётся pytest.
 
 ## Подготовка

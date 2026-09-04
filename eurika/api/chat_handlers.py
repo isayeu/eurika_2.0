@@ -574,16 +574,35 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             code,
         )
     if handler_id == 'polygon_propose':
+        from eurika.agent.live_activity import publish_done, publish_start
         from eurika.orchestration.prove_cycle import (
             format_prove_cycle_summary,
             run_prove_propose,
         )
+        from eurika.orchestration.team_mode import has_pending_plan
 
-        payload = run_prove_propose(root, dry_run=False)
-        summary = format_prove_cycle_summary(payload)
-        ok = bool(payload.get('ok', True))
-        pending = payload.get('pending_plan') or '.eurika/pending_plan.json'
-        target = payload.get('target_file') or 'eurika/polygon/imports_ok.py'
+        propose_shell = "eurika prove-cycle . --propose"
+        started = publish_start(
+            root,
+            "prove-cycle --propose",
+            {"message": msg},
+            client="qt-chat",
+        )
+
+        def _fallback() -> tuple[bool, str]:
+            payload = run_prove_propose(root, dry_run=False)
+            summary = format_prove_cycle_summary(payload)
+            ok_local = bool(payload.get("ok", True))
+            return ok_local, summary
+
+        term_cmd, output, code, ok = _shell_for_chat(
+            shell_cmd=propose_shell,
+            run_command_with_result=run_command_with_result,
+            fallback=_fallback,
+            emit_cmd=emit_cmd or f"$ {propose_shell}",
+        )
+        queued = 1 if ok and has_pending_plan(root) else 0
+        target = "eurika/polygon/imports_ok.py"
         state['active_goal'] = {
             'intent': 'polygon_propose',
             'source': 'chat_direct',
@@ -594,7 +613,7 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             {
                 'ok': ok,
                 'summary': (
-                    f'polygon propose → {pending}'
+                    f'polygon propose → .eurika/pending_plan.json'
                     if ok
                     else 'polygon propose failed'
                 ),
@@ -603,8 +622,8 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         save_dialog_state(root, state)
         text = (
             'C.14: полигон → Approvals (без apply).\n\n'
-            f'{summary}\n\n'
-            'Дальше: вкладка **Approvals** → approve → '
+            f'{output.strip() or "(no output)"}\n\n'
+            'Дальше: вкладка **Approvals** (открою сейчас) → approve → '
             '`eurika fix . --apply-approved`.'
         )
         text = append_goal_nudge(text, state)
@@ -612,11 +631,14 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         save_dialog_state(root, state)
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
-        return {
+        result = {
             'text': text,
-            'error': None if ok else str(payload.get('error') or 'propose failed'),
-            'approvalsQueued': 1 if ok else 0,
+            'error': None if ok else (output or 'propose failed'),
+            'approvalsQueued': queued,
         }
+        result = _with_terminal(result, term_cmd, output, code)
+        publish_done(root, started, ok=ok, result=result)
+        return result
     if handler_id == 'release_check':
         exit_code = -1
         term_cmd = None

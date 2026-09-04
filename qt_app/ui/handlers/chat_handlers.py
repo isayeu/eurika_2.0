@@ -465,7 +465,7 @@ def focus_approvals_mode(main: MainWindow) -> None:
 
 
 def maybe_focus_approvals_after_agent(main: MainWindow, payload: dict[str, Any]) -> None:
-    """After local-agent parks edits, open Approvals and load the pending plan."""
+    """After local-agent / C.14 polygon parks edits, open Approvals and load the plan."""
     try:
         queued = int((payload or {}).get("approvalsQueued") or 0)
     except (TypeError, ValueError):
