@@ -598,6 +598,7 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         from eurika.api.chat_direct import (
             polygon_propose_drill_id,
             polygon_propose_require_llm,
+            polygon_propose_sandbox,
         )
         from eurika.orchestration.prove_cycle import (
             format_prove_cycle_summary,
@@ -607,20 +608,28 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
 
         drill = polygon_propose_drill_id(msg)
         require_llm = polygon_propose_require_llm(msg)
+        use_sandbox = polygon_propose_sandbox(msg)
         propose_shell = f"eurika prove-cycle . --propose --drill {drill}"
         if require_llm:
             propose_shell += " --require-llm"
+        if use_sandbox:
+            propose_shell += " --sandbox"
         started = publish_start(
             root,
             f"prove-cycle --propose --drill {drill}"
-            + (" --require-llm" if require_llm else ""),
+            + (" --require-llm" if require_llm else "")
+            + (" --sandbox" if use_sandbox else ""),
             {"message": msg},
             client="qt-chat",
         )
 
         def _fallback() -> tuple[bool, str]:
             payload = run_prove_propose(
-                root, dry_run=False, drill=drill, require_llm=require_llm
+                root,
+                dry_run=False,
+                drill=drill,
+                require_llm=require_llm,
+                sandbox=use_sandbox,
             )
             summary = format_prove_cycle_summary(payload)
             ok_local = bool(payload.get("ok", True))

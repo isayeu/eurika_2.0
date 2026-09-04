@@ -148,7 +148,7 @@ UI.md ✓; README ✓; критерии **B.7–B.14** выполнены. Оц�
 
 **Уточнение (2026-09-03):** freeze **не** запрещает саморазвитие. Разрешённый путь: эксперименты в **песочнице / полигоне** (отдельный worktree, `eurika/polygon/`, sandbox apply+verify) с LLM и интернетом → при удачном варианте **предложить** патч человеку → apply только после явного разрешения (HITL). Запрещено: менять живое ядро без предложения и approve, автопереписывание модулей «на лету», silent online-patching.
 
-**Ритуал C.14 (v1):** `eurika prove-cycle . --propose [--drill imports|extractable_block|long_function|llm_extract]` — seed polygon drill + запись в `.eurika/pending_plan.json` **без** apply; дальше Approvals / `eurika fix . --apply-approved`. Drills: deterministic ops + `llm_extract` (live LLM или offline synthetic). Обычный `prove-cycle` по-прежнему авто-apply только в `.eurika/prove_cycle/`.
+**Ритуал C.14 (v1):** `eurika prove-cycle . --propose [--drill imports|extractable_block|long_function|llm_extract] [--require-llm] [--sandbox]` — seed polygon drill + запись в `.eurika/pending_plan.json` **без** apply на main; `--sandbox` — apply+smoke-verify в `.eurika/sandbox` (git worktree / copy) до pending. Дальше Approvals / `eurika fix . --apply-approved`. Обычный `prove-cycle` по-прежнему авто-apply только в `.eurika/prove_cycle/`.
 
 **Telegram C.12 (v1):** `eurika telegram-bot .` — Bot API long-poll → `chat_send`; allowlist `EURIKA_TELEGRAM_CHAT_IDS`; без auto-apply.
 

@@ -672,6 +672,8 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
         cmd = f"$ eurika prove-cycle . --propose --drill {drill}"
         if polygon_propose_require_llm(msg):
             cmd += " --require-llm"
+        if polygon_propose_sandbox(msg):
+            cmd += " --sandbox"
         return ("polygon_propose", cmd)
     if is_release_check_request(msg):
         return ("release_check", "$ ./scripts/release_check.sh")
@@ -1156,6 +1158,9 @@ def is_polygon_propose_request(message: str) -> bool:
         "полигон live",
         "live llm",
         "require-llm",
+        "полигон sandbox",
+        "полигон worktree",
+        "sandbox propose",
     )
     if any(n in msg for n in needles):
         return True
@@ -1231,6 +1236,23 @@ def polygon_propose_require_llm(message: str) -> bool:
         "полигон live",
         "только llm",
         "strict llm",
+    )
+    return any(n in msg for n in needles)
+
+
+def polygon_propose_sandbox(message: str) -> bool:
+    """True when chat asks for C.14 worktree/sandbox propose."""
+    msg = _norm_msg(message)
+    if not msg:
+        return False
+    needles = (
+        "--sandbox",
+        "sandbox",
+        "worktree",
+        "полигон sandbox",
+        "полигон worktree",
+        "в песочнице",
+        "в sandbox",
     )
     return any(n in msg for n in needles)
 

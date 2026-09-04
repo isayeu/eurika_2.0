@@ -73,6 +73,7 @@
 | `третий полигон` / `предложи полигон long` | C.14: seed `long_function` (`extract_nested_function`) → Approvals |
 | `четвёртый полигон` / `полигон llm` | C.14: seed `llm_extract` (`llm_extract_block`, live LLM или offline synthetic) → Approvals |
 | `полигон live` / `require-llm` | C.14: `llm_extract --require-llm` (без synthetic fallback) |
+| `полигон sandbox` / `в песочнице` | C.14: `--sandbox` (apply+smoke в worktree/copy → pending) |
 | `статус apply` / `получилось?` | Последний `eurika_fix_report.json` (verify / modified); не путать с «что получилось?» |
 | опечатка вроде `scsn` | Подсказка; **да** → scan, **нет** → отмена (не list_docs) |
 | `покажи отчёт`, `doctor report` | Отчёт doctor |

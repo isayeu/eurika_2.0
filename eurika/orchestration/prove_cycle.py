@@ -3,9 +3,10 @@
 Proves that Eurika's execution stack works end-to-end on a synthetic drill file
 under `.eurika/prove_cycle/`. Use before trusting full `eurika fix` on production code.
 
-C.14 HITL mode (`propose=True` / CLI `--propose [--drill …]`): seed a polygon
-drill (`imports`, `extractable_block`, `long_function`, or `llm_extract`), park
-one op in Approvals, do not apply. Human approves → `eurika fix . --apply-approved`.
+C.14 HITL mode (`propose=True` / CLI `--propose [--drill …] [--sandbox]`):
+seed a polygon drill (`imports`, `extractable_block`, `long_function`, or
+`llm_extract`), optionally apply+smoke-verify in `.eurika/sandbox`, park one
+op in Approvals, do not apply on main. Human approves → `eurika fix . --apply-approved`.
 """
 
 from __future__ import annotations
@@ -423,6 +424,17 @@ def seed_polygon_llm_extract(root: Path) -> Path:
     return target
 
 
+def seed_polygon_for_drill(root: Path, drill_id: str) -> Path:
+    """Reseed the polygon target for a propose drill (main or sandbox)."""
+    if drill_id == "extractable_block":
+        return seed_polygon_extractable_block(root)
+    if drill_id == "long_function":
+        return seed_polygon_long_function(root)
+    if drill_id == "llm_extract":
+        return seed_polygon_llm_extract(root)
+    return seed_polygon_imports_ok(root)
+
+
 def build_prove_operation(root: Path) -> OperationRecord:
     """Build a single remove_unused_import op for the drill file."""
     seed_prove_drill_file(root)
@@ -600,8 +612,15 @@ def run_prove_propose(
     dry_run: bool = False,
     drill: str = DEFAULT_PROPOSE_DRILL,
     require_llm: bool = False,
+    sandbox: bool = False,
+    keep_sandbox: bool = False,
 ) -> dict[str, Any]:
-    """Seed polygon drill and park the op in Approvals; never apply."""
+    """Seed polygon drill and park the op in Approvals; never apply on main.
+
+    With ``sandbox=True``: seed+apply+smoke-verify in `.eurika/sandbox/…`
+    (git worktree when possible), then seed main + write pending_plan only if
+    sandbox verify succeeded.
+    """
     path = Path(project_root).resolve()
     try:
         drill_id = normalize_propose_drill(drill)
@@ -699,84 +718,162 @@ def run_prove_propose(
             "verify_success": None,
             "return_code": 0,
             "seeded_has_unused_import": None,
+            "sandbox": bool(sandbox),
         }
         if drill_id == "llm_extract":
             out_dry["llm_extract_source"] = "llm" if require_llm else "synthetic_offline"
             out_dry["require_llm"] = bool(require_llm)
         return out_dry
-    try:
-        operation = build_polygon_propose_operation(
-            path, drill=drill_id, require_llm=require_llm
+
+    sandbox_meta: dict[str, Any] | None = None
+    sandbox_verify: dict[str, Any] | None = None
+    build_root = path
+    if sandbox:
+        from eurika.orchestration.propose_sandbox import (
+            apply_and_smoke_verify,
+            create_propose_sandbox,
+            remove_propose_sandbox,
         )
-    except Exception as exc:
-        return {
-            "ok": False,
+
+        try:
+            sandbox_meta = create_propose_sandbox(path, drill_id=drill_id)
+            build_root = Path(sandbox_meta["path"])
+        except Exception as exc:
+            return {
+                "ok": False,
+                "prove_cycle": True,
+                "propose": True,
+                "drill_id": drill_id,
+                "sandbox": True,
+                "error": f"sandbox create failed: {exc}",
+                "modified": [],
+                "verify_success": False,
+                "return_code": 1,
+            }
+
+    try:
+        try:
+            operation = build_polygon_propose_operation(
+                build_root, drill=drill_id, require_llm=require_llm
+            )
+        except Exception as exc:
+            return {
+                "ok": False,
+                "prove_cycle": True,
+                "propose": True,
+                "drill_id": drill_id,
+                "sandbox": bool(sandbox),
+                "sandbox_path": str(build_root) if sandbox else None,
+                "sandbox_mode": (sandbox_meta or {}).get("mode"),
+                "error": str(exc),
+                "modified": [],
+                "verify_success": False if sandbox else None,
+                "return_code": 1,
+            }
+
+        if sandbox:
+            sandbox_verify = apply_and_smoke_verify(
+                build_root, operation, drill_id=drill_id
+            )
+            if not sandbox_verify.get("ok"):
+                return {
+                    "ok": False,
+                    "prove_cycle": True,
+                    "propose": True,
+                    "drill_id": drill_id,
+                    "sandbox": True,
+                    "sandbox_path": str(build_root),
+                    "sandbox_mode": (sandbox_meta or {}).get("mode"),
+                    "sandbox_verify": sandbox_verify,
+                    "error": (
+                        "sandbox verify failed: "
+                        f"{sandbox_verify.get('error') or 'unknown'}"
+                    ),
+                    "modified": [],
+                    "verify_success": False,
+                    "return_code": 1,
+                }
+            # Park on main: reseed live polygon, reuse verified op (no re-LLM).
+            seed_polygon_for_drill(path, drill_id)
+
+        operations: list[OperationRecord] = [operation]
+        patch_plan: PatchPlan = {"operations": operations}
+        target_rel = str(operation.get("target_file") or "")
+        seeded = path / target_rel
+        seeded_text = seeded.read_text(encoding="utf-8") if seeded.is_file() else ""
+        pending_path = save_pending_plan(
+            path,
+            patch_plan,
+            operations,
+            policy_decisions=[
+                {"index": 1, "decision": "allow", "reason": "prove_cycle_propose"}
+            ],
+            session_id=f"prove_cycle_propose_{drill_id}",
+        )
+        try:
+            pending_rel = str(pending_path.relative_to(path))
+        except ValueError:
+            pending_rel = str(pending_path)
+        drill_name, _ = _propose_drill_labels(drill_id)
+        seeded_nested = None
+        if drill_id == "long_function":
+            seeded_nested = (
+                "def _compute_first_half()" in seeded_text
+                and seeded_text.find("def polygon_long_function")
+                < seeded_text.find("def _compute_first_half")
+            )
+        llm_source = None
+        if drill_id == "llm_extract":
+            params = (operation.get("params") or {}) if isinstance(operation, dict) else {}
+            llm_source = params.get("source")
+        out: dict[str, Any] = {
+            "ok": True,
             "prove_cycle": True,
             "propose": True,
+            "drill": drill_name,
             "drill_id": drill_id,
-            "error": str(exc),
+            "target_file": target_rel,
+            "pending_plan": pending_rel,
+            "pending_plan_path": str(pending_path),
+            "operations": operations,
             "modified": [],
-            "verify_success": None,
-            "return_code": 1,
+            "verify_success": True if sandbox else None,
+            "return_code": 0,
+            "seeded_has_unused_import": (
+                "import os" in seeded_text if drill_id == "imports" else None
+            ),
+            "seeded_extractable": (
+                "_extracted_block_" not in seeded_text
+                if drill_id == "extractable_block"
+                else None
+            ),
+            "seeded_nested": seeded_nested,
+            "llm_extract_source": llm_source,
+            "require_llm": bool(require_llm) if drill_id == "llm_extract" else False,
+            "sandbox": bool(sandbox),
+            "instructions": (
+                "Review Approvals / .eurika/pending_plan.json, set team_decision=approve, "
+                "then: eurika fix . --apply-approved"
+            ),
         }
-    operations: list[OperationRecord] = [operation]
-    patch_plan: PatchPlan = {"operations": operations}
-    target_rel = str(operation.get("target_file") or "")
-    seeded = path / target_rel
-    seeded_text = seeded.read_text(encoding="utf-8") if seeded.is_file() else ""
-    pending_path = save_pending_plan(
-        path,
-        patch_plan,
-        operations,
-        policy_decisions=[{"index": 1, "decision": "allow", "reason": "prove_cycle_propose"}],
-        session_id=f"prove_cycle_propose_{drill_id}",
-    )
-    try:
-        pending_rel = str(pending_path.relative_to(path))
-    except ValueError:
-        pending_rel = str(pending_path)
-    drill_name, _ = _propose_drill_labels(drill_id)
-    seeded_nested = None
-    if drill_id == "long_function":
-        # Nested def still inside parent (module-level helper not yet extracted).
-        seeded_nested = (
-            "def _compute_first_half()" in seeded_text
-            and seeded_text.find("def polygon_long_function")
-            < seeded_text.find("def _compute_first_half")
-        )
-    llm_source = None
-    if drill_id == "llm_extract":
-        params = (operation.get("params") or {}) if isinstance(operation, dict) else {}
-        llm_source = params.get("source")
-    return {
-        "ok": True,
-        "prove_cycle": True,
-        "propose": True,
-        "drill": drill_name,
-        "drill_id": drill_id,
-        "target_file": target_rel,
-        "pending_plan": pending_rel,
-        "pending_plan_path": str(pending_path),
-        "operations": operations,
-        "modified": [],
-        "verify_success": None,
-        "return_code": 0,
-        "seeded_has_unused_import": (
-            "import os" in seeded_text if drill_id == "imports" else None
-        ),
-        "seeded_extractable": (
-            "_extracted_block_" not in seeded_text
-            if drill_id == "extractable_block"
-            else None
-        ),
-        "seeded_nested": seeded_nested,
-        "llm_extract_source": llm_source,
-        "require_llm": bool(require_llm) if drill_id == "llm_extract" else False,
-        "instructions": (
-            "Review Approvals / .eurika/pending_plan.json, set team_decision=approve, "
-            "then: eurika fix . --apply-approved"
-        ),
-    }
+        if sandbox and sandbox_meta:
+            out["sandbox_path"] = str(build_root)
+            out["sandbox_mode"] = sandbox_meta.get("mode")
+            out["sandbox_verify"] = sandbox_verify
+            out["sandbox_kept"] = bool(keep_sandbox)
+        return out
+    finally:
+        if sandbox and sandbox_meta and not keep_sandbox:
+            from eurika.orchestration.propose_sandbox import remove_propose_sandbox
+
+            try:
+                remove_propose_sandbox(
+                    path,
+                    Path(sandbox_meta["path"]),
+                    mode=str(sandbox_meta.get("mode") or ""),
+                )
+            except Exception:
+                pass
 
 
 def run_prove_cycle(
@@ -788,6 +885,8 @@ def run_prove_cycle(
     propose: bool = False,
     drill: str = DEFAULT_PROPOSE_DRILL,
     require_llm: bool = False,
+    sandbox: bool = False,
+    keep_sandbox: bool = False,
 ) -> dict[str, Any]:
     """
     Run one deterministic prove cycle on project_root.
@@ -801,6 +900,8 @@ def run_prove_cycle(
             dry_run=dry_run,
             drill=drill,
             require_llm=require_llm,
+            sandbox=sandbox,
+            keep_sandbox=keep_sandbox,
         )
 
     path = Path(project_root).resolve()
@@ -893,6 +994,18 @@ def format_prove_cycle_summary(payload: dict[str, Any]) -> str:
             lines.append(
                 f"- llm_extract source: **{payload.get('llm_extract_source')}**"
             )
+        if payload.get("sandbox"):
+            lines.append(
+                f"- sandbox: **{payload.get('sandbox_mode') or 'yes'}**"
+                + (
+                    f" (`{payload.get('sandbox_path')}`)"
+                    if payload.get("sandbox_kept") and payload.get("sandbox_path")
+                    else ""
+                )
+            )
+            sv = payload.get("sandbox_verify")
+            if isinstance(sv, dict) and sv.get("ok") is not None:
+                lines.append(f"- sandbox verify: **{sv.get('ok')}**")
         if payload.get("error"):
             lines.append(f"- error: {payload.get('error')}")
         if payload.get("dry_run"):

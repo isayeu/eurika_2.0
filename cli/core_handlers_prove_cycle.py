@@ -19,6 +19,8 @@ def handle_prove_cycle(args: Any) -> int:
     propose = bool(getattr(args, "propose", False))
     drill = str(getattr(args, "drill", "imports") or "imports")
     require_llm = bool(getattr(args, "require_llm", False))
+    sandbox = bool(getattr(args, "sandbox", False))
+    keep_sandbox = bool(getattr(args, "keep_sandbox", False))
     quiet = bool(getattr(args, "quiet", False))
     timeout = getattr(args, "verify_timeout", None)
     payload = run_prove_cycle(
@@ -29,6 +31,8 @@ def handle_prove_cycle(args: Any) -> int:
         propose=propose,
         drill=drill,
         require_llm=require_llm,
+        sandbox=sandbox,
+        keep_sandbox=keep_sandbox,
     )
     summary = format_prove_cycle_summary(payload)
     if quiet:
@@ -52,6 +56,10 @@ def handle_prove_cycle(args: Any) -> int:
                     snippet["llm_extract_source"] = payload.get("llm_extract_source")
                 if payload.get("require_llm"):
                     snippet["require_llm"] = True
+                if payload.get("sandbox"):
+                    snippet["sandbox"] = True
+                    snippet["sandbox_mode"] = payload.get("sandbox_mode")
+                    snippet["verify_success"] = payload.get("verify_success")
                 if payload.get("error"):
                     snippet["error"] = payload.get("error")
             print(json.dumps(snippet, ensure_ascii=False, indent=2))

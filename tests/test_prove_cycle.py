@@ -315,3 +315,53 @@ def test_propose_llm_extract_approve_then_apply(tmp_path: Path, monkeypatch) -> 
         ns["polygon_refactor_code_smell_drill"](5)
         == before_ns["polygon_refactor_code_smell_drill"](5)
     )
+
+
+def test_propose_sandbox_imports_verifies_then_parks(tmp_path: Path) -> None:
+    out = run_prove_cycle(
+        tmp_path, propose=True, quiet=True, drill="imports", sandbox=True
+    )
+    assert out.get("ok") is True
+    assert out.get("sandbox") is True
+    assert out.get("sandbox_mode") == "copy"
+    assert out.get("verify_success") is True
+    assert (out.get("sandbox_verify") or {}).get("ok") is True
+    assert (tmp_path / ".eurika" / "pending_plan.json").is_file()
+    seeded = (tmp_path / POLYGON_IMPORTS_REL).read_text(encoding="utf-8")
+    assert "import os" in seeded  # main still seeded for HITL apply
+    # Default: sandbox dir cleaned up
+    sandbox_root = tmp_path / ".eurika" / "sandbox"
+    if sandbox_root.is_dir():
+        assert list(sandbox_root.iterdir()) == []
+
+
+def test_propose_sandbox_keep_leaves_dir(tmp_path: Path) -> None:
+    out = run_prove_cycle(
+        tmp_path,
+        propose=True,
+        quiet=True,
+        drill="extractable_block",
+        sandbox=True,
+        keep_sandbox=True,
+    )
+    assert out.get("ok") is True
+    assert out.get("sandbox_kept") is True
+    sb = Path(str(out.get("sandbox_path")))
+    assert sb.is_dir()
+    # Applied inside sandbox — helper present there
+    applied = (sb / POLYGON_EXTRACTABLE_REL).read_text(encoding="utf-8")
+    assert "def _extracted_block_" in applied
+    # Main still only seeded (not applied)
+    main = (tmp_path / POLYGON_EXTRACTABLE_REL).read_text(encoding="utf-8")
+    assert "_extracted_block_" not in main
+
+
+def test_propose_sandbox_llm_extract_offline(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("EURIKA_USE_LLM_EXTRACT", raising=False)
+    out = run_prove_cycle(
+        tmp_path, propose=True, quiet=True, drill="llm_extract", sandbox=True
+    )
+    assert out.get("ok") is True
+    assert out.get("llm_extract_source") == "synthetic_offline"
+    assert out.get("verify_success") is True
+

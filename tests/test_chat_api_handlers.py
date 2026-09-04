@@ -522,6 +522,11 @@ def test_chat_send_polygon_propose_parks_approvals(tmp_path: Path, monkeypatch) 
     assert polygon_propose_require_llm("полигон live llm")
     assert polygon_propose_require_llm("четвёртый полигон --require-llm")
     assert not polygon_propose_require_llm("четвёртый полигон")
+    from eurika.api.chat_direct import polygon_propose_sandbox
+
+    assert polygon_propose_sandbox("предложи полигон sandbox")
+    assert polygon_propose_sandbox("второй полигон --sandbox")
+    assert not polygon_propose_sandbox("предложи полигон эксперимент")
     assert resolve_direct_handler(tmp_path, "статус apply")[0] == "apply_status"
     assert resolve_direct_handler(tmp_path, "что получилось?")[0] == "goal_reflection"
     monkeypatch.setattr(

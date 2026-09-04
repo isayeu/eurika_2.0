@@ -222,6 +222,19 @@ def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
             "fail instead of synthetic_offline fallback"
         ),
     )
+    prove_cycle_parser.add_argument(
+        "--sandbox",
+        action="store_true",
+        help=(
+            "With --propose: apply+smoke-verify in .eurika/sandbox (git worktree "
+            "when possible); park pending_plan on main only if sandbox ok"
+        ),
+    )
+    prove_cycle_parser.add_argument(
+        "--keep-sandbox",
+        action="store_true",
+        help="With --sandbox: keep the worktree/copy for inspection",
+    )
     prove_cycle_parser.add_argument("--quiet", "-q", action="store_true", help="JSON output only")
     prove_cycle_parser.add_argument(
         "--verify-timeout",

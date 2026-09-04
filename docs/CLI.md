@@ -19,7 +19,7 @@ Scan → Diagnose → Plan → Patch → Verify → Log
 | Diagnose | `eurika doctor .` или `eurika report .` + `eurika suggest-plan .` | Отчёт + интерпретация + план рефакторинга |
 | Plan | `eurika fix . --dry-run` или `eurika agent patch-plan .` | Построить план патчей без применения |
 | Propose (team) | `eurika fix . --team-mode` | Сохранить план в `.eurika/pending_plan.json`; reviewer редактирует team_decision; затем `--apply-approved` (ROADMAP 3.0.4) |
-| Propose (C.14 polygon HITL) | `eurika prove-cycle . --propose [--drill …] [--require-llm]` | Seed polygon drill + pending plan **без** apply; `imports` / `extractable_block` / `long_function` / `llm_extract`; `--require-llm` = live LLM only; Approve → `--apply-approved` |
+| Propose (C.14 polygon HITL) | `eurika prove-cycle . --propose [--drill …] [--require-llm] [--sandbox]` | Seed polygon + pending plan **без** apply на main; `--sandbox` = apply+smoke-verify в worktree/copy; Approve → `--apply-approved` |
 | Telegram (C.12) | `eurika telegram-bot .` | Long-poll → `chat_send`; allowlist chat ids; apply только через Approvals |
 | Patch | `eurika fix .` или `eurika agent patch-apply . --apply` | Применить патчи (с бэкапами) |
 | Verify | встроено в `eurika fix` (pytest после apply) | pytest; при провале — подсказка rollback; при ухудшении метрик — автоматический откат |
@@ -277,7 +277,7 @@ eurika learning-kpi . --polygon
 
 ---
 
-### eurika prove-cycle [path] [--dry-run] [--propose] [--drill NAME] [--require-llm] [--quiet] [--verify-timeout SEC]
+### eurika prove-cycle [path] [--dry-run] [--propose] [--drill NAME] [--require-llm] [--sandbox] [--keep-sandbox] [--quiet] [--verify-timeout SEC]
 
 Детерминированный drill **без LLM**.
 
@@ -285,6 +285,7 @@ eurika learning-kpi . --polygon
 - `--propose` (VISION C.14): seed polygon → `.eurika/pending_plan.json`, **без** apply. Дальше Approvals / `eurika fix . --apply-approved`.
 - `--drill` (только с `--propose`): `imports` (default), `extractable_block`, `long_function`, или `llm_extract`.
 - `--require-llm` (только с `--propose --drill llm_extract`): force live LLM patch; без валидного ответа — ошибка (не `synthetic_offline`).
+- `--sandbox` (с `--propose`): seed+apply+smoke-verify в `.eurika/sandbox/…` (git worktree при наличии git, иначе пустой copy); `pending_plan` на main только если sandbox ok. `--keep-sandbox` — не удалять каталог.
 
 ```bash
 eurika prove-cycle .
@@ -294,6 +295,8 @@ eurika prove-cycle . --propose --drill extractable_block
 eurika prove-cycle . --propose --drill long_function
 eurika prove-cycle . --propose --drill llm_extract
 EURIKA_USE_LLM_EXTRACT=1 eurika prove-cycle . --propose --drill llm_extract --require-llm
+eurika prove-cycle . --propose --sandbox
+eurika prove-cycle . --propose --drill long_function --sandbox --keep-sandbox
 eurika prove-cycle . --propose --dry-run
 ```
 
