@@ -5,6 +5,7 @@
 Fallback: refactor_code_smell (TODO при emit_todo) или skip. Целевой кейс для LLM-powered extract.
 """
 
+
 def _compute_intermediate_values(seed: int):
     a = seed + 1
     b = a * 2
@@ -18,9 +19,16 @@ def _compute_intermediate_values(seed: int):
     j = i * 2
     return a, b, c, d, e, f, g, h, i, j
 
+
+def _sum_intermediates(values: tuple) -> int:
+    """Offline LLM-shaped extract for C.14 propose (no live LLM required)."""
+    a, b, c, d, e, f, g, h, i, j = values
+    return a + b + c + d + e + f + g + h + i + j
+
+
 def polygon_refactor_code_smell_drill(seed: int) -> int:
     """55+ строк последовательного кода. Нет extractable nested/block — refactor_code_smell fallback."""
-    a, b, c, d, e, f, g, h, i, j = _compute_intermediate_values(seed)
+    values = _compute_intermediate_values(seed)
     # Padding to exceed MAX_FUNCTION_LINES (50)
     _1 = 1
     _2 = 2
@@ -59,4 +67,4 @@ def polygon_refactor_code_smell_drill(seed: int) -> int:
     _35 = 35
     _36 = 36
     _37 = 37
-    return a + b + c + d + e + f + g + h + i + j + _1
+    return _sum_intermediates(values) + _1
