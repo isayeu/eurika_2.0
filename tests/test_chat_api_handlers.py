@@ -502,6 +502,30 @@ def test_chat_send_ritual_request_runs_scan_doctor_report_snapshot(tmp_path: Pat
     assert "Выполнил ритуал" in text or "ритуал" in text
 
 
+def test_chat_send_polygon_propose_parks_approvals(tmp_path: Path, monkeypatch) -> None:
+    """C.14 chat ritual: prove-cycle --propose without LLM or apply."""
+    from eurika.api.chat_direct import is_polygon_propose_request
+    import eurika.api.chat as chat_mod
+
+    assert is_polygon_propose_request("предложи полигон эксперимент")
+    assert is_polygon_propose_request("eurika prove-cycle --propose")
+    assert not is_polygon_propose_request("проведи ритуал")
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "предложи полигон эксперимент")
+    text = out.get("text") or ""
+    assert out.get("error") is None
+    assert out.get("approvalsQueued") == 1
+    assert "Approvals" in text or "pending" in text.lower()
+    target = tmp_path / "eurika" / "polygon" / "imports_ok.py"
+    assert target.is_file()
+    assert "import os" in target.read_text(encoding="utf-8")
+    pending = tmp_path / ".eurika" / "pending_plan.json"
+    assert pending.is_file()
+
+
 def test_chat_send_git_commit_request_returns_real_status_without_llm(tmp_path: Path, monkeypatch) -> None:
     """«собери коммит» stays HITL git_commit (status+diff + применяй)."""
     import subprocess

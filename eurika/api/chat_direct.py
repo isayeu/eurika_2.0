@@ -494,6 +494,8 @@ def _accept_soft_handler(handler_id: Optional[str], msg: str) -> bool:
         return False
     if handler_id == "ritual" and not is_ritual_request(msg):
         return False
+    if handler_id == "polygon_propose" and not is_polygon_propose_request(msg):
+        return False
     if handler_id == "scan" and not is_scan_request(msg) and not looks_like_scan_typo(msg):
         return False
     if handler_id == "roadmap_verify" and not is_roadmap_verify_request(msg):
@@ -659,6 +661,8 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
     # Hard skills before soft ML/vector — «git commit …» must not become release_check.
     if is_ritual_request(msg):
         return ("ritual", "$ eurika scan . && eurika doctor . && eurika report-snapshot .")
+    if is_polygon_propose_request(msg):
+        return ("polygon_propose", "$ eurika prove-cycle . --propose")
     if is_release_check_request(msg):
         return ("release_check", "$ ./scripts/release_check.sh")
     if is_roadmap_verify_request(msg):
@@ -1109,6 +1113,34 @@ def is_ritual_request(message: str) -> bool:
         "report-snapshot",
     )
     return any(k in msg for k in keywords)
+
+
+def is_polygon_propose_request(message: str) -> bool:
+    """C.14 HITL: seed polygon drill into Approvals via prove-cycle --propose."""
+    msg = _norm_msg(message)
+    if not msg:
+        return False
+    needles = (
+        "prove-cycle --propose",
+        "prove cycle --propose",
+        "eurika prove-cycle --propose",
+        "предложи полигон",
+        "полигон эксперимент",
+        "полигон-эксперимент",
+        "polygon propose",
+        "propose polygon",
+        "саморазвитие полигон",
+        "c.14 полигон",
+        "ритуал саморазвития",
+        "propose hitl",
+    )
+    if any(n in msg for n in needles):
+        return True
+    if "prove-cycle" in msg and "propose" in msg:
+        return True
+    if "полигон" in msg and any(w in msg for w in ("предложи", "propose", "hitl", "approvals")):
+        return True
+    return False
 
 
 def is_force_push_request(message: str) -> bool:

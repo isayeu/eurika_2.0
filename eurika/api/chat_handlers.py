@@ -573,6 +573,50 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             output,
             code,
         )
+    if handler_id == 'polygon_propose':
+        from eurika.orchestration.prove_cycle import (
+            format_prove_cycle_summary,
+            run_prove_propose,
+        )
+
+        payload = run_prove_propose(root, dry_run=False)
+        summary = format_prove_cycle_summary(payload)
+        ok = bool(payload.get('ok', True))
+        pending = payload.get('pending_plan') or '.eurika/pending_plan.json'
+        target = payload.get('target_file') or 'eurika/polygon/imports_ok.py'
+        state['active_goal'] = {
+            'intent': 'polygon_propose',
+            'source': 'chat_direct',
+            'target': target,
+        }
+        store_last_execution(
+            state,
+            {
+                'ok': ok,
+                'summary': (
+                    f'polygon propose → {pending}'
+                    if ok
+                    else 'polygon propose failed'
+                ),
+            },
+        )
+        save_dialog_state(root, state)
+        text = (
+            'C.14: полигон → Approvals (без apply).\n\n'
+            f'{summary}\n\n'
+            'Дальше: вкладка **Approvals** → approve → '
+            '`eurika fix . --apply-approved`.'
+        )
+        text = append_goal_nudge(text, state)
+        release_active_goal_keep_execution(state)
+        save_dialog_state(root, state)
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {
+            'text': text,
+            'error': None if ok else str(payload.get('error') or 'propose failed'),
+            'approvalsQueued': 1 if ok else 0,
+        }
     if handler_id == 'release_check':
         exit_code = -1
         term_cmd = None

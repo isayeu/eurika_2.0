@@ -1112,6 +1112,7 @@ def format_capabilities_help() -> str:
 - «покажи отчёт» — doctor report
 - «какая цель?» / «что получилось?» / «сбрось цель» — контекст агента
 - «проведи ритуал» — scan → doctor → report-snapshot
+- «предложи полигон эксперимент» — C.14: seed → Approvals (без apply)
 - «проведи smoke test» — быстрый smoke (torch + Qt)
 - «проведи self-check» — полный self-check
 - «рефактори» / «eurika fix» — правки по архитектуре
