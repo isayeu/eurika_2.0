@@ -37,18 +37,31 @@ def _shell_for_chat(
     fallback: Optional[Callable[[], tuple[bool, str]]] = None,
     emit_cmd: Optional[str] = None,
 ) -> tuple[Optional[str], str, int, bool]:
-    """Prefer Qt Terminal callback; else silent fallback. Returns (term_cmd, out, code, ok)."""
+    """Prefer Qt Terminal callback; else silent fallback. Returns (term_cmd, out, code, ok).
+
+    If the shell callback fails (e.g. ``eurika`` not on PATH) but a fallback is
+    provided, still run the fallback so Approvals/pending_plan land, and keep
+    ``terminal_cmd`` so the Terminal tab shows what was attempted.
+    """
     cmd = (shell_cmd or "").strip()
     if not cmd and emit_cmd:
         cmd = (emit_cmd or "").strip().lstrip("$ ").strip()
+    term_cmd = f"$ {cmd}" if cmd else None
     if run_command_with_result is not None and cmd:
         term_cmd, output, code = _run_emit_with_result(emit_cmd or f"$ {cmd}", run_command_with_result)
-        return term_cmd, output, code, code == 0
+        if code == 0:
+            return term_cmd, output, code, True
+        if fallback is not None:
+            ok, fb_out = fallback()
+            parts = [p for p in ((output or "").strip(), (fb_out or "").strip()) if p]
+            combined = "\n\n".join(parts)
+            return term_cmd, combined, (0 if ok else int(code)), bool(ok)
+        return term_cmd, output, code, False
     if fallback is not None:
         ok, output = fallback()
         # Still expose what would have run, so Qt can mirror even without callback.
-        return (f"$ {cmd}" if cmd else None), (output or ""), (0 if ok else 1), bool(ok)
-    return (f"$ {cmd}" if cmd else None), "", -1, False
+        return term_cmd, (output or ""), (0 if ok else 1), bool(ok)
+    return term_cmd, "", -1, False
 
 
 def _with_terminal(
@@ -575,24 +588,28 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         )
     if handler_id == 'polygon_propose':
         from eurika.agent.live_activity import publish_done, publish_start
+        from eurika.api.chat_direct import polygon_propose_drill_id
         from eurika.orchestration.prove_cycle import (
             format_prove_cycle_summary,
             run_prove_propose,
         )
         from eurika.orchestration.team_mode import has_pending_plan
 
-        propose_shell = "eurika prove-cycle . --propose"
+        drill = polygon_propose_drill_id(msg)
+        propose_shell = f"eurika prove-cycle . --propose --drill {drill}"
         started = publish_start(
             root,
-            "prove-cycle --propose",
+            f"prove-cycle --propose --drill {drill}",
             {"message": msg},
             client="qt-chat",
         )
 
         def _fallback() -> tuple[bool, str]:
-            payload = run_prove_propose(root, dry_run=False)
+            payload = run_prove_propose(root, dry_run=False, drill=drill)
             summary = format_prove_cycle_summary(payload)
             ok_local = bool(payload.get("ok", True))
+            if not ok_local and payload.get("error"):
+                summary = f"{summary}\n\nerror: {payload.get('error')}"
             return ok_local, summary
 
         term_cmd, output, code, ok = _shell_for_chat(
@@ -602,7 +619,11 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             emit_cmd=emit_cmd or f"$ {propose_shell}",
         )
         queued = 1 if ok and has_pending_plan(root) else 0
-        target = "eurika/polygon/imports_ok.py"
+        target = (
+            "eurika/polygon/extractable_block.py"
+            if drill == "extractable_block"
+            else "eurika/polygon/imports_ok.py"
+        )
         state['active_goal'] = {
             'intent': 'polygon_propose',
             'source': 'chat_direct',
@@ -613,7 +634,7 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             {
                 'ok': ok,
                 'summary': (
-                    f'polygon propose → .eurika/pending_plan.json'
+                    f'polygon propose ({drill}) → .eurika/pending_plan.json'
                     if ok
                     else 'polygon propose failed'
                 ),

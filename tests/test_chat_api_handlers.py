@@ -504,12 +504,14 @@ def test_chat_send_ritual_request_runs_scan_doctor_report_snapshot(tmp_path: Pat
 
 def test_chat_send_polygon_propose_parks_approvals(tmp_path: Path, monkeypatch) -> None:
     """C.14 chat ritual: prove-cycle --propose without LLM or apply."""
-    from eurika.api.chat_direct import is_polygon_propose_request
+    from eurika.api.chat_direct import is_polygon_propose_request, polygon_propose_drill_id
     import eurika.api.chat as chat_mod
 
     assert is_polygon_propose_request("предложи полигон эксперимент")
     assert is_polygon_propose_request("eurika prove-cycle --propose")
     assert not is_polygon_propose_request("проведи ритуал")
+    assert polygon_propose_drill_id("предложи полигон эксперимент") == "imports"
+    assert polygon_propose_drill_id("предложи полигон extract") == "extractable_block"
     monkeypatch.setattr(
         "eurika.reasoning.architect.call_llm_with_prompt",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
@@ -520,6 +522,7 @@ def test_chat_send_polygon_propose_parks_approvals(tmp_path: Path, monkeypatch) 
     assert out.get("approvalsQueued") == 1
     assert "Approvals" in text or "pending" in text.lower()
     assert "prove-cycle" in (out.get("terminal_cmd") or "")
+    assert "--drill imports" in (out.get("terminal_cmd") or "")
     assert out.get("terminal_exit_code") == 0
     assert "pending_plan" in (out.get("terminal_output") or "") or "Approvals" in (
         out.get("terminal_output") or ""
@@ -536,6 +539,24 @@ def test_chat_send_polygon_propose_parks_approvals(tmp_path: Path, monkeypatch) 
     ]
     assert lines
     assert any("prove-cycle" in line for line in lines)
+
+
+def test_chat_send_polygon_extract_propose(tmp_path: Path, monkeypatch) -> None:
+    import eurika.api.chat as chat_mod
+
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "предложи полигон extract")
+    assert out.get("error") is None
+    assert out.get("approvalsQueued") == 1
+    assert "--drill extractable_block" in (out.get("terminal_cmd") or "")
+    target = tmp_path / "eurika" / "polygon" / "extractable_block.py"
+    assert target.is_file()
+    assert "_extracted_block_" not in target.read_text(encoding="utf-8")
+    pending = json.loads((tmp_path / ".eurika" / "pending_plan.json").read_text(encoding="utf-8"))
+    assert pending["operations"][0]["kind"] == "extract_block_to_helper"
 
 
 def test_chat_send_git_commit_request_returns_real_status_without_llm(tmp_path: Path, monkeypatch) -> None:

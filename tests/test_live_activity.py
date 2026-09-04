@@ -23,11 +23,17 @@ def test_publish_and_consume_start_then_done(tmp_path: Path) -> None:
         tmp_path,
         started,
         ok=True,
-        result={"text": "literal 3", "terminal_cmd": "$ sed -n '1,8p' x.py", "terminal_output": "ok"},
+        result={
+            "text": "literal 3",
+            "terminal_cmd": "$ sed -n '1,8p' x.py",
+            "terminal_output": "ok",
+            "approvalsQueued": 1,
+        },
     )
     payload = recent(tmp_path, after_offset=0)
     phases = [event["phase"] for event in payload["events"]]
     assert phases == ["start", "done"]
+    assert payload["events"][-1].get("approvalsQueued") == 1
     assert payload["offset"] > 0
     more, offset = consume_jsonl(activity_path(tmp_path), payload["offset"])
     assert more == []

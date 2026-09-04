@@ -184,6 +184,11 @@ def publish_done(
             if key in result:
                 value = result[key]
                 payload[key] = _clip(value, 2000) if key != "terminal_exit_code" else value
+        if "approvalsQueued" in result:
+            try:
+                payload["approvalsQueued"] = int(result.get("approvalsQueued") or 0)
+            except (TypeError, ValueError):
+                payload["approvalsQueued"] = 0
         output = result.get("output")
         if isinstance(output, str) and output.strip() and "terminal_output" not in payload:
             payload["terminal_output"] = _clip(output, 2000)

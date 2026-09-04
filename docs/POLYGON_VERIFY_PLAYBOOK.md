@@ -7,15 +7,16 @@
 Один deterministic цикл «посеять → предложить → человек решает» (без LLM, без silent apply):
 
 ```bash
-eurika prove-cycle . --propose
-# Qt Approvals → Load plan → approve только eurika/polygon/imports_ok.py
+eurika prove-cycle . --propose                      # drill imports (default)
+eurika prove-cycle . --propose --drill extractable_block
+# Qt Approvals → Load plan → approve только polygon target
 # или вручную team_decision=approve в .eurika/pending_plan.json
 eurika fix . --apply-approved
 ```
 
-`--propose` пишет pending plan и **не** применяет патч. Обычный `prove-cycle` (без флага) по-прежнему работает только на `.eurika/prove_cycle/drill_unused.py`.
+`--propose` пишет pending plan и **не** применяет патч. Drills: `imports` → `remove_unused_import` на `imports_ok.py`; `extractable_block` → `extract_block_to_helper` на `extractable_block.py` (seed сбрасывает helper в inline). Обычный `prove-cycle` (без флага) по-прежнему работает только на `.eurika/prove_cycle/drill_unused.py`.
 
-Chat «предложи полигон эксперимент»: mirror в Terminal (`$ eurika prove-cycle . --propose`), `live_activity.jsonl`, автофокус вкладки Approvals.
+Chat: «предложи полигон эксперимент» → `--drill imports`; «второй полигон» / «полигон extract» → `--drill extractable_block`. Mirror в Terminal + `live_activity.jsonl`, автофокус Approvals.
 
 **Важно (2026-09-04):** после apply pytest может быть зелёным, а rescan — увидеть «шум» (грязное дерево / float jitter) и раньше откатывал с `metrics_worsened`. Для **только** `eurika/polygon/*` и для Δ score < `1e-4` откат по метрикам **не** делается — gate остаётся pytest.
 

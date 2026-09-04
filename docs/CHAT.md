@@ -69,6 +69,7 @@
 |-------|----------|
 | `просканируй проект` / `scan` / `скан` | `eurika scan .` |
 | `предложи полигон эксперимент` / `prove-cycle --propose` | C.14: seed `imports_ok` → Approvals (**без** apply); mirror в Terminal + live_activity; автофокус Approvals |
+| `второй полигон` / `предложи полигон extract` | C.14: seed `extractable_block` (`extract_block_to_helper`) → Approvals |
 | опечатка вроде `scsn` | Подсказка; **да** → scan, **нет** → отмена (не list_docs) |
 | `покажи отчёт`, `doctor report` | Отчёт doctor |
 | `какие документы по проекту?`, `покажи документацию` | Список README / docs / rules |

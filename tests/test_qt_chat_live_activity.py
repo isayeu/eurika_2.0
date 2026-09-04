@@ -53,3 +53,45 @@ def test_apply_session_chat_updates_status_not_transcript(monkeypatch) -> None:
     assert appended == []
     assert terminal == []
     assert "session/chat" in status.text
+
+
+def test_apply_done_with_approvals_focuses(monkeypatch) -> None:
+    focused: list[bool] = []
+    terminal: list[str] = []
+    monkeypatch.setattr(
+        "qt_app.ui.handlers.chat_handlers.focus_approvals_mode",
+        lambda _main: focused.append(True),
+    )
+    monkeypatch.setattr(
+        "qt_app.ui.handlers.chat_handlers.QTimer.singleShot",
+        lambda _ms, cb: cb(),
+    )
+    monkeypatch.setattr(
+        "qt_app.ui.handlers.chat_handlers.terminal_tab._append_stream",
+        lambda _main, text: terminal.append(text),
+    )
+    main = SimpleNamespace(
+        status_label=SimpleNamespace(setText=lambda *_: None),
+        terminal_emulator_output=SimpleNamespace(append=terminal.append),
+        chat_input=None,
+        tabs=SimpleNamespace(setCurrentIndex=lambda *_: None),
+        terminal_tab_index=2,
+        _chat_worker=None,
+    )
+    _apply_live_activity_event(
+        cast(MainWindow, main),
+        {
+            "kind": "rpc",
+            "phase": "done",
+            "client": "qt-chat",
+            "method": "prove-cycle --propose --drill extractable_block",
+            "title": "prove-cycle --propose --drill extractable_block",
+            "ok": True,
+            "terminal_cmd": "$ eurika prove-cycle . --propose --drill extractable_block",
+            "terminal_output": "pending",
+            "terminal_exit_code": 0,
+            "approvalsQueued": 1,
+        },
+    )
+    assert focused == [True]
+    assert any("prove-cycle" in line for line in terminal)

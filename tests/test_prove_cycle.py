@@ -7,15 +7,18 @@ from pathlib import Path
 
 from eurika.orchestration.prove_cycle import (
     DRILL_REL_PATH,
+    POLYGON_EXTRACTABLE_REL,
     POLYGON_IMPORTS_REL,
     build_polygon_propose_operation,
     build_prove_operation,
     format_prove_cycle_summary,
+    normalize_propose_drill,
     run_prove_cycle,
     seed_prove_drill_file,
 )
 from eurika.orchestration.team_mode import load_approved_operations
 from eurika.refactor.remove_unused_import import remove_unused_imports
+from patch_apply import apply_patch_plan
 
 
 def test_seed_prove_drill_has_unused_import(tmp_path: Path) -> None:
@@ -115,3 +118,51 @@ def test_default_prove_cycle_still_sandboxed(tmp_path: Path) -> None:
     assert (tmp_path / DRILL_REL_PATH).is_file()
     assert not (tmp_path / "eurika" / "orchestration").exists()
     assert not (tmp_path / POLYGON_IMPORTS_REL).exists()
+
+
+def test_normalize_propose_drill_aliases() -> None:
+    assert normalize_propose_drill("imports") == "imports"
+    assert normalize_propose_drill("extract") == "extractable_block"
+    assert normalize_propose_drill("second") == "extractable_block"
+
+
+def test_propose_extractable_writes_pending_and_seeds(tmp_path: Path) -> None:
+    out = run_prove_cycle(
+        tmp_path, propose=True, quiet=True, drill="extractable_block"
+    )
+    assert out.get("ok") is True
+    assert out.get("drill_id") == "extractable_block"
+    assert out.get("target_file") == POLYGON_EXTRACTABLE_REL
+    target = tmp_path / POLYGON_EXTRACTABLE_REL
+    text = target.read_text(encoding="utf-8")
+    assert "polygon_extractable_block" in text
+    assert "_extracted_block_" not in text
+    assert "a = x + 1" in text
+    pending = tmp_path / ".eurika" / "pending_plan.json"
+    data = json.loads(pending.read_text(encoding="utf-8"))
+    op = data["operations"][0]
+    assert op["kind"] == "extract_block_to_helper"
+    assert op["target_file"] == POLYGON_EXTRACTABLE_REL
+    assert op["team_decision"] == "pending"
+    params = op.get("params") or {}
+    assert params.get("location") == "polygon_extractable_block"
+    assert params.get("helper_name")
+    assert params.get("block_start_line")
+
+
+def test_propose_extractable_approve_then_apply(tmp_path: Path) -> None:
+    run_prove_cycle(tmp_path, propose=True, quiet=True, drill="extractable_block")
+    path = tmp_path / ".eurika" / "pending_plan.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["operations"][0]["team_decision"] = "approve"
+    data["operations"][0]["approved_by"] = "tester"
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    approved, _ = load_approved_operations(tmp_path)
+    assert len(approved) == 1
+    report = apply_patch_plan(
+        tmp_path, {"operations": approved}, dry_run=False, backup=False
+    )
+    assert POLYGON_EXTRACTABLE_REL in (report.get("modified") or [])
+    after = (tmp_path / POLYGON_EXTRACTABLE_REL).read_text(encoding="utf-8")
+    assert "def _extracted_block_" in after
+    assert "a = x + 1" not in after or "_extracted_block_" in after

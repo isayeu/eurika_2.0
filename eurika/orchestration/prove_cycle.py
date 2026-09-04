@@ -3,8 +3,8 @@
 Proves that Eurika's execution stack works end-to-end on a synthetic drill file
 under `.eurika/prove_cycle/`. Use before trusting full `eurika fix` on production code.
 
-C.14 HITL mode (`propose=True` / CLI `--propose`): seed `eurika/polygon/imports_ok.py`,
-park one `remove_unused_import` op in Approvals (`.eurika/pending_plan.json`), do not apply.
+C.14 HITL mode (`propose=True` / CLI `--propose [--drill …]`): seed a polygon
+drill (`imports` or `extractable_block`), park one op in Approvals, do not apply.
 Human approves → `eurika fix . --apply-approved`.
 """
 
@@ -27,6 +27,9 @@ from .team_mode import PENDING_PLAN_FILE, save_pending_plan
 
 DRILL_REL_PATH = ".eurika/prove_cycle/drill_unused.py"
 POLYGON_IMPORTS_REL = "eurika/polygon/imports_ok.py"
+POLYGON_EXTRACTABLE_REL = "eurika/polygon/extractable_block.py"
+PROPOSE_DRILLS = ("imports", "extractable_block")
+DEFAULT_PROPOSE_DRILL = "imports"
 
 _DRILL_SEED = '''import os
 from pathlib import Path
@@ -47,10 +50,58 @@ def polygon_imports_ok() -> Path:
     return Path(".")
 '''
 
+_POLYGON_EXTRACTABLE_SEED = '''"""DRILL_EXTRACTABLE_BLOCK: extract_block_to_helper — блок if с 5+ строками без return."""
+
+
+def polygon_extractable_block(x: int) -> int:
+    """Внутренний блок if (5+ строк) без return — подходит для suggest_extract_block.
+
+    Нужно depth > 4 (5+ вложенных if) чтобы CodeAwareness пометил deep_nesting.
+    """
+    result = 0
+    if x > 0:
+        if x < 10:
+            if x > 1:
+                if x < 9:
+                    a = x + 1
+                    b = a * 2
+                    c = b + x
+                    d = c * 2
+                    result = d
+    return result
+'''
+
 _DRILL_DESCRIPTION = "Prove-cycle: remove unused import `os` from synthetic drill module."
 _POLYGON_DESCRIPTION = (
     "C.14 polygon propose: remove unused import `os` from eurika/polygon/imports_ok.py"
 )
+_POLYGON_EXTRACTABLE_DESCRIPTION = (
+    "C.14 polygon propose: extract_block_to_helper on "
+    "eurika/polygon/extractable_block.py"
+)
+
+
+def normalize_propose_drill(drill: str | None) -> str:
+    """Map aliases to a supported propose drill id."""
+    raw = str(drill or DEFAULT_PROPOSE_DRILL).strip().lower().replace("-", "_")
+    aliases = {
+        "imports": "imports",
+        "import": "imports",
+        "imports_ok": "imports",
+        "unused_import": "imports",
+        "polygon_unused_import": "imports",
+        "extractable_block": "extractable_block",
+        "extractable": "extractable_block",
+        "extract": "extractable_block",
+        "extract_block": "extractable_block",
+        "second": "extractable_block",
+    }
+    resolved = aliases.get(raw, raw)
+    if resolved not in PROPOSE_DRILLS:
+        raise ValueError(
+            f"Unknown propose drill {drill!r}; expected one of {', '.join(PROPOSE_DRILLS)}"
+        )
+    return resolved
 
 
 _VERIFY_SCRIPT = '''"""Verify prove-cycle unused_import drill."""
@@ -122,6 +173,15 @@ def seed_polygon_imports_ok(root: Path) -> Path:
     return target
 
 
+def seed_polygon_extractable_block(root: Path) -> Path:
+    """Reseed extractable_block drill (inline body, no helper yet)."""
+    root = root.resolve()
+    target = root / POLYGON_EXTRACTABLE_REL
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(_POLYGON_EXTRACTABLE_SEED, encoding="utf-8")
+    return target
+
+
 def build_prove_operation(root: Path) -> OperationRecord:
     """Build a single remove_unused_import op for the drill file."""
     seed_prove_drill_file(root)
@@ -137,8 +197,15 @@ def build_prove_operation(root: Path) -> OperationRecord:
     }
 
 
-def build_polygon_propose_operation(root: Path) -> OperationRecord:
-    """Build a pending remove_unused_import op for polygon imports_ok (HITL)."""
+def build_polygon_propose_operation(
+    root: Path,
+    *,
+    drill: str = DEFAULT_PROPOSE_DRILL,
+) -> OperationRecord:
+    """Build a pending polygon op for Approvals (HITL)."""
+    drill_id = normalize_propose_drill(drill)
+    if drill_id == "extractable_block":
+        return _build_extractable_propose_operation(root)
     seed_polygon_imports_ok(root)
     return {
         "target_file": POLYGON_IMPORTS_REL,
@@ -153,32 +220,95 @@ def build_polygon_propose_operation(root: Path) -> OperationRecord:
     }
 
 
+def _build_extractable_propose_operation(root: Path) -> OperationRecord:
+    from eurika.refactor.extract_function import suggest_extract_block
+
+    seed_polygon_extractable_block(root)
+    target = root.resolve() / POLYGON_EXTRACTABLE_REL
+    suggestion = suggest_extract_block(
+        target, "polygon_extractable_block", min_lines=5
+    )
+    if suggestion is None:
+        raise RuntimeError(
+            "suggest_extract_block found no extractable block in "
+            f"{POLYGON_EXTRACTABLE_REL} after seed"
+        )
+    helper_name, block_line, _line_count, extra = suggestion
+    return {
+        "target_file": POLYGON_EXTRACTABLE_REL,
+        "kind": "extract_block_to_helper",
+        "smell_type": "deep_nesting",
+        "params": {
+            "location": "polygon_extractable_block",
+            "block_start_line": int(block_line),
+            "helper_name": str(helper_name),
+            "extra_params": list(extra) if extra else [],
+        },
+        "description": _POLYGON_EXTRACTABLE_DESCRIPTION,
+        "approval_state": "pending",
+        "critic_verdict": "allow",
+        "decision_source": "prove_cycle_propose",
+        "team_decision": "pending",
+    }
+
+
 def run_prove_propose(
     project_root: Path,
     *,
     dry_run: bool = False,
+    drill: str = DEFAULT_PROPOSE_DRILL,
 ) -> dict[str, Any]:
     """Seed polygon drill and park the op in Approvals; never apply."""
     path = Path(project_root).resolve()
-    if dry_run:
-        preview: OperationRecord = {
-            "target_file": POLYGON_IMPORTS_REL,
-            "kind": "remove_unused_import",
-            "smell_type": "unused_import",
-            "params": {},
-            "description": _POLYGON_DESCRIPTION,
-            "approval_state": "pending",
-            "critic_verdict": "allow",
-            "decision_source": "prove_cycle_propose",
-            "team_decision": "pending",
+    try:
+        drill_id = normalize_propose_drill(drill)
+    except ValueError as exc:
+        return {
+            "ok": False,
+            "prove_cycle": True,
+            "propose": True,
+            "error": str(exc),
+            "modified": [],
+            "verify_success": None,
+            "return_code": 1,
         }
+    if dry_run:
+        if drill_id == "extractable_block":
+            preview: OperationRecord = {
+                "target_file": POLYGON_EXTRACTABLE_REL,
+                "kind": "extract_block_to_helper",
+                "smell_type": "deep_nesting",
+                "params": {"location": "polygon_extractable_block"},
+                "description": _POLYGON_EXTRACTABLE_DESCRIPTION,
+                "approval_state": "pending",
+                "critic_verdict": "allow",
+                "decision_source": "prove_cycle_propose",
+                "team_decision": "pending",
+            }
+            drill_name = "polygon_extractable_block"
+            target_rel = POLYGON_EXTRACTABLE_REL
+        else:
+            preview = {
+                "target_file": POLYGON_IMPORTS_REL,
+                "kind": "remove_unused_import",
+                "smell_type": "unused_import",
+                "params": {},
+                "description": _POLYGON_DESCRIPTION,
+                "approval_state": "pending",
+                "critic_verdict": "allow",
+                "decision_source": "prove_cycle_propose",
+                "team_decision": "pending",
+            }
+            drill_name = "polygon_unused_import"
+            target_rel = POLYGON_IMPORTS_REL
         return {
             "ok": True,
             "dry_run": True,
             "prove_cycle": True,
             "propose": True,
-            "drill": "polygon_unused_import",
-            "target_file": POLYGON_IMPORTS_REL,
+            "drill": drill_name,
+            "drill_id": drill_id,
+            "target_file": target_rel,
             "pending_plan": PENDING_PLAN_FILE,
             "operations": [preview],
             "modified": [],
@@ -186,35 +316,61 @@ def run_prove_propose(
             "return_code": 0,
             "seeded_has_unused_import": None,
         }
-    operation = build_polygon_propose_operation(path)
+    try:
+        operation = build_polygon_propose_operation(path, drill=drill_id)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "prove_cycle": True,
+            "propose": True,
+            "drill_id": drill_id,
+            "error": str(exc),
+            "modified": [],
+            "verify_success": None,
+            "return_code": 1,
+        }
     operations: list[OperationRecord] = [operation]
     patch_plan: PatchPlan = {"operations": operations}
-    seeded = path / POLYGON_IMPORTS_REL
+    target_rel = str(operation.get("target_file") or "")
+    seeded = path / target_rel
     seeded_text = seeded.read_text(encoding="utf-8") if seeded.is_file() else ""
     pending_path = save_pending_plan(
         path,
         patch_plan,
         operations,
         policy_decisions=[{"index": 1, "decision": "allow", "reason": "prove_cycle_propose"}],
-        session_id="prove_cycle_propose",
+        session_id=f"prove_cycle_propose_{drill_id}",
     )
     try:
         pending_rel = str(pending_path.relative_to(path))
     except ValueError:
         pending_rel = str(pending_path)
+    drill_name = (
+        "polygon_extractable_block"
+        if drill_id == "extractable_block"
+        else "polygon_unused_import"
+    )
     return {
         "ok": True,
         "prove_cycle": True,
         "propose": True,
-        "drill": "polygon_unused_import",
-        "target_file": POLYGON_IMPORTS_REL,
+        "drill": drill_name,
+        "drill_id": drill_id,
+        "target_file": target_rel,
         "pending_plan": pending_rel,
         "pending_plan_path": str(pending_path),
         "operations": operations,
         "modified": [],
         "verify_success": None,
         "return_code": 0,
-        "seeded_has_unused_import": "import os" in seeded_text,
+        "seeded_has_unused_import": (
+            "import os" in seeded_text if drill_id == "imports" else None
+        ),
+        "seeded_extractable": (
+            "_extracted_block_" not in seeded_text
+            if drill_id == "extractable_block"
+            else None
+        ),
         "instructions": (
             "Review Approvals / .eurika/pending_plan.json, set team_decision=approve, "
             "then: eurika fix . --apply-approved"
@@ -229,6 +385,7 @@ def run_prove_cycle(
     quiet: bool = False,
     verify_timeout: int | None = 60,
     propose: bool = False,
+    drill: str = DEFAULT_PROPOSE_DRILL,
 ) -> dict[str, Any]:
     """
     Run one deterministic prove cycle on project_root.
@@ -237,7 +394,7 @@ def run_prove_cycle(
     With propose=True: seed polygon + save pending plan (HITL), no apply.
     """
     if propose:
-        return run_prove_propose(project_root, dry_run=dry_run)
+        return run_prove_propose(project_root, dry_run=dry_run, drill=drill)
 
     path = Path(project_root).resolve()
     operation = build_prove_operation(path)
@@ -303,14 +460,26 @@ def run_prove_cycle(
 def format_prove_cycle_summary(payload: dict[str, Any]) -> str:
     """Human-readable summary for CLI."""
     if payload.get("propose"):
+        drill_label = payload.get("drill") or "polygon"
+        target = payload.get("target_file") or POLYGON_IMPORTS_REL
         lines = [
             "## Prove propose (polygon → Approvals HITL)",
             "",
-            f"- drill: `polygon_unused_import` → `{payload.get('target_file') or POLYGON_IMPORTS_REL}`",
+            f"- drill: `{drill_label}` → `{target}`",
+            f"- drill_id: `{payload.get('drill_id') or DEFAULT_PROPOSE_DRILL}`",
             f"- pending_plan: `{payload.get('pending_plan') or PENDING_PLAN_FILE}`",
             "- modified: (none — waiting for approve)",
-            f"- seeded unused `os`: **{payload.get('seeded_has_unused_import')}**",
         ]
+        if payload.get("seeded_has_unused_import") is not None:
+            lines.append(
+                f"- seeded unused `os`: **{payload.get('seeded_has_unused_import')}**"
+            )
+        if payload.get("seeded_extractable") is not None:
+            lines.append(
+                f"- seeded extractable (no helper yet): **{payload.get('seeded_extractable')}**"
+            )
+        if payload.get("error"):
+            lines.append(f"- error: {payload.get('error')}")
         if payload.get("dry_run"):
             lines.append("- dry-run: pending plan not written; re-run without `--dry-run`")
         else:

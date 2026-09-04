@@ -17,6 +17,7 @@ def handle_prove_cycle(args: Any) -> int:
         return 1
     dry_run = bool(getattr(args, "dry_run", False))
     propose = bool(getattr(args, "propose", False))
+    drill = str(getattr(args, "drill", "imports") or "imports")
     quiet = bool(getattr(args, "quiet", False))
     timeout = getattr(args, "verify_timeout", None)
     payload = run_prove_cycle(
@@ -25,6 +26,7 @@ def handle_prove_cycle(args: Any) -> int:
         quiet=quiet,
         verify_timeout=timeout,
         propose=propose,
+        drill=drill,
     )
     summary = format_prove_cycle_summary(payload)
     if quiet:
@@ -42,6 +44,8 @@ def handle_prove_cycle(args: Any) -> int:
                 snippet["propose"] = True
                 snippet["pending_plan"] = payload.get("pending_plan")
                 snippet["target_file"] = payload.get("target_file")
+                snippet["drill"] = payload.get("drill")
+                snippet["drill_id"] = payload.get("drill_id")
             print(json.dumps(snippet, ensure_ascii=False, indent=2))
     rc = payload.get("return_code")
     if rc is None:

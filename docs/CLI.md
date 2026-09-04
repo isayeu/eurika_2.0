@@ -19,7 +19,7 @@ Scan → Diagnose → Plan → Patch → Verify → Log
 | Diagnose | `eurika doctor .` или `eurika report .` + `eurika suggest-plan .` | Отчёт + интерпретация + план рефакторинга |
 | Plan | `eurika fix . --dry-run` или `eurika agent patch-plan .` | Построить план патчей без применения |
 | Propose (team) | `eurika fix . --team-mode` | Сохранить план в `.eurika/pending_plan.json`; reviewer редактирует team_decision; затем `--apply-approved` (ROADMAP 3.0.4) |
-| Propose (C.14 polygon HITL) | `eurika prove-cycle . --propose` | Seed `eurika/polygon/imports_ok.py` + pending plan **без** apply; Approve → `--apply-approved` |
+| Propose (C.14 polygon HITL) | `eurika prove-cycle . --propose [--drill …]` | Seed polygon drill + pending plan **без** apply; `imports` (default) или `extractable_block`; Approve → `--apply-approved` |
 | Patch | `eurika fix .` или `eurika agent patch-apply . --apply` | Применить патчи (с бэкапами) |
 | Verify | встроено в `eurika fix` (pytest после apply) | pytest; при провале — подсказка rollback; при ухудшении метрик — автоматический откат |
 | Log | автоматически (events, history) | Исходы записываются в `.eurika/events.json`, architect получает recent_events |
@@ -276,21 +276,23 @@ eurika learning-kpi . --polygon
 
 ---
 
-### eurika prove-cycle [path] [--dry-run] [--propose] [--quiet] [--verify-timeout SEC]
+### eurika prove-cycle [path] [--dry-run] [--propose] [--drill NAME] [--quiet] [--verify-timeout SEC]
 
-Детерминированный drill `remove_unused_import` **без LLM**.
+Детерминированный drill **без LLM**.
 
 - По умолчанию: seed+apply+verify в `.eurika/prove_cycle/drill_unused.py` (sandbox).
-- `--propose` (VISION C.14): seed `eurika/polygon/imports_ok.py` → `.eurika/pending_plan.json`, **без** apply. Дальше Approvals / `eurika fix . --apply-approved`.
+- `--propose` (VISION C.14): seed polygon → `.eurika/pending_plan.json`, **без** apply. Дальше Approvals / `eurika fix . --apply-approved`.
+- `--drill` (только с `--propose`): `imports` (default) или `extractable_block`.
 
 ```bash
 eurika prove-cycle .
 eurika prove-cycle . --dry-run
 eurika prove-cycle . --propose
+eurika prove-cycle . --propose --drill extractable_block
 eurika prove-cycle . --propose --dry-run
 ```
 
-Chat: «предложи полигон эксперимент».
+Chat: «предложи полигон эксперимент» / «второй полигон».
 
 ---
 

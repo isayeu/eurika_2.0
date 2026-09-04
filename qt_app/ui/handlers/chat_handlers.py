@@ -310,6 +310,12 @@ def _apply_live_activity_event(main: "MainWindow", event: dict[str, Any]) -> Non
             if chat_input is None or not chat_input.hasFocus():
                 if hasattr(main, "tabs") and hasattr(main, "terminal_tab_index"):
                     main.tabs.setCurrentIndex(main.terminal_tab_index)
+    try:
+        queued = int(event.get("approvalsQueued") or 0)
+    except (TypeError, ValueError):
+        queued = 0
+    if queued > 0:
+        QTimer.singleShot(0, lambda: focus_approvals_mode(main))
     err = str(event.get("error") or "").strip()
     if err:
         _append_transcript(main,

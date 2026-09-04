@@ -662,7 +662,9 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
     if is_ritual_request(msg):
         return ("ritual", "$ eurika scan . && eurika doctor . && eurika report-snapshot .")
     if is_polygon_propose_request(msg):
-        return ("polygon_propose", "$ eurika prove-cycle . --propose")
+        drill = polygon_propose_drill_id(msg)
+        cmd = f"$ eurika prove-cycle . --propose --drill {drill}"
+        return ("polygon_propose", cmd)
     if is_release_check_request(msg):
         return ("release_check", "$ ./scripts/release_check.sh")
     if is_roadmap_verify_request(msg):
@@ -1133,14 +1135,35 @@ def is_polygon_propose_request(message: str) -> bool:
         "c.14 полигон",
         "ритуал саморазвития",
         "propose hitl",
+        "второй полигон",
+        "полигон extract",
+        "extractable_block",
     )
     if any(n in msg for n in needles):
         return True
     if "prove-cycle" in msg and "propose" in msg:
         return True
-    if "полигон" in msg and any(w in msg for w in ("предложи", "propose", "hitl", "approvals")):
+    if "полигон" in msg and any(w in msg for w in ("предложи", "propose", "hitl", "approvals", "extract")):
         return True
     return False
+
+
+def polygon_propose_drill_id(message: str) -> str:
+    """Pick prove-cycle --drill for a polygon propose chat phrase."""
+    msg = _norm_msg(message)
+    extract_needles = (
+        "extractable",
+        "extract_block",
+        "extractable_block",
+        "--drill extract",
+        "drill extract",
+        "второй полигон",
+        "полигон extract",
+        "предложи extract",
+    )
+    if any(n in msg for n in extract_needles):
+        return "extractable_block"
+    return "imports"
 
 
 def is_force_push_request(message: str) -> bool:

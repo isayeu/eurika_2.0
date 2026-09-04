@@ -1,7 +1,8 @@
 """Eurika training polygon — intentional issues for KPI learning cycles.
 
 Каталог drills по одному файлу на drill. Запуск:
-  eurika prove-cycle . --propose   (C.14: seed imports_ok → Approvals, без apply)
+  eurika prove-cycle . --propose [--drill imports|extractable_block]
+    (C.14: seed polygon drill → Approvals, без apply)
   eurika fix . --no-code-smells --allow-low-risk-campaign   (только remove_unused_import)
   eurika fix . --allow-low-risk-campaign                    (включая extract_block_to_helper по whitelist)
 

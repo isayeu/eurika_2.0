@@ -201,8 +201,17 @@ def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
         "--propose",
         action="store_true",
         help=(
-            "C.14 HITL: seed eurika/polygon/imports_ok.py and write "
-            ".eurika/pending_plan.json; do not apply (approve in Approvals)"
+            "C.14 HITL: seed a polygon drill into .eurika/pending_plan.json; "
+            "do not apply (approve in Approvals). See --drill."
+        ),
+    )
+    prove_cycle_parser.add_argument(
+        "--drill",
+        default="imports",
+        metavar="NAME",
+        help=(
+            "With --propose: imports (default) or extractable_block "
+            "(extract_block_to_helper)"
         ),
     )
     prove_cycle_parser.add_argument("--quiet", "-q", action="store_true", help="JSON output only")
