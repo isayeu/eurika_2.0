@@ -236,6 +236,58 @@ def test_propose_llm_extract_offline_synthetic(tmp_path: Path, monkeypatch) -> N
     )
 
 
+def test_propose_llm_extract_require_llm_fails_without_patch(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.delenv("EURIKA_USE_LLM_EXTRACT", raising=False)
+
+    def _no_patch(*_a, **_k):
+        return None
+
+    monkeypatch.setattr(
+        "eurika.reasoning.planner.llm_adapter.ask_llm_extract_patch",
+        _no_patch,
+    )
+    out = run_prove_cycle(
+        tmp_path, propose=True, quiet=True, drill="llm_extract", require_llm=True
+    )
+    assert out.get("ok") is False
+    assert "require-llm" in str(out.get("error") or "").lower()
+    assert not (tmp_path / ".eurika" / "pending_plan.json").is_file()
+
+
+def test_propose_llm_extract_require_llm_parks_live_patch(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from eurika.orchestration.prove_cycle import _POLYGON_LLM_EXTRACT_SYNTHETIC
+
+    monkeypatch.delenv("EURIKA_USE_LLM_EXTRACT", raising=False)
+
+    def _fake_patch(*_a, **_k):
+        return _POLYGON_LLM_EXTRACT_SYNTHETIC
+
+    monkeypatch.setattr(
+        "eurika.reasoning.planner.llm_adapter.ask_llm_extract_patch",
+        _fake_patch,
+    )
+    out = run_prove_cycle(
+        tmp_path, propose=True, quiet=True, drill="llm_extract", require_llm=True
+    )
+    assert out.get("ok") is True
+    assert out.get("llm_extract_source") == "llm"
+    assert out.get("require_llm") is True
+    pending = json.loads((tmp_path / ".eurika" / "pending_plan.json").read_text(encoding="utf-8"))
+    assert (pending["operations"][0].get("params") or {}).get("source") == "llm"
+
+
+def test_require_llm_rejected_for_non_llm_drill(tmp_path: Path) -> None:
+    out = run_prove_cycle(
+        tmp_path, propose=True, quiet=True, drill="imports", require_llm=True
+    )
+    assert out.get("ok") is False
+    assert "llm_extract" in str(out.get("error") or "")
+
+
 def test_propose_llm_extract_approve_then_apply(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("EURIKA_USE_LLM_EXTRACT", raising=False)
     run_prove_cycle(tmp_path, propose=True, quiet=True, drill="llm_extract")

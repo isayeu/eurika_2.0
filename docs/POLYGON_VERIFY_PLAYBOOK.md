@@ -11,14 +11,15 @@ eurika prove-cycle . --propose                      # drill imports (default)
 eurika prove-cycle . --propose --drill extractable_block
 eurika prove-cycle . --propose --drill long_function
 eurika prove-cycle . --propose --drill llm_extract
+EURIKA_USE_LLM_EXTRACT=1 eurika prove-cycle . --propose --drill llm_extract --require-llm
 # Qt Approvals → Load plan → approve только polygon target
 # или вручную team_decision=approve в .eurika/pending_plan.json
 eurika fix . --apply-approved
 ```
 
-`--propose` пишет pending plan и **не** применяет патч. Drills: `imports` → `remove_unused_import`; `extractable_block` → `extract_block_to_helper`; `long_function` → `extract_nested_function`; `llm_extract` → `llm_extract_block` на `refactor_code_smell_drill.py` (live LLM при `EURIKA_USE_LLM_EXTRACT=1`, иначе offline synthetic с `_sum_intermediates`). Обычный `prove-cycle` (без флага) по-прежнему работает только на `.eurika/prove_cycle/drill_unused.py`.
+`--propose` пишет pending plan и **не** применяет патч. Drills: `imports` → `remove_unused_import`; `extractable_block` → `extract_block_to_helper`; `long_function` → `extract_nested_function`; `llm_extract` → `llm_extract_block` на `refactor_code_smell_drill.py` (live LLM при `EURIKA_USE_LLM_EXTRACT=1`, иначе offline synthetic с `_sum_intermediates`; `--require-llm` — только live, без synthetic). Обычный `prove-cycle` (без флага) по-прежнему работает только на `.eurika/prove_cycle/drill_unused.py`.
 
-Chat: «предложи полигон эксперимент» → `imports`; «второй полигон» → `extractable_block`; «третий полигон» → `long_function`; «четвёртый полигон» / «полигон llm» → `llm_extract`. Mirror в Terminal + `live_activity.jsonl`, автофокус Approvals.
+Chat: «предложи полигон эксперимент» → `imports`; «второй полигон» → `extractable_block`; «третий полигон» → `long_function`; «четвёртый полигон» / «полигон llm» → `llm_extract`; «полигон live» / «require-llm» → `llm_extract --require-llm`. Mirror в Terminal + `live_activity.jsonl`, автофокус Approvals. «статус apply» / «получилось?» → последний `eurika_fix_report.json`.
 
 **Важно (2026-09-04):** после apply pytest может быть зелёным, а rescan — увидеть «шум» (грязное дерево / float jitter) и раньше откатывал с `metrics_worsened`. Для **только** `eurika/polygon/*` и для Δ score < `1e-4` откат по метрикам **не** делается — gate остаётся pytest.
 

@@ -504,7 +504,12 @@ def test_chat_send_ritual_request_runs_scan_doctor_report_snapshot(tmp_path: Pat
 
 def test_chat_send_polygon_propose_parks_approvals(tmp_path: Path, monkeypatch) -> None:
     """C.14 chat ritual: prove-cycle --propose without LLM or apply."""
-    from eurika.api.chat_direct import is_polygon_propose_request, polygon_propose_drill_id
+    from eurika.api.chat_direct import (
+        is_polygon_propose_request,
+        polygon_propose_drill_id,
+        polygon_propose_require_llm,
+        resolve_direct_handler,
+    )
     import eurika.api.chat as chat_mod
 
     assert is_polygon_propose_request("предложи полигон эксперимент")
@@ -514,6 +519,11 @@ def test_chat_send_polygon_propose_parks_approvals(tmp_path: Path, monkeypatch) 
     assert polygon_propose_drill_id("предложи полигон extract") == "extractable_block"
     assert polygon_propose_drill_id("третий полигон") == "long_function"
     assert polygon_propose_drill_id("четвёртый полигон") == "llm_extract"
+    assert polygon_propose_require_llm("полигон live llm")
+    assert polygon_propose_require_llm("четвёртый полигон --require-llm")
+    assert not polygon_propose_require_llm("четвёртый полигон")
+    assert resolve_direct_handler(tmp_path, "статус apply")[0] == "apply_status"
+    assert resolve_direct_handler(tmp_path, "что получилось?")[0] == "goal_reflection"
     monkeypatch.setattr(
         "eurika.reasoning.architect.call_llm_with_prompt",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),

@@ -400,6 +400,8 @@ def ask_llm_extract_patch(
     file_path: "os.PathLike[str] | str",
     function_name: str,
     project_root: "os.PathLike[str] | str | None" = None,
+    *,
+    force: bool = False,
 ) -> Optional[str]:
     """
     Ask LLM to generate refactored file content (extract helper from long function).
@@ -407,9 +409,11 @@ def ask_llm_extract_patch(
 
     Uses separate budget (EURIKA_LLM_EXTRACT_MAX_CALLS, default 15) so architect
     hints during diagnose do not exhaust it.
+
+    ``force=True`` bypasses ``EURIKA_USE_LLM_EXTRACT`` (C.14 ``--require-llm``).
     """
     global _EXTRACT_PATCH_CALLS
-    if not _use_llm_extract():
+    if not force and not _use_llm_extract():
         return None
 
     if not function_name or not str(function_name).strip():

@@ -512,6 +512,7 @@ def _accept_soft_handler(handler_id: Optional[str], msg: str) -> bool:
         "goal_reflection",
         "goal_status",
         "clear_goal",
+        "apply_status",
         "continue_dev",
         "docs_audit",
         "identity",
@@ -599,6 +600,11 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
     # Never fuzzy-route HITL confirmations (vector may map «отклонить» → show_report).
     if is_reject_confirmation(msg) or is_apply_confirmation(msg):
         return (None, None)
+    # Last apply/verify status (C.12 parity) — before YAML goal_reflection.
+    from eurika.api.fix_status import is_apply_result_question
+
+    if is_apply_result_question(msg):
+        return ("apply_status", None)
     # Explicit commit/push must beat incidental ROADMAP/phase text supplied
     # as the desired commit-message context. Force push is refused in the handler.
     if is_force_push_request(msg):
@@ -664,6 +670,8 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
     if is_polygon_propose_request(msg):
         drill = polygon_propose_drill_id(msg)
         cmd = f"$ eurika prove-cycle . --propose --drill {drill}"
+        if polygon_propose_require_llm(msg):
+            cmd += " --require-llm"
         return ("polygon_propose", cmd)
     if is_release_check_request(msg):
         return ("release_check", "$ ./scripts/release_check.sh")
@@ -1145,6 +1153,9 @@ def is_polygon_propose_request(message: str) -> bool:
         "четвертый полигон",
         "полигон llm",
         "llm_extract",
+        "полигон live",
+        "live llm",
+        "require-llm",
     )
     if any(n in msg for n in needles):
         return True
@@ -1171,6 +1182,10 @@ def polygon_propose_drill_id(message: str) -> str:
         "полигон llm",
         "предложи llm",
         "refactor_code_smell",
+        "полигон live",
+        "live llm",
+        "require-llm",
+        "require llm",
     )
     if any(n in msg for n in llm_needles):
         return "llm_extract"
@@ -1200,6 +1215,24 @@ def polygon_propose_drill_id(message: str) -> str:
     if any(n in msg for n in extract_needles):
         return "extractable_block"
     return "imports"
+
+
+def polygon_propose_require_llm(message: str) -> bool:
+    """True when chat asks for live-LLM llm_extract (no synthetic fallback)."""
+    msg = _norm_msg(message)
+    if not msg:
+        return False
+    needles = (
+        "require-llm",
+        "require llm",
+        "--require-llm",
+        "live llm",
+        "live-llm",
+        "полигон live",
+        "только llm",
+        "strict llm",
+    )
+    return any(n in msg for n in needles)
 
 
 def is_force_push_request(message: str) -> bool:

@@ -61,6 +61,9 @@ def test_handle_text_message_slash_skips_chat_send(tmp_path: Path) -> None:
 def test_apply_result_question_uses_fix_report(tmp_path: Path) -> None:
     assert is_apply_result_question("Нажал run apply approved, получилось?")
     assert is_apply_result_question("verify success?")
+    assert is_apply_result_question("статус apply")
+    assert not is_apply_result_question("что получилось?")
+    assert not is_apply_result_question("итог цели")
     (tmp_path / "eurika_fix_report.json").write_text(
         json.dumps(
             {

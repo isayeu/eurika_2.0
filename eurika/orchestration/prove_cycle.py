@@ -442,6 +442,7 @@ def build_polygon_propose_operation(
     root: Path,
     *,
     drill: str = DEFAULT_PROPOSE_DRILL,
+    require_llm: bool = False,
 ) -> OperationRecord:
     """Build a pending polygon op for Approvals (HITL)."""
     drill_id = normalize_propose_drill(drill)
@@ -450,7 +451,7 @@ def build_polygon_propose_operation(
     if drill_id == "long_function":
         return _build_long_function_propose_operation(root)
     if drill_id == "llm_extract":
-        return _build_llm_extract_propose_operation(root)
+        return _build_llm_extract_propose_operation(root, require_llm=require_llm)
     seed_polygon_imports_ok(root)
     return {
         "target_file": POLYGON_IMPORTS_REL,
@@ -526,8 +527,16 @@ def _build_long_function_propose_operation(root: Path) -> OperationRecord:
     }
 
 
-def _build_llm_extract_propose_operation(root: Path) -> OperationRecord:
-    """Park llm_extract_block: live LLM when enabled, else offline synthetic patch."""
+def _build_llm_extract_propose_operation(
+    root: Path,
+    *,
+    require_llm: bool = False,
+) -> OperationRecord:
+    """Park llm_extract_block: live LLM when enabled, else offline synthetic patch.
+
+    With ``require_llm=True`` (CLI ``--require-llm``): force an LLM call and
+    raise if no valid patch — never fall back to synthetic_offline.
+    """
     seed_polygon_llm_extract(root)
     target = root.resolve() / POLYGON_LLM_EXTRACT_REL
     location = "polygon_refactor_code_smell_drill"
@@ -536,12 +545,23 @@ def _build_llm_extract_propose_operation(root: Path) -> OperationRecord:
     try:
         from eurika.reasoning.planner.llm_adapter import ask_llm_extract_patch
 
-        new_content = ask_llm_extract_patch(target, location, project_root=root)
+        new_content = ask_llm_extract_patch(
+            target,
+            location,
+            project_root=root,
+            force=require_llm,
+        )
         if new_content:
             source = "llm"
     except Exception:
         new_content = None
     if not new_content:
+        if require_llm:
+            raise RuntimeError(
+                "llm_extract require-llm: no live LLM patch "
+                "(set EURIKA_USE_LLM_EXTRACT=1 or ensure planner LLM is reachable; "
+                "omit --require-llm for offline synthetic)"
+            )
         new_content = _POLYGON_LLM_EXTRACT_SYNTHETIC
         source = "synthetic_offline"
     return {
@@ -579,6 +599,7 @@ def run_prove_propose(
     *,
     dry_run: bool = False,
     drill: str = DEFAULT_PROPOSE_DRILL,
+    require_llm: bool = False,
 ) -> dict[str, Any]:
     """Seed polygon drill and park the op in Approvals; never apply."""
     path = Path(project_root).resolve()
@@ -590,6 +611,17 @@ def run_prove_propose(
             "prove_cycle": True,
             "propose": True,
             "error": str(exc),
+            "modified": [],
+            "verify_success": None,
+            "return_code": 1,
+        }
+    if require_llm and drill_id != "llm_extract":
+        return {
+            "ok": False,
+            "prove_cycle": True,
+            "propose": True,
+            "drill_id": drill_id,
+            "error": "--require-llm only applies to --drill llm_extract",
             "modified": [],
             "verify_success": None,
             "return_code": 1,
@@ -624,15 +656,18 @@ def run_prove_propose(
                 "team_decision": "pending",
             }
         elif drill_id == "llm_extract":
+            preview_source = "llm" if require_llm else "synthetic_offline"
             preview = {
                 "target_file": POLYGON_LLM_EXTRACT_REL,
                 "kind": "llm_extract_block",
                 "smell_type": "long_function",
                 "params": {
                     "location": "polygon_refactor_code_smell_drill",
-                    "source": "synthetic_offline",
+                    "source": preview_source,
                 },
-                "description": _POLYGON_LLM_EXTRACT_DESCRIPTION,
+                "description": (
+                    f"{_POLYGON_LLM_EXTRACT_DESCRIPTION} [{preview_source}]"
+                ),
                 "approval_state": "pending",
                 "critic_verdict": "allow",
                 "decision_source": "prove_cycle_propose",
@@ -650,7 +685,7 @@ def run_prove_propose(
                 "decision_source": "prove_cycle_propose",
                 "team_decision": "pending",
             }
-        return {
+        out_dry: dict[str, Any] = {
             "ok": True,
             "dry_run": True,
             "prove_cycle": True,
@@ -665,8 +700,14 @@ def run_prove_propose(
             "return_code": 0,
             "seeded_has_unused_import": None,
         }
+        if drill_id == "llm_extract":
+            out_dry["llm_extract_source"] = "llm" if require_llm else "synthetic_offline"
+            out_dry["require_llm"] = bool(require_llm)
+        return out_dry
     try:
-        operation = build_polygon_propose_operation(path, drill=drill_id)
+        operation = build_polygon_propose_operation(
+            path, drill=drill_id, require_llm=require_llm
+        )
     except Exception as exc:
         return {
             "ok": False,
@@ -730,6 +771,7 @@ def run_prove_propose(
         ),
         "seeded_nested": seeded_nested,
         "llm_extract_source": llm_source,
+        "require_llm": bool(require_llm) if drill_id == "llm_extract" else False,
         "instructions": (
             "Review Approvals / .eurika/pending_plan.json, set team_decision=approve, "
             "then: eurika fix . --apply-approved"
@@ -745,6 +787,7 @@ def run_prove_cycle(
     verify_timeout: int | None = 60,
     propose: bool = False,
     drill: str = DEFAULT_PROPOSE_DRILL,
+    require_llm: bool = False,
 ) -> dict[str, Any]:
     """
     Run one deterministic prove cycle on project_root.
@@ -753,7 +796,12 @@ def run_prove_cycle(
     With propose=True: seed polygon + save pending plan (HITL), no apply.
     """
     if propose:
-        return run_prove_propose(project_root, dry_run=dry_run, drill=drill)
+        return run_prove_propose(
+            project_root,
+            dry_run=dry_run,
+            drill=drill,
+            require_llm=require_llm,
+        )
 
     path = Path(project_root).resolve()
     operation = build_prove_operation(path)

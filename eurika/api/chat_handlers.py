@@ -423,6 +423,13 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
+    if handler_id == 'apply_status':
+        from eurika.api.fix_status import format_last_fix_status
+
+        text = format_last_fix_status(root)
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
     if handler_id == 'goal_reflection':
         # Prefer in-memory state (same request), fall back to disk.
         st = state if isinstance(state, dict) and state else load_dialog_state(root)
@@ -588,7 +595,10 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         )
     if handler_id == 'polygon_propose':
         from eurika.agent.live_activity import publish_done, publish_start
-        from eurika.api.chat_direct import polygon_propose_drill_id
+        from eurika.api.chat_direct import (
+            polygon_propose_drill_id,
+            polygon_propose_require_llm,
+        )
         from eurika.orchestration.prove_cycle import (
             format_prove_cycle_summary,
             run_prove_propose,
@@ -596,16 +606,22 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         from eurika.orchestration.team_mode import has_pending_plan
 
         drill = polygon_propose_drill_id(msg)
+        require_llm = polygon_propose_require_llm(msg)
         propose_shell = f"eurika prove-cycle . --propose --drill {drill}"
+        if require_llm:
+            propose_shell += " --require-llm"
         started = publish_start(
             root,
-            f"prove-cycle --propose --drill {drill}",
+            f"prove-cycle --propose --drill {drill}"
+            + (" --require-llm" if require_llm else ""),
             {"message": msg},
             client="qt-chat",
         )
 
         def _fallback() -> tuple[bool, str]:
-            payload = run_prove_propose(root, dry_run=False, drill=drill)
+            payload = run_prove_propose(
+                root, dry_run=False, drill=drill, require_llm=require_llm
+            )
             summary = format_prove_cycle_summary(payload)
             ok_local = bool(payload.get("ok", True))
             if not ok_local and payload.get("error"):
