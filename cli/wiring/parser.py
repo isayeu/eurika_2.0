@@ -223,6 +223,35 @@ def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Verify step timeout in seconds (default: 60)",
     )
 
+    tg_parser = subparsers.add_parser(
+        "telegram-bot",
+        help="C.12: Telegram long-poll → chat_send (HITL apply stays in Approvals)",
+    )
+    tg_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
+    tg_parser.add_argument("--token", default=None, help="Bot token (else EURIKA_TELEGRAM_BOT_TOKEN)")
+    tg_parser.add_argument(
+        "--chat-ids",
+        default=None,
+        help="Allowlist chat ids, comma-separated (else EURIKA_TELEGRAM_CHAT_IDS)",
+    )
+    tg_parser.add_argument(
+        "--allow-any",
+        action="store_true",
+        help="Dogfood only: accept any chat_id (or EURIKA_TELEGRAM_ALLOW_ANY=1)",
+    )
+    tg_parser.add_argument(
+        "--once",
+        action="store_true",
+        help="One getUpdates poll then exit (tests / smoke)",
+    )
+    tg_parser.add_argument(
+        "--poll-timeout",
+        type=int,
+        default=25,
+        metavar="SEC",
+        help="Long-poll timeout seconds (default: 25)",
+    )
+
     serve_parser = subparsers.add_parser("serve", help="Run JSON API server for future UI (GET /api/summary, /api/history, /api/diff)")
     serve_parser.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
     serve_parser.add_argument("--port", type=int, default=8765, help="Port (default: 8765)")

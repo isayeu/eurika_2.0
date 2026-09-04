@@ -40,6 +40,7 @@ def dispatch_command(parser: argparse.ArgumentParser, args: Any) -> int:
         "suggest-plan": lambda: handlers.handle_suggest_plan(args),
         "clean-imports": lambda: handlers.handle_clean_imports(args),
         "prove-cycle": lambda: handlers.handle_prove_cycle(args),
+        "telegram-bot": lambda: handlers.handle_telegram_bot(args),
         "watch": lambda: handlers.handle_watch(args),
         "serve": lambda: handlers.handle_serve(args),
         "learn-github": lambda: handlers.handle_learn_github(args),

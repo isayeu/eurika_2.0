@@ -120,9 +120,9 @@
 
 ### C. Agent / платформа
 11. ~~**Plugin hooks** `after_*`~~ ✅ (2026-08-08, v1) — versioned JSON-safe immutable `HookContext`; canonical `after_scan/plan/apply/verify` (не CLI/Qt wrappers); конфиг `.eurika/plugins.toml` / `pyproject`; ordered + dedupe + fail-open; результаты в `report.plugin_hooks` и `.eurika/events.json`. Trusted in-process plugins, не sandbox.
-12. **Telegram-канал** к тому же агенту (`eurika` v1 `telegram_bot`).
+12. ~~**Telegram-канал**~~ частично ✅ (2026-09-04, v1) — `eurika telegram-bot`: long-poll Bot API → тот же `chat_send`; allowlist `EURIKA_TELEGRAM_CHAT_IDS`; apply только через Approvals / `--apply-approved` (не auto-apply). Токен: `EURIKA_TELEGRAM_BOT_TOKEN`.
 13. ~~**Goals / reflection / nudges (v1)**~~ частично ✅ — `goal_status` / `clear_goal` (чистит и last_execution) / `goal_reflection` + nudge; после scan/ritual/Apply цель отпускается, итог остаётся для «что получилось?».
-14. **Саморазвитие через полигон (HITL)** — Architecture Freeze запрещает тихий rewrite боевого ядра, **не** самоэксперименты: песочница / `eurika/polygon/` / отдельный worktree + LLM/интернет → verify → **предложить** изменения человеку → apply только после разрешения. Ритуал v1: `eurika prove-cycle . --propose [--drill imports|extractable_block|long_function|llm_extract]` → Approvals → `eurika fix . --apply-approved` (`llm_extract` — live LLM или offline synthetic). Детали: [ROADMAP.md](ROADMAP.md) §4.6, [POLYGON_VERIFY_PLAYBOOK.md](POLYGON_VERIFY_PLAYBOOK.md), [BOUNDED_EVOLUTION.md](BOUNDED_EVOLUTION.md) §8.
+14. ~~**Саморазвитие через полигон (HITL)**~~ частично ✅ (ритуал v1) — `eurika prove-cycle . --propose [--drill imports|extractable_block|long_function|llm_extract]` → Approvals → `eurika fix . --apply-approved`. Дальше: live-LLM dogfood, worktree sandbox. Детали: [ROADMAP.md](ROADMAP.md) §4.6, [POLYGON_VERIFY_PLAYBOOK.md](POLYGON_VERIFY_PLAYBOOK.md).
 
 ### Не брать
 Live-ордера / ключи / freqtrade с prodg; indicator-правила «RSI→buy» / «памп→buy» как ML-логика; OPT/aviation/vpn как домен; третий ТФ как отдельный торговый движок.

@@ -20,6 +20,7 @@ Scan → Diagnose → Plan → Patch → Verify → Log
 | Plan | `eurika fix . --dry-run` или `eurika agent patch-plan .` | Построить план патчей без применения |
 | Propose (team) | `eurika fix . --team-mode` | Сохранить план в `.eurika/pending_plan.json`; reviewer редактирует team_decision; затем `--apply-approved` (ROADMAP 3.0.4) |
 | Propose (C.14 polygon HITL) | `eurika prove-cycle . --propose [--drill …]` | Seed polygon drill + pending plan **без** apply; `imports` / `extractable_block` / `long_function` / `llm_extract`; Approve → `--apply-approved` |
+| Telegram (C.12) | `eurika telegram-bot .` | Long-poll → `chat_send`; allowlist chat ids; apply только через Approvals |
 | Patch | `eurika fix .` или `eurika agent patch-apply . --apply` | Применить патчи (с бэкапами) |
 | Verify | встроено в `eurika fix` (pytest после apply) | pytest; при провале — подсказка rollback; при ухудшении метрик — автоматический откат |
 | Log | автоматически (events, history) | Исходы записываются в `.eurika/events.json`, architect получает recent_events |
@@ -295,6 +296,22 @@ eurika prove-cycle . --propose --dry-run
 ```
 
 Chat: «предложи полигон эксперимент» / «второй» / «третий» / «четвёртый полигон».
+
+---
+
+### eurika telegram-bot [path] [--token TOK] [--chat-ids IDS] [--allow-any] [--once] [--poll-timeout SEC]
+
+VISION C.12 v1: long-poll Telegram Bot API → тот же `chat_send`. **Не** применяет патчи сам — HITL в Approvals / `eurika fix . --apply-approved`.
+
+- Токен: `--token` или `EURIKA_TELEGRAM_BOT_TOKEN`
+- Allowlist: `--chat-ids` / `EURIKA_TELEGRAM_CHAT_IDS` (обязателен, иначе `--allow-any` / `EURIKA_TELEGRAM_ALLOW_ANY=1` только для dogfood)
+
+```bash
+export EURIKA_TELEGRAM_BOT_TOKEN=…
+export EURIKA_TELEGRAM_CHAT_IDS=123456789
+eurika telegram-bot .
+eurika telegram-bot . --once   # один poll (smoke)
+```
 
 ---
 

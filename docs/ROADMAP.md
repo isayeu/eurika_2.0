@@ -150,6 +150,8 @@ UI.md ✓; README ✓; критерии **B.7–B.14** выполнены. Оц�
 
 **Ритуал C.14 (v1):** `eurika prove-cycle . --propose [--drill imports|extractable_block|long_function|llm_extract]` — seed polygon drill + запись в `.eurika/pending_plan.json` **без** apply; дальше Approvals / `eurika fix . --apply-approved`. Drills: deterministic ops + `llm_extract` (live LLM или offline synthetic). Обычный `prove-cycle` по-прежнему авто-apply только в `.eurika/prove_cycle/`.
 
+**Telegram C.12 (v1):** `eurika telegram-bot .` — Bot API long-poll → `chat_send`; allowlist `EURIKA_TELEGRAM_CHAT_IDS`; без auto-apply.
+
 **Доказательство цикла:** `eurika prove-cycle .` — синтетический drill (remove_unused_import → verify → learning), без LLM и approvals.
 
 ---
