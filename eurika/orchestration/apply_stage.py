@@ -10,6 +10,42 @@ from .cycle_state import with_cycle_state
 from .logging import get_logger
 _LOG = get_logger('orchestration.apply_stage')
 
+# Float noise / tiny energy jitter must not undo a pytest-green apply.
+_METRICS_WORSEN_EPS = 1e-4
+
+
+def _normalized_rel(path_value: Any) -> str:
+    return str(path_value or "").replace("\\", "/").lstrip("./")
+
+
+def polygon_only_modified(report: FixReport | dict[str, Any]) -> bool:
+    """True when every applied file lives under eurika/polygon/ (C.14 drills)."""
+    modified = report.get("modified") or []
+    if not modified:
+        return False
+    return all(_normalized_rel(item).startswith("eurika/polygon/") for item in modified)
+
+
+def should_rollback_for_metrics(
+    report: FixReport | dict[str, Any],
+    before_score: Any,
+    after_score: Any,
+    *,
+    eps: float = _METRICS_WORSEN_EPS,
+) -> bool:
+    """Rollback only on meaningful health drop outside polygon-only drills."""
+    try:
+        before = float(before_score)
+        after = float(after_score)
+    except (TypeError, ValueError):
+        return False
+    if after + eps >= before:
+        return False
+    if polygon_only_modified(report):
+        return False
+    return True
+
+
 def attach_run_params(report: dict[str, Any], **params: Any) -> None:
     """Add run_params to report for reproducibility (CLI flags, options)."""
     report['run_params'] = dict(sorted(params.items()))
@@ -81,10 +117,21 @@ def enrich_report_with_rescan(path: Path, report: FixReport, rescan_before: Path
         from eurika.evaluation import compute_delta
         vm = compute_delta(old_snap, new_snap, metrics_from_graph)
         report['verify_metrics'] = vm
-        if vm['after_score'] < vm['before_score'] and report.get('run_id'):
+        if should_rollback_for_metrics(report, vm.get('before_score'), vm.get('after_score')) and report.get('run_id'):
             rb = rollback_patch(path, report['run_id'])
             report['rollback'] = {'done': True, 'run_id': report['run_id'], 'restored': rb.get('restored', []), 'errors': rb.get('errors', []), 'reason': 'metrics_worsened'}
             report['verify']['success'] = False
+        elif (
+            vm.get('after_score') is not None
+            and vm.get('before_score') is not None
+            and float(vm['after_score']) < float(vm['before_score'])
+        ):
+            report['verify_metrics'] = dict(vm)
+            report['verify_metrics']['success'] = True
+            if polygon_only_modified(report):
+                report['verify_metrics']['metrics_worsened_ignored'] = 'polygon_drill'
+            else:
+                report['verify_metrics']['metrics_worsened_ignored'] = 'epsilon'
     except Exception as e:
         report['rescan_diff'] = {'error': 'diff failed'}
         report['verify_metrics'] = {'success': None, 'error': str(e)}
