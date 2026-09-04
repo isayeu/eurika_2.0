@@ -106,6 +106,88 @@ def extract_text_update(update: dict[str, Any]) -> tuple[int, int, str] | None:
     return chat_id, update_id, text.strip()
 
 
+def telegram_slash_command(text: str) -> str | None:
+    """Return a canned reply for Bot API slash commands; else None."""
+    raw = (text or "").strip()
+    if not raw.startswith("/"):
+        return None
+    cmd = raw.split()[0].lower().split("@", 1)[0]
+    if cmd in {"/start", "/help"}:
+        return (
+            "Eurika — coding-агент этого проекта (Telegram-канал C.12).\n\n"
+            "Пишите обычным текстом, например:\n"
+            "• hi / что за проект?\n"
+            "• проведи ритуал\n"
+            "• четвёртый полигон\n\n"
+            "Патчи из Telegram не применяются — только Approvals в Qt → "
+            "`eurika fix . --apply-approved`."
+        )
+    return (
+        f"Команда `{cmd}` не используется. Напишите обычный запрос текстом "
+        "(без ведущего `/`)."
+    )
+
+
+def format_last_fix_status(project_root: Path) -> str:
+    """Short factual summary of the latest ``eurika_fix_report.json``."""
+    path = Path(project_root).resolve() / "eurika_fix_report.json"
+    if not path.is_file():
+        return "Отчёта fix ещё нет (`eurika_fix_report.json`)."
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return "Не удалось прочитать `eurika_fix_report.json`."
+    if not isinstance(data, dict):
+        return "Некорректный `eurika_fix_report.json`."
+    verify = data.get("verify") if isinstance(data.get("verify"), dict) else {}
+    ok = verify.get("success")
+    if ok is None:
+        ok = data.get("verify_success")
+    modified = data.get("modified") or []
+    if not isinstance(modified, list):
+        modified = []
+    run_id = data.get("run_id") or "?"
+    ms = data.get("verify_duration_ms")
+    errors = data.get("errors") or []
+    lines = [
+        f"Последний apply (`{run_id}`):",
+        f"- verify: **{ok}**" + (f" (~{ms} ms)" if ms is not None else ""),
+        f"- modified: {', '.join(str(x) for x in modified) if modified else '(none)'}",
+    ]
+    if errors:
+        lines.append(f"- errors: {errors!r}"[:300])
+    pending = Path(project_root).resolve() / ".eurika" / "pending_plan.json"
+    lines.append(
+        "- pending_plan: есть (ещё ждут approve)"
+        if pending.is_file()
+        else "- pending_plan: нет (снят после apply — норма)"
+    )
+    return "\n".join(lines)
+
+
+def is_apply_result_question(text: str) -> bool:
+    """True when the user asks whether the last apply/approve worked."""
+    msg = " ".join((text or "").strip().lower().split())
+    if not msg:
+        return False
+    needles = (
+        "получилось",
+        "получилось?",
+        "apply approved",
+        "apply-approved",
+        "run apply",
+        "проверить apply",
+        "статус apply",
+        "verify успех",
+        "verify success",
+    )
+    if any(n in msg for n in needles):
+        return True
+    if "approve" in msg and any(w in msg for w in ("ok", "успех", "выйшло", "сработало")):
+        return True
+    return False
+
+
 def format_telegram_reply(payload: dict[str, Any]) -> str:
     """Turn chat_send result into a Telegram-sized reply."""
     text = str(payload.get("text") or "").strip()
@@ -144,11 +226,17 @@ def handle_text_message(
     """Run one inbound Telegram text through Eurika chat; return reply text."""
     if allowed_chat_ids is not None and chat_id not in allowed_chat_ids:
         return "Этот chat_id не в allowlist (EURIKA_TELEGRAM_CHAT_IDS)."
+    slash = telegram_slash_command(text)
+    if slash is not None:
+        return slash
+    root = Path(project_root).resolve()
+    if is_apply_result_question(text):
+        return format_last_fix_status(root)
     if chat_send is None:
         from eurika.api.chat import chat_send as _chat_send
 
         chat_send = _chat_send
-    payload = chat_send(Path(project_root).resolve(), text)
+    payload = chat_send(root, text)
     if not isinstance(payload, dict):
         return "chat_send returned unexpected payload"
     return format_telegram_reply(payload)

@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from eurika.integrations.telegram_bot import (
     extract_text_update,
+    format_last_fix_status,
     format_telegram_reply,
     handle_text_message,
+    is_apply_result_question,
     parse_allowed_chat_ids,
     process_updates,
     run_telegram_bot,
+    telegram_slash_command,
 )
 
 
@@ -27,6 +31,68 @@ def test_extract_text_update() -> None:
         "hi",
     )
     assert extract_text_update({"update_id": 1, "message": {"chat": {"id": 1}, "photo": []}}) is None
+
+
+def test_telegram_slash_start_does_not_hit_shell() -> None:
+    reply = telegram_slash_command("/start")
+    assert reply is not None
+    assert "Eurika" in reply
+    assert "Approvals" in reply
+    assert telegram_slash_command("/start@MyBot") is not None
+    assert telegram_slash_command("/foo") is not None
+    assert telegram_slash_command("hi") is None
+
+
+def test_handle_text_message_slash_skips_chat_send(tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    def fake_chat(_root: Path, message: str, **_kwargs):
+        calls.append(message)
+        return {"text": "should not run", "error": None}
+
+    out = handle_text_message(
+        tmp_path, 1, "/start", allowed_chat_ids={1}, chat_send=fake_chat
+    )
+    assert calls == []
+    assert "Eurika" in out
+    assert "bash" not in out.lower()
+
+
+def test_apply_result_question_uses_fix_report(tmp_path: Path) -> None:
+    assert is_apply_result_question("Нажал run apply approved, получилось?")
+    assert is_apply_result_question("verify success?")
+    (tmp_path / "eurika_fix_report.json").write_text(
+        json.dumps(
+            {
+                "run_id": "20260904_140203",
+                "modified": ["eurika/polygon/refactor_code_smell_drill.py"],
+                "verify": {"success": True},
+                "verify_duration_ms": 1998,
+                "errors": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    text = format_last_fix_status(tmp_path)
+    assert "20260904_140203" in text
+    assert "True" in text
+    assert "refactor_code_smell_drill.py" in text
+
+    calls: list[str] = []
+
+    def fake_chat(_root: Path, message: str, **_kwargs):
+        calls.append(message)
+        return {"text": "nope", "error": None}
+
+    out = handle_text_message(
+        tmp_path,
+        1,
+        "Нажал run apply approved, получилось?",
+        allowed_chat_ids={1},
+        chat_send=fake_chat,
+    )
+    assert calls == []
+    assert "20260904_140203" in out
 
 
 def test_format_telegram_reply_mentions_approvals() -> None:

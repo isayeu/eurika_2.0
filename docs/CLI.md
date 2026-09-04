@@ -305,6 +305,7 @@ VISION C.12 v1: long-poll Telegram Bot API → тот же `chat_send`. **Не**
 
 - Токен: `--token` или `EURIKA_TELEGRAM_BOT_TOKEN`
 - Allowlist: `--chat-ids` / `EURIKA_TELEGRAM_CHAT_IDS` (обязателен, иначе `--allow-any` / `EURIKA_TELEGRAM_ALLOW_ANY=1` только для dogfood)
+- `/start` и другие `/…` не уходят в shell — короткий help; вопрос «получилось?» читает `eurika_fix_report.json`
 
 ```bash
 export EURIKA_TELEGRAM_BOT_TOKEN=…
