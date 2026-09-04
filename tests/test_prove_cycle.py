@@ -9,6 +9,7 @@ from eurika.orchestration.prove_cycle import (
     DRILL_REL_PATH,
     POLYGON_EXTRACTABLE_REL,
     POLYGON_IMPORTS_REL,
+    POLYGON_LLM_EXTRACT_REL,
     POLYGON_LONG_FUNCTION_REL,
     build_polygon_propose_operation,
     build_prove_operation,
@@ -127,6 +128,8 @@ def test_normalize_propose_drill_aliases() -> None:
     assert normalize_propose_drill("second") == "extractable_block"
     assert normalize_propose_drill("long") == "long_function"
     assert normalize_propose_drill("third") == "long_function"
+    assert normalize_propose_drill("llm") == "llm_extract"
+    assert normalize_propose_drill("fourth") == "llm_extract"
 
 
 def test_propose_extractable_writes_pending_and_seeds(tmp_path: Path) -> None:
@@ -213,3 +216,50 @@ def test_propose_long_function_approve_then_apply(tmp_path: Path) -> None:
     ns: dict = {}
     exec(compile(after, str(tmp_path / POLYGON_LONG_FUNCTION_REL), "exec"), ns)
     assert ns["polygon_long_function"]() == 55
+
+
+def test_propose_llm_extract_offline_synthetic(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("EURIKA_USE_LLM_EXTRACT", raising=False)
+    out = run_prove_cycle(tmp_path, propose=True, quiet=True, drill="llm_extract")
+    assert out.get("ok") is True
+    assert out.get("drill_id") == "llm_extract"
+    assert out.get("target_file") == POLYGON_LLM_EXTRACT_REL
+    assert out.get("llm_extract_source") == "synthetic_offline"
+    pending = json.loads((tmp_path / ".eurika" / "pending_plan.json").read_text(encoding="utf-8"))
+    op = pending["operations"][0]
+    assert op["kind"] == "llm_extract_block"
+    params = op.get("params") or {}
+    assert params.get("location") == "polygon_refactor_code_smell_drill"
+    assert "_sum_intermediates" in str(params.get("new_content") or "")
+    assert "_sum_intermediates" not in (tmp_path / POLYGON_LLM_EXTRACT_REL).read_text(
+        encoding="utf-8"
+    )
+
+
+def test_propose_llm_extract_approve_then_apply(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("EURIKA_USE_LLM_EXTRACT", raising=False)
+    run_prove_cycle(tmp_path, propose=True, quiet=True, drill="llm_extract")
+    path = tmp_path / ".eurika" / "pending_plan.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["operations"][0]["team_decision"] = "approve"
+    data["operations"][0]["approved_by"] = "tester"
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    approved, _ = load_approved_operations(tmp_path)
+    report = apply_patch_plan(
+        tmp_path, {"operations": approved}, dry_run=False, backup=False
+    )
+    assert POLYGON_LLM_EXTRACT_REL in (report.get("modified") or [])
+    after = (tmp_path / POLYGON_LLM_EXTRACT_REL).read_text(encoding="utf-8")
+    assert "def _sum_intermediates" in after
+    ns: dict = {}
+    exec(compile(after, str(tmp_path / POLYGON_LLM_EXTRACT_REL), "exec"), ns)
+    assert ns["polygon_refactor_code_smell_drill"](5) == ns["polygon_refactor_code_smell_drill"](5)
+    # seed semantics: intermediates + 1
+    before_ns: dict = {}
+    from eurika.orchestration.prove_cycle import _POLYGON_LLM_EXTRACT_SEED
+
+    exec(compile(_POLYGON_LLM_EXTRACT_SEED, "seed", "exec"), before_ns)
+    assert (
+        ns["polygon_refactor_code_smell_drill"](5)
+        == before_ns["polygon_refactor_code_smell_drill"](5)
+    )

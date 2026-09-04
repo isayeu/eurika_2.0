@@ -622,6 +622,7 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         target_by_drill = {
             "extractable_block": "eurika/polygon/extractable_block.py",
             "long_function": "eurika/polygon/long_function.py",
+            "llm_extract": "eurika/polygon/refactor_code_smell_drill.py",
         }
         target = target_by_drill.get(drill, "eurika/polygon/imports_ok.py")
         state['active_goal'] = {

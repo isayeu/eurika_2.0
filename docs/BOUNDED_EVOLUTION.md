@@ -159,7 +159,7 @@ Architecture Freeze **не** означает «Eurika не трогает св�
 3. При удачном варианте — **предложить** патч человеку.
 4. В основное дерево — только после явного разрешения (approve / reject).
 
-**Ритуал v1:** `eurika prove-cycle . --propose [--drill imports|extractable_block|long_function]` → Approvals → `eurika fix . --apply-approved` (см. POLYGON_VERIFY_PLAYBOOK).
+**Ритуал v1:** `eurika prove-cycle . --propose [--drill imports|extractable_block|long_function|llm_extract]` → Approvals → `eurika fix . --apply-approved` (см. POLYGON_VERIFY_PLAYBOOK).
 
 См. ROADMAP §4.6 (уточнение), Architecture.md §2, VISION.md C.14.
 

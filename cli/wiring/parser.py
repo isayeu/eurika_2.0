@@ -210,8 +210,8 @@ def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
         default="imports",
         metavar="NAME",
         help=(
-            "With --propose: imports (default), extractable_block, or "
-            "long_function (extract_nested_function)"
+            "With --propose: imports (default), extractable_block, "
+            "long_function, or llm_extract"
         ),
     )
     prove_cycle_parser.add_argument("--quiet", "-q", action="store_true", help="JSON output only")

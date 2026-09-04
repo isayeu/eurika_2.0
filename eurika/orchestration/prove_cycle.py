@@ -4,8 +4,8 @@ Proves that Eurika's execution stack works end-to-end on a synthetic drill file
 under `.eurika/prove_cycle/`. Use before trusting full `eurika fix` on production code.
 
 C.14 HITL mode (`propose=True` / CLI `--propose [--drill …]`): seed a polygon
-drill (`imports`, `extractable_block`, or `long_function`), park one op in
-Approvals, do not apply. Human approves → `eurika fix . --apply-approved`.
+drill (`imports`, `extractable_block`, `long_function`, or `llm_extract`), park
+one op in Approvals, do not apply. Human approves → `eurika fix . --apply-approved`.
 """
 
 from __future__ import annotations
@@ -29,7 +29,8 @@ DRILL_REL_PATH = ".eurika/prove_cycle/drill_unused.py"
 POLYGON_IMPORTS_REL = "eurika/polygon/imports_ok.py"
 POLYGON_EXTRACTABLE_REL = "eurika/polygon/extractable_block.py"
 POLYGON_LONG_FUNCTION_REL = "eurika/polygon/long_function.py"
-PROPOSE_DRILLS = ("imports", "extractable_block", "long_function")
+POLYGON_LLM_EXTRACT_REL = "eurika/polygon/refactor_code_smell_drill.py"
+PROPOSE_DRILLS = ("imports", "extractable_block", "long_function", "llm_extract")
 DEFAULT_PROPOSE_DRILL = "imports"
 
 _DRILL_SEED = '''import os
@@ -147,6 +148,149 @@ _POLYGON_LONG_FUNCTION_DESCRIPTION = (
     "eurika/polygon/long_function.py"
 )
 
+_POLYGON_LLM_EXTRACT_SEED = '''"""DRILL_REFACTOR_CODE_SMELL: long_function без extractable block/nested (REFACTOR_CODE_SMELL_PLAN Phase 2).
+
+Длинная функция (>50 строк) с последовательными присваиваниями — нет вложенных def,
+нет if/for/while блоков 3+ строк. extract_nested и suggest_extract_block возвращают None.
+Fallback: refactor_code_smell (TODO при emit_todo) или skip. Целевой кейс для LLM-powered extract.
+"""
+
+
+def _compute_intermediate_values(seed: int):
+    a = seed + 1
+    b = a * 2
+    c = b + seed
+    d = c * 2
+    e = d + a
+    f = e * 2
+    g = f + b
+    h = g * 2
+    i = h + c
+    j = i * 2
+    return a, b, c, d, e, f, g, h, i, j
+
+def polygon_refactor_code_smell_drill(seed: int) -> int:
+    """55+ строк последовательного кода. Нет extractable nested/block — refactor_code_smell fallback."""
+    a, b, c, d, e, f, g, h, i, j = _compute_intermediate_values(seed)
+    # Padding to exceed MAX_FUNCTION_LINES (50)
+    _1 = 1
+    _2 = 2
+    _3 = 3
+    _4 = 4
+    _5 = 5
+    _6 = 6
+    _7 = 7
+    _8 = 8
+    _9 = 9
+    _10 = 10
+    _11 = 11
+    _12 = 12
+    _13 = 13
+    _14 = 14
+    _15 = 15
+    _16 = 16
+    _17 = 17
+    _18 = 18
+    _19 = 19
+    _20 = 20
+    _21 = 21
+    _22 = 22
+    _23 = 23
+    _24 = 24
+    _25 = 25
+    _26 = 26
+    _27 = 27
+    _28 = 28
+    _29 = 29
+    _30 = 30
+    _31 = 31
+    _32 = 32
+    _33 = 33
+    _34 = 34
+    _35 = 35
+    _36 = 36
+    _37 = 37
+    return a + b + c + d + e + f + g + h + i + j + _1
+'''
+
+# Offline LLM-shaped patch: extract sum helper, keep padding (HITL works without live LLM).
+_POLYGON_LLM_EXTRACT_SYNTHETIC = '''"""DRILL_REFACTOR_CODE_SMELL: long_function без extractable block/nested (REFACTOR_CODE_SMELL_PLAN Phase 2).
+
+Длинная функция (>50 строк) с последовательными присваиваниями — нет вложенных def,
+нет if/for/while блоков 3+ строк. extract_nested и suggest_extract_block возвращают None.
+Fallback: refactor_code_smell (TODO при emit_todo) или skip. Целевой кейс для LLM-powered extract.
+"""
+
+
+def _compute_intermediate_values(seed: int):
+    a = seed + 1
+    b = a * 2
+    c = b + seed
+    d = c * 2
+    e = d + a
+    f = e * 2
+    g = f + b
+    h = g * 2
+    i = h + c
+    j = i * 2
+    return a, b, c, d, e, f, g, h, i, j
+
+
+def _sum_intermediates(values: tuple) -> int:
+    """Offline LLM-shaped extract for C.14 propose (no live LLM required)."""
+    a, b, c, d, e, f, g, h, i, j = values
+    return a + b + c + d + e + f + g + h + i + j
+
+
+def polygon_refactor_code_smell_drill(seed: int) -> int:
+    """55+ строк последовательного кода. Нет extractable nested/block — refactor_code_smell fallback."""
+    values = _compute_intermediate_values(seed)
+    # Padding to exceed MAX_FUNCTION_LINES (50)
+    _1 = 1
+    _2 = 2
+    _3 = 3
+    _4 = 4
+    _5 = 5
+    _6 = 6
+    _7 = 7
+    _8 = 8
+    _9 = 9
+    _10 = 10
+    _11 = 11
+    _12 = 12
+    _13 = 13
+    _14 = 14
+    _15 = 15
+    _16 = 16
+    _17 = 17
+    _18 = 18
+    _19 = 19
+    _20 = 20
+    _21 = 21
+    _22 = 22
+    _23 = 23
+    _24 = 24
+    _25 = 25
+    _26 = 26
+    _27 = 27
+    _28 = 28
+    _29 = 29
+    _30 = 30
+    _31 = 31
+    _32 = 32
+    _33 = 33
+    _34 = 34
+    _35 = 35
+    _36 = 36
+    _37 = 37
+    return _sum_intermediates(values) + _1
+'''
+
+_POLYGON_LLM_EXTRACT_DESCRIPTION = (
+    "C.14 polygon propose: llm_extract_block on "
+    "eurika/polygon/refactor_code_smell_drill.py"
+)
+
 
 def normalize_propose_drill(drill: str | None) -> str:
     """Map aliases to a supported propose drill id."""
@@ -168,6 +312,12 @@ def normalize_propose_drill(drill: str | None) -> str:
         "extract_nested": "long_function",
         "extract_nested_function": "long_function",
         "third": "long_function",
+        "llm_extract": "llm_extract",
+        "llm": "llm_extract",
+        "llm_extract_block": "llm_extract",
+        "refactor_code_smell": "llm_extract",
+        "refactor": "llm_extract",
+        "fourth": "llm_extract",
     }
     resolved = aliases.get(raw, raw)
     if resolved not in PROPOSE_DRILLS:
@@ -264,6 +414,15 @@ def seed_polygon_long_function(root: Path) -> Path:
     return target
 
 
+def seed_polygon_llm_extract(root: Path) -> Path:
+    """Reseed refactor_code_smell_drill for llm_extract_block propose."""
+    root = root.resolve()
+    target = root / POLYGON_LLM_EXTRACT_REL
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(_POLYGON_LLM_EXTRACT_SEED, encoding="utf-8")
+    return target
+
+
 def build_prove_operation(root: Path) -> OperationRecord:
     """Build a single remove_unused_import op for the drill file."""
     seed_prove_drill_file(root)
@@ -290,6 +449,8 @@ def build_polygon_propose_operation(
         return _build_extractable_propose_operation(root)
     if drill_id == "long_function":
         return _build_long_function_propose_operation(root)
+    if drill_id == "llm_extract":
+        return _build_llm_extract_propose_operation(root)
     seed_polygon_imports_ok(root)
     return {
         "target_file": POLYGON_IMPORTS_REL,
@@ -365,12 +526,51 @@ def _build_long_function_propose_operation(root: Path) -> OperationRecord:
     }
 
 
+def _build_llm_extract_propose_operation(root: Path) -> OperationRecord:
+    """Park llm_extract_block: live LLM when enabled, else offline synthetic patch."""
+    seed_polygon_llm_extract(root)
+    target = root.resolve() / POLYGON_LLM_EXTRACT_REL
+    location = "polygon_refactor_code_smell_drill"
+    new_content: str | None = None
+    source = "synthetic_offline"
+    try:
+        from eurika.reasoning.planner.llm_adapter import ask_llm_extract_patch
+
+        new_content = ask_llm_extract_patch(target, location, project_root=root)
+        if new_content:
+            source = "llm"
+    except Exception:
+        new_content = None
+    if not new_content:
+        new_content = _POLYGON_LLM_EXTRACT_SYNTHETIC
+        source = "synthetic_offline"
+    return {
+        "target_file": POLYGON_LLM_EXTRACT_REL,
+        "kind": "llm_extract_block",
+        "smell_type": "long_function",
+        "params": {
+            "location": location,
+            "new_content": new_content,
+            "source": source,
+        },
+        "description": (
+            f"{_POLYGON_LLM_EXTRACT_DESCRIPTION} [{source}]"
+        ),
+        "approval_state": "pending",
+        "critic_verdict": "allow",
+        "decision_source": "prove_cycle_propose",
+        "team_decision": "pending",
+    }
+
+
 def _propose_drill_labels(drill_id: str) -> tuple[str, str]:
     """Return (drill_name, target_rel) for summaries / dry-run."""
     if drill_id == "extractable_block":
         return "polygon_extractable_block", POLYGON_EXTRACTABLE_REL
     if drill_id == "long_function":
         return "polygon_long_function", POLYGON_LONG_FUNCTION_REL
+    if drill_id == "llm_extract":
+        return "polygon_llm_extract", POLYGON_LLM_EXTRACT_REL
     return "polygon_unused_import", POLYGON_IMPORTS_REL
 
 
@@ -418,6 +618,21 @@ def run_prove_propose(
                     "nested_function_name": "_compute_first_half",
                 },
                 "description": _POLYGON_LONG_FUNCTION_DESCRIPTION,
+                "approval_state": "pending",
+                "critic_verdict": "allow",
+                "decision_source": "prove_cycle_propose",
+                "team_decision": "pending",
+            }
+        elif drill_id == "llm_extract":
+            preview = {
+                "target_file": POLYGON_LLM_EXTRACT_REL,
+                "kind": "llm_extract_block",
+                "smell_type": "long_function",
+                "params": {
+                    "location": "polygon_refactor_code_smell_drill",
+                    "source": "synthetic_offline",
+                },
+                "description": _POLYGON_LLM_EXTRACT_DESCRIPTION,
                 "approval_state": "pending",
                 "critic_verdict": "allow",
                 "decision_source": "prove_cycle_propose",
@@ -488,6 +703,10 @@ def run_prove_propose(
             and seeded_text.find("def polygon_long_function")
             < seeded_text.find("def _compute_first_half")
         )
+    llm_source = None
+    if drill_id == "llm_extract":
+        params = (operation.get("params") or {}) if isinstance(operation, dict) else {}
+        llm_source = params.get("source")
     return {
         "ok": True,
         "prove_cycle": True,
@@ -510,6 +729,7 @@ def run_prove_propose(
             else None
         ),
         "seeded_nested": seeded_nested,
+        "llm_extract_source": llm_source,
         "instructions": (
             "Review Approvals / .eurika/pending_plan.json, set team_decision=approve, "
             "then: eurika fix . --apply-approved"
@@ -620,6 +840,10 @@ def format_prove_cycle_summary(payload: dict[str, Any]) -> str:
         if payload.get("seeded_nested") is not None:
             lines.append(
                 f"- seeded nested def (not yet extracted): **{payload.get('seeded_nested')}**"
+            )
+        if payload.get("llm_extract_source") is not None:
+            lines.append(
+                f"- llm_extract source: **{payload.get('llm_extract_source')}**"
             )
         if payload.get("error"):
             lines.append(f"- error: {payload.get('error')}")
