@@ -512,6 +512,7 @@ def test_chat_send_polygon_propose_parks_approvals(tmp_path: Path, monkeypatch) 
     assert not is_polygon_propose_request("проведи ритуал")
     assert polygon_propose_drill_id("предложи полигон эксперимент") == "imports"
     assert polygon_propose_drill_id("предложи полигон extract") == "extractable_block"
+    assert polygon_propose_drill_id("третий полигон") == "long_function"
     monkeypatch.setattr(
         "eurika.reasoning.architect.call_llm_with_prompt",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
@@ -557,6 +558,24 @@ def test_chat_send_polygon_extract_propose(tmp_path: Path, monkeypatch) -> None:
     assert "_extracted_block_" not in target.read_text(encoding="utf-8")
     pending = json.loads((tmp_path / ".eurika" / "pending_plan.json").read_text(encoding="utf-8"))
     assert pending["operations"][0]["kind"] == "extract_block_to_helper"
+
+
+def test_chat_send_polygon_long_propose(tmp_path: Path, monkeypatch) -> None:
+    import eurika.api.chat as chat_mod
+
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "третий полигон")
+    assert out.get("error") is None
+    assert out.get("approvalsQueued") == 1
+    assert "--drill long_function" in (out.get("terminal_cmd") or "")
+    target = tmp_path / "eurika" / "polygon" / "long_function.py"
+    text = target.read_text(encoding="utf-8")
+    assert text.find("def polygon_long_function") < text.find("def _compute_first_half")
+    pending = json.loads((tmp_path / ".eurika" / "pending_plan.json").read_text(encoding="utf-8"))
+    assert pending["operations"][0]["kind"] == "extract_nested_function"
 
 
 def test_chat_send_git_commit_request_returns_real_status_without_llm(tmp_path: Path, monkeypatch) -> None:

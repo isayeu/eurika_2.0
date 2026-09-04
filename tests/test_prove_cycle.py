@@ -9,6 +9,7 @@ from eurika.orchestration.prove_cycle import (
     DRILL_REL_PATH,
     POLYGON_EXTRACTABLE_REL,
     POLYGON_IMPORTS_REL,
+    POLYGON_LONG_FUNCTION_REL,
     build_polygon_propose_operation,
     build_prove_operation,
     format_prove_cycle_summary,
@@ -124,6 +125,8 @@ def test_normalize_propose_drill_aliases() -> None:
     assert normalize_propose_drill("imports") == "imports"
     assert normalize_propose_drill("extract") == "extractable_block"
     assert normalize_propose_drill("second") == "extractable_block"
+    assert normalize_propose_drill("long") == "long_function"
+    assert normalize_propose_drill("third") == "long_function"
 
 
 def test_propose_extractable_writes_pending_and_seeds(tmp_path: Path) -> None:
@@ -166,3 +169,47 @@ def test_propose_extractable_approve_then_apply(tmp_path: Path) -> None:
     after = (tmp_path / POLYGON_EXTRACTABLE_REL).read_text(encoding="utf-8")
     assert "def _extracted_block_" in after
     assert "a = x + 1" not in after or "_extracted_block_" in after
+
+
+def test_propose_long_function_writes_pending_and_seeds(tmp_path: Path) -> None:
+    out = run_prove_cycle(
+        tmp_path, propose=True, quiet=True, drill="long_function"
+    )
+    assert out.get("ok") is True
+    assert out.get("drill_id") == "long_function"
+    assert out.get("target_file") == POLYGON_LONG_FUNCTION_REL
+    assert out.get("seeded_nested") is True
+    target = tmp_path / POLYGON_LONG_FUNCTION_REL
+    text = target.read_text(encoding="utf-8")
+    assert "def polygon_long_function" in text
+    assert "def _compute_first_half" in text
+    assert text.find("def polygon_long_function") < text.find("def _compute_first_half")
+    pending = tmp_path / ".eurika" / "pending_plan.json"
+    data = json.loads(pending.read_text(encoding="utf-8"))
+    op = data["operations"][0]
+    assert op["kind"] == "extract_nested_function"
+    assert op["target_file"] == POLYGON_LONG_FUNCTION_REL
+    assert op["team_decision"] == "pending"
+    params = op.get("params") or {}
+    assert params.get("location") == "polygon_long_function"
+    assert params.get("nested_function_name") == "_compute_first_half"
+
+
+def test_propose_long_function_approve_then_apply(tmp_path: Path) -> None:
+    run_prove_cycle(tmp_path, propose=True, quiet=True, drill="long_function")
+    path = tmp_path / ".eurika" / "pending_plan.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["operations"][0]["team_decision"] = "approve"
+    data["operations"][0]["approved_by"] = "tester"
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    approved, _ = load_approved_operations(tmp_path)
+    assert len(approved) == 1
+    report = apply_patch_plan(
+        tmp_path, {"operations": approved}, dry_run=False, backup=False
+    )
+    assert POLYGON_LONG_FUNCTION_REL in (report.get("modified") or [])
+    after = (tmp_path / POLYGON_LONG_FUNCTION_REL).read_text(encoding="utf-8")
+    assert after.find("def _compute_first_half") < after.find("def polygon_long_function")
+    ns: dict = {}
+    exec(compile(after, str(tmp_path / POLYGON_LONG_FUNCTION_REL), "exec"), ns)
+    assert ns["polygon_long_function"]() == 55

@@ -619,11 +619,11 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             emit_cmd=emit_cmd or f"$ {propose_shell}",
         )
         queued = 1 if ok and has_pending_plan(root) else 0
-        target = (
-            "eurika/polygon/extractable_block.py"
-            if drill == "extractable_block"
-            else "eurika/polygon/imports_ok.py"
-        )
+        target_by_drill = {
+            "extractable_block": "eurika/polygon/extractable_block.py",
+            "long_function": "eurika/polygon/long_function.py",
+        }
+        target = target_by_drill.get(drill, "eurika/polygon/imports_ok.py")
         state['active_goal'] = {
             'intent': 'polygon_propose',
             'source': 'chat_direct',

@@ -4,8 +4,8 @@ Proves that Eurika's execution stack works end-to-end on a synthetic drill file
 under `.eurika/prove_cycle/`. Use before trusting full `eurika fix` on production code.
 
 C.14 HITL mode (`propose=True` / CLI `--propose [--drill …]`): seed a polygon
-drill (`imports` or `extractable_block`), park one op in Approvals, do not apply.
-Human approves → `eurika fix . --apply-approved`.
+drill (`imports`, `extractable_block`, or `long_function`), park one op in
+Approvals, do not apply. Human approves → `eurika fix . --apply-approved`.
 """
 
 from __future__ import annotations
@@ -28,7 +28,8 @@ from .team_mode import PENDING_PLAN_FILE, save_pending_plan
 DRILL_REL_PATH = ".eurika/prove_cycle/drill_unused.py"
 POLYGON_IMPORTS_REL = "eurika/polygon/imports_ok.py"
 POLYGON_EXTRACTABLE_REL = "eurika/polygon/extractable_block.py"
-PROPOSE_DRILLS = ("imports", "extractable_block")
+POLYGON_LONG_FUNCTION_REL = "eurika/polygon/long_function.py"
+PROPOSE_DRILLS = ("imports", "extractable_block", "long_function")
 DEFAULT_PROPOSE_DRILL = "imports"
 
 _DRILL_SEED = '''import os
@@ -80,6 +81,72 @@ _POLYGON_EXTRACTABLE_DESCRIPTION = (
     "eurika/polygon/extractable_block.py"
 )
 
+_POLYGON_LONG_FUNCTION_SEED = '''"""DRILL_LONG_FUNCTION: extract_nested_function — вложенная def для извлечения.
+
+Вложенная _compute_first_half() без closure-зависимостей — suggest_extract_nested_function находит.
+CodeAwareness long_function: >50 lines; padding добавлен для прохода порога.
+"""
+
+
+def polygon_long_function() -> int:
+    """Длинная функция с вложенной def для extract_nested_function."""
+
+    def _compute_first_half() -> int:
+        a = 1
+        b = 2
+        c = 3
+        d = 4
+        e = 5
+        return a + b + c + d + e
+
+    f = 6
+    g = 7
+    h = 8
+    i = 9
+    j = 10
+    _ = 11
+    __ = 12
+    ___ = 13
+    ____ = 14
+    _____ = 15
+    ______ = 16
+    _______ = 17
+    ________ = 18
+    _________ = 19
+    __________ = 20
+    ___________ = 21
+    ____________ = 22
+    _____________ = 23
+    ______________ = 24
+    _______________ = 25
+    ________________ = 26
+    _________________ = 27
+    __________________ = 28
+    ___________________ = 29
+    ____________________ = 30
+    _____________________ = 31
+    ______________________ = 32
+    _______________________ = 33
+    ________________________ = 34
+    _________________________ = 35
+    __________________________ = 36
+    ___________________________ = 37
+    ____________________________ = 38
+    _____________________________ = 39
+    ______________________________ = 40
+    _______________________________ = 41
+    ________________________________ = 42
+    _________________________________ = 43
+    __________________________________ = 44
+    ___________________________________ = 45
+    return _compute_first_half() + f + g + h + i + j
+'''
+
+_POLYGON_LONG_FUNCTION_DESCRIPTION = (
+    "C.14 polygon propose: extract_nested_function on "
+    "eurika/polygon/long_function.py"
+)
+
 
 def normalize_propose_drill(drill: str | None) -> str:
     """Map aliases to a supported propose drill id."""
@@ -95,6 +162,12 @@ def normalize_propose_drill(drill: str | None) -> str:
         "extract": "extractable_block",
         "extract_block": "extractable_block",
         "second": "extractable_block",
+        "long_function": "long_function",
+        "long": "long_function",
+        "nested": "long_function",
+        "extract_nested": "long_function",
+        "extract_nested_function": "long_function",
+        "third": "long_function",
     }
     resolved = aliases.get(raw, raw)
     if resolved not in PROPOSE_DRILLS:
@@ -182,6 +255,15 @@ def seed_polygon_extractable_block(root: Path) -> Path:
     return target
 
 
+def seed_polygon_long_function(root: Path) -> Path:
+    """Reseed long_function drill (nested def inside parent, not yet extracted)."""
+    root = root.resolve()
+    target = root / POLYGON_LONG_FUNCTION_REL
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(_POLYGON_LONG_FUNCTION_SEED, encoding="utf-8")
+    return target
+
+
 def build_prove_operation(root: Path) -> OperationRecord:
     """Build a single remove_unused_import op for the drill file."""
     seed_prove_drill_file(root)
@@ -206,6 +288,8 @@ def build_polygon_propose_operation(
     drill_id = normalize_propose_drill(drill)
     if drill_id == "extractable_block":
         return _build_extractable_propose_operation(root)
+    if drill_id == "long_function":
+        return _build_long_function_propose_operation(root)
     seed_polygon_imports_ok(root)
     return {
         "target_file": POLYGON_IMPORTS_REL,
@@ -252,6 +336,44 @@ def _build_extractable_propose_operation(root: Path) -> OperationRecord:
     }
 
 
+def _build_long_function_propose_operation(root: Path) -> OperationRecord:
+    from eurika.refactor.extract_function import suggest_extract_nested_function
+
+    seed_polygon_long_function(root)
+    target = root.resolve() / POLYGON_LONG_FUNCTION_REL
+    suggestion = suggest_extract_nested_function(target, "polygon_long_function")
+    if suggestion is None:
+        raise RuntimeError(
+            "suggest_extract_nested_function found no nested def in "
+            f"{POLYGON_LONG_FUNCTION_REL} after seed"
+        )
+    nested_name, _line_count, extra = suggestion
+    return {
+        "target_file": POLYGON_LONG_FUNCTION_REL,
+        "kind": "extract_nested_function",
+        "smell_type": "long_function",
+        "params": {
+            "location": "polygon_long_function",
+            "nested_function_name": str(nested_name),
+            "extra_params": list(extra) if extra else [],
+        },
+        "description": _POLYGON_LONG_FUNCTION_DESCRIPTION,
+        "approval_state": "pending",
+        "critic_verdict": "allow",
+        "decision_source": "prove_cycle_propose",
+        "team_decision": "pending",
+    }
+
+
+def _propose_drill_labels(drill_id: str) -> tuple[str, str]:
+    """Return (drill_name, target_rel) for summaries / dry-run."""
+    if drill_id == "extractable_block":
+        return "polygon_extractable_block", POLYGON_EXTRACTABLE_REL
+    if drill_id == "long_function":
+        return "polygon_long_function", POLYGON_LONG_FUNCTION_REL
+    return "polygon_unused_import", POLYGON_IMPORTS_REL
+
+
 def run_prove_propose(
     project_root: Path,
     *,
@@ -273,6 +395,7 @@ def run_prove_propose(
             "return_code": 1,
         }
     if dry_run:
+        drill_name, target_rel = _propose_drill_labels(drill_id)
         if drill_id == "extractable_block":
             preview: OperationRecord = {
                 "target_file": POLYGON_EXTRACTABLE_REL,
@@ -285,8 +408,21 @@ def run_prove_propose(
                 "decision_source": "prove_cycle_propose",
                 "team_decision": "pending",
             }
-            drill_name = "polygon_extractable_block"
-            target_rel = POLYGON_EXTRACTABLE_REL
+        elif drill_id == "long_function":
+            preview = {
+                "target_file": POLYGON_LONG_FUNCTION_REL,
+                "kind": "extract_nested_function",
+                "smell_type": "long_function",
+                "params": {
+                    "location": "polygon_long_function",
+                    "nested_function_name": "_compute_first_half",
+                },
+                "description": _POLYGON_LONG_FUNCTION_DESCRIPTION,
+                "approval_state": "pending",
+                "critic_verdict": "allow",
+                "decision_source": "prove_cycle_propose",
+                "team_decision": "pending",
+            }
         else:
             preview = {
                 "target_file": POLYGON_IMPORTS_REL,
@@ -299,8 +435,6 @@ def run_prove_propose(
                 "decision_source": "prove_cycle_propose",
                 "team_decision": "pending",
             }
-            drill_name = "polygon_unused_import"
-            target_rel = POLYGON_IMPORTS_REL
         return {
             "ok": True,
             "dry_run": True,
@@ -345,11 +479,15 @@ def run_prove_propose(
         pending_rel = str(pending_path.relative_to(path))
     except ValueError:
         pending_rel = str(pending_path)
-    drill_name = (
-        "polygon_extractable_block"
-        if drill_id == "extractable_block"
-        else "polygon_unused_import"
-    )
+    drill_name, _ = _propose_drill_labels(drill_id)
+    seeded_nested = None
+    if drill_id == "long_function":
+        # Nested def still inside parent (module-level helper not yet extracted).
+        seeded_nested = (
+            "def _compute_first_half()" in seeded_text
+            and seeded_text.find("def polygon_long_function")
+            < seeded_text.find("def _compute_first_half")
+        )
     return {
         "ok": True,
         "prove_cycle": True,
@@ -371,6 +509,7 @@ def run_prove_propose(
             if drill_id == "extractable_block"
             else None
         ),
+        "seeded_nested": seeded_nested,
         "instructions": (
             "Review Approvals / .eurika/pending_plan.json, set team_decision=approve, "
             "then: eurika fix . --apply-approved"
@@ -477,6 +616,10 @@ def format_prove_cycle_summary(payload: dict[str, Any]) -> str:
         if payload.get("seeded_extractable") is not None:
             lines.append(
                 f"- seeded extractable (no helper yet): **{payload.get('seeded_extractable')}**"
+            )
+        if payload.get("seeded_nested") is not None:
+            lines.append(
+                f"- seeded nested def (not yet extracted): **{payload.get('seeded_nested')}**"
             )
         if payload.get("error"):
             lines.append(f"- error: {payload.get('error')}")

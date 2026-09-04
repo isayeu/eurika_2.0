@@ -1137,13 +1137,18 @@ def is_polygon_propose_request(message: str) -> bool:
         "propose hitl",
         "второй полигон",
         "полигон extract",
-        "extractable_block",
+        "третий полигон",
+        "полигон long",
+        "полигон nested",
+        "long_function",
     )
     if any(n in msg for n in needles):
         return True
     if "prove-cycle" in msg and "propose" in msg:
         return True
-    if "полигон" in msg and any(w in msg for w in ("предложи", "propose", "hitl", "approvals", "extract")):
+    if "полигон" in msg and any(
+        w in msg for w in ("предложи", "propose", "hitl", "approvals", "extract", "long", "nested")
+    ):
         return True
     return False
 
@@ -1151,6 +1156,19 @@ def is_polygon_propose_request(message: str) -> bool:
 def polygon_propose_drill_id(message: str) -> str:
     """Pick prove-cycle --drill for a polygon propose chat phrase."""
     msg = _norm_msg(message)
+    long_needles = (
+        "long_function",
+        "extract_nested",
+        "--drill long",
+        "drill long",
+        "третий полигон",
+        "полигон long",
+        "полигон nested",
+        "предложи long",
+        "предложи nested",
+    )
+    if any(n in msg for n in long_needles):
+        return "long_function"
     extract_needles = (
         "extractable",
         "extract_block",
