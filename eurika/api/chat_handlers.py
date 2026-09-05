@@ -477,6 +477,13 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             'error': None if ok else result.get('error'),
             'terminal_exit_code': 0 if ok else 1,
         }
+    if handler_id == 'telegram_bot_status':
+        from eurika.integrations.telegram_bot import format_telegram_bot_status
+
+        text = format_telegram_bot_status(root)
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
     if handler_id == 'goal_reflection':
         # Prefer in-memory state (same request), fall back to disk.
         st = state if isinstance(state, dict) and state else load_dialog_state(root)

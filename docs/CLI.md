@@ -311,7 +311,7 @@ VISION C.12 v1: long-poll Telegram Bot API → тот же `chat_send`. **Не**
 - Токен: `--token` или `EURIKA_TELEGRAM_BOT_TOKEN`
 - Allowlist: `--chat-ids` / `EURIKA_TELEGRAM_CHAT_IDS` (обязателен, иначе `--allow-any` / `EURIKA_TELEGRAM_ALLOW_ANY=1` только для dogfood)
 - `/start` и другие `/…` не уходят в shell — короткий help; «статус apply» / «получилось?» читает `eurika_fix_report.json` (в Qt Chat — тот же handler; «что получилось?» остаётся goal reflection)
-- Chat «запусти telegram-bot» поднимает процесс в фоне (не HITL `run_command`); «останови telegram-bot» — стоп
+- Chat «запусти telegram-bot» поднимает процесс в фоне (не HITL `run_command`); «останови telegram-bot» — стоп; «бот жив?» / `/status` — pid/running
 
 ```bash
 export EURIKA_TELEGRAM_BOT_TOKEN=…

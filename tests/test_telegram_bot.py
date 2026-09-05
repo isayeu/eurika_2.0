@@ -129,6 +129,7 @@ def test_handle_text_message_allowlist(tmp_path: Path) -> None:
 
 def test_telegram_bot_background_status_and_stop(tmp_path: Path, monkeypatch) -> None:
     from eurika.integrations.telegram_bot import (
+        format_telegram_bot_status,
         start_telegram_bot_background,
         stop_telegram_bot_background,
         telegram_bot_status,
@@ -150,7 +151,19 @@ def test_telegram_bot_background_status_and_stop(tmp_path: Path, monkeypatch) ->
     out = start_telegram_bot_background(tmp_path)
     assert out.get("ok") is True
     assert out.get("pid") == 5555
-    assert telegram_bot_status(tmp_path).get("pid") == 5555
+
+    def alive_kill(pid, sig=0):
+        if pid != 5555:
+            raise OSError("unexpected")
+        if sig == 0:
+            return None
+        raise OSError("no stop yet")
+
+    monkeypatch.setattr("eurika.integrations.telegram_bot.os.kill", alive_kill)
+    assert telegram_bot_status(tmp_path).get("running") is True
+    text = format_telegram_bot_status(tmp_path)
+    assert "running: **True**" in text
+    assert "5555" in text
 
     killed: list[int] = []
 
@@ -163,6 +176,23 @@ def test_telegram_bot_background_status_and_stop(tmp_path: Path, monkeypatch) ->
     monkeypatch.setattr("eurika.integrations.telegram_bot.os.kill", fake_kill)
     stop = stop_telegram_bot_background(tmp_path)
     assert stop.get("stopped") is True
+
+
+def test_handle_text_status_slash(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("EURIKA_TELEGRAM_BOT_TOKEN", "t")
+    monkeypatch.setenv("EURIKA_TELEGRAM_ALLOW_ANY", "1")
+    (tmp_path / ".eurika").mkdir(parents=True)
+    (tmp_path / ".eurika" / "telegram_bot.pid").write_text("99999", encoding="utf-8")
+
+    def fake_kill(pid, sig=0):
+        raise OSError("dead")
+
+    monkeypatch.setattr("eurika.integrations.telegram_bot.os.kill", fake_kill)
+    out = handle_text_message(
+        tmp_path, 1, "/status", allowed_chat_ids={1}, chat_send=lambda *_a, **_k: {}
+    )
+    assert "Telegram-bot" in out
+    assert "running" in out.lower()
 
 
 def test_process_updates_sends_reply(tmp_path: Path) -> None:

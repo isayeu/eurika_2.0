@@ -62,6 +62,35 @@ def telegram_bot_status(project_root: Path) -> dict[str, Any]:
     }
 
 
+def format_telegram_bot_status(project_root: Path) -> str:
+    """Human-readable status for Chat / Telegram «бот жив?»."""
+    st = telegram_bot_status(project_root)
+    token_ok = bool(_env_token())
+    allowed = parse_allowed_chat_ids()
+    if allowed is None:
+        allow_bit = "allowlist: any (EURIKA_TELEGRAM_ALLOW_ANY)"
+    elif not allowed:
+        allow_bit = "allowlist: empty (задайте EURIKA_TELEGRAM_CHAT_IDS)"
+    else:
+        allow_bit = f"allowlist: {len(allowed)} chat_id(s)"
+    lines = [
+        "Telegram-bot (C.12):",
+        f"- running: **{bool(st.get('running'))}**"
+        + (f" (pid {st.get('pid')})" if st.get("pid") else ""),
+        f"- token: {'задан' if token_ok else 'нет (EURIKA_TELEGRAM_BOT_TOKEN)'}",
+        f"- {allow_bit}",
+    ]
+    if st.get("stale") and st.get("pid"):
+        lines.append("- pid file stale (процесс не жив)")
+    if st.get("log_file"):
+        lines.append(f"- log: `{st.get('log_file')}`")
+    if not st.get("running"):
+        lines.append("- старт: «запусти telegram-bot»")
+    else:
+        lines.append("- стоп: «останови telegram-bot»")
+    return "\n".join(lines)
+
+
 def start_telegram_bot_background(project_root: Path) -> dict[str, Any]:
     """Spawn ``eurika telegram-bot`` detached; idempotent if already running."""
     root = Path(project_root).resolve()
@@ -293,7 +322,9 @@ def telegram_slash_command(text: str) -> str | None:
             "Пишите обычным текстом, например:\n"
             "• hi / что за проект?\n"
             "• проведи ритуал\n"
-            "• четвёртый полигон\n\n"
+            "• четвёртый полигон\n"
+            "• статус apply / получилось?\n"
+            "• /status — жив ли long-poll процесс\n\n"
             "Патчи из Telegram не применяются — только Approvals в Qt → "
             "`eurika fix . --apply-approved`."
         )
@@ -341,12 +372,25 @@ def handle_text_message(
     """Run one inbound Telegram text through Eurika chat; return reply text."""
     if allowed_chat_ids is not None and chat_id not in allowed_chat_ids:
         return "Этот chat_id не в allowlist (EURIKA_TELEGRAM_CHAT_IDS)."
+    root = Path(project_root).resolve()
+    raw = (text or "").strip()
+    if raw.startswith("/"):
+        cmd = raw.split()[0].lower().split("@", 1)[0]
+        if cmd == "/status":
+            return format_telegram_bot_status(root)
     slash = telegram_slash_command(text)
     if slash is not None:
         return slash
-    root = Path(project_root).resolve()
     if is_apply_result_question(text):
         return format_last_fix_status(root)
+    # «бот жив?» without going through full chat_send (works offline from Bot API).
+    try:
+        from eurika.api.chat_direct import is_telegram_bot_status_request
+
+        if is_telegram_bot_status_request(text):
+            return format_telegram_bot_status(root)
+    except Exception:
+        pass
     if chat_send is None:
         from eurika.api.chat import chat_send as _chat_send
 
