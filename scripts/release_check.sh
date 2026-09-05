@@ -38,13 +38,15 @@ if [[ -d "${ROOT}/.eurika_backups" ]] && [[ -n "$(ls -A "${ROOT}/.eurika_backups
 fi
 
 _step "1. Tests"
-$PYTEST tests/ -q --tb=short || _fail "pytest tests/"
+# Prefer ``$PY -m pytest`` so a mis-shebanged ``.venv/bin/pytest`` (pointing at
+# another tree's venv) cannot run the suite under the wrong interpreter.
+$PY -m pytest tests/ -q --tb=short || _fail "pytest tests/"
 
 _step "2. Edge-case tests"
-$PYTEST -m edge_case -v || _fail "pytest -m edge_case"
+$PY -m pytest -m edge_case -v || _fail "pytest -m edge_case"
 
 _step "3. Dependency firewall (strict)"
-EURIKA_STRICT_LAYER_FIREWALL=1 $PYTEST tests/test_dependency_guard.py tests/test_dependency_firewall.py -v || _fail "dependency firewall"
+EURIKA_STRICT_LAYER_FIREWALL=1 $PY -m pytest tests/test_dependency_guard.py tests/test_dependency_firewall.py -v || _fail "dependency firewall"
 
 _step "4. Lint (ruff)"
 if command -v $RUFF &>/dev/null; then

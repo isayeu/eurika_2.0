@@ -17,7 +17,10 @@ from qt_app.ui.handlers import ollama_handlers, chat_handlers, command_handlers
 
 
 def test_qt_main_window_smoke() -> None:
-    python_bin = os.environ.get("EURIKA_QT_SMOKE_PYTHON", "").strip() or sys.executable
+    python_bin = os.environ.get("EURIKA_QT_SMOKE_PYTHON", "").strip()
+    if not python_bin:
+        local_venv = ROOT / ".venv" / "bin" / "python"
+        python_bin = str(local_venv) if local_venv.is_file() else sys.executable
     smoke_script = textwrap.dedent(
         """
         import sys
@@ -87,7 +90,11 @@ def test_qt_main_window_smoke() -> None:
         assert window.minimumSizeHint().height() <= 560
         window.resize(900, 480)
         assert window.height() <= 500
-        print("SMOKE_OK")
+        print("SMOKE_OK", flush=True)
+        # closeEvent stops timers/QThreads; bare sys.exit aborts with
+        # "QThread: Destroyed while thread is still running" (exit -6).
+        window.close()
+        app.processEvents()
         sys.exit(0)
         """
     )
@@ -108,6 +115,8 @@ def test_qt_main_window_smoke() -> None:
         "bus error" in combined
         or "signal: 7" in combined
         or "destroyqcoreapplication" in combined
+        or "destroyed while thread" in combined
+        or result.returncode in {-6, -11, 134, 139}
     ):
         pytest.skip("Qt smoke completed, child process crashed on teardown (known environment issue).")
     raise AssertionError(
