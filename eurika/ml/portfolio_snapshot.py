@@ -12,7 +12,6 @@ from eurika.ml.cursor_hourly_brief import (
     DEFAULT_TF1,
     DEFAULT_TF2,
     _feat_bits,
-    _key,
     _num,
     _tf_view,
     collect_ticker_cards,
@@ -253,7 +252,8 @@ def rank_portfolio_cards(cards: Sequence[dict[str, Any]]) -> list[dict[str, Any]
     """Prioritize assistant book (open/pending), then movers."""
 
     def _score(card: dict[str, Any]) -> tuple:
-        feat = card.get("features") if isinstance(card.get("features"), dict) else {}
+        raw_feat = card.get("features")
+        feat: dict[str, Any] = raw_feat if isinstance(raw_feat, dict) else {}
         book = str(card.get("book") or "")
         book_rank = 0 if book == "open" else (1 if book == "pending" else 2)
         return (

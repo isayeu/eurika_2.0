@@ -19,7 +19,7 @@ from typing import Any, Mapping
 
 from eurika.ml.live_paper import load_open_positions
 from eurika.ml.market_store import ml_root
-from eurika.ml.paper_portfolio import load_portfolio, portfolio_status
+from eurika.ml.paper_portfolio import portfolio_status
 from eurika.ml.paper_trader import load_paper_trades
 
 DEFAULT_LOOKBACK_MS = 12 * 60 * 60 * 1000  # first visit / stale: last 12h
@@ -42,10 +42,18 @@ def load_session_seen(project_root: str | Path) -> dict[str, Any]:
 
 
 def _f(val: object) -> float | None:
-    try:
-        return float(val) if val is not None else None
-    except (TypeError, ValueError):
+    if val is None:
         return None
+    if isinstance(val, bool):
+        return float(val)
+    if isinstance(val, (int, float)):
+        return float(val)
+    if isinstance(val, str):
+        try:
+            return float(val)
+        except ValueError:
+            return None
+    return None
 
 
 def snapshot_three_banks(project_root: str | Path) -> dict[str, dict[str, Any]]:
@@ -331,16 +339,24 @@ def format_session_digest(data: dict[str, Any] | str | Path, project_root: str |
     kind = "с прошлого визита" if st.get("since_kind") == "last_seen" else "за окно"
     lines.append(f"  период: {kind} с {st.get('since_at')} (~{st.get('since_ago')})")
 
-    banks = st.get("banks") if isinstance(st.get("banks"), dict) else {}
-    live_b = banks.get("live") if isinstance(banks.get("live"), dict) else {
-        "label": "Live/MLP exam",
-        "equity_usdt": st.get("equity_usdt"),
-        "delta_usdt": st.get("equity_delta_usdt"),
-        "margin_used_usdt": st.get("margin_used_usdt"),
-        "max_margin_usdt": st.get("max_margin_usdt"),
-    }
-    port_b = banks.get("portfolio") if isinstance(banks.get("portfolio"), dict) else {}
-    sh_b = banks.get("shadow") if isinstance(banks.get("shadow"), dict) else {}
+    raw_banks = st.get("banks")
+    banks: dict[str, Any] = raw_banks if isinstance(raw_banks, dict) else {}
+    raw_live = banks.get("live")
+    live_b: dict[str, Any] = (
+        raw_live
+        if isinstance(raw_live, dict)
+        else {
+            "label": "Live/MLP exam",
+            "equity_usdt": st.get("equity_usdt"),
+            "delta_usdt": st.get("equity_delta_usdt"),
+            "margin_used_usdt": st.get("margin_used_usdt"),
+            "max_margin_usdt": st.get("max_margin_usdt"),
+        }
+    )
+    raw_port = banks.get("portfolio")
+    raw_sh = banks.get("shadow")
+    port_b: dict[str, Any] = raw_port if isinstance(raw_port, dict) else {}
+    sh_b: dict[str, Any] = raw_sh if isinstance(raw_sh, dict) else {}
 
     lines.append("  банки (3 отдельных, не смешивать):")
     live_extra = ""

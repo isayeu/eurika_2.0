@@ -305,7 +305,8 @@ def fund_cash_from_earn(root: str | Path, amount_usdt: float, *, asset: str = "U
         root,
         [{"product": "earn", "action": "redeem", "asset": str(asset).upper(), "amount_usdt": amt}],
     )
-    applied = out.get("applied") if isinstance(out.get("applied"), dict) else {}
+    raw_applied = out.get("applied")
+    applied: dict[str, Any] = raw_applied if isinstance(raw_applied, dict) else {}
     if int(applied.get("redeem") or 0) <= 0:
         return 0.0
     return amt

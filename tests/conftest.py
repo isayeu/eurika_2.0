@@ -33,6 +33,7 @@ def _close_lingering_qt_windows() -> Iterator[None]:
     """Avoid QThread abort when the session tears down a leaked MainWindow."""
     yield
     try:
+        from PySide6.QtCore import QThread
         from PySide6.QtWidgets import QApplication
     except Exception:
         return
@@ -46,6 +47,19 @@ def _close_lingering_qt_windows() -> Iterator[None]:
             pass
     try:
         app.processEvents()
+    except Exception:
+        pass
+    # Interpreter shutdown destroys QThread wrappers while native threads still
+    # run → "QThread: Destroyed while thread is still running" → SIGABRT, which
+    # made release_check treat a green suite as FAIL.
+    try:
+        for thread in list(app.findChildren(QThread)):
+            try:
+                if thread.isRunning():
+                    thread.quit()
+                    thread.wait(2000)
+            except Exception:
+                pass
     except Exception:
         pass
 

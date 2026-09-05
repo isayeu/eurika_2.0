@@ -39,28 +39,42 @@ fi
 
 _step "1. Tests"
 # Prefer ``$PY -m pytest`` so a mis-shebanged ``.venv/bin/pytest`` cannot hijack the interpreter.
-# ``-qq`` = no progress dots (Chat/Terminal mirrors each flush as its own line → ugly columns).
-# Log via tee so we can detect real FAILED vs Qt SIGABRT after a finished suite.
+# Redirect to a log (do not stream raw progress): Chat/Terminal treats each pytest
+# flush as its own line, so quiet-mode dots become a vertical column of ``.``.
+# Poll the log for ``[n/m]`` milestones instead. Fail only on real FAILED/ERROR.
 PYTEST_LOG="$(mktemp -t eurika-release-pytest.XXXXXX)"
+echo "  pytest tests/ → $PYTEST_LOG"
 set +e
-set -o pipefail
-$PY -m pytest tests/ -qq --tb=short 2>&1 | tee "$PYTEST_LOG"
-PYTEST_EC=${PIPESTATUS[0]}
-set +o pipefail
+$PY -m pytest tests/ -q --tb=short -o console_output_style=count \
+  >"$PYTEST_LOG" 2>&1 &
+PYTEST_PID=$!
+_LAST_PROG=""
+while kill -0 "$PYTEST_PID" 2>/dev/null; do
+  _CUR=$(grep -oE '\[[0-9]+/[0-9]+\]' "$PYTEST_LOG" 2>/dev/null | tail -1)
+  if [[ -n "$_CUR" && "$_CUR" != "$_LAST_PROG" ]]; then
+    echo "  pytest $_CUR"
+    _LAST_PROG="$_CUR"
+  fi
+  sleep 2
+done
+wait "$PYTEST_PID"
+PYTEST_EC=$?
 set -e
+if [[ -n "$_LAST_PROG" ]]; then
+  echo "  pytest $_LAST_PROG (finished, exit=$PYTEST_EC)"
+fi
+# Operator-facing tail: drop progress rows (dots + optional [n/m]); keep warnings.
+grep -vE '^\.*[[:space:]]*(\[[[:space:]]*[0-9]+/[0-9]+\]|\[[0-9]+%\])?[[:space:]]*$' \
+  "$PYTEST_LOG" 2>/dev/null | grep -vE '^\.+\[eurika-' | tail -n 25 || true
 if [[ "$PYTEST_EC" -ne 0 ]]; then
-  # Abort during Qt teardown often happens after the last test, before/without a
-  # final "N passed" line — still no FAILED/ERROR in the log.
-  if grep -qE '^FAILED |^ERROR |ERROR collecting' "$PYTEST_LOG"; then
+  # Real failures only. Qt often SIGABRTs (134) on QThread teardown after a green
+  # suite — sometimes before the final "N passed" line is flushed.
+  if grep -qE '^FAILED |^ERROR tests/|ERROR collecting|=+ .*[1-9][0-9]* (failed|error)' \
+    "$PYTEST_LOG"; then
     rm -f "$PYTEST_LOG"
     _fail "pytest tests/"
   fi
-  if grep -qE 'passed|SKIPPED|warnings summary|\[[0-9]+/[0-9]+\]|===.*===' "$PYTEST_LOG"; then
-    echo "  WARN: pytest exited $PYTEST_EC without FAILED (likely Qt QThread teardown abort); continuing"
-  else
-    rm -f "$PYTEST_LOG"
-    _fail "pytest tests/"
-  fi
+  echo "  WARN: pytest exited $PYTEST_EC without FAILED (likely Qt QThread teardown abort); continuing"
 fi
 rm -f "$PYTEST_LOG"
 
@@ -114,7 +128,8 @@ echo "  OK: no __pycache__/.pyc in sdist"
 
 _step "9. Smoke (install + scan + doctor --no-llm + fix --dry-run) [B.13]"
 $PIP install -e . -q
-$PY -m eurika_cli scan . -q || echo "  (scan warning, continue)"
+# scan has no ``-q``; fix does (subcommand flag).
+$PY -m eurika_cli scan . >/dev/null || echo "  (scan warning, continue)"
 $PY -m eurika_cli doctor . --no-llm || echo "  (doctor warning, continue)"
 $PY -m eurika_cli fix . --dry-run -q || echo "  (fix --dry-run warning, continue)"
 

@@ -433,30 +433,30 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
     if handler_id == 'telegram_bot_start':
         from eurika.integrations.telegram_bot import start_telegram_bot_background
 
-        result = start_telegram_bot_background(root)
-        ok = bool(result.get('ok'))
-        if ok and result.get('already_running'):
+        tg = start_telegram_bot_background(root)
+        ok = bool(tg.get('ok'))
+        if ok and tg.get('already_running'):
             text = (
-                f"Telegram-bot уже работает (pid {result.get('pid')}). "
-                f"Лог: `{result.get('log_file')}`."
+                f"Telegram-bot уже работает (pid {tg.get('pid')}). "
+                f"Лог: `{tg.get('log_file')}`."
             )
         elif ok:
             text = (
-                f"Запустил telegram-bot в фоне (pid {result.get('pid')}).\n"
-                f"- лог: `{result.get('log_file')}`\n"
+                f"Запустил telegram-bot в фоне (pid {tg.get('pid')}).\n"
+                f"- лог: `{tg.get('log_file')}`\n"
                 "- apply по-прежнему только через Approvals / "
                 "`eurika fix . --apply-approved`\n"
                 "- остановить: «останови telegram-bot»"
             )
         else:
-            text = f"Не удалось запустить telegram-bot: {result.get('error')}"
-            if result.get('log_tail'):
-                text += f"\n\nlog:\n{result.get('log_tail')}"
+            text = f"Не удалось запустить telegram-bot: {tg.get('error')}"
+            if tg.get('log_tail'):
+                text += f"\n\nlog:\n{tg.get('log_tail')}"
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         return {
             'text': text,
-            'error': None if ok else result.get('error'),
+            'error': None if ok else tg.get('error'),
             'terminal_cmd': '$ eurika telegram-bot .  # background',
             'terminal_output': text,
             'terminal_exit_code': 0 if ok else 1,
@@ -464,17 +464,17 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
     if handler_id == 'telegram_bot_stop':
         from eurika.integrations.telegram_bot import stop_telegram_bot_background
 
-        result = stop_telegram_bot_background(root)
-        ok = bool(result.get('ok'))
-        if result.get('stopped'):
-            text = f"Остановил telegram-bot (pid {result.get('pid')})."
+        tg = stop_telegram_bot_background(root)
+        ok = bool(tg.get('ok'))
+        if tg.get('stopped'):
+            text = f"Остановил telegram-bot (pid {tg.get('pid')})."
         else:
-            text = str(result.get('message') or result.get('error') or 'ok')
+            text = str(tg.get('message') or tg.get('error') or 'ok')
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         return {
             'text': text,
-            'error': None if ok else result.get('error'),
+            'error': None if ok else tg.get('error'),
             'terminal_exit_code': 0 if ok else 1,
         }
     if handler_id == 'telegram_bot_status':
@@ -732,14 +732,14 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         save_dialog_state(root, state)
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
-        result = {
+        poly_result: Dict[str, Any] = {
             'text': text,
             'error': None if ok else (output or 'propose failed'),
             'approvalsQueued': queued,
         }
-        result = _with_terminal(result, term_cmd, output, code)
-        publish_done(root, started, ok=ok, result=result)
-        return result
+        poly_result = _with_terminal(poly_result, term_cmd, output, code)
+        publish_done(root, started, ok=ok, result=poly_result)
+        return poly_result
     if handler_id == 'release_check':
         exit_code = -1
         term_cmd = None

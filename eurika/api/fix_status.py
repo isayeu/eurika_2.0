@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 
 def format_last_fix_status(project_root: Path) -> str:
@@ -17,7 +18,8 @@ def format_last_fix_status(project_root: Path) -> str:
         return "Не удалось прочитать `eurika_fix_report.json`."
     if not isinstance(data, dict):
         return "Некорректный `eurika_fix_report.json`."
-    verify = data.get("verify") if isinstance(data.get("verify"), dict) else {}
+    raw_verify = data.get("verify")
+    verify: dict[str, Any] = raw_verify if isinstance(raw_verify, dict) else {}
     ok = verify.get("success")
     if ok is None:
         ok = data.get("verify_success")

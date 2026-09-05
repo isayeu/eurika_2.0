@@ -287,7 +287,7 @@ def telegram_api(
         raise RuntimeError(f"Telegram API {method} failed: {payload!r}"[:500])
     result = payload.get("result")
     if isinstance(result, (dict, list)):
-        return result  # type: ignore[return-value]
+        return result
     return {"result": result}
 
 
@@ -300,8 +300,12 @@ def extract_text_update(update: dict[str, Any]) -> tuple[int, int, str] | None:
     if not isinstance(chat, dict):
         return None
     try:
-        chat_id = int(chat.get("id"))
-        update_id = int(update.get("update_id"))
+        chat_id_raw = chat.get("id")
+        update_id_raw = update.get("update_id")
+        if chat_id_raw is None or update_id_raw is None:
+            return None
+        chat_id = int(chat_id_raw)
+        update_id = int(update_id_raw)
     except (TypeError, ValueError):
         return None
     text = msg.get("text")

@@ -28,7 +28,6 @@ from eurika.ml.earn_monitor import (
     apply_earn_actions,
     ensure_earn_portfolio,
     fetch_earn_rates,
-    format_earn_book_for_prompt,
     load_earn_rates,
 )
 from eurika.ml.llm_shadow import _try_obj
@@ -351,15 +350,18 @@ def format_portfolio_digest(
         lines.append("Pending: нет")
 
     if cycle is not None:
-        trade = cycle.get("trade") if isinstance(cycle.get("trade"), dict) else {}
-        earn = cycle.get("earn") if isinstance(cycle.get("earn"), dict) else {}
+        raw_trade = cycle.get("trade")
+        raw_earn = cycle.get("earn")
+        trade: dict[str, Any] = raw_trade if isinstance(raw_trade, dict) else {}
+        earn: dict[str, Any] = raw_earn if isinstance(raw_earn, dict) else {}
         lines.append(
             "За цикл: "
             f"place={int(trade.get('place') or 0)} "
             f"open={int(trade.get('open') or 0)} "
             f"close={int(trade.get('close') or 0)} "
             f"cancel={int(trade.get('cancel') or 0)} "
-            f"hold={int(trade.get('hold') or 0)}"
+            f"hold={int(trade.get('hold') or 0)} "
+            f"blocked={int(trade.get('blocked') or 0)}"
             + (
                 f" · earn dep={int(earn.get('deposit') or 0)} red={int(earn.get('redeem') or 0)}"
                 if not PORTFOLIO_FUTURES_ONLY
@@ -367,6 +369,9 @@ def format_portfolio_digest(
             )
             + f" · actions={int(cycle.get('actions_n') or 0)}"
         )
+        notes = cycle.get("block_notes") if isinstance(cycle.get("block_notes"), list) else []
+        if notes:
+            lines.append("Blocked: " + "; ".join(str(x) for x in notes[:6]))
         body = str(cycle.get("body") or "").strip()
         verdict = ""
         for key in ("**Вердикт:**", "Вердикт:"):
@@ -415,7 +420,7 @@ PORTFOLIO_AGENT_RULES = (
     "Каждый цикл:\n"
     "  1) FUTURES UNIVERSE — весь Binance USDT-M perpetual (24h overview), не узкий ticker_lists.\n"
     "  2) DETAIL SNAPSHOT — 15m+1h: сначала ASSISTANT BOOK (opens/pending), затем топ movers.\n"
-    "  3) BOOKS — cash_free / margin / opens / pending.\n"
+    "  3) BOOKS — cash_free / margin / opens / pending / REENTRY GUARDS.\n"
     "  4) MEMORY — прошлые циклы.\n"
     "Приоритет анализа: открытые и pending позиции; потом сильные движения по рынку.\n"
     "\n"
@@ -424,6 +429,11 @@ PORTFOLIO_AGENT_RULES = (
     "  symbol, side, уровни (limit_px / tp_pct / sl_pct). Idle cash держи в cash_free.\n"
     "  Для BUY limit: invalidate_px НИЖЕ limit (отмена при сносе вниз). "
     "Для SELL limit: invalidate_px ВЫШЕ limit. Иначе ордер неисполним.\n"
+    "  R:R: цель TP≈3×SL (пример 2.4% / 0.8%); не ставь TP≤SL. Скелет поднимет TP, "
+    "если ratio < 1.5. Не снимай крошечный плюс — structure/trail только после заметного MFE.\n"
+    "  После SL скелет блокирует тот же symbol+side ~2ч — не «восстанавливай» тот же лимит; "
+    "выбери другую идею или hold/wait. Один и тот же limit_px — не чаще 2 place за 4ч "
+    "(скелет отклонит лишнее).\n"
     "\n"
     "Для обучения Eurika добавь samples (как LLM 15м teacher) по fut из снимка:\n"
     '  enter=yes|no|wait, side=BUY|SELL|HOLD, tp_pct/sl_pct доли.\n'
@@ -431,7 +441,7 @@ PORTFOLIO_AGENT_RULES = (
     '{"samples":[{"symbol":"BTCUSDT","market":"fut","enter":"wait","side":"HOLD"}],'
     '"portfolio_actions":[{"product":"trade","symbol":"ETHUSDT","market":"futures",'
     '"action":"place","side":"BUY","entry_style":"limit","limit_px":3500,'
-    '"tp_pct":0.01,"sl_pct":0.008}]}\n'
+    '"tp_pct":0.024,"sl_pct":0.008}]}\n'
 )
 
 
@@ -517,6 +527,7 @@ def apply_portfolio_actions(
         "trade": trade_ap,
         "earn_equity_usdt": earn_out.get("equity_usdt"),
         "closed_rows": trade_out.get("closed_rows") or [],
+        "block_notes": trade_out.get("block_notes") or [],
     }
 
 
@@ -625,24 +636,30 @@ def run_portfolio_cycle(
     post = run_book_tick(root, now_ms=now, auto_place=False, write_journal=False)
     teacher = _harvest_learning(root, full, cards, now_ms=now) if ok else {"stored": 0}
 
-    earn_ap = managed.get("earn") if isinstance(managed.get("earn"), dict) else {}
-    trade_ap = managed.get("trade") if isinstance(managed.get("trade"), dict) else {}
+    raw_earn_ap = managed.get("earn")
+    raw_trade_ap = managed.get("trade")
+    earn_ap: dict[str, Any] = raw_earn_ap if isinstance(raw_earn_ap, dict) else {}
+    trade_ap: dict[str, Any] = raw_trade_ap if isinstance(raw_trade_ap, dict) else {}
+    block_notes = managed.get("block_notes") if isinstance(managed.get("block_notes"), list) else []
     extra = (
         f" [earn dep={int(earn_ap.get('deposit') or 0)}"
         f" red={int(earn_ap.get('redeem') or 0)}"
         f" | trade place={int(trade_ap.get('place') or 0)}"
         f" open={int(trade_ap.get('open') or 0)}"
         f" close={int(trade_ap.get('close') or 0)}"
+        f" blocked={int(trade_ap.get('blocked') or 0)}"
         f" | teacher={int(teacher.get('stored') or 0)}"
         f" accrue={float(accrue.get('accrued_usdt') or 0):.4f}]"
     )
+    if block_notes:
+        extra += "\nblocked: " + "; ".join(str(x) for x in block_notes[:8])
     message = (
         f"=== PORTFOLIO CYCLE {_ts_iso(now)} ===\n"
         f"{body}\n"
         f"{extra}\n"
         f"\n--- pre-tick ---\n"
         + "\n".join(pre.get("logs") or [])
-        + f"\n\n--- post-tick ---\n"
+        + "\n\n--- post-tick ---\n"
         + "\n".join(post.get("logs") or [])
     )
     memory = load_memory(root)
@@ -686,6 +703,7 @@ def run_portfolio_cycle(
                 "actions_n": len(actions),
                 "trade": trade_ap,
                 "earn": earn_ap,
+                "block_notes": block_notes,
             },
         )
         append_market_journal(
@@ -712,11 +730,13 @@ def run_portfolio_cycle(
                 "actions_n": len(actions),
                 "trade": trade_ap,
                 "earn": earn_ap,
+                "block_notes": block_notes,
             },
         ),
         "actions_n": len(actions),
         "earn": earn_ap,
         "trade": trade_ap,
+        "block_notes": block_notes,
         "teacher": teacher,
         "holistic_equity_usdt": h.get("equity_usdt"),
         "trade_equity_usdt": post.get("equity_usdt"),

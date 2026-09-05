@@ -245,7 +245,7 @@ def _pyproject_blurb(root: Path) -> dict[str, str]:
     if not path.is_file():
         return {}
     try:
-        import tomllib
+        import tomllib  # type: ignore[import-not-found]
 
         data = tomllib.loads(path.read_text(encoding='utf-8'))
     except Exception:
