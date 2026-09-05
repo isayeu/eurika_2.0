@@ -38,25 +38,29 @@ if [[ -d "${ROOT}/.eurika_backups" ]] && [[ -n "$(ls -A "${ROOT}/.eurika_backups
 fi
 
 _step "1. Tests"
-# Prefer ``$PY -m pytest`` so a mis-shebanged ``.venv/bin/pytest`` (pointing at
-# another tree's venv) cannot run the suite under the wrong interpreter.
+# Prefer ``$PY -m pytest`` so a mis-shebanged ``.venv/bin/pytest`` cannot hijack the interpreter.
+# Stream live via tee (do not capture into a bash var — that + Chat mirrors each flush as its own line).
+# ``count`` style avoids one-dot-per-line spam when the terminal treats each write as a row.
+PYTEST_LOG="$(mktemp -t eurika-release-pytest.XXXXXX)"
 set +e
-PYTEST_OUT="$($PY -m pytest tests/ -q --tb=short 2>&1)"
-PYTEST_EC=$?
+$PY -m pytest tests/ -q --tb=short -o console_output_style=count 2>&1 | tee "$PYTEST_LOG"
+PYTEST_EC=${PIPESTATUS[0]}
 set -e
-printf '%s\n' "$PYTEST_OUT"
 if [[ "$PYTEST_EC" -ne 0 ]]; then
   # Full suite can abort (SIGABRT/134) on Qt QThread teardown after a green run.
-  if ! printf '%s\n' "$PYTEST_OUT" | grep -qE '^FAILED |ERROR '; then
-    if printf '%s\n' "$PYTEST_OUT" | grep -qE 'passed|SKIPPED'; then
+  if ! grep -qE '^FAILED |ERROR ' "$PYTEST_LOG"; then
+    if grep -qE 'passed|SKIPPED' "$PYTEST_LOG"; then
       echo "  WARN: pytest exited $PYTEST_EC after green/skip summary (likely Qt teardown abort); continuing"
     else
+      rm -f "$PYTEST_LOG"
       _fail "pytest tests/"
     fi
   else
+    rm -f "$PYTEST_LOG"
     _fail "pytest tests/"
   fi
 fi
+rm -f "$PYTEST_LOG"
 
 _step "2. Edge-case tests"
 $PY -m pytest -m edge_case -v || _fail "pytest -m edge_case"
