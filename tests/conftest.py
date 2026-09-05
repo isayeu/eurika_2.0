@@ -28,6 +28,28 @@ except Exception:
 _FUZZY_INTENT_FLAGS = ("EURIKA_USE_ML_INTENT", "EURIKA_USE_VECTOR_INTENT")
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _close_lingering_qt_windows() -> Iterator[None]:
+    """Avoid QThread abort when the session tears down a leaked MainWindow."""
+    yield
+    try:
+        from PySide6.QtWidgets import QApplication
+    except Exception:
+        return
+    app = QApplication.instance()
+    if app is None:
+        return
+    for widget in list(app.topLevelWidgets()):
+        try:
+            widget.close()
+        except Exception:
+            pass
+    try:
+        app.processEvents()
+    except Exception:
+        pass
+
+
 @pytest.fixture(autouse=True)
 def _fuzzy_intent_flags_off() -> Iterator[None]:
     """Keep ML/vector routing opt-in per test.

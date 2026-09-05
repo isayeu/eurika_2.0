@@ -91,11 +91,14 @@ def test_qt_main_window_smoke() -> None:
         window.resize(900, 480)
         assert window.height() <= 500
         print("SMOKE_OK", flush=True)
-        # closeEvent stops timers/QThreads; bare sys.exit aborts with
-        # "QThread: Destroyed while thread is still running" (exit -6).
+        # closeEvent stops workers; os._exit matches qt_app.main and avoids
+        # "QThread: Destroyed while thread is still running" abort (-6) on
+        # interpreter teardown (which made release_check fail even after skip).
         window.close()
         app.processEvents()
-        sys.exit(0)
+        import os as _os
+
+        _os._exit(0)
         """
     )
     env = os.environ.copy()
@@ -142,6 +145,8 @@ def test_main_window_fits_short_vertical_space() -> None:
     assert window.minimumSizeHint().height() <= 560
     window.resize(900, 480)
     assert window.height() <= 500
+    window.close()
+    app.processEvents()
 
 
 def test_available_ollama_models_not_empty() -> None:

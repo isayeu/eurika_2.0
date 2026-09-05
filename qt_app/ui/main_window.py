@@ -659,9 +659,18 @@ class MainWindow(
         self.hide()
         if self._ollama_health_timer.isActive():
             self._ollama_health_timer.stop()
+        live_timer = getattr(self, "_live_activity_timer", None)
+        if live_timer is not None and live_timer.isActive():
+            live_timer.stop()
         timer = getattr(self, "_market_timer", None)
         if timer is not None and timer.isActive():
             timer.stop()
+        llm_timer = getattr(self, "_market_llm_timer", None)
+        if llm_timer is not None and llm_timer.isActive():
+            llm_timer.stop()
+        portfolio_timer = getattr(self, "_market_portfolio_timer", None)
+        if portfolio_timer is not None and portfolio_timer.isActive():
+            portfolio_timer.stop()
         from .handlers import market_llm_learn
         from .handlers import market_portfolio_agent
 
