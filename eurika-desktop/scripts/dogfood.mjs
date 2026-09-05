@@ -210,6 +210,69 @@ try {
   const contextClear = await backend.client.request("panel/state", { panel: "context" });
   if (contextClear.planValid) throw new Error("Context still reports planValid after apply");
 
+  await writeFile(resolve(workspace, "approve_me.py"), "old\n", "utf8");
+  await writeFile(
+    resolve(workspace, ".eurika", "pending_plan.json"),
+    JSON.stringify({
+      session_id: "dogfood",
+      created_at: "2026-01-01T00:00:00Z",
+      project_root: workspace,
+      patch_plan: { source: "dogfood", summary: "1 op" },
+      operations: [
+        {
+          target_file: "approve_me.py",
+          kind: "agent_edit",
+          params: { new_content: "new\n" },
+          critic_verdict: "allow",
+          team_decision: "pending",
+          approval_state: "pending",
+        },
+      ],
+      instructions: "approve then apply-approved",
+    }),
+    "utf8",
+  );
+  try {
+    await backend.client.request("approval/apply", {
+      operations: [
+        {
+          index: 1,
+          team_decision: "approve",
+          approved_by: "dogfood",
+          target_file: "approve_me.py",
+          kind: "agent_edit",
+        },
+      ],
+    });
+    throw new Error("approval/apply ran without explicit approval");
+  } catch (error) {
+    if (!isApprovalError(error)) throw error;
+  }
+  const applyApproved = await backend.client.request("approval/apply", {
+    approval: true,
+    verifyCmd: "true",
+    operations: [
+      {
+        index: 1,
+        team_decision: "approve",
+        approved_by: "dogfood",
+        target_file: "approve_me.py",
+        kind: "agent_edit",
+      },
+    ],
+  });
+  if (!applyApproved.ok) {
+    throw new Error(
+      `approval/apply failed: exit=${applyApproved.exitCode} ${applyApproved.stderr || applyApproved.stdout || ""}`,
+    );
+  }
+  const approvedFile = await readFile(resolve(workspace, "approve_me.py"), "utf8");
+  if (approvedFile !== "new\n") throw new Error("approval/apply did not write agent_edit");
+  const approvalsAfter = await backend.client.request("panel/state", { panel: "approvals" });
+  if (Array.isArray(approvalsAfter.data?.operations) && approvalsAfter.data.operations.length) {
+    throw new Error("pending_plan still present after successful apply-approved");
+  }
+
   await writeFile(resolve(workspace, "ok.py"), "x = 1\n", "utf8");
   const verified = await backend.client.request("proposal/prepare", {
     path: "ok.py",

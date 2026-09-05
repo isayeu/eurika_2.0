@@ -92,6 +92,7 @@ class LocalAgentRuntime:
                 "context/decide",
                 "approval/preview",
                 "approval/save",
+                "approval/apply",
                 "command/run",
                 "activity/recent",
                 "$/cancelRequest",

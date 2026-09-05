@@ -110,7 +110,7 @@
 | `собери коммит` | Status+diff + предложение сообщения → **применяй** (HITL) |
 | `git status` / `git diff` / «покажи git status» | Голый `git status` → host_shell; фразы → LLM tool-loop |
 | `применяй` | Подтверждение pending-плана или коммита |
-| «сделай вкладку Models/LLM эргономичнее» | Локальный агент: полный патч → **Approvals** (вкладка открывается сама) → approve / apply-approved; git commit/push — после apply |
+| «сделай вкладку Models/LLM эргономичнее» | Локальный агент: полный патч → **Approvals** (вкладка открывается сама) → approve / apply-approved (`approval/apply` в Desktop); git commit/push — после apply |
 
 ### Интернет
 

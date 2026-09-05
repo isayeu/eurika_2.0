@@ -65,6 +65,56 @@ class PanelService:
             raise RpcError(ERR_INVALID_PARAMS, "operations must be an array of objects")
         return save_approvals(self.tools.root, operations)
 
+    def approval_apply(
+        self,
+        params: dict[str, Any],
+        *,
+        cancel: threading.Event,
+        emit: EventSink,
+    ) -> dict[str, Any]:
+        """Persist optional decisions, then ``eurika fix . --apply-approved`` (Qt Run apply-approved)."""
+        self._approved(params, "apply-approved")
+        operations = params.get("operations")
+        saved: dict[str, Any] | None = None
+        if operations is not None:
+            if not isinstance(operations, list) or not all(isinstance(item, dict) for item in operations):
+                raise RpcError(ERR_INVALID_PARAMS, "operations must be an array of objects")
+            saved = save_approvals(self.tools.root, operations)
+            if saved.get("error"):
+                return {
+                    "ok": False,
+                    "error": saved.get("error"),
+                    "hint": saved.get("hint"),
+                    "saved": saved,
+                }
+        argv = [
+            sys.executable,
+            "-m",
+            "eurika_cli",
+            "fix",
+            str(self.tools.root),
+            "--apply-approved",
+        ]
+        verify_cmd = params.get("verifyCmd")
+        if isinstance(verify_cmd, str) and verify_cmd.strip():
+            argv.extend(["--verify-cmd", verify_cmd.strip()])
+        result = self.tools._run_process(
+            argv,
+            cwd=self.tools.root,
+            timeout_ms=max(1, min(int(params.get("timeoutMs", 900_000)), 3_600_000)),
+            cancel=cancel,
+            emit=emit,
+        )
+        exit_code = int(result.get("exitCode") or 0) if isinstance(result, dict) else 1
+        return {
+            "ok": exit_code == 0,
+            "exitCode": exit_code,
+            "stdout": result.get("stdout") if isinstance(result, dict) else "",
+            "stderr": result.get("stderr") if isinstance(result, dict) else "",
+            "saved": saved,
+            "command": "eurika fix . --apply-approved",
+        }
+
     def command_run(
         self,
         params: dict[str, Any],

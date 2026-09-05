@@ -102,6 +102,20 @@ RPC_METHOD_CONTRACTS: dict[str, dict[str, Any]] = {
             },
         },
     },
+    "approval/apply": {
+        "mutatesWorkspace": True,
+        "requiresApproval": True,
+        "inputSchema": {
+            "type": "object",
+            "required": ["approval"],
+            "properties": {
+                "approval": {"type": "boolean", "const": True},
+                "operations": {"type": "array", "items": {"type": "object"}},
+                "verifyCmd": {"type": "string"},
+                "timeoutMs": {"type": "integer", "minimum": 1},
+            },
+        },
+    },
 }
 
 

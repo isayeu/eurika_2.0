@@ -133,6 +133,16 @@ def dispatch(
         return runtime.panels.approval_preview(params)
     if method == "approval/save":
         return runtime.panels.approval_save(params)
+    if method == "approval/apply":
+        return runtime._with_live_activity(
+            method,
+            params,
+            lambda: runtime.panels.approval_apply(
+                params if isinstance(params, dict) else {},
+                cancel=cancel,
+                emit=lambda event, data: emit(event, None, data),
+            ),
+        )
     if method == "command/run":
         return runtime._with_live_activity(
             method,

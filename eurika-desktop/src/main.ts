@@ -860,6 +860,11 @@ function renderApprovals(data: Record<string, unknown>): void {
   const title = document.createElement("h3");
   title.textContent = `Approvals (${operations.length})`;
   productPanel.append(title);
+  const hint = document.createElement("p");
+  hint.className = "muted";
+  hint.textContent =
+    "`.eurika/pending_plan.json` (не dialog_state). Approve → Save или Run apply-approved.";
+  productPanel.append(hint);
   const decisions: Array<{ index: number; select: HTMLSelectElement; operation: Record<string, unknown> }> = [];
   operations.forEach((operation, index) => {
     const row = document.createElement("div");
@@ -883,22 +888,48 @@ function renderApprovals(data: Record<string, unknown>): void {
     decisions.push({ index: index + 1, select, operation });
   });
   if (operations.length) {
+    const actions = document.createElement("div");
+    actions.className = "context-actions";
+    const decisionPayload = () =>
+      decisions.map(({ index, select, operation }) => ({
+        index,
+        team_decision: select.value,
+        approved_by: "desktop-user",
+        target_file: operation.target_file,
+        kind: operation.kind,
+      }));
     const save = document.createElement("button");
     save.textContent = "Save decisions";
     save.onclick = () => void runUi(async () => {
       const result = await window.eurika.request<Record<string, unknown>>("approval/save", {
         approval: true,
-        operations: decisions.map(({ index, select, operation }) => ({
-          index,
-          team_decision: select.value,
-          approved_by: "desktop-user",
-          target_file: operation.target_file,
-          kind: operation.kind,
-        })),
+        operations: decisionPayload(),
       });
       terminal.writeln(`[approvals] ${JSON.stringify(result)}`);
     });
-    productPanel.append(save);
+    const apply = document.createElement("button");
+    apply.textContent = "Run apply-approved";
+    apply.title = "Save row decisions, then eurika fix . --apply-approved";
+    apply.onclick = () => void runUi(async () => {
+      terminal.writeln("$ eurika fix . --apply-approved");
+      const result = await window.eurika.request<Record<string, unknown>>("approval/apply", {
+        approval: true,
+        operations: decisionPayload(),
+      });
+      if (result.stdout) terminal.writeln(String(result.stdout));
+      if (result.stderr) terminal.writeln(String(result.stderr));
+      terminal.writeln(
+        `[apply-approved exit ${String(result.exitCode ?? "?")}] saved=${JSON.stringify(result.saved ?? null)}`,
+      );
+      await showPanel("approvals");
+    });
+    actions.append(save, apply);
+    productPanel.append(actions);
+  } else if (data.error) {
+    const err = document.createElement("p");
+    err.className = "muted";
+    err.textContent = String(data.error);
+    productPanel.append(err);
   }
 }
 

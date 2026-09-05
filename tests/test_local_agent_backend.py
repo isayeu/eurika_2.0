@@ -1023,6 +1023,112 @@ def test_context_decide_reject_clears_pending(tmp_path: Path) -> None:
     assert not (tmp_path / "will_not_exist.txt").exists()
 
 
+def test_approval_apply_persists_then_runs_apply_approved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Desktop Run apply-approved: save decisions then eurika fix --apply-approved."""
+    from eurika.agent.protocol import ERR_APPROVAL_REQUIRED, RpcError
+    from eurika.orchestration.team_mode import save_pending_plan
+
+    (tmp_path / "m.py").write_text("old\n", encoding="utf-8")
+    save_pending_plan(
+        tmp_path,
+        {"source": "test", "summary": "1 op"},
+        [
+            {
+                "target_file": "m.py",
+                "kind": "agent_edit",
+                "params": {"new_content": "new\n"},
+                "critic_verdict": "allow",
+            }
+        ],
+        [],
+        session_id="t1",
+    )
+    runtime = LocalAgentRuntime(tmp_path)
+    captured: list[list[str]] = []
+
+    def _fake_run(argv, **_kwargs):  # type: ignore[no-untyped-def]
+        captured.append(list(argv))
+        return {"exitCode": 0, "stdout": "ok\n", "stderr": ""}
+
+    monkeypatch.setattr(runtime.panels.tools, "_run_process", _fake_run)
+
+    with pytest.raises(RpcError) as err:
+        _runtime_call(runtime, "approval/apply", {}, [])
+    assert err.value.code == ERR_APPROVAL_REQUIRED
+
+    result = _runtime_call(
+        runtime,
+        "approval/apply",
+        {
+            "approval": True,
+            "operations": [
+                {
+                    "index": 1,
+                    "team_decision": "approve",
+                    "approved_by": "tester",
+                    "target_file": "m.py",
+                    "kind": "agent_edit",
+                }
+            ],
+            "verifyCmd": "true",
+        },
+        [],
+    )
+    assert result["ok"] is True
+    assert result["saved"]["approved"] == 1
+    assert captured and "--apply-approved" in captured[0]
+    assert "--verify-cmd" in captured[0] and "true" in captured[0]
+    pending = json.loads(
+        (tmp_path / ".eurika" / "pending_plan.json").read_text(encoding="utf-8")
+    )
+    assert pending["operations"][0]["team_decision"] == "approve"
+
+
+def test_approval_apply_agent_edit_with_trivial_verify(tmp_path: Path) -> None:
+    from eurika.orchestration.team_mode import has_pending_plan, save_pending_plan
+
+    (tmp_path / "m.py").write_text("old\n", encoding="utf-8")
+    save_pending_plan(
+        tmp_path,
+        {"source": "test", "summary": "1 op"},
+        [
+            {
+                "target_file": "m.py",
+                "kind": "agent_edit",
+                "params": {"new_content": "new\n"},
+                "critic_verdict": "allow",
+            }
+        ],
+        [],
+        session_id="t2",
+    )
+    runtime = LocalAgentRuntime(tmp_path)
+    result = _runtime_call(
+        runtime,
+        "approval/apply",
+        {
+            "approval": True,
+            "operations": [
+                {
+                    "index": 1,
+                    "team_decision": "approve",
+                    "approved_by": "tester",
+                    "target_file": "m.py",
+                    "kind": "agent_edit",
+                }
+            ],
+            "verifyCmd": "true",
+            "timeoutMs": 120_000,
+        },
+        [],
+    )
+    assert result["ok"] is True, result
+    assert (tmp_path / "m.py").read_text(encoding="utf-8") == "new\n"
+    assert not has_pending_plan(tmp_path)
+
+
 def test_read_missing_file_is_invalid_params_not_internal(tmp_path: Path) -> None:
     tools = WorkspaceTools(tmp_path)
     with pytest.raises(RpcError) as error:
