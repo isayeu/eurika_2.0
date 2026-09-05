@@ -275,15 +275,22 @@ def format_dialog_goal_block(state: Optional[Dict[str, Any]]) -> str:
         or (isinstance(pending_plan, dict) and pending_plan)
         or (isinstance(pending_git, dict) and pending_git.get("message"))
     )
-    # Last execution is history — only attach when there is an open goal/pending,
-    # otherwise «какая цель?» looks like a stuck ritual/run.
     last = state.get("last_execution")
-    if has_open_work and isinstance(last, dict) and last:
-        lines.append(
-            "Last execution: "
-            f"ok={last.get('ok')}, verification_ok={_fmt_verification_ok(last.get('verification_ok'))}, "
-            f"summary={last.get('summary') or '-'}"
-        )
+    if isinstance(last, dict) and last:
+        if has_open_work:
+            lines.append(
+                "Last execution: "
+                f"ok={last.get('ok')}, verification_ok={_fmt_verification_ok(last.get('verification_ok'))}, "
+                f"summary={last.get('summary') or '-'}"
+            )
+        else:
+            # Post-release: mirror Qt Контекст — итог remains for «что получилось?»
+            lines.append(
+                "Последний итог: "
+                f"ok={last.get('ok')}, verification_ok={_fmt_verification_ok(last.get('verification_ok'))}, "
+                f"summary={last.get('summary') or '-'}"
+            )
+            lines.append("Скажи «что получилось?» или «сбрось цель».")
     if not lines:
         return "Нет активной цели в контексте агента."
     if not goal_present:

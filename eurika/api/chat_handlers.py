@@ -237,7 +237,7 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             'target': 'VISION A1 chat UX / goals polish',
         }
         text = append_goal_nudge(text, state)
-        # Keep sticky goal until user clears or finishes a concrete task.
+        release_active_goal_keep_execution(state)
         save_dialog_state(root, state)
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)

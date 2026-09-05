@@ -735,6 +735,7 @@ def test_goal_status_and_clear_goal_intents(tmp_path: Path, monkeypatch) -> None
     empty = format_dialog_goal_block(after)
     assert empty == "Нет активной цели в контексте агента."
     assert "Last execution" not in empty
+    assert "Последний итог" not in empty
     assert "ritual" not in empty.lower()
     # Reflection after clear must not resurrect stale last_execution.
     reflected = chat_mod.chat_send(tmp_path, "что получилось?")
@@ -742,6 +743,26 @@ def test_goal_status_and_clear_goal_intents(tmp_path: Path, monkeypatch) -> None
     assert "сброшены" in rtext or "Пока нет итога" in rtext
     assert "done" not in rtext
     assert "refactor" not in rtext
+
+
+def test_goal_status_shows_last_execution_after_release(tmp_path: Path) -> None:
+    """After release, «какая цель?» still surfaces last_execution (C.13 polish)."""
+    from eurika.api.chat_context import format_dialog_goal_block
+
+    block = format_dialog_goal_block(
+        {
+            "active_goal": {},
+            "last_execution": {
+                "ok": True,
+                "summary": "scan done",
+                "verification_ok": True,
+            },
+        }
+    )
+    assert "Нет активной цели" in block
+    assert "Последний итог" in block
+    assert "scan done" in block
+    assert "что получилось?" in block
 
 
 def test_goal_reflection_intent_and_nudge(tmp_path: Path, monkeypatch) -> None:

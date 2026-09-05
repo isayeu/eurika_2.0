@@ -210,6 +210,7 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
             state['pending_git_commit'] = {}
             cleared = True
         if cleared:
+            _release_active_goal_keep_execution(state)
             _save_dialog_state(root, state)
             text = 'Отклонил pending-план. Ничего не применял.'
         else:
@@ -344,8 +345,8 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
             state['active_goal'] = {'intent': spec.intent, 'target': spec.target, 'source': 'executor'}
             _store_last_execution(state, report)
             text = _append_goal_nudge(_format_execution_report(report), state)
-            if report.get('ok'):
-                _release_active_goal_keep_execution(state)
+            # Always release after apply attempt — failed create/delete must not stick.
+            _release_active_goal_keep_execution(state)
             _save_dialog_state(root, state)
             _append_chat_history_safe(root, 'user', msg, None)
             _append_chat_history_safe(root, 'assistant', text, None)
@@ -394,8 +395,7 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         report = {'ok': report_obj.ok, 'summary': report_obj.summary, 'applied_steps': report_obj.applied_steps, 'skipped_steps': report_obj.skipped_steps, 'verification': report_obj.verification, 'artifacts_changed': report_obj.artifacts_changed, 'error': report_obj.error}
         _store_last_execution(state, report)
         text = _append_goal_nudge(_format_execution_report(report), state)
-        if report.get('ok'):
-            _release_active_goal_keep_execution(state)
+        _release_active_goal_keep_execution(state)
         _save_dialog_state(root, state)
         _append_chat_history_safe(root, 'user', msg, None)
         _append_chat_history_safe(root, 'assistant', text, None)
@@ -421,12 +421,14 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         ok, res = _safe_delete_file(root, target)
         state['active_goal'] = {'intent': 'delete', 'target': target, 'source': 'chat'}
         _store_last_execution(state, {'ok': ok, 'summary': f'deleted {res}' if ok else f'failed: {res}'})
-        _save_dialog_state(root, state)
         if ok:
             full = (root / res).resolve()
             text = f'Удалён файл {res} ({full})'
         else:
             text = f'Не удалось удалить: {res}'
+        text = _append_goal_nudge(text, state)
+        _release_active_goal_keep_execution(state)
+        _save_dialog_state(root, state)
         _append_chat_history_safe(root, 'user', msg, None)
         _append_chat_history_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
@@ -435,12 +437,14 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         ok, res = _safe_create_empty_file(root, target)
         state['active_goal'] = {'intent': 'create', 'target': target, 'source': 'chat'}
         _store_last_execution(state, {'ok': ok, 'summary': f'created {res}' if ok else f'failed: {res}'})
-        _save_dialog_state(root, state)
         if ok:
             full = (root / res).resolve()
             text = f'Создан пустой файл {res} ({full})'
         else:
             text = f'Не удалось создать: {res}'
+        text = _append_goal_nudge(text, state)
+        _release_active_goal_keep_execution(state)
+        _save_dialog_state(root, state)
         _append_chat_history_safe(root, 'user', msg, None)
         _append_chat_history_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}

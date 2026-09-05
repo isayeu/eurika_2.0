@@ -258,6 +258,39 @@ def test_chat_send_reject_pending_plan_clears_it(tmp_path: Path) -> None:
     assert state.get("pending_plan") == {}
 
 
+def test_chat_send_reject_clears_sticky_active_goal(tmp_path: Path) -> None:
+    """Reject drops sticky create/delete goal left from pending confirmation."""
+    import eurika.api.chat as chat_mod
+
+    state_path = tmp_path / ".eurika" / "chat_history" / "dialog_state.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        _json.dumps(
+            {
+                "active_goal": {
+                    "intent": "create",
+                    "target": "foo.py",
+                    "source": "interpreter",
+                },
+                "pending_plan": {
+                    "intent": "create",
+                    "target": "foo.py",
+                    "token": "abcd1234abcd1234",
+                    "status": "pending_confirmation",
+                    "expires_ts": 4102444800,
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    out = chat_mod.chat_send(tmp_path, "отклонить")
+    assert "Отклонил" in (out.get("text") or "")
+    state = _json.loads(state_path.read_text(encoding="utf-8"))
+    assert state.get("pending_plan") == {}
+    assert state.get("active_goal") == {}
+
+
 def test_chat_send_reject_clears_expired_pending_plan(tmp_path: Path) -> None:
     """Expired pending plan must still be cleared on reject (not left stale)."""
     import eurika.api.chat as chat_mod

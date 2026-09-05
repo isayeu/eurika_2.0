@@ -1141,6 +1141,19 @@ def is_polygon_propose_request(message: str) -> bool:
     msg = _norm_msg(message)
     if not msg:
         return False
+    # Do not steal goal/status questions that merely mention polygon paths.
+    if any(
+        g in msg
+        for g in (
+            "какая цель",
+            "что получилось",
+            "итог цели",
+            "сбрось цель",
+            "goal status",
+            "goal reflection",
+        )
+    ):
+        return False
     needles = (
         "prove-cycle --propose",
         "prove cycle --propose",

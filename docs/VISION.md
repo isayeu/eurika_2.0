@@ -121,7 +121,7 @@
 ### C. Agent / платформа
 11. ~~**Plugin hooks** `after_*`~~ ✅ (2026-08-08, v1) — versioned JSON-safe immutable `HookContext`; canonical `after_scan/plan/apply/verify` (не CLI/Qt wrappers); конфиг `.eurika/plugins.toml` / `pyproject`; ordered + dedupe + fail-open; результаты в `report.plugin_hooks` и `.eurika/events.json`. Trusted in-process plugins, не sandbox.
 12. ~~**Telegram-канал**~~ частично ✅ (2026-09-04…05, v1) — `eurika telegram-bot` + Chat «запусти/останови/бот жив?»; allowlist; apply только Approvals.
-13. ~~**Goals / reflection / nudges (v1)**~~ частично ✅ — `goal_status` / `clear_goal` (чистит и last_execution) / `goal_reflection` + nudge; после scan/ritual/Apply цель отпускается, итог остаётся для «что получилось?».
+13. ~~**Goals / reflection / nudges (v1)**~~ частично ✅ — status/reflection/clear + nudge; reject/apply отпускают sticky goal; «какая цель?» показывает последний итог после release.
 14. ~~**Саморазвитие через полигон (HITL)**~~ частично ✅ (ритуал v1) — `eurika prove-cycle . --propose [--drill …] [--require-llm] [--sandbox]` → Approvals → `eurika fix . --apply-approved`. `--sandbox` — apply+smoke-verify в `.eurika/sandbox` (git worktree / copy) до pending_plan. Детали: [ROADMAP.md](ROADMAP.md) §4.6, [POLYGON_VERIFY_PLAYBOOK.md](POLYGON_VERIFY_PLAYBOOK.md).
 
 ### Не брать

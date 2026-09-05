@@ -81,7 +81,7 @@
 | `покажи отчёт`, `doctor report` | Отчёт doctor |
 | `какие документы по проекту?`, `покажи документацию` | Список README / docs / rules |
 | `прочти всю документацию, что реализовано?` | Аудит VISION/ROADMAP vs код (LLM/Groq; fallback по ✅) |
-| `какая цель?`, `что в контексте?` | Статус active_goal / pending / last run |
+| `какая цель?`, `что в контексте?` | Статус active_goal / pending; после release — последний итог + «что получилось?» |
 | `что получилось?`, `итог цели` | Reflection: факты + краткий narrative (Groq/Ollama); без LLM — только факты |
 | ↑/↓ в поле Chat | История отправленных запросов (персист `.eurika/chat_prompt_history.json`) |
 | `@` в поле Chat | Автодополнение модулей из `self_map.json` и smell-типов (`@patch_engine.py`, `@god_module`); Tab/Enter — вставить, Esc — закрыть |
