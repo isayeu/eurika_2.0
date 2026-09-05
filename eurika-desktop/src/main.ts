@@ -431,6 +431,10 @@ async function renderChatResult(result: ChatResult, options: { skipText?: boolea
       renderToolApproval(call);
     }
   }
+  // Qt parity: refresh Context when that panel is visible after a chat turn.
+  if (!productPanel.hidden && productPanel.dataset.activePanel === "context") {
+    await showPanel("context");
+  }
 }
 
 function renderToolApproval(call: PendingCall): void {
@@ -665,19 +669,39 @@ async function showPanel(panel: string): Promise<void> {
   if (panel === "chat") {
     productPanel.hidden = true;
     messagesElement.hidden = false;
+    productPanel.dataset.activePanel = "";
     return;
   }
   const response = await window.eurika.request<{
     panel: string;
     data?: Record<string, unknown>;
+    text?: string;
     commands?: Array<{ id: string; requiresApproval: boolean }>;
   }>("panel/state", { panel });
   messagesElement.hidden = true;
   productPanel.hidden = false;
+  productPanel.dataset.activePanel = panel;
   productPanel.replaceChildren();
+  if (panel === "context") renderContext(response.text ?? "", response.data ?? {});
   if (panel === "approvals") renderApprovals(response.data ?? {});
   if (panel === "commands") renderCommands(response.commands ?? []);
   if (panel === "market") renderMarket(response.data ?? {});
+}
+
+function renderContext(text: string, data: Record<string, unknown>): void {
+  const title = document.createElement("h3");
+  title.textContent = "Context";
+  const pre = document.createElement("pre");
+  pre.className = "context-panel";
+  pre.textContent = text.trim() || "Нет активной цели и итога.";
+  productPanel.append(title, pre);
+  const goal = data.active_goal;
+  if (goal && typeof goal === "object" && Object.keys(goal as object).length) {
+    const hint = document.createElement("p");
+    hint.className = "muted";
+    hint.textContent = "Same text as Qt Agent → Контекст (dialog_state).";
+    productPanel.append(hint);
+  }
 }
 
 function renderApprovals(data: Record<string, unknown>): void {

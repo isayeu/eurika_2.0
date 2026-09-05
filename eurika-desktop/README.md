@@ -15,7 +15,7 @@ EURIKA_PYTHON=/path/to/python npm start
 
 The desktop opens a workspace, starts `python -m eurika.agent.stdio`, and offers
 Monaco editing, Chat, structured tools, diff approvals, checkpoints, terminal
-commands, Approvals, Commands, and Market panels.
+commands, Approvals, Context, Commands, and Market panels.
 
 The header provides **Refresh files** and conflict-safe **Restore checkpoint**.
 Backend startup/crash details are shown in the red error banner and mirrored to

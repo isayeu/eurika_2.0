@@ -48,6 +48,8 @@ class PanelService:
             }
         if panel == "market":
             return {"panel": panel, "data": self._market_state()}
+        if panel == "context":
+            return self._context_state()
         raise RpcError(ERR_INVALID_PARAMS, f"Unknown panel: {panel}")
 
     def approval_preview(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -131,6 +133,27 @@ class PanelService:
             "pendingOrders": pending if isinstance(pending, list) else [],
             "costGate": gate,
             "events": events,
+        }
+
+    def _context_state(self) -> dict[str, Any]:
+        """Qt-parity Agent «Контекст» text from dialog_state.json."""
+        from eurika.api.chat_context import format_agent_context_panel
+        from eurika.api.learning_api import get_chat_dialog_state
+        from eurika.api.task_executor import is_pending_plan_valid
+
+        state = get_chat_dialog_state(self.tools.root)
+        pending = state.get("pending_plan") if isinstance(state, dict) else {}
+        plan_valid = bool(isinstance(pending, dict) and pending and is_pending_plan_valid(pending))
+        plan_stale = bool(isinstance(pending, dict) and pending and not plan_valid)
+        text = format_agent_context_panel(
+            state, plan_valid=plan_valid, plan_stale=plan_stale
+        )
+        return {
+            "panel": "context",
+            "text": text,
+            "data": state,
+            "planValid": plan_valid,
+            "planStale": plan_stale,
         }
 
     @staticmethod

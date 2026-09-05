@@ -189,6 +189,16 @@ main {
   border-bottom: 1px solid #292f39;
   overflow-wrap: anywhere;
 }
+.context-panel {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+  padding: 8px;
+  background: #1b1f27;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.muted { color: #8b949e; font-size: 12px; }
 #messages .message { margin: 8px 0; padding: 8px; border-radius: 6px; background: #1b1f27; }
 .message.user { background: #202b3a; }
 .message p {

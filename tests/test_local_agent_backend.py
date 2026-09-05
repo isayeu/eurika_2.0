@@ -63,9 +63,9 @@ def test_handshake_advertises_versioned_structured_capabilities(tmp_path: Path) 
 @pytest.mark.parametrize(
     ("adapter_id", "panels"),
     [
-        ("desktop", ["chat", "diff", "approvals", "commands", "market"]),
+        ("desktop", ["chat", "diff", "context", "approvals", "commands", "market"]),
         ("vscode", ["chat"]),
-        ("qt", ["market", "approvals", "commands"]),
+        ("qt", ["market", "approvals", "commands", "context"]),
     ],
 )
 def test_frontend_adapters_share_one_versioned_contract(
@@ -904,11 +904,39 @@ def test_product_panels_are_serializable_without_qt(
     market = _runtime_call(runtime, "panel/state", {"panel": "market"}, [])
     commands = _runtime_call(runtime, "panel/state", {"panel": "commands"}, [])
     approvals = _runtime_call(runtime, "panel/state", {"panel": "approvals"}, [])
+    context = _runtime_call(runtime, "panel/state", {"panel": "context"}, [])
 
     assert market["data"]["portfolio"]["equity_usdt"] == 1001.5
     assert market["data"]["events"][0]["message"] == "trained"
     assert "scan" in {item["id"] for item in commands["commands"]}
     assert approvals["data"]["error"] == "no pending plan"
+    assert context["panel"] == "context"
+    assert "Нет активной цели" in context["text"]
+
+
+def test_context_panel_shows_goal_and_last_execution(tmp_path: Path) -> None:
+    hist = tmp_path / ".eurika" / "chat_history"
+    hist.mkdir(parents=True)
+    (hist / "dialog_state.json").write_text(
+        json.dumps(
+            {
+                "active_goal": {},
+                "pending_plan": {},
+                "last_execution": {
+                    "ok": True,
+                    "summary": "ritual done",
+                    "verification_ok": True,
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    runtime = LocalAgentRuntime(tmp_path)
+    context = _runtime_call(runtime, "panel/state", {"panel": "context"}, [])
+    assert context["panel"] == "context"
+    assert "ritual done" in context["text"]
+    assert "что получилось?" in context["text"]
 
 
 def test_read_missing_file_is_invalid_params_not_internal(tmp_path: Path) -> None:

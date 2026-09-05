@@ -154,11 +154,15 @@ try {
   const market = await backend.client.request("panel/state", { panel: "market" });
   const commands = await backend.client.request("panel/state", { panel: "commands" });
   const approvals = await backend.client.request("panel/state", { panel: "approvals" });
+  const context = await backend.client.request("panel/state", { panel: "context" });
   if (market.panel !== "market" || !market.data) throw new Error("Market panel did not return shared state");
   if (!commands.commands?.some((item) => item.id === "scan")) {
     throw new Error("Commands panel is missing the shared command list");
   }
   if (approvals.panel !== "approvals") throw new Error("Approvals panel did not return shared state");
+  if (context.panel !== "context" || typeof context.text !== "string") {
+    throw new Error("Context panel did not return shared dialog_state text");
+  }
 
   await writeFile(resolve(workspace, "ok.py"), "x = 1\n", "utf8");
   const verified = await backend.client.request("proposal/prepare", {

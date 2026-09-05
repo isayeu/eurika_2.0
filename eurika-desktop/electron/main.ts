@@ -108,7 +108,7 @@ async function startBackend(root: string): Promise<Record<string, unknown>> {
         terminal: true,
         notifications: true,
         approvals: true,
-        panels: ["chat", "diff", "approvals", "commands", "market"],
+        panels: ["chat", "diff", "context", "approvals", "commands", "market"],
       },
     },
     log: (line) => sendToRenderer("eurika:log", line),
