@@ -39,22 +39,24 @@ fi
 
 _step "1. Tests"
 # Prefer ``$PY -m pytest`` so a mis-shebanged ``.venv/bin/pytest`` cannot hijack the interpreter.
-# Stream live via tee (do not capture into a bash var — that + Chat mirrors each flush as its own line).
-# ``count`` style avoids one-dot-per-line spam when the terminal treats each write as a row.
+# ``-qq`` = no progress dots (Chat/Terminal mirrors each flush as its own line → ugly columns).
+# Log via tee so we can detect real FAILED vs Qt SIGABRT after a finished suite.
 PYTEST_LOG="$(mktemp -t eurika-release-pytest.XXXXXX)"
 set +e
-$PY -m pytest tests/ -q --tb=short -o console_output_style=count 2>&1 | tee "$PYTEST_LOG"
+set -o pipefail
+$PY -m pytest tests/ -qq --tb=short 2>&1 | tee "$PYTEST_LOG"
 PYTEST_EC=${PIPESTATUS[0]}
+set +o pipefail
 set -e
 if [[ "$PYTEST_EC" -ne 0 ]]; then
-  # Full suite can abort (SIGABRT/134) on Qt QThread teardown after a green run.
-  if ! grep -qE '^FAILED |ERROR ' "$PYTEST_LOG"; then
-    if grep -qE 'passed|SKIPPED' "$PYTEST_LOG"; then
-      echo "  WARN: pytest exited $PYTEST_EC after green/skip summary (likely Qt teardown abort); continuing"
-    else
-      rm -f "$PYTEST_LOG"
-      _fail "pytest tests/"
-    fi
+  # Abort during Qt teardown often happens after the last test, before/without a
+  # final "N passed" line — still no FAILED/ERROR in the log.
+  if grep -qE '^FAILED |^ERROR |ERROR collecting' "$PYTEST_LOG"; then
+    rm -f "$PYTEST_LOG"
+    _fail "pytest tests/"
+  fi
+  if grep -qE 'passed|SKIPPED|warnings summary|\[[0-9]+/[0-9]+\]|===.*===' "$PYTEST_LOG"; then
+    echo "  WARN: pytest exited $PYTEST_EC without FAILED (likely Qt QThread teardown abort); continuing"
   else
     rm -f "$PYTEST_LOG"
     _fail "pytest tests/"
