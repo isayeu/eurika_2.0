@@ -665,6 +665,9 @@ async function runTerminal(command: string): Promise<void> {
   terminal.writeln(`\r\n[exit ${response.result.exitCode}]`);
 }
 
+/** Qt Diff-gate: Apply only after preview for this fingerprint (auto-preview counts). */
+let contextDiffSeenFp = "";
+
 async function showPanel(panel: string): Promise<void> {
   if (panel === "chat") {
     productPanel.hidden = true;
@@ -677,31 +680,177 @@ async function showPanel(panel: string): Promise<void> {
     data?: Record<string, unknown>;
     text?: string;
     commands?: Array<{ id: string; requiresApproval: boolean }>;
+    planValid?: boolean;
+    planStale?: boolean;
+    token?: string;
+    fingerprint?: string;
+    preview?: Record<string, unknown> | null;
+    hasPendingGit?: boolean;
+    canReject?: boolean;
+    canApply?: boolean;
   }>("panel/state", { panel });
   messagesElement.hidden = true;
   productPanel.hidden = false;
   productPanel.dataset.activePanel = panel;
   productPanel.replaceChildren();
-  if (panel === "context") renderContext(response.text ?? "", response.data ?? {});
+  if (panel === "context") renderContext(response);
   if (panel === "approvals") renderApprovals(response.data ?? {});
   if (panel === "commands") renderCommands(response.commands ?? []);
   if (panel === "market") renderMarket(response.data ?? {});
 }
 
-function renderContext(text: string, data: Record<string, unknown>): void {
+function renderContext(response: {
+  text?: string;
+  data?: Record<string, unknown>;
+  planValid?: boolean;
+  planStale?: boolean;
+  token?: string;
+  fingerprint?: string;
+  preview?: Record<string, unknown> | null;
+  hasPendingGit?: boolean;
+  canReject?: boolean;
+  canApply?: boolean;
+}): void {
+  const text = response.text ?? "";
+  const data = response.data ?? {};
+  const fingerprint = String(response.fingerprint ?? "");
+  const token = String(response.token ?? "");
+  const planValid = Boolean(response.planValid);
+  const planStale = Boolean(response.planStale);
+  const canReject = Boolean(response.canReject);
+  const canApplyBase = Boolean(response.canApply);
+  const preview = response.preview && typeof response.preview === "object"
+    ? response.preview
+    : null;
+
   const title = document.createElement("h3");
   title.textContent = "Context";
   const pre = document.createElement("pre");
   pre.className = "context-panel";
   pre.textContent = text.trim() || "Нет активной цели и итога.";
   productPanel.append(title, pre);
-  const goal = data.active_goal;
-  if (goal && typeof goal === "object" && Object.keys(goal as object).length) {
-    const hint = document.createElement("p");
-    hint.className = "muted";
-    hint.textContent = "Same text as Qt Agent → Контекст (dialog_state).";
-    productPanel.append(hint);
+
+  const hint = document.createElement("p");
+  hint.className = "muted";
+  hint.textContent =
+    "dialog_state HITL (не Approvals JSON). Diff → Apply, как в Qt Контекст.";
+  productPanel.append(hint);
+
+  const diffTitle = document.createElement("h4");
+  diffTitle.textContent = "Pending Diff";
+  const diffPre = document.createElement("pre");
+  diffPre.className = "context-diff";
+  const diffText = formatContextPreview(preview, data, Boolean(response.hasPendingGit));
+  diffPre.textContent = diffText;
+  productPanel.append(diffTitle, diffPre);
+
+  if (fingerprint && diffText && !diffText.startsWith("No pending")) {
+    contextDiffSeenFp = fingerprint;
+  } else if (!fingerprint) {
+    contextDiffSeenFp = "";
   }
+
+  const actions = document.createElement("div");
+  actions.className = "context-actions";
+  const diffBtn = document.createElement("button");
+  diffBtn.textContent = "Diff";
+  diffBtn.disabled = !(planValid || planStale || Boolean(response.hasPendingGit));
+  const applyBtn = document.createElement("button");
+  applyBtn.textContent = "Apply";
+  const rejectBtn = document.createElement("button");
+  rejectBtn.textContent = "Reject";
+  rejectBtn.disabled = !canReject;
+
+  const syncApply = (): void => {
+    const seen = Boolean(fingerprint) && contextDiffSeenFp === fingerprint;
+    applyBtn.disabled = !(canApplyBase && !planStale && seen);
+    applyBtn.title = applyBtn.disabled
+      ? (planStale ? "Plan expired — Reject to clear" : "Сначала Diff")
+      : "Apply pending plan (Diff уже просмотрен)";
+  };
+  syncApply();
+
+  diffBtn.onclick = () => void runUi(async () => {
+    const refreshed = await window.eurika.request<{
+      fingerprint?: string;
+      preview?: Record<string, unknown> | null;
+      planValid?: boolean;
+      planStale?: boolean;
+      hasPendingGit?: boolean;
+    }>("context/preview", {});
+    const fp = String(refreshed.fingerprint ?? fingerprint);
+    const body = formatContextPreview(
+      refreshed.preview && typeof refreshed.preview === "object" ? refreshed.preview : null,
+      data,
+      Boolean(refreshed.hasPendingGit),
+    );
+    diffPre.textContent = body;
+    if (fp && body && !body.startsWith("No pending")) {
+      contextDiffSeenFp = fp;
+    }
+    syncApply();
+    terminal.writeln("[context] Diff refreshed");
+  });
+
+  applyBtn.onclick = () => void runUi(async () => {
+    if (fingerprint && contextDiffSeenFp !== fingerprint) {
+      terminal.writeln("[context] Сначала Diff — Apply после preview");
+      return;
+    }
+    const result = await window.eurika.request<{
+      ok?: boolean;
+      text?: string;
+      error?: string;
+    }>("context/decide", {
+      decision: "apply",
+      token,
+      approval: true,
+    });
+    terminal.writeln(`[context apply] ${String(result.text ?? result.error ?? "")}`);
+    await showPanel("context");
+  });
+
+  rejectBtn.onclick = () => void runUi(async () => {
+    const result = await window.eurika.request<{
+      ok?: boolean;
+      text?: string;
+      error?: string;
+    }>("context/decide", { decision: "reject" });
+    contextDiffSeenFp = "";
+    terminal.writeln(`[context reject] ${String(result.text ?? result.error ?? "")}`);
+    await showPanel("context");
+  });
+
+  actions.append(diffBtn, applyBtn, rejectBtn);
+  productPanel.append(actions);
+}
+
+function formatContextPreview(
+  preview: Record<string, unknown> | null,
+  data: Record<string, unknown>,
+  hasPendingGit: boolean,
+): string {
+  if (preview) {
+    const unified = String(preview.unified_diff ?? "").trim();
+    if (unified) return unified;
+    const err = String(preview.error ?? "").trim();
+    if (err) {
+      const intent = String(preview.intent ?? "");
+      const target = String(preview.target ?? "");
+      return [
+        intent || target ? `intent=${intent || "-"} target=${target || "-"}` : "",
+        err,
+      ].filter(Boolean).join("\n");
+    }
+  }
+  if (hasPendingGit) {
+    const git = data.pending_git_commit;
+    if (git && typeof git === "object") {
+      const g = git as Record<string, unknown>;
+      return `Pending git commit\ntoken=${String(g.token ?? "-")}\n\n${String(g.message ?? "")}`;
+    }
+  }
+  return "No pending plan.";
 }
 
 function renderApprovals(data: Record<string, unknown>): void {

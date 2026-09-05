@@ -137,7 +137,7 @@ Evolution report: тренды (complexity, smells, centralization), регре�
 ### Chat
 Чат с Eurika через прослойку Ollama: введите сообщение, получите ответ с учётом контекста проекта (summary, recent events). RAG: при похожем запросе — прошлые обмены в промпт.
 
-На Агенте: **Apply / Reject / Diff** для HITL pending-плана (`dialog_state`) и для agent `pendingToolCalls` (git Commit/Push, edit без Approvals-режима). Diff в **Контекст** открывается **автоматически** при pending; **Apply** активен только после Diff (кнопка Diff — обновить). Основной путь правок кода в Qt — вкладка **Approvals** (`agent_edit`), не путать с Chat Apply.
+На Агенте: **Apply / Reject / Diff** для HITL pending-плана (`dialog_state`) и для agent `pendingToolCalls` (git Commit/Push, edit без Approvals-режима). Diff в **Контекст** открывается **автоматически** при pending; **Apply** активен только после Diff (кнопка Diff — обновить). Desktop **Context** — тот же HITL (`context/preview` / `context/decide`). Основной путь правок кода в Qt — вкладка **Approvals** (`agent_edit`), не путать с Chat Apply.
 
 **Agent intents (3.5.11.C):**
 

@@ -19,6 +19,7 @@ LIVE_RPC_METHODS = frozenset(
         "command/run",
         "proposal/apply",
         "proposal/reject",
+        "context/decide",
     }
 )
 SILENT_HTTP_PATHS = frozenset({"/api/activity"})

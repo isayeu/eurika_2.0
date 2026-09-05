@@ -189,7 +189,8 @@ main {
   border-bottom: 1px solid #292f39;
   overflow-wrap: anywhere;
 }
-.context-panel {
+.context-panel,
+.context-diff {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   margin: 0;
@@ -197,6 +198,17 @@ main {
   background: #1b1f27;
   border-radius: 6px;
   font-size: 12px;
+}
+.context-diff {
+  max-height: 40%;
+  overflow: auto;
+  border: 1px solid #292f39;
+}
+.context-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
 }
 .muted { color: #8b949e; font-size: 12px; }
 #messages .message { margin: 8px 0; padding: 8px; border-radius: 6px; background: #1b1f27; }

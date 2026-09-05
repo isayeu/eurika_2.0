@@ -1,5 +1,5 @@
 import { BackendProcess } from "@eurika/client";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -163,6 +163,52 @@ try {
   if (context.panel !== "context" || typeof context.text !== "string") {
     throw new Error("Context panel did not return shared dialog_state text");
   }
+
+  const samplePath = resolve(workspace, "context_hitl.txt");
+  const histDir = resolve(workspace, ".eurika", "chat_history");
+  await mkdir(histDir, { recursive: true });
+  const hitlToken = "dogfoodtoken01";
+  await writeFile(
+    resolve(histDir, "dialog_state.json"),
+    JSON.stringify({
+      pending_plan: {
+        intent: "create",
+        target: "context_hitl.txt",
+        token: hitlToken,
+        status: "pending_confirmation",
+        expires_ts: 4102444800,
+        entities: { content: "beta\n" },
+        steps: ["create context_hitl.txt"],
+        requires_confirmation: true,
+        risk_level: "medium",
+      },
+    }),
+    "utf8",
+  );
+  const contextPending = await backend.client.request("panel/state", { panel: "context" });
+  if (!contextPending.planValid || !String(contextPending.preview?.unified_diff || "").includes("beta")) {
+    throw new Error("Context panel missing dialog_state pending Diff");
+  }
+  const contextPreview = await backend.client.request("context/preview", {});
+  if (!String(contextPreview.preview?.unified_diff || "").includes("beta")) {
+    throw new Error("context/preview did not return unified diff");
+  }
+  try {
+    await backend.client.request("context/decide", { decision: "apply", token: hitlToken });
+    throw new Error("context/decide apply ran without explicit approval");
+  } catch (error) {
+    if (!isApprovalError(error)) throw error;
+  }
+  const applied = await backend.client.request("context/decide", {
+    decision: "apply",
+    token: hitlToken,
+    approval: true,
+  });
+  if (!applied.ok) throw new Error(`context/decide apply failed: ${applied.error || applied.text}`);
+  const afterApply = await readFile(samplePath, "utf8");
+  if (afterApply !== "beta\n") throw new Error("context/decide apply did not write dialog_state create");
+  const contextClear = await backend.client.request("panel/state", { panel: "context" });
+  if (contextClear.planValid) throw new Error("Context still reports planValid after apply");
 
   await writeFile(resolve(workspace, "ok.py"), "x = 1\n", "utf8");
   const verified = await backend.client.request("proposal/prepare", {

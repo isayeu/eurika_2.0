@@ -121,6 +121,14 @@ def dispatch(
         return runtime.proposals.restore(params, cancel=cancel)
     if method == "panel/state":
         return runtime.panels.state(params.get("panel"))
+    if method == "context/preview":
+        return runtime.panels.context_preview(params if isinstance(params, dict) else {})
+    if method == "context/decide":
+        return runtime._with_live_activity(
+            method,
+            params,
+            lambda: runtime.panels.context_decide(params if isinstance(params, dict) else {}),
+        )
     if method == "approval/preview":
         return runtime.panels.approval_preview(params)
     if method == "approval/save":

@@ -939,6 +939,90 @@ def test_context_panel_shows_goal_and_last_execution(tmp_path: Path) -> None:
     assert "что получилось?" in context["text"]
 
 
+def test_context_preview_and_decide_dialog_state_hitl(tmp_path: Path) -> None:
+    """Desktop Context Diff/Apply/Reject acts on dialog_state, not Approvals JSON."""
+    from eurika.agent.protocol import ERR_APPROVAL_REQUIRED, RpcError
+
+    hist = tmp_path / ".eurika" / "chat_history"
+    hist.mkdir(parents=True)
+    token = "deadbeefcafebabe"
+    target = "context_hitl.txt"
+    (hist / "dialog_state.json").write_text(
+        json.dumps(
+            {
+                "pending_plan": {
+                    "intent": "create",
+                    "target": target,
+                    "token": token,
+                    "status": "pending_confirmation",
+                    "expires_ts": 4102444800,
+                    "entities": {"content": "hello from context\n"},
+                    "steps": [f"create {target}"],
+                    "requires_confirmation": True,
+                    "risk_level": "medium",
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    runtime = LocalAgentRuntime(tmp_path)
+    context = _runtime_call(runtime, "panel/state", {"panel": "context"}, [])
+    assert context["planValid"] is True
+    assert context["token"] == token
+    assert "hello from context" in (context.get("preview") or {}).get("unified_diff", "")
+
+    preview = _runtime_call(runtime, "context/preview", {}, [])
+    assert preview["fingerprint"].startswith("plan:")
+    assert "hello from context" in (preview.get("preview") or {}).get("unified_diff", "")
+
+    with pytest.raises(RpcError) as err:
+        _runtime_call(runtime, "context/decide", {"decision": "apply"}, [])
+    assert err.value.code == ERR_APPROVAL_REQUIRED
+
+    applied = _runtime_call(
+        runtime,
+        "context/decide",
+        {"decision": "apply", "token": token, "approval": True},
+        [],
+    )
+    assert applied["ok"] is True
+    assert applied["decision"] == "apply"
+    assert (tmp_path / target).read_text(encoding="utf-8") == "hello from context\n"
+    assert applied["context"]["planValid"] is False
+
+
+def test_context_decide_reject_clears_pending(tmp_path: Path) -> None:
+    hist = tmp_path / ".eurika" / "chat_history"
+    hist.mkdir(parents=True)
+    state_path = hist / "dialog_state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "pending_plan": {
+                    "intent": "create",
+                    "target": "will_not_exist.txt",
+                    "token": "abcd1234abcd1234",
+                    "status": "pending_confirmation",
+                    "expires_ts": 4102444800,
+                    "entities": {"content": "x\n"},
+                    "requires_confirmation": True,
+                    "risk_level": "medium",
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    runtime = LocalAgentRuntime(tmp_path)
+    rejected = _runtime_call(runtime, "context/decide", {"decision": "reject"}, [])
+    assert rejected["ok"] is True
+    assert rejected["decision"] == "reject"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state.get("pending_plan") == {}
+    assert not (tmp_path / "will_not_exist.txt").exists()
+
+
 def test_read_missing_file_is_invalid_params_not_internal(tmp_path: Path) -> None:
     tools = WorkspaceTools(tmp_path)
     with pytest.raises(RpcError) as error:

@@ -88,6 +88,8 @@ class LocalAgentRuntime:
                 "checkpoint/list",
                 "checkpoint/restore",
                 "panel/state",
+                "context/preview",
+                "context/decide",
                 "approval/preview",
                 "approval/save",
                 "command/run",

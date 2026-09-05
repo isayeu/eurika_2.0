@@ -86,6 +86,22 @@ RPC_METHOD_CONTRACTS: dict[str, dict[str, Any]] = {
             },
         },
     },
+    "context/preview": {
+        "mutatesWorkspace": False,
+        "inputSchema": {"type": "object"},
+    },
+    "context/decide": {
+        "mutatesWorkspace": True,
+        "inputSchema": {
+            "type": "object",
+            "required": ["decision"],
+            "properties": {
+                "decision": {"type": "string", "enum": ["apply", "reject"]},
+                "token": {"type": "string"},
+                "approval": {"type": "boolean", "const": True},
+            },
+        },
+    },
 }
 
 

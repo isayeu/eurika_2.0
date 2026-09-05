@@ -138,22 +138,108 @@ class PanelService:
     def _context_state(self) -> dict[str, Any]:
         """Qt-parity Agent «Контекст» text from dialog_state.json."""
         from eurika.api.chat_context import format_agent_context_panel
+        from eurika.api.diff_api import preview_chat_pending_plan
         from eurika.api.learning_api import get_chat_dialog_state
         from eurika.api.task_executor import is_pending_plan_valid
 
         state = get_chat_dialog_state(self.tools.root)
         pending = state.get("pending_plan") if isinstance(state, dict) else {}
-        plan_valid = bool(isinstance(pending, dict) and pending and is_pending_plan_valid(pending))
-        plan_stale = bool(isinstance(pending, dict) and pending and not plan_valid)
+        pending = pending if isinstance(pending, dict) else {}
+        plan_valid = bool(pending and is_pending_plan_valid(pending))
+        plan_stale = bool(pending and not plan_valid)
         text = format_agent_context_panel(
             state, plan_valid=plan_valid, plan_stale=plan_stale
         )
+        token = str(pending.get("token") or "").strip()
+        fingerprint = ""
+        if pending:
+            fingerprint = f"plan:{token}" if token else (
+                f"plan:{str(pending.get('intent') or '').strip()}:"
+                f"{str(pending.get('target') or '').strip()}"
+            )
+        preview: dict[str, Any] | None = None
+        if pending:
+            preview = preview_chat_pending_plan(self.tools.root, pending)
+        raw_git = state.get("pending_git_commit") if isinstance(state, dict) else None
+        pending_git = raw_git if isinstance(raw_git, dict) else {}
+        has_pending_git = bool(pending_git.get("message"))
+        if has_pending_git and not fingerprint:
+            git_token = str(pending_git.get("token") or "").strip()
+            fingerprint = (
+                f"git:{git_token}"
+                if git_token
+                else f"git:{str(pending_git.get('message') or '')[:64]}"
+            )
         return {
             "panel": "context",
             "text": text,
             "data": state,
             "planValid": plan_valid,
             "planStale": plan_stale,
+            "token": token,
+            "fingerprint": fingerprint,
+            "preview": preview,
+            "hasPendingGit": has_pending_git,
+            "canReject": bool(pending) or has_pending_git,
+            "canApply": plan_valid or has_pending_git,
+        }
+
+    def context_preview(self, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Refresh unified diff for dialog_state pending_plan (not Approvals JSON)."""
+        del params  # reserved for future filters
+        state = self._context_state()
+        preview = state.get("preview")
+        if not isinstance(preview, dict):
+            preview = {"error": "no pending plan"}
+        return {
+            "panel": "context",
+            "token": state.get("token") or "",
+            "fingerprint": state.get("fingerprint") or "",
+            "planValid": bool(state.get("planValid")),
+            "planStale": bool(state.get("planStale")),
+            "hasPendingGit": bool(state.get("hasPendingGit")),
+            "preview": preview,
+        }
+
+    def context_decide(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Apply or reject chat HITL pending_plan via chat_send (Qt Apply/Reject)."""
+        from eurika.api.chat import chat_send
+
+        decision = str(params.get("decision") or "").strip().lower()
+        if decision not in {"apply", "reject"}:
+            raise RpcError(ERR_INVALID_PARAMS, "decision must be apply or reject")
+        state = self._context_state()
+        if decision == "apply":
+            self._approved(params, "context apply")
+            if not state.get("canApply"):
+                raise RpcError(
+                    ERR_INVALID_PARAMS,
+                    "no valid pending plan to apply",
+                    {"planValid": state.get("planValid"), "planStale": state.get("planStale")},
+                )
+            token = str(params.get("token") or state.get("token") or "").strip()
+            expected = str(state.get("token") or "").strip()
+            if expected and token and token != expected:
+                raise RpcError(
+                    ERR_INVALID_PARAMS,
+                    "token does not match current pending plan",
+                    {"expected": expected},
+                )
+            message = f"применяй token:{token}" if token else "применяй"
+        else:
+            if not state.get("canReject"):
+                raise RpcError(ERR_INVALID_PARAMS, "no pending plan to reject")
+            message = "отклонить"
+        result = chat_send(self.tools.root, message)
+        text = str(result.get("text") or "") if isinstance(result, dict) else ""
+        error = result.get("error") if isinstance(result, dict) else None
+        refreshed = self._context_state()
+        return {
+            "ok": error is None,
+            "decision": decision,
+            "text": text,
+            "error": error,
+            "context": refreshed,
         }
 
     @staticmethod
