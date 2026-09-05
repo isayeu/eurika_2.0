@@ -119,6 +119,25 @@ def test_execute_run_command_rejects_disallowed_binary(tmp_path: Path) -> None:
     assert "command not allowed" in (report.error or "")
 
 
+def test_execute_run_command_telegram_bot_uses_background(tmp_path: Path, monkeypatch) -> None:
+    calls: list[Path] = []
+
+    def fake_start(root: Path):
+        calls.append(root)
+        return {"ok": True, "pid": 4242, "log_file": str(root / ".eurika" / "telegram_bot.log")}
+
+    monkeypatch.setattr(
+        "eurika.integrations.telegram_bot.start_telegram_bot_background",
+        fake_start,
+    )
+    spec = build_task_spec(intent="run_command", target="telegram-bot")
+    report = execute_spec(tmp_path, spec)
+    assert report.ok is True
+    assert "telegram-bot" in report.summary
+    assert calls == [tmp_path.resolve()]
+    assert report.verification.get("pid") == 4242
+
+
 def test_execute_code_edit_patch_success_with_verify(tmp_path: Path) -> None:
     target = tmp_path / "file.py"
     target.write_text("x = 1\n", encoding="utf-8")

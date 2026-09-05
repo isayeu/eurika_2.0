@@ -13,6 +13,9 @@ from __future__ import annotations
 
 import json
 import os
+import signal
+import subprocess
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -23,6 +26,176 @@ from typing import Any, Callable, Iterable
 from eurika.api.fix_status import format_last_fix_status, is_apply_result_question
 
 ChatSendFn = Callable[..., dict[str, Any]]
+
+PID_REL = ".eurika/telegram_bot.pid"
+LOG_REL = ".eurika/telegram_bot.log"
+
+
+def _pid_path(project_root: Path) -> Path:
+    return Path(project_root).resolve() / PID_REL
+
+
+def _log_path(project_root: Path) -> Path:
+    return Path(project_root).resolve() / LOG_REL
+
+
+def telegram_bot_status(project_root: Path) -> dict[str, Any]:
+    """Return whether a background telegram-bot process is alive."""
+    path = _pid_path(project_root)
+    if not path.is_file():
+        return {"running": False, "pid": None, "pid_file": str(path)}
+    try:
+        pid = int(path.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return {"running": False, "pid": None, "pid_file": str(path), "stale": True}
+    try:
+        os.kill(pid, 0)
+        running = True
+    except OSError:
+        running = False
+    return {
+        "running": running,
+        "pid": pid,
+        "pid_file": str(path),
+        "log_file": str(_log_path(project_root)),
+        "stale": not running,
+    }
+
+
+def start_telegram_bot_background(project_root: Path) -> dict[str, Any]:
+    """Spawn ``eurika telegram-bot`` detached; idempotent if already running."""
+    root = Path(project_root).resolve()
+    try:
+        from eurika.utils.env import load_project_dotenv
+
+        load_project_dotenv(root)
+    except Exception:
+        pass
+    if not _env_token():
+        return {
+            "ok": False,
+            "error": "Set EURIKA_TELEGRAM_BOT_TOKEN in .env (or environment)",
+            "return_code": 1,
+        }
+    allowed = parse_allowed_chat_ids()
+    if allowed is not None and not allowed:
+        return {
+            "ok": False,
+            "error": (
+                "Set EURIKA_TELEGRAM_CHAT_IDS or EURIKA_TELEGRAM_ALLOW_ANY=1"
+            ),
+            "return_code": 1,
+        }
+    st = telegram_bot_status(root)
+    if st.get("running"):
+        return {
+            "ok": True,
+            "already_running": True,
+            "pid": st.get("pid"),
+            "log_file": st.get("log_file"),
+            "return_code": 0,
+        }
+    eurika_dir = root / ".eurika"
+    eurika_dir.mkdir(parents=True, exist_ok=True)
+    log_path = _log_path(root)
+    pid_path = _pid_path(root)
+    cmd = [sys.executable, "-m", "eurika_cli", "telegram-bot", str(root)]
+    try:
+        log_f = open(log_path, "a", encoding="utf-8")
+    except OSError as exc:
+        return {"ok": False, "error": f"cannot open log: {exc}", "return_code": 1}
+    try:
+        log_f.write(f"\n--- start {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+        log_f.flush()
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(root),
+            stdout=log_f,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+            env=os.environ.copy(),
+        )
+    except OSError as exc:
+        log_f.close()
+        return {"ok": False, "error": str(exc), "return_code": 1}
+    try:
+        pid_path.write_text(str(proc.pid), encoding="utf-8")
+    except OSError:
+        pass
+    time.sleep(0.4)
+    if proc.poll() is not None:
+        snippet = ""
+        try:
+            snippet = log_path.read_text(encoding="utf-8")[-500:]
+        except OSError:
+            pass
+        return {
+            "ok": False,
+            "error": f"telegram-bot exited immediately (code {proc.returncode})",
+            "log_tail": snippet,
+            "return_code": int(proc.returncode or 1),
+        }
+    return {
+        "ok": True,
+        "pid": proc.pid,
+        "log_file": str(log_path),
+        "pid_file": str(pid_path),
+        "command": " ".join(cmd),
+        "return_code": 0,
+    }
+
+
+def stop_telegram_bot_background(project_root: Path) -> dict[str, Any]:
+    """Stop background telegram-bot if the pid file points at a live process."""
+    root = Path(project_root).resolve()
+    st = telegram_bot_status(root)
+    pid = st.get("pid")
+    if not st.get("running") or not isinstance(pid, int):
+        path = _pid_path(root)
+        if path.is_file():
+            try:
+                path.unlink()
+            except OSError:
+                pass
+        return {
+            "ok": True,
+            "stopped": False,
+            "message": "telegram-bot was not running",
+            "return_code": 0,
+        }
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except OSError as exc:
+        return {"ok": False, "error": str(exc), "return_code": 1}
+    for _ in range(20):
+        time.sleep(0.1)
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            break
+    else:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+    try:
+        _pid_path(root).unlink(missing_ok=True)
+    except OSError:
+        pass
+    return {"ok": True, "stopped": True, "pid": pid, "return_code": 0}
+
+
+def looks_like_telegram_bot_command(command: str) -> bool:
+    """True when a run_command target is the telegram-bot CLI (any form)."""
+    raw = (command or "").strip().lower()
+    if not raw:
+        return False
+    if raw in {"telegram-bot", "telegram_bot", "telegrambot"}:
+        return True
+    if "telegram-bot" in raw or "telegram_bot" in raw:
+        return True
+    return False
+
 
 
 def _env_token(explicit: str | None = None) -> str:

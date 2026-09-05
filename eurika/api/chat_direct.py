@@ -513,6 +513,8 @@ def _accept_soft_handler(handler_id: Optional[str], msg: str) -> bool:
         "goal_status",
         "clear_goal",
         "apply_status",
+        "telegram_bot_start",
+        "telegram_bot_stop",
         "continue_dev",
         "docs_audit",
         "identity",
@@ -605,6 +607,10 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
 
     if is_apply_result_question(msg):
         return ("apply_status", None)
+    if is_telegram_bot_stop_request(msg):
+        return ("telegram_bot_stop", None)
+    if is_telegram_bot_start_request(msg):
+        return ("telegram_bot_start", "$ eurika telegram-bot .  # background")
     # Explicit commit/push must beat incidental ROADMAP/phase text supplied
     # as the desired commit-message context. Force push is refused in the handler.
     if is_force_push_request(msg):
@@ -1255,6 +1261,63 @@ def polygon_propose_sandbox(message: str) -> bool:
         "в sandbox",
     )
     return any(n in msg for n in needles)
+
+
+def is_telegram_bot_start_request(message: str) -> bool:
+    """C.12: start background ``eurika telegram-bot`` (not HITL run_command)."""
+    msg = _norm_msg(message)
+    if not msg:
+        return False
+    if is_telegram_bot_stop_request(message):
+        return False
+    has_bot = any(
+        n in msg
+        for n in (
+            "telegram-bot",
+            "telegram bot",
+            "telegram_bot",
+            "телеграм-бот",
+            "телеграм бот",
+            "телеграмбот",
+        )
+    )
+    if not has_bot:
+        return False
+    starters = (
+        "запусти",
+        "запустить",
+        "старт",
+        "start",
+        "run",
+        "включи",
+        "подними",
+        "eurika telegram",
+    )
+    if any(s in msg for s in starters):
+        return True
+    return msg in {
+        "telegram-bot",
+        "telegram bot",
+        "eurika telegram-bot",
+        "eurika telegram-bot .",
+    }
+
+
+def is_telegram_bot_stop_request(message: str) -> bool:
+    """C.12: stop background telegram-bot."""
+    msg = _norm_msg(message)
+    if not msg:
+        return False
+    has_bot = any(
+        n in msg
+        for n in ("telegram-bot", "telegram bot", "telegram_bot", "телеграм")
+    )
+    if not has_bot:
+        return False
+    return any(
+        s in msg
+        for s in ("останови", "стоп", "stop", "выключи", "убить", "kill")
+    )
 
 
 def is_force_push_request(message: str) -> bool:

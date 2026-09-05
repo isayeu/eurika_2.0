@@ -127,6 +127,44 @@ def test_handle_text_message_allowlist(tmp_path: Path) -> None:
     assert calls == ["scan"]
 
 
+def test_telegram_bot_background_status_and_stop(tmp_path: Path, monkeypatch) -> None:
+    from eurika.integrations.telegram_bot import (
+        start_telegram_bot_background,
+        stop_telegram_bot_background,
+        telegram_bot_status,
+    )
+
+    monkeypatch.setenv("EURIKA_TELEGRAM_BOT_TOKEN", "123:ABC")
+    monkeypatch.setenv("EURIKA_TELEGRAM_ALLOW_ANY", "1")
+
+    class FakeProc:
+        pid = 5555
+
+        def poll(self):
+            return None
+
+    monkeypatch.setattr(
+        "eurika.integrations.telegram_bot.subprocess.Popen",
+        lambda *a, **k: FakeProc(),
+    )
+    out = start_telegram_bot_background(tmp_path)
+    assert out.get("ok") is True
+    assert out.get("pid") == 5555
+    assert telegram_bot_status(tmp_path).get("pid") == 5555
+
+    killed: list[int] = []
+
+    def fake_kill(pid, sig=0):
+        if sig == 0 and pid in killed:
+            raise OSError("gone")
+        if sig != 0:
+            killed.append(pid)
+
+    monkeypatch.setattr("eurika.integrations.telegram_bot.os.kill", fake_kill)
+    stop = stop_telegram_bot_background(tmp_path)
+    assert stop.get("stopped") is True
+
+
 def test_process_updates_sends_reply(tmp_path: Path) -> None:
     sent: list[tuple[int, str]] = []
 

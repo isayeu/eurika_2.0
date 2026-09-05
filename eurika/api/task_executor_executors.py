@@ -167,6 +167,35 @@ def _execute_run_command(root: Path, spec: TaskSpec) -> ExecutionReport:
     if not command:
         return ExecutionReport(ok=False, summary='command failed', error='empty command')
     try:
+        from eurika.integrations.telegram_bot import (
+            looks_like_telegram_bot_command,
+            start_telegram_bot_background,
+        )
+
+        if looks_like_telegram_bot_command(command):
+            result = start_telegram_bot_background(root)
+            ok = bool(result.get('ok'))
+            summary = (
+                'telegram-bot already running'
+                if result.get('already_running')
+                else ('telegram-bot started' if ok else 'telegram-bot start failed')
+            )
+            return ExecutionReport(
+                ok=ok,
+                summary=summary,
+                applied_steps=['start telegram-bot background'],
+                verification={
+                    'runner': 'telegram_bot',
+                    'ok': ok,
+                    'pid': result.get('pid'),
+                    'log_file': result.get('log_file'),
+                },
+                artifacts_changed=[],
+                error=None if ok else str(result.get('error') or 'start failed'),
+            )
+    except Exception as exc:
+        return ExecutionReport(ok=False, summary='telegram-bot start failed', error=str(exc))
+    try:
         parts = shlex.split(command)
     except ValueError as exc:
         return ExecutionReport(ok=False, summary='command parse failed', error=str(exc))

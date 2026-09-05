@@ -430,6 +430,53 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
+    if handler_id == 'telegram_bot_start':
+        from eurika.integrations.telegram_bot import start_telegram_bot_background
+
+        result = start_telegram_bot_background(root)
+        ok = bool(result.get('ok'))
+        if ok and result.get('already_running'):
+            text = (
+                f"Telegram-bot уже работает (pid {result.get('pid')}). "
+                f"Лог: `{result.get('log_file')}`."
+            )
+        elif ok:
+            text = (
+                f"Запустил telegram-bot в фоне (pid {result.get('pid')}).\n"
+                f"- лог: `{result.get('log_file')}`\n"
+                "- apply по-прежнему только через Approvals / "
+                "`eurika fix . --apply-approved`\n"
+                "- остановить: «останови telegram-bot»"
+            )
+        else:
+            text = f"Не удалось запустить telegram-bot: {result.get('error')}"
+            if result.get('log_tail'):
+                text += f"\n\nlog:\n{result.get('log_tail')}"
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {
+            'text': text,
+            'error': None if ok else result.get('error'),
+            'terminal_cmd': '$ eurika telegram-bot .  # background',
+            'terminal_output': text,
+            'terminal_exit_code': 0 if ok else 1,
+        }
+    if handler_id == 'telegram_bot_stop':
+        from eurika.integrations.telegram_bot import stop_telegram_bot_background
+
+        result = stop_telegram_bot_background(root)
+        ok = bool(result.get('ok'))
+        if result.get('stopped'):
+            text = f"Остановил telegram-bot (pid {result.get('pid')})."
+        else:
+            text = str(result.get('message') or result.get('error') or 'ok')
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {
+            'text': text,
+            'error': None if ok else result.get('error'),
+            'terminal_exit_code': 0 if ok else 1,
+        }
     if handler_id == 'goal_reflection':
         # Prefer in-memory state (same request), fall back to disk.
         st = state if isinstance(state, dict) and state else load_dialog_state(root)
