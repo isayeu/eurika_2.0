@@ -35,13 +35,15 @@ def _self_map_blurb(root: Path) -> str:
     if not isinstance(data, dict):
         return "self_map.json: неожиданный формат."
     mods = data.get("modules")
+    n_mods: int | str
     if isinstance(mods, list):
         n_mods = len(mods)
     elif isinstance(mods, (int, float)):
         n_mods = int(mods)
     else:
         try:
-            n_mods = int(data.get("n_modules") or 0) or "?"
+            parsed = int(data.get("n_modules") or 0)
+            n_mods = parsed if parsed else "?"
         except (TypeError, ValueError):
             n_mods = "?"
     deps = data.get("dependencies")

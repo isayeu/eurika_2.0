@@ -225,6 +225,7 @@ def market_learning_status(project_root: str | Path) -> dict[str, Any]:
 
     raw_meta = model.get("meta")
     meta: dict[str, Any] = raw_meta if isinstance(raw_meta, dict) else {}
+    root_ml = ml_root(root)
     open_summary = []
     for p in opens:
         open_summary.append(
@@ -310,9 +311,119 @@ def market_learning_status(project_root: str | Path) -> dict[str, Any]:
             "samples": meta.get("samples"),
             "device": meta.get("device"),
             "weights": model.get("weights"),
+            "heads": {
+                "entry": _head_brief(meta, bool(model.get("weights_exist"))),
+                "exit": _head_brief(
+                    _as_dict(model.get("exit_meta")),
+                    bool(model.get("exit_weights_exist")),
+                ),
+                "levels": _head_brief(
+                    _as_dict(model.get("levels_meta")),
+                    bool(model.get("levels_weights_exist")),
+                ),
+                "style": _head_brief(
+                    _as_dict(model.get("style_meta")),
+                    bool(model.get("style_weights_exist")),
+                ),
+            },
+        },
+        "gate": _gate_brief(root),
+        "teacher": {
+            "file_n": _jsonl_count(root_ml / "llm_teacher_samples.jsonl"),
+            "mixed_in_entry": meta.get("llm_teacher_samples"),
+            "hourly": _json_obj(root_ml / "cursor_hourly.json"),
+            "analysis": _json_obj(root_ml / "llm_analysis.json"),
         },
         "market": market,
     }
+
+
+def _json_obj(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _jsonl_count(path: Path) -> int:
+    if not path.is_file():
+        return 0
+    n = 0
+    try:
+        with path.open(encoding="utf-8") as fh:
+            for line in fh:
+                if line.strip():
+                    n += 1
+    except OSError:
+        return 0
+    return n
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _head_brief(meta: dict[str, Any], weights_exist: bool) -> dict[str, Any]:
+    return {
+        "weights_exist": weights_exist,
+        "samples": meta.get("samples"),
+        "train_accuracy": meta.get("train_accuracy"),
+        "train_mae": meta.get("train_mae"),
+        "device": meta.get("device"),
+        "llm_teacher_samples": meta.get("llm_teacher_samples"),
+        "arch": meta.get("arch"),
+        "hidden": meta.get("hidden"),
+    }
+
+
+def _gate_brief(project_root: Path) -> dict[str, Any]:
+    try:
+        from eurika.ml.entry_cost import load_cost_gate
+
+        gate = dict(load_cost_gate(project_root))
+    except Exception:
+        gate = {}
+    extra = _json_obj(ml_root(project_root) / "weights" / "entry_cost_gate.json")
+    for key in ("covers_cost", "scanned", "markets", "calibrated", "required_edge"):
+        if key in extra and key not in gate:
+            gate[key] = extra[key]
+    return gate
+
+
+def _as_learning_status(
+    st: dict[str, Any] | str | Path | None,
+    project_root: str | Path,
+) -> dict[str, Any]:
+    if isinstance(st, (str, Path)):
+        return market_learning_status(st)
+    if st is not None:
+        return st
+    return market_learning_status(project_root)
+
+
+def _fmt_usd(val: object) -> str:
+    if isinstance(val, (int, float)):
+        return f"{float(val):+.2f}"
+    return "n/a"
+
+
+def _fmt_num(val: object, digits: int = 2) -> str:
+    if isinstance(val, (int, float)):
+        return f"{float(val):.{digits}f}"
+    return "n/a"
+
+
+def _md_table(headers: list[str], rows: list[list[object]]) -> str:
+    def cell(x: object) -> str:
+        return str(x).replace("|", "\\|").replace("\n", " ")
+
+    head = "| " + " | ".join(cell(h) for h in headers) + " |"
+    sep = "| " + " | ".join("---" for _ in headers) + " |"
+    body = ["| " + " | ".join(cell(c) for c in row) + " |" for row in rows]
+    return "\n".join([head, sep, *body])
 
 
 def format_market_learning_block(
@@ -434,6 +545,249 @@ def format_market_learning_block(
     return "\n".join(lines)
 
 
+def format_market_learning_report(
+    st: dict[str, Any] | str | Path | None = None,
+    project_root: str | Path = ".",
+) -> str:
+    """Full Chat answer: verdict, GFM tables, heads, gate, teacher (Russian)."""
+    data = _as_learning_status(st, project_root)
+    paper = data.get("paper") or {}
+    live = data.get("live") or {}
+    opens = data.get("opens") or {}
+    model = data.get("model") or {}
+    pnl = data.get("pnl") or {}
+    bank = data.get("portfolio") or {}
+    teacher = data.get("teacher") or {}
+    gate = data.get("gate") or {}
+    heads = model.get("heads") or {}
+    live_spot = live.get("spot") or {}
+    live_fut = live.get("futures") or {}
+    pnl_all = pnl.get("all") or {}
+    pnl_live = pnl.get("live") or {}
+    pnl_sess = pnl.get("session") or {}
+    verdict = market_economic_verdict(data)
+    series_n = len((data.get("market") or {}).get("series") or [])
+    positions = list(opens.get("positions") or [])
+
+    eq = float(bank.get("equity_usdt") or 0)
+    start = float(bank.get("start_equity_usdt") or 0)
+    lines = [
+        "## Paper-экзамен (без ордеров на биржу)",
+        "",
+        f"**Вердикт:** {verdict.get('label')} — "
+        + "; ".join(str(r) for r in (verdict.get("reasons") or [])[:4]),
+        "",
+        f"**Дальше:** {verdict.get('next_step')}",
+        "",
+        "Accuracy — не прибыль: мелкие плюсы против более крупных минусов и комиссии. "
+        "Судим по equity и net edge после fee.",
+        "",
+        "### Банк",
+        _md_table(
+            ["показатель", "значение"],
+            [
+                ["equity", f"{eq:.2f} USDT"],
+                ["старт", f"{start:.0f} USDT"],
+                ["Δ", f"{_fmt_usd(bank.get('session_pnl_usdt'))} USDT"],
+                [
+                    "маржа used/max",
+                    f"{_fmt_num(bank.get('margin_used_usdt'), 1)} / "
+                    f"{_fmt_num(bank.get('max_margin_usdt'), 1)}",
+                ],
+            ],
+        ),
+        "",
+        "### Экзамен (live закрытия)",
+        _md_table(
+            ["срез", "n", "BUY", "SELL", "accuracy", "mean edge", "Σ PnL USDT"],
+            [
+                [
+                    "live всего",
+                    live.get("count", 0),
+                    (live_spot.get("buys") or 0) + (live_fut.get("buys") or 0),
+                    (live_spot.get("sells") or 0) + (live_fut.get("sells") or 0),
+                    _fmt_num(live.get("accuracy"), 3),
+                    _fmt_edge(pnl_live.get("mean_edge")),
+                    _fmt_usd(pnl_live.get("sum_pnl_usdt")),
+                ],
+                [
+                    "live spot",
+                    live_spot.get("count", 0),
+                    live_spot.get("buys", 0),
+                    live_spot.get("sells", 0),
+                    _fmt_num(live_spot.get("accuracy"), 3),
+                    _fmt_edge(live_spot.get("mean_edge")),
+                    _fmt_usd(live_spot.get("sum_pnl_usdt")),
+                ],
+                [
+                    "live futures",
+                    live_fut.get("count", 0),
+                    live_fut.get("buys", 0),
+                    live_fut.get("sells", 0),
+                    _fmt_num(live_fut.get("accuracy"), 3),
+                    _fmt_edge(live_fut.get("mean_edge")),
+                    _fmt_usd(live_fut.get("sum_pnl_usdt")),
+                ],
+                [
+                    "сессия (с вкл. Live)",
+                    pnl_sess.get("n") or pnl_sess.get("count") or 0,
+                    "—",
+                    "—",
+                    "—",
+                    _fmt_edge(pnl_sess.get("mean_edge")),
+                    _fmt_usd(pnl_sess.get("sum_pnl_usdt")),
+                ],
+            ],
+        ),
+        "",
+        "### Вся выборка (live + тени)",
+        _md_table(
+            ["показатель", "значение"],
+            [
+                ["закрытий paper (экзамен)", paper.get("count", 0)],
+                ["BUY / SELL", f"{paper.get('buys', 0)} / {paper.get('sells', 0)}"],
+                ["accuracy paper", _fmt_num(paper.get("accuracy"), 3)],
+                ["строк с edge", pnl_all.get("n", 0)],
+                ["mean edge (все)", _fmt_edge(pnl_all.get("mean_edge"))],
+                ["тени (shadow)", paper.get("shadow_count", 0)],
+                ["cancelled", paper.get("cancelled_count", 0)],
+                ["свечные серии", series_n],
+            ],
+        ),
+    ]
+    buys = int(paper.get("buys") or 0)
+    sells = int(paper.get("sells") or 0)
+    if buys + sells >= 20 and buys > sells * 3:
+        lines.extend(
+            [
+                "",
+                f"Перекос стороны: BUY {buys} vs SELL {sells} — это залипание entry, "
+                "не отдельная стратегия на тикер.",
+            ]
+        )
+    lines.extend(["", "### Открыто сейчас"])
+    if not positions:
+        lines.append("_нет открытых paper-позиций_")
+    else:
+        open_rows: list[list[object]] = []
+        for p in positions[:_OPEN_LIST_LIMIT]:
+            mk = "fut" if p.get("market") == "futures" else "spot"
+            open_rows.append(
+                [
+                    p.get("symbol") or "?",
+                    mk,
+                    p.get("action") or "?",
+                    _fmt_num(p.get("entry"), 4),
+                    p.get("horizon") or "—",
+                    _fmt_num(p.get("margin_usdt"), 2),
+                    p.get("source") or "—",
+                ]
+            )
+        lines.append(
+            _md_table(
+                ["тикер", "книга", "сторона", "вход", "гор.", "маржа", "источник"],
+                open_rows,
+            )
+        )
+        rest = len(positions) - min(len(positions), _OPEN_LIST_LIMIT)
+        if rest > 0:
+            lines.append(f"_… ещё {rest}_")
+
+    def _acc_or_mae(head: dict[str, Any]) -> str:
+        if isinstance(head.get("train_accuracy"), (int, float)):
+            return f"acc {_fmt_num(head.get('train_accuracy'), 3)}"
+        if isinstance(head.get("train_mae"), (int, float)):
+            return f"MAE {_fmt_num(head.get('train_mae'), 3)}"
+        return "n/a"
+
+    head_rows = []
+    for key, title in (
+        ("entry", "entry MLP"),
+        ("exit", "exit MLP"),
+        ("levels", "levels"),
+        ("style", "style"),
+    ):
+        h = _as_dict(heads.get(key))
+        llm_n = h.get("llm_teacher_samples")
+        extra = f" · LLM {llm_n}" if llm_n else ""
+        head_rows.append(
+            [
+                title,
+                "да" if h.get("weights_exist") else "нет",
+                h.get("samples") if h.get("samples") is not None else "n/a",
+                _acc_or_mae(h) + extra,
+                h.get("device") or "—",
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "### Обучение голов (in-sample ≠ экзамен)",
+            _md_table(
+                ["голова", "веса", "сэмплы", "метрика", "device"],
+                head_rows,
+            ),
+            "",
+            "In-sample accuracy/MAE — не walk-forward. Головы учатся на live **и** тенях; "
+            "деньги считает только live.",
+            "",
+            "### Стоимостные ворота",
+            _md_table(
+                ["показатель", "значение"],
+                [
+                    ["порог expansion_min", _fmt_num(gate.get("expansion_min"), 3)],
+                    ["cost_mult", _fmt_num(gate.get("cost_mult"), 2)],
+                    ["expected_edge", _fmt_edge(gate.get("expected_edge"))],
+                    [
+                        "covers_cost",
+                        (
+                            "да"
+                            if gate.get("covers_cost") is True
+                            else "нет"
+                            if gate.get("covers_cost") is False
+                            else "—"
+                        ),
+                    ],
+                    ["калибровка n", gate.get("samples", 0)],
+                    ["источник", gate.get("source") or "—"],
+                ],
+            ),
+        ]
+    )
+    hourly = teacher.get("hourly") or {}
+    analysis = teacher.get("analysis") or {}
+    last_hourly = hourly.get("saved_at") or hourly.get("last_ms") or "—"
+    hourly_ok = hourly.get("ok")
+    hourly_s = (
+        "ok"
+        if hourly_ok is True
+        else ("ошибка" if hourly_ok is False else "n/a")
+    )
+    lines.extend(
+        [
+            "",
+            "### LLM-учитель (не открывает paper)",
+            _md_table(
+                ["показатель", "значение"],
+                [
+                    ["строк в llm_teacher_samples", teacher.get("file_n", 0)],
+                    ["подмешано в последний entry train", teacher.get("mixed_in_entry") or 0],
+                    ["hourly Cursor", f"{hourly_s} · {last_hourly}"],
+                    ["hourly teacher_n", hourly.get("teacher_n") or "—"],
+                    [
+                        "LLM анализ TF/книга",
+                        f"{analysis.get('tf1') or '—'} + {analysis.get('tf2') or '—'} / "
+                        f"{analysis.get('markets') or '—'}",
+                    ],
+                ],
+            ),
+            "",
+            "Live-ордеров нет. Explore / новый entry по убытку экзамена не включаем.",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def _parse_analysis_advice(message: str) -> dict[str, Any] | None:
     """Extract symbol/market/action from a journal analysis line."""
     msg = (message or "").strip()
@@ -468,10 +822,13 @@ def format_market_situation_block(
 ) -> str:
     """Live paper situation for Chat: bank, opens, recent model advice — not architecture."""
     root = Path(project_root).resolve()
+    load_journal: Any = None
     try:
         from eurika.ml.market_journal import load_market_journal
+
+        load_journal = load_market_journal
     except Exception:
-        load_market_journal = None
+        load_journal = None
 
     st = market_learning_status(root)
     bank = st.get("portfolio") or {}
@@ -516,12 +873,13 @@ def format_market_situation_block(
     if len(positions) > 12:
         lines.append(f"    … ещё {len(positions) - 12}")
 
-    # Recent model advice from journal
+    # Recent model advice from journal (legacy: older builds wrote every-tick analysis).
+    # Compact feed no longer persists analysis/hold/sync — opens + bank are the source of truth.
     advice: dict[tuple[str, str], dict[str, Any]] = {}
     last_ts = 0
-    if load_market_journal is not None:
+    if load_journal is not None:
         try:
-            rows = load_market_journal(root, limit=journal_tail)
+            rows = load_journal(root, limit=journal_tail)
         except Exception:
             rows = []
         if rows:
@@ -540,26 +898,29 @@ def format_market_situation_block(
 
     from collections import Counter
 
-    mix = Counter(str(a["action"]) for a in advice.values())
-    soft_n = sum(1 for a in advice.values() if a.get("soft"))
-    lines.append(
-        f"  советы модели (последние ~{max(1, lookback_ms // 60000)} мин): "
-        f"n={len(advice)} HOLD={mix.get('HOLD', 0)} BUY={mix.get('BUY', 0)} "
-        f"SELL={mix.get('SELL', 0)} soft={soft_n}"
-    )
-    # Prefer non-HOLD first for readability
-    ordered = sorted(
-        advice.values(),
-        key=lambda a: (0 if a["action"] != "HOLD" else 1, str(a["symbol"]), str(a["market"])),
-    )
-    for a in ordered[:16]:
-        mk = "fut" if a["market"] == "futures" else "spot"
-        tag = "soft" if a.get("soft") else "model"
-        lines.append(f"    {a['symbol']} [{mk}] → {a['action']} ({tag})")
-    if len(ordered) > 16:
-        lines.append(f"    … ещё {len(ordered) - 16}")
-    if not advice:
-        lines.append("    (нет свежих analysis в journal — включи Live / сделай тик)")
+    if advice:
+        mix = Counter(str(a["action"]) for a in advice.values())
+        soft_n = sum(1 for a in advice.values() if a.get("soft"))
+        lines.append(
+            f"  советы модели (последние ~{max(1, lookback_ms // 60000)} мин): "
+            f"n={len(advice)} HOLD={mix.get('HOLD', 0)} BUY={mix.get('BUY', 0)} "
+            f"SELL={mix.get('SELL', 0)} soft={soft_n}"
+        )
+        ordered = sorted(
+            advice.values(),
+            key=lambda a: (0 if a["action"] != "HOLD" else 1, str(a["symbol"]), str(a["market"])),
+        )
+        for a in ordered[:16]:
+            mk = "fut" if a["market"] == "futures" else "spot"
+            tag = "soft" if a.get("soft") else "model"
+            lines.append(f"    {a['symbol']} [{mk}] → {a['action']} ({tag})")
+        if len(ordered) > 16:
+            lines.append(f"    … ещё {len(ordered) - 16}")
+    else:
+        lines.append(
+            "  советы модели: лента компактная (без per-tick analysis) — "
+            "смотри открытые позиции выше и статус Live"
+        )
 
     se = pnl_live.get("sum_edge")
     su = pnl_live.get("sum_pnl_usdt")
@@ -573,8 +934,8 @@ def format_market_situation_block(
             f"train_acc={model.get('train_accuracy')} (общая на все тикеры, 24 фичи)"
         )
     lines.append(
-        "  вывод: смотри смесь HOLD/BUY/SELL выше — это «что крутится» сейчас; "
-        "не per-ticker стратегия. Экономику суди по вердикту/equity, не по accuracy. "
+        "  вывод: экономика — по вердикту/equity и открытым позициям; "
+        "accuracy in-sample ≠ экзамен. "
         "Вопрос про устройство модели — отдельно («одна модель или на каждый тикер?»)."
     )
     return "\n".join(lines)

@@ -218,4 +218,64 @@ def test_format_market_situation_block(tmp_path: Path) -> None:
     assert "BTCUSDT" in text
     assert "ADAUSDT" in text and "BUY" in text
     assert "ETHUSDT" in text and "HOLD" in text
-    assert "per-ticker" in text.lower() or "общая" in text
+    assert "тикер" in text.lower() or "equity" in text.lower()
+
+
+def test_format_market_learning_report_tables(tmp_path: Path) -> None:
+    from eurika.ml.live_paper import save_open_positions
+    from eurika.ml.paper_portfolio import ensure_portfolio, save_portfolio
+    from eurika.ml.paper_trader import paper_trades_path
+    from eurika.ml.market_store import ml_root
+
+    port = ensure_portfolio(tmp_path)
+    port["equity_usdt"] = 986.46
+    port["session_pnl_usdt"] = -13.54
+    save_portfolio(tmp_path, port)
+    path = paper_trades_path(tmp_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for i in range(24):
+        rows.append(
+            {
+                "action": "BUY" if i % 5 else "SELL",
+                "correct": i % 3 != 0,
+                "live": True,
+                "market": "futures" if i % 2 else "spot",
+                "edge": -0.0005,
+                "pnl_usdt": -0.4,
+                "exit_ts": 1000 + i,
+            }
+        )
+    path.write_text(
+        "\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n",
+        encoding="utf-8",
+    )
+    save_open_positions(
+        tmp_path,
+        [
+            {
+                "symbol": "ETHUSDT",
+                "market": "futures",
+                "action": "BUY",
+                "entry": 1933.5,
+                "horizon": 4,
+                "source": "model/soft",
+                "margin_usdt": 6.0,
+            }
+        ],
+    )
+    weights = ml_root(tmp_path) / "weights"
+    weights.mkdir(parents=True, exist_ok=True)
+    (weights / "meta.json").write_text(
+        json.dumps({"samples": 100, "train_accuracy": 0.55, "device": "cpu"}),
+        encoding="utf-8",
+    )
+    (weights / "market_policy.pt").write_bytes(b"x")
+    text = ls.format_market_learning_report(tmp_path)
+    assert "Paper-экзамен" in text
+    assert "| equity |" in text
+    assert "| live всего |" in text
+    assert "ETHUSDT" in text
+    assert "entry MLP" in text
+    assert "LLM-учитель" in text
+    assert "вердикт" in text.lower() or "Вердикт" in text

@@ -17,6 +17,13 @@ from typing import Any, Mapping, Sequence
 
 from eurika.ml.exec_tf import find_entry_index, main_horizon_to_exec, simulate_exec_exit
 from eurika.ml.features import features_dict
+from eurika.ml.llm_shadow_orders import (
+    DEFAULT_AGENT_SL_PCT as DEFAULT_ASSISTANT_SL_PCT,
+    DEFAULT_AGENT_TP_PCT as DEFAULT_ASSISTANT_TP_PCT,
+    DEFAULT_AGENT_TRAIL_PCT as DEFAULT_ASSISTANT_TRAIL_PCT,
+    MIN_AGENT_TP_SL_RATIO as MIN_ASSISTANT_TP_SL_RATIO,
+    enforce_tp_sl_ratio,
+)
 from eurika.ml.market_store import load_candles, ml_root, normalize_market, sync_klines
 from eurika.ml.paper_orders import (
     ENTRY_STYLES,
@@ -35,6 +42,16 @@ SYNC_1M_LIMIT = 720  # match pending horizon so fills are not marked stale overn
 MAX_THESES = 6
 MAX_OPENS = 3
 SCAN_SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "ADAUSDT", "BNBUSDT", "XRPUSDT")
+# After SL — block same (symbol, market, side) so LLM cannot «restore» the same long.
+# 120×1m ≈ 2h ≈ ~8 portfolio cycles; stops ARB-style revenge loops.
+DEFAULT_SL_REENTRY_COOLDOWN_BARS_1M = 120
+# Same limit/stop level: at most N places inside the rolling window.
+MAX_SAME_LIMIT_PLACES = 2
+SAME_LIMIT_WINDOW_MS = 4 * 60 * 60 * 1000  # 4h
+_MS_PER_1M_BAR = 60_000
+# Agent book levels (not MLP exam): DEFAULT_ASSISTANT_* from llm_shadow_orders (~3:1).
+DEFAULT_STRUCTURE_ARM_MFE_PCT = 0.012  # was 0.004 — no skim on noise MFE
+DEFAULT_STRUCTURE_GIVEBACK_FRAC = 0.45
 _ACTION_ALIASES = {
     "open": "open",
     "place": "place",
@@ -82,6 +99,280 @@ def assistant_trades_path(root: str | Path) -> Path:
 
 def assistant_memory_path(root: str | Path) -> Path:
     return ml_root(root) / "assistant_memory.json"
+
+
+def assistant_reentry_cooldown_path(root: str | Path) -> Path:
+    """Separate from MLP exam ``reentry_cooldown.json``."""
+    return ml_root(root) / "assistant_reentry_cooldown.json"
+
+
+def _cooldown_key(symbol: str, market: str, side: str) -> str:
+    return f"{str(symbol).upper()}|{normalize_market(market)}|{str(side).upper()}"
+
+
+def _limit_key(symbol: str, market: str, side: str, level_px: float) -> str:
+    return f"{_cooldown_key(symbol, market, side)}|{round(float(level_px), 6)}"
+
+
+def _entry_level_px(row: Mapping[str, Any]) -> float | None:
+    for key in ("limit_px", "stop_px"):
+        raw = row.get(key)
+        if raw is None or raw == "":
+            continue
+        try:
+            px = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if px > 0:
+            return px
+    return None
+
+
+def enforce_assistant_tp_sl(
+    tp_pct: float,
+    sl_pct: float,
+    *,
+    min_ratio: float = MIN_ASSISTANT_TP_SL_RATIO,
+) -> tuple[float, float]:
+    """Ensure TP/SL risk:reward is at least ``min_ratio`` (bump TP if needed)."""
+    return enforce_tp_sl_ratio(tp_pct, sl_pct, min_ratio=min_ratio)
+
+
+def load_assistant_reentry_state(root: str | Path) -> dict[str, Any]:
+    data = _read_json(assistant_reentry_cooldown_path(root), {})
+    if not isinstance(data, dict):
+        return {"entries": {}, "recent_limits": {}}
+    raw_entries = data.get("entries")
+    raw_recent = data.get("recent_limits")
+    entries: dict[str, Any] = raw_entries if isinstance(raw_entries, dict) else {}
+    recent: dict[str, Any] = raw_recent if isinstance(raw_recent, dict) else {}
+    return {"entries": dict(entries), "recent_limits": dict(recent)}
+
+
+def save_assistant_reentry_state(root: str | Path, state: Mapping[str, Any]) -> Path:
+    path = assistant_reentry_cooldown_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    blob = {
+        "entries": dict(state.get("entries") or {}),
+        "recent_limits": dict(state.get("recent_limits") or {}),
+    }
+    path.write_text(json.dumps(blob, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def load_assistant_reentry_cooldowns(
+    root: str | Path, *, now_ts_ms: int | None = None
+) -> dict[str, dict[str, Any]]:
+    state = load_assistant_reentry_state(root)
+    now = int(now_ts_ms) if now_ts_ms is not None else None
+    out: dict[str, dict[str, Any]] = {}
+    for key, row in state["entries"].items():
+        if not isinstance(row, dict):
+            continue
+        until = int(row.get("until_ts") or 0)
+        if now is not None and until <= now:
+            continue
+        out[str(key)] = row
+    return out
+
+
+def register_assistant_reentry_cooldown(
+    root: str | Path,
+    *,
+    symbol: str,
+    market: str,
+    side: str,
+    exit_ts_ms: int,
+    bars_1m: int = DEFAULT_SL_REENTRY_COOLDOWN_BARS_1M,
+    exit_reason: str = "sl",
+) -> dict[str, Any]:
+    """Arm same-side reentry block after SL (holistic / assistant book)."""
+    side_u = str(side).upper()
+    if side_u not in ("BUY", "SELL"):
+        return {}
+    bars = max(1, int(bars_1m))
+    until = int(exit_ts_ms) + bars * _MS_PER_1M_BAR
+    state = load_assistant_reentry_state(root)
+    entries = {
+        k: v
+        for k, v in state["entries"].items()
+        if isinstance(v, dict) and int(v.get("until_ts") or 0) > int(exit_ts_ms)
+    }
+    row = {
+        "symbol": str(symbol).upper(),
+        "market": normalize_market(market),
+        "side": side_u,
+        "until_ts": until,
+        "exit_ts": int(exit_ts_ms),
+        "bars_1m": bars,
+        "exit_reason": str(exit_reason or "sl"),
+    }
+    entries[_cooldown_key(symbol, market, side_u)] = row
+    state["entries"] = entries
+    save_assistant_reentry_state(root, state)
+    return row
+
+
+def assistant_reentry_cooldown_active(
+    root: str | Path,
+    *,
+    symbol: str,
+    market: str,
+    side: str,
+    now_ts_ms: int,
+) -> dict[str, Any] | None:
+    side_u = str(side).upper()
+    if side_u not in ("BUY", "SELL"):
+        return None
+    row = load_assistant_reentry_cooldowns(root, now_ts_ms=int(now_ts_ms)).get(
+        _cooldown_key(symbol, market, side_u)
+    )
+    if not row:
+        return None
+    if int(row.get("until_ts") or 0) <= int(now_ts_ms):
+        return None
+    return row
+
+
+def note_assistant_limit_place(
+    root: str | Path,
+    *,
+    symbol: str,
+    market: str,
+    side: str,
+    level_px: float,
+    now_ts_ms: int | None = None,
+) -> dict[str, Any]:
+    """Record a place/open at ``level_px`` for the same-limit cap."""
+    now = int(now_ts_ms if now_ts_ms is not None else _now_ms())
+    state = load_assistant_reentry_state(root)
+    recent = dict(state.get("recent_limits") or {})
+    # drop expired fingerprints
+    kept: dict[str, Any] = {}
+    for key, row in recent.items():
+        if not isinstance(row, dict):
+            continue
+        last = int(row.get("last_ts") or row.get("first_ts") or 0)
+        if now - last <= SAME_LIMIT_WINDOW_MS:
+            kept[str(key)] = row
+    key = _limit_key(symbol, market, side, level_px)
+    prev = kept.get(key) if isinstance(kept.get(key), dict) else None
+    if prev and now - int(prev.get("first_ts") or 0) <= SAME_LIMIT_WINDOW_MS:
+        row = {
+            "symbol": str(symbol).upper(),
+            "market": normalize_market(market),
+            "side": str(side).upper(),
+            "limit_px": float(level_px),
+            "count": int(prev.get("count") or 0) + 1,
+            "first_ts": int(prev.get("first_ts") or now),
+            "last_ts": now,
+        }
+    else:
+        row = {
+            "symbol": str(symbol).upper(),
+            "market": normalize_market(market),
+            "side": str(side).upper(),
+            "limit_px": float(level_px),
+            "count": 1,
+            "first_ts": now,
+            "last_ts": now,
+        }
+    kept[key] = row
+    state["recent_limits"] = kept
+    # keep live cooldowns too
+    state["entries"] = load_assistant_reentry_cooldowns(root, now_ts_ms=now)
+    save_assistant_reentry_state(root, state)
+    return row
+
+
+def same_limit_place_count(
+    root: str | Path,
+    *,
+    symbol: str,
+    market: str,
+    side: str,
+    level_px: float,
+    now_ts_ms: int | None = None,
+) -> int:
+    now = int(now_ts_ms if now_ts_ms is not None else _now_ms())
+    state = load_assistant_reentry_state(root)
+    row = state["recent_limits"].get(_limit_key(symbol, market, side, level_px))
+    if not isinstance(row, dict):
+        return 0
+    first = int(row.get("first_ts") or 0)
+    if now - first > SAME_LIMIT_WINDOW_MS:
+        return 0
+    return int(row.get("count") or 0)
+
+
+def assistant_entry_block_reason(
+    root: str | Path,
+    *,
+    symbol: str,
+    market: str,
+    side: str,
+    level_px: float | None = None,
+    now_ts_ms: int | None = None,
+) -> str | None:
+    """Return human reason if place/open must be refused, else None."""
+    now = int(now_ts_ms if now_ts_ms is not None else _now_ms())
+    cd = assistant_reentry_cooldown_active(
+        root, symbol=symbol, market=market, side=side, now_ts_ms=now
+    )
+    if cd:
+        left_m = max(0, (int(cd.get("until_ts") or 0) - now) // 60_000)
+        why = str(cd.get("exit_reason") or "sl")
+        return f"cooldown после {why} ещё ~{left_m}м"
+    if level_px is not None and float(level_px) > 0:
+        n = same_limit_place_count(
+            root,
+            symbol=symbol,
+            market=market,
+            side=side,
+            level_px=float(level_px),
+            now_ts_ms=now,
+        )
+        if n >= MAX_SAME_LIMIT_PLACES:
+            return (
+                f"тот же уровень {float(level_px):.6g} уже place×{n} "
+                f"за {SAME_LIMIT_WINDOW_MS // 3_600_000}ч (лимит {MAX_SAME_LIMIT_PLACES})"
+            )
+    return None
+
+
+def format_assistant_cooldowns_for_prompt(root: str | Path, *, now_ts_ms: int | None = None) -> str:
+    now = int(now_ts_ms if now_ts_ms is not None else _now_ms())
+    lines = ["REENTRY GUARDS (скелет; place/open игнорируются если сработало)"]
+    cds = load_assistant_reentry_cooldowns(root, now_ts_ms=now)
+    if not cds:
+        lines.append("  cooldown: none")
+    else:
+        for row in cds.values():
+            left_m = max(0, (int(row.get("until_ts") or 0) - now) // 60_000)
+            lines.append(
+                f"  cooldown {row.get('symbol')} {row.get('side')} "
+                f"after {row.get('exit_reason')} ~{left_m}м left"
+            )
+    state = load_assistant_reentry_state(root)
+    caps: list[str] = []
+    for row in state.get("recent_limits", {}).values():
+        if not isinstance(row, dict):
+            continue
+        first = int(row.get("first_ts") or 0)
+        if now - first > SAME_LIMIT_WINDOW_MS:
+            continue
+        n = int(row.get("count") or 0)
+        if n <= 0:
+            continue
+        caps.append(
+            f"  limit-cap {row.get('symbol')} {row.get('side')} "
+            f"@{float(row.get('limit_px') or 0):.6g} place×{n}/{MAX_SAME_LIMIT_PLACES}"
+        )
+    if caps:
+        lines.extend(caps)
+    else:
+        lines.append("  same-limit caps: none")
+    return "\n".join(lines)
 
 
 def _read_json(path: Path, default: Any) -> Any:
@@ -271,6 +562,7 @@ def format_assistant_book_for_prompt(root: str | Path, *, limit: int = 12) -> st
                 + f"limit={order.get('limit_px')} stop={order.get('stop_px')} "
                 + f"inv={order.get('invalidate_px')} thesis={order.get('thesis_id') or '-'}"
             )
+    lines.append(format_assistant_cooldowns_for_prompt(root))
     return "\n".join(lines)
 
 
@@ -324,7 +616,9 @@ def propose_thesis(
         narrative = (
             f"{symbol} fut: 1h выше SMA (sma_ratio={sma1h:+.3f}), откат к поддержке "
             f"~{support:.4g}. Лимит {limit_px:.4g}, инвалидация {invalidate_px:.4g}. "
-            f"SL 2%, trail после MFE, выход по отдаче структуры до TP."
+            f"TP {DEFAULT_ASSISTANT_TP_PCT*100:.1f}% / SL {DEFAULT_ASSISTANT_SL_PCT*100:.1f}% "
+            f"(R≥{MIN_ASSISTANT_TP_SL_RATIO:g}), trail после MFE, structure-exit только после "
+            f"MFE≥{DEFAULT_STRUCTURE_ARM_MFE_PCT*100:.1f}%."
         )
     elif bb < -0.35 and close <= resist:
         limit_px = round(close * 0.999, 8)
@@ -344,7 +638,9 @@ def propose_thesis(
         trigger = "breakout_stop_long"
         narrative = (
             f"{symbol} fut: импульс ret_4={ret4:+.3%}, stop-entry над сопротивлением "
-            f"{stop_px:.4g}. SL 2%, trail 0.8%, structure-exit при отдаче."
+            f"{stop_px:.4g}. TP {DEFAULT_ASSISTANT_TP_PCT*100:.1f}% / "
+            f"SL {DEFAULT_ASSISTANT_SL_PCT*100:.1f}%, trail, structure после "
+            f"MFE≥{DEFAULT_STRUCTURE_ARM_MFE_PCT*100:.1f}%."
         )
     elif sma1h > -0.015 and abs(bb) < 0.85:
         # Fallback: мягкий откат к поддержке / под ценой — ночной watch без MLP-шума
@@ -355,7 +651,9 @@ def propose_thesis(
         trigger = "passive_pullback_long"
         narrative = (
             f"{symbol} fut: нейтральный/слабый режим (sma1h={sma1h:+.3f}, bb={bb:+.2f}). "
-            f"Лимит {limit_px:.4g} (−0.3% от {close:.4g}), SL 2%, structure-exit при отдаче MFE."
+            f"Лимит {limit_px:.4g} (−0.3% от {close:.4g}), "
+            f"TP {DEFAULT_ASSISTANT_TP_PCT*100:.1f}% / SL {DEFAULT_ASSISTANT_SL_PCT*100:.1f}%, "
+            f"structure после MFE≥{DEFAULT_STRUCTURE_ARM_MFE_PCT*100:.1f}%."
         )
     else:
         return None
@@ -372,11 +670,11 @@ def propose_thesis(
         "limit_px": limit_px,
         "stop_px": stop_px,
         "invalidate_px": invalidate_px,
-        "tp_pct": 0.015,
-        "sl_pct": 0.02,
-        "trail_pct": 0.008,
-        "structure_arm_mfe_pct": 0.004,
-        "structure_giveback_frac": 0.45,
+        "tp_pct": DEFAULT_ASSISTANT_TP_PCT,
+        "sl_pct": DEFAULT_ASSISTANT_SL_PCT,
+        "trail_pct": DEFAULT_ASSISTANT_TRAIL_PCT,
+        "structure_arm_mfe_pct": DEFAULT_STRUCTURE_ARM_MFE_PCT,
+        "structure_giveback_frac": DEFAULT_STRUCTURE_GIVEBACK_FRAC,
         "created_ms": now,
         "updated_ms": now,
     }
@@ -446,6 +744,10 @@ def _thesis_to_pending(
     if not size.get("ok"):
         return None
     h_exec = max(1, main_horizon_to_exec(DEFAULT_HORIZON_MAIN, DEFAULT_INTERVAL, "1m"))
+    tp_pct, sl_pct = enforce_assistant_tp_sl(
+        float(thesis.get("tp_pct") or DEFAULT_ASSISTANT_TP_PCT),
+        float(thesis.get("sl_pct") or DEFAULT_ASSISTANT_SL_PCT),
+    )
     order = build_pending_order(
         symbol=sym,
         market=market,
@@ -457,9 +759,9 @@ def _thesis_to_pending(
         horizon=DEFAULT_HORIZON_MAIN,
         horizon_exec=h_exec,
         exec_interval="1m",
-        tp_pct=float(thesis.get("tp_pct") or 0.015),
-        sl_pct=float(thesis.get("sl_pct") or 0.02),
-        trail_pct=float(thesis.get("trail_pct") or 0.008),
+        tp_pct=tp_pct,
+        sl_pct=sl_pct,
+        trail_pct=float(thesis.get("trail_pct") or DEFAULT_ASSISTANT_TRAIL_PCT),
         invalidate_pct=0.005,
         source=ASSISTANT_SOURCE,
     )
@@ -581,8 +883,8 @@ def _structure_exit(
     mfe = float(pos.get("mfe_pct") or unreal)
     if unreal > mfe:
         mfe = unreal
-    arm = float((thesis or pos).get("structure_arm_mfe_pct") or 0.004)
-    give_frac = float((thesis or pos).get("structure_giveback_frac") or 0.45)
+    arm = float((thesis or pos).get("structure_arm_mfe_pct") or DEFAULT_STRUCTURE_ARM_MFE_PCT)
+    give_frac = float((thesis or pos).get("structure_giveback_frac") or DEFAULT_STRUCTURE_GIVEBACK_FRAC)
     if mfe < arm:
         return False, "", 0.0
     if unreal > mfe * (1.0 - give_frac):
@@ -633,6 +935,16 @@ def _close_position(
         "assistant": True,
     }
     append_trade(root, row)
+    if str(exit_reason or "").lower() == "sl":
+        register_assistant_reentry_cooldown(
+            root,
+            symbol=str(pos.get("symbol") or ""),
+            market=market,
+            side=act,
+            exit_ts_ms=int(exit_ts),
+            bars_1m=DEFAULT_SL_REENTRY_COOLDOWN_BARS_1M,
+            exit_reason="sl",
+        )
     try:
         from eurika.ml.holistic_portfolio import release_trade_margin
 
@@ -694,6 +1006,10 @@ def _build_assistant_open(
     trail = normalize_level_frac(row.get("trail_pct"), default=0.0) or 0.0
     h_exec = max(1, main_horizon_to_exec(DEFAULT_HORIZON_MAIN, DEFAULT_INTERVAL, "1m"))
     tid = str(row.get("thesis_id") or f"{symbol.lower()}-agent-{uuid.uuid4().hex[:6]}")
+    tp_pct, sl_pct = enforce_assistant_tp_sl(
+        float(normalize_level_frac(row.get("tp_pct"), default=DEFAULT_ASSISTANT_TP_PCT) or DEFAULT_ASSISTANT_TP_PCT),
+        float(normalize_level_frac(row.get("sl_pct"), default=DEFAULT_ASSISTANT_SL_PCT) or DEFAULT_ASSISTANT_SL_PCT),
+    )
     return {
         "symbol": symbol,
         "market": market,
@@ -704,8 +1020,8 @@ def _build_assistant_open(
         "exec_interval": "1m",
         "horizon": DEFAULT_HORIZON_MAIN,
         "horizon_exec": h_exec,
-        "tp_pct": float(normalize_level_frac(row.get("tp_pct"), default=0.015) or 0.015),
-        "sl_pct": float(normalize_level_frac(row.get("sl_pct"), default=0.02) or 0.02),
+        "tp_pct": tp_pct,
+        "sl_pct": sl_pct,
         "trail_pct": trail if trail > 0 else None,
         "trail_extreme": entry if trail > 0 else None,
         "margin_usdt": float(size.get("margin_usdt") or 0.0),
@@ -713,8 +1029,12 @@ def _build_assistant_open(
         "leverage": min(2.0, float(row.get("leverage") or size.get("leverage") or 1.0)),
         "thesis_id": tid,
         "mfe_pct": 0.0,
-        "structure_arm_mfe_pct": float(row.get("structure_arm_mfe_pct") or 0.004),
-        "structure_giveback_frac": float(row.get("structure_giveback_frac") or 0.45),
+        "structure_arm_mfe_pct": float(
+            row.get("structure_arm_mfe_pct") or DEFAULT_STRUCTURE_ARM_MFE_PCT
+        ),
+        "structure_giveback_frac": float(
+            row.get("structure_giveback_frac") or DEFAULT_STRUCTURE_GIVEBACK_FRAC
+        ),
         "assistant": True,
         "source": ASSISTANT_SOURCE,
         "agent_note": str(row.get("note") or row.get("narrative") or "")[:500],
@@ -750,6 +1070,16 @@ def _build_assistant_pending(
     if not size.get("ok"):
         return None
     h_exec = max(1, main_horizon_to_exec(DEFAULT_HORIZON_MAIN, DEFAULT_INTERVAL, "1m"))
+    tp_pct, sl_pct = enforce_assistant_tp_sl(
+        float(
+            normalize_level_frac(row.get("tp_pct"), default=DEFAULT_ASSISTANT_TP_PCT)
+            or DEFAULT_ASSISTANT_TP_PCT
+        ),
+        float(
+            normalize_level_frac(row.get("sl_pct"), default=DEFAULT_ASSISTANT_SL_PCT)
+            or DEFAULT_ASSISTANT_SL_PCT
+        ),
+    )
     order = build_pending_order(
         symbol=symbol,
         market=market,
@@ -761,9 +1091,12 @@ def _build_assistant_pending(
         horizon=DEFAULT_HORIZON_MAIN,
         horizon_exec=h_exec,
         exec_interval="1m",
-        tp_pct=float(normalize_level_frac(row.get("tp_pct"), default=0.015) or 0.015),
-        sl_pct=float(normalize_level_frac(row.get("sl_pct"), default=0.02) or 0.02),
-        trail_pct=float(normalize_level_frac(row.get("trail_pct"), default=0.008) or 0.008),
+        tp_pct=tp_pct,
+        sl_pct=sl_pct,
+        trail_pct=float(
+            normalize_level_frac(row.get("trail_pct"), default=DEFAULT_ASSISTANT_TRAIL_PCT)
+            or DEFAULT_ASSISTANT_TRAIL_PCT
+        ),
         invalidate_pct=float(normalize_level_frac(row.get("invalidate_pct"), default=0.005) or 0.005),
         source=ASSISTANT_SOURCE,
     )
@@ -819,11 +1152,14 @@ def apply_assistant_actions(
         "cancel": 0,
         "hold": 0,
         "ignored": 0,
+        "blocked": 0,
     }
+    block_notes: list[str] = []
     closed_rows: list[dict[str, Any]] = []
     keep = list(opens)
     keep_pending = list(pending)
     max_opens = int(portfolio.get("max_opens") or MAX_OPENS)
+    now_ms = _now_ms()
 
     def _match_opens(symbol: str, market: str) -> list[dict[str, Any]]:
         return [
@@ -838,6 +1174,21 @@ def apply_assistant_actions(
             for p in keep_pending
             if str(p.get("symbol") or "").upper() == symbol and normalize_market(p.get("market")) == market
         ]
+
+    def _block_entry(symbol: str, market: str, side: str, level_px: float | None) -> bool:
+        reason = assistant_entry_block_reason(
+            root,
+            symbol=symbol,
+            market=market,
+            side=side,
+            level_px=level_px,
+            now_ts_ms=now_ms,
+        )
+        if not reason:
+            return False
+        applied["blocked"] += 1
+        block_notes.append(f"{symbol} {side}: {reason}")
+        return True
 
     for raw in actions:
         row = _mk_action_row(raw)
@@ -861,6 +1212,9 @@ def apply_assistant_actions(
                 continue
             row = {**row, "side": side}
             style = _entry_style(row)
+            level_px = _entry_level_px(row)
+            if act != "add" and _block_entry(symbol, market, side, level_px):
+                continue
             if act == "add" or style == "market":
                 if act != "add":
                     for order in pend_matches:
@@ -881,6 +1235,15 @@ def apply_assistant_actions(
                     applied["ignored"] += 1
                     continue
                 keep.append(pos)
+                if act != "add" and level_px is not None:
+                    note_assistant_limit_place(
+                        root,
+                        symbol=symbol,
+                        market=market,
+                        side=side,
+                        level_px=level_px,
+                        now_ts_ms=now_ms,
+                    )
                 size_portfolio = trade_portfolio_overlay(root, portfolio)
                 applied["add" if act == "add" else "open"] += 1
                 continue
@@ -893,15 +1256,25 @@ def apply_assistant_actions(
             if len(keep) + len(keep_pending) >= max_opens:
                 applied["ignored"] += 1
                 continue
-            order = _build_assistant_pending(root, size_portfolio, row)
-            if order is None:
+            pending_order = _build_assistant_pending(root, size_portfolio, row)
+            if pending_order is None:
                 applied["ignored"] += 1
                 continue
-            margin = float(order.get("margin_usdt") or 0.0)
+            margin = float(pending_order.get("margin_usdt") or 0.0)
             if margin > 0 and not reserve_trade_margin(root, margin):
                 applied["ignored"] += 1
                 continue
-            keep_pending.append(order)
+            keep_pending.append(pending_order)
+            placed_level = _entry_level_px(pending_order) or level_px
+            if placed_level is not None:
+                note_assistant_limit_place(
+                    root,
+                    symbol=symbol,
+                    market=market,
+                    side=side,
+                    level_px=float(placed_level),
+                    now_ts_ms=now_ms,
+                )
             size_portfolio = trade_portfolio_overlay(root, portfolio)
             applied["place"] += 1
             continue
@@ -913,11 +1286,24 @@ def apply_assistant_actions(
                     frac = normalize_level_frac(row.get(key))
                     if frac is not None:
                         pos[key] = frac
+                if "tp_pct" in pos or "sl_pct" in pos:
+                    tp_u, sl_u = enforce_assistant_tp_sl(
+                        float(pos.get("tp_pct") or DEFAULT_ASSISTANT_TP_PCT),
+                        float(pos.get("sl_pct") or DEFAULT_ASSISTANT_SL_PCT),
+                    )
+                    pos["tp_pct"] = tp_u
+                    pos["sl_pct"] = sl_u
                 if pos.get("trail_pct"):
                     pos["trail_extreme"] = float(pos.get("trail_extreme") or pos.get("entry") or 0.0)
                 touched += 1
             for order in pend_matches:
                 update_shadow_pending_order(order, row)
+                tp_u, sl_u = enforce_assistant_tp_sl(
+                    float(order.get("tp_pct") or DEFAULT_ASSISTANT_TP_PCT),
+                    float(order.get("sl_pct") or DEFAULT_ASSISTANT_SL_PCT),
+                )
+                order["tp_pct"] = tp_u
+                order["sl_pct"] = sl_u
                 touched += 1
             if touched:
                 applied["update"] += touched
@@ -974,7 +1360,7 @@ def apply_assistant_actions(
     save_opens(root, keep)
     save_pending(root, keep_pending)
     reconcile_holistic(root)
-    return {"applied": applied, "closed_rows": closed_rows}
+    return {"applied": applied, "closed_rows": closed_rows, "block_notes": block_notes}
 
 
 def run_book_tick(
@@ -1015,17 +1401,48 @@ def run_book_tick(
             if open_n + len(pending) >= int(portfolio.get("max_opens") or MAX_OPENS):
                 logs.append(f"skip place {th.get('id')}: max opens/pending")
                 continue
+            side = str(th.get("side") or "BUY").upper()
+            level = None
+            for key in ("limit_px", "stop_px"):
+                raw = th.get(key)
+                try:
+                    if raw is not None and float(raw) > 0:
+                        level = float(raw)
+                        break
+                except (TypeError, ValueError):
+                    pass
+            block = assistant_entry_block_reason(
+                root,
+                symbol=str(th.get("symbol") or ""),
+                market=normalize_market(th.get("market")),
+                side=side,
+                level_px=level,
+                now_ts_ms=now,
+            )
+            if block:
+                logs.append(f"skip place {th.get('id')}: {block}")
+                continue
             order = _thesis_to_pending(root, th, portfolio)
             if order:
                 pending.append(order)
                 th["status"] = "pending"
                 th["updated_ms"] = now
+                placed_level = _entry_level_px(order) or level
+                if placed_level is not None:
+                    note_assistant_limit_place(
+                        root,
+                        symbol=str(order.get("symbol") or th.get("symbol") or ""),
+                        market=normalize_market(order.get("market") or th.get("market")),
+                        side=str(order.get("action") or side),
+                        level_px=float(placed_level),
+                        now_ts_ms=now,
+                    )
                 logs.append(f"PLACE pending thesis={th.get('id')} {th.get('symbol')} {th.get('entry_style')}")
 
     pending_groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for o in pending:
-        key = (str(o.get("symbol")).upper(), normalize_market(o.get("market")))
-        pending_groups.setdefault(key, []).append(o)
+        group_key = (str(o.get("symbol")).upper(), normalize_market(o.get("market")))
+        pending_groups.setdefault(group_key, []).append(o)
     new_pending: list[dict[str, Any]] = []
     for (sym, kind), group in pending_groups.items():
         still, filled, plogs = _process_pending_group(root, sym, kind, group)
@@ -1059,8 +1476,8 @@ def run_book_tick(
                     lows = [float(b["low"]) for b in path if b.get("low")]
                     mfe = max((entry / x - 1.0) for x in lows if x > 0) if lows else 0.0
                 pos["mfe_pct"] = max(float(pos.get("mfe_pct") or 0.0), mfe)
-        th = thesis_by_id.get(str(pos.get("thesis_id") or ""))
-        hit, reason, px = _structure_exit(pos, c15, c1m, th)
+        thesis = thesis_by_id.get(str(pos.get("thesis_id") or ""))
+        hit, reason, px = _structure_exit(pos, c15, c1m, thesis)
         if hit:
             row = _close_position(
                 root,
@@ -1071,9 +1488,9 @@ def run_book_tick(
                 portfolio=portfolio,
             )
             closed.append(row)
-            if th:
-                th["status"] = "closed"
-                th["updated_ms"] = now
+            if thesis:
+                thesis["status"] = "closed"
+                thesis["updated_ms"] = now
             logs.append(
                 f"CLOSE {sym} structure_exit @ {px:.6g} edge={float(row.get('edge') or 0):+.4%} "
                 f"pnl={float(row.get('pnl_usdt') or 0):+.3f}$ thesis={pos.get('thesis_id')}"
@@ -1102,9 +1519,9 @@ def run_book_tick(
                 portfolio=portfolio,
             )
             closed.append(row)
-            if th:
-                th["status"] = "closed"
-                th["updated_ms"] = now
+            if thesis:
+                thesis["status"] = "closed"
+                thesis["updated_ms"] = now
             logs.append(
                 f"CLOSE {sym} {sim.get('reason')} @ {float(sim.get('exit') or 0):.6g} "
                 f"pnl={float(row.get('pnl_usdt') or 0):+.3f}$"
@@ -1205,10 +1622,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     sub.add_parser("once", help="Run one cycle")
     p_loop = sub.add_parser("loop", help="Run cycles until interrupted")
     p_loop.add_argument("--interval", type=int, default=900, help="Seconds between cycles")
-    p_agent_once = sub.add_parser("agent-once", help="One holistic LLM portfolio cycle")
+    sub.add_parser("agent-once", help="One holistic LLM portfolio cycle")
     p_agent_loop = sub.add_parser("agent-loop", help="Holistic LLM cycles until interrupted")
     p_agent_loop.add_argument("--interval", type=int, default=900, help="Seconds between cycles")
-    p_port_once = sub.add_parser("portfolio-once", help="Alias for agent-once")
+    sub.add_parser("portfolio-once", help="Alias for agent-once")
     p_port_loop = sub.add_parser("portfolio-loop", help="Alias for agent-loop")
     p_port_loop.add_argument("--interval", type=int, default=900, help="Seconds between cycles")
     sub.add_parser("report", help="Morning summary")

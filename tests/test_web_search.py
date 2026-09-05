@@ -39,6 +39,37 @@ def test_extract_http_urls() -> None:
     assert extract_http_urls(msg) == ["https://cursor.com/docs/account/pricing"]
 
 
+def test_page_text_looks_usable_rejects_next_shell() -> None:
+    from eurika.utils.web_search import page_text_looks_usable
+
+    shell = " ".join(["__next_f", "webpack", "chunk", "viewport"] * 20)
+    assert page_text_looks_usable(shell) is False
+    assert page_text_looks_usable("Composer 2.5 input $0.5 output $2.5 per million tokens") is True
+
+
+def test_format_web_pages_falls_back_to_search(monkeypatch) -> None:
+    from eurika.utils.web_search import WebSearchResult, format_web_pages_for_prompt
+
+    monkeypatch.setattr(
+        "eurika.utils.web_search.fetch_web_page_text",
+        lambda *_a, **_k: "__next_f webpack chunk viewport " * 40,
+    )
+    monkeypatch.setattr(
+        "eurika.utils.web_search.search_web",
+        lambda query, **kwargs: (
+            [WebSearchResult("Pricing", "https://cursor.com/docs/account/pricing", "Composer 2.5 $0.5", "duckduckgo")],
+            "duckduckgo",
+            None,
+        ),
+    )
+    text = format_web_pages_for_prompt(
+        ["https://cursor.com/docs/account/pricing"],
+        user_query="какая самая дешевая модель",
+    )
+    assert "Результаты поиска" in text
+    assert "Composer 2.5" in text
+
+
 def test_resolve_provider_prefers_tavily_key(monkeypatch) -> None:
     monkeypatch.delenv("BRAVE_SEARCH_API_KEY", raising=False)
     monkeypatch.setenv("TAVILY_API_KEY", "tvly-test")

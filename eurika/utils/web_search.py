@@ -61,20 +61,158 @@ def extract_http_urls(message: str) -> List[str]:
     return out
 
 
+def _fetch_url_raw(url: str, *, timeout: float = 10.0) -> Optional[str]:
+    """Fetch URL body as text; return None on network errors."""
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": _USER_AGENT,
+                "Accept": "text/markdown, text/plain, text/html, application/json, */*",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+
+
+def _candidate_fetch_urls(url: str) -> List[str]:
+    """Try markdown mirrors for doc sites before plain HTML."""
+    out: List[str] = []
+    seen: set[str] = set()
+
+    def _add(candidate: str) -> None:
+        cand = (candidate or "").strip()
+        if cand and cand not in seen:
+            seen.add(cand)
+            out.append(cand)
+
+    _add(url)
+    parsed = urllib.parse.urlparse(url)
+    path = parsed.path or ""
+    if "/docs/" in path and not path.endswith(".md"):
+        _add(url.rstrip("/") + ".md")
+    host = (parsed.netloc or "").lower()
+    if host.endswith("cursor.com") and path.startswith("/docs/"):
+        _add("https://cursor.com/llms.txt")
+    return out
+
+
+def _html_to_text(raw: str, *, max_chars: int) -> str:
+    from eurika.knowledge.base import _drop_script_style, _trim_doc_boilerplate
+
+    cleaned = _drop_script_style(raw)
+    text = re.sub(r"<[^>]+>", " ", cleaned)
+    text = re.sub(r"\s+", " ", text).strip()
+    text = _trim_doc_boilerplate(text)
+    return text[:max_chars] if text else ""
+
+
+def _extract_next_data_text(raw: str, *, max_chars: int) -> Optional[str]:
+    match = re.search(
+        r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>',
+        raw,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    if not match:
+        return None
+    blob = (match.group(1) or "").strip()
+    if not blob or blob in ("{}", "null"):
+        return None
+    try:
+        parsed = json.loads(blob)
+    except json.JSONDecodeError:
+        return None
+    flat = json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
+    flat = re.sub(r"\s+", " ", flat).strip()
+    return flat[:max_chars] if flat else None
+
+
+def page_text_looks_usable(text: Optional[str]) -> bool:
+    """Reject Next.js SPA shells that contain no answerable content."""
+    if not text:
+        return False
+    body = text.strip()
+    if not body:
+        return False
+    low = body.lower()
+    substance = ("$", "pricing", "model", "composer", "token", "usage", "per million")
+    if any(marker in low or marker in body for marker in substance):
+        return len(body) >= 40
+    if len(body) < 180:
+        return False
+    shell_markers = ("__next_f", "next.js", "webpack", "chunk", "viewport")
+    shell_hits = sum(1 for marker in shell_markers if marker in low)
+    if shell_hits >= 2:
+        return False
+    return len(body) >= 500
+
+
 def fetch_web_page_text(url: str, *, max_chars: int = 8000, timeout: float = 10.0) -> Optional[str]:
-    """Fetch a public web page as plain text (stdlib, HTML stripped)."""
-    from eurika.knowledge.base import _fetch_url
+    """Fetch a public web page as plain text (HTML/JSON/markdown heuristics)."""
+    best: Optional[str] = None
+    for candidate in _candidate_fetch_urls(url):
+        raw = _fetch_url_raw(candidate, timeout=timeout)
+        if not raw:
+            continue
+        stripped = raw.lstrip()
+        if candidate.endswith(".md") or stripped.startswith("#") or stripped.startswith("{"):
+            text = stripped[:max_chars]
+        else:
+            text = _extract_next_data_text(raw, max_chars=max_chars) or _html_to_text(raw, max_chars=max_chars)
+        if page_text_looks_usable(text):
+            return text
+        if text and (best is None or len(text) > len(best)):
+            best = text
+    return best[:max_chars] if best else None
 
-    return _fetch_url(url, timeout=timeout, max_chars=max_chars)
+
+def _search_query_for_url(url: str, user_query: str = "") -> str:
+    parsed = urllib.parse.urlparse(url)
+    host = parsed.netloc or "site"
+    tail = _strip_urls(user_query).strip()
+    if tail:
+        return f"site:{host} {tail}"
+    path = (parsed.path or "").strip("/").replace("/", " ")
+    if path:
+        return f"site:{host} {path}"
+    return f"site:{host}"
 
 
-def format_web_pages_for_prompt(urls: List[str], *, max_chars_per_page: int = 6000) -> str:
-    """Build a prompt block from explicit URLs in the user message."""
+def format_web_pages_for_prompt(
+    urls: List[str],
+    *,
+    user_query: str = "",
+    max_chars_per_page: int = 6000,
+) -> str:
+    """Build a prompt block from explicit URLs; fall back to web search on SPA shells."""
     parts: List[str] = []
     for url in urls[:2]:
         text = fetch_web_page_text(url, max_chars=max_chars_per_page)
-        if text:
+        if page_text_looks_usable(text):
             parts.append(f"[Web page: {url}]\n{text}")
+            continue
+        search_q = _search_query_for_url(url, user_query)
+        results, provider, note = search_web(search_q, max_results=5)
+        if results:
+            parts.append(
+                format_web_search_results(search_q, results, provider=provider, note=note)
+            )
+            continue
+        if text:
+            parts.append(
+                f"[Web page: {url}]\n"
+                "Plain HTTP/curl видит только каркас SPA (Next.js), без таблиц и цен.\n"
+                f"{text[:1200]}"
+            )
+        else:
+            parts.append(
+                f"[Web page: {url}]\n"
+                "Не удалось загрузить страницу; для JS-сайтов одного curl недостаточно."
+            )
+        if note:
+            parts.append(f"Примечание поиска: {note}")
     return "\n\n".join(parts)
 
 

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import random
+import time
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Sequence
 
@@ -598,6 +599,37 @@ def _gate_scope_label(markets: Sequence[str] | None) -> str:
     return " (фьючерсы)" if kinds[0] == "futures" else " (спот)"
 
 
+# Micro-train re-fit all heads when any shadow/live closes. Exit samples grew
+# past ~250k rows / 100+ MiB, so each Live tick burned ~15–20s CPU. Cap the exit
+# window and throttle full micro-trains.
+MICRO_TRAIN_MIN_INTERVAL_MS = 10 * 60 * 1000
+MICRO_EXIT_MAX_SAMPLES = 20_000
+
+
+def micro_train_stamp_path(project_root: str | Path) -> Path:
+    return ml_root(project_root) / "micro_train_stamp.json"
+
+
+def _micro_train_due(project_root: str | Path, *, now_ms: int | None = None) -> bool:
+    now = int(now_ms if now_ms is not None else time.time() * 1000)
+    path = micro_train_stamp_path(project_root)
+    if not path.is_file():
+        return True
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        last = int(data.get("last_ms") or 0)
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return True
+    return now - last >= MICRO_TRAIN_MIN_INTERVAL_MS
+
+
+def _mark_micro_train(project_root: str | Path, *, now_ms: int | None = None) -> None:
+    path = micro_train_stamp_path(project_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    now = int(now_ms if now_ms is not None else time.time() * 1000)
+    path.write_text(json.dumps({"last_ms": now}, indent=2) + "\n", encoding="utf-8")
+
+
 def _append_learn_events(
     events: list[dict[str, Any]],
     root: Path,
@@ -605,6 +637,8 @@ def _append_learn_events(
     epochs: int,
     markets: Sequence[str] | None = None,
 ) -> None:
+    if not _micro_train_due(root):
+        return
     trained = train_market_policy(root, epochs=int(epochs))
     if trained.get("ok"):
         events.append(
@@ -614,6 +648,11 @@ def _append_learn_events(
                     f"дообучение входа: примеров={trained.get('samples')}, "
                     f"точность={trained.get('train_accuracy')}, "
                     f"устройство={trained.get('device')}"
+                    + (
+                        f", LLM-учитель={trained.get('llm_teacher_samples')}"
+                        if trained.get("llm_teacher_samples")
+                        else ""
+                    )
                 ),
             }
         )
@@ -624,7 +663,11 @@ def _append_learn_events(
                 "message": f"дообучение входа пропущено: {trained.get('error')}",
             }
         )
-    trained_x = train_market_exit_policy(root, epochs=int(epochs))
+    trained_x = train_market_exit_policy(
+        root,
+        epochs=int(epochs),
+        max_samples=MICRO_EXIT_MAX_SAMPLES,
+    )
     if trained_x.get("ok"):
         events.append(
             {
@@ -633,6 +676,11 @@ def _append_learn_events(
                     f"дообучение выхода: примеров={trained_x.get('samples')}, "
                     f"точность={trained_x.get('train_accuracy')}, "
                     f"устройство={trained_x.get('device')}"
+                    + (
+                        f", окно≤{MICRO_EXIT_MAX_SAMPLES}"
+                        if trained_x.get("max_samples")
+                        else ""
+                    )
                 ),
             }
         )
@@ -714,6 +762,7 @@ def _append_learn_events(
                 ),
             }
         )
+    _mark_micro_train(root)
 
 
 def _append_shadow_outcome_summary(events: list[dict[str, Any]], count: int) -> None:
@@ -725,7 +774,7 @@ def _append_shadow_outcome_summary(events: list[dict[str, Any]], count: int) -> 
             "kind": "shadow_outcome",
             "message": (
                 f"закрыто теневых сделок: {count} — "
-                "метки записаны, запускаем дообучение"
+                "метки записаны (дообучение не чаще раза в 10 мин)"
             ),
             "shadow_resolved": count,
         }

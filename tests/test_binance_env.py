@@ -56,6 +56,7 @@ def test_parse_env_file_and_chat_provider_key(tmp_path, monkeypatch: pytest.Monk
 
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("EURIKA_CHAT_PROVIDER", raising=False)
+    monkeypatch.setenv("EURIKA_QT_SETTINGS_PATH", str(tmp_path / "no-qt-settings.json"))
 
     # Force built-in path even if python-dotenv is installed.
     import builtins

@@ -12,7 +12,7 @@ from typing import Any, Mapping, Optional, Sequence
 
 from eurika.ml.exec_tf import EXIT_FEATURE_NAMES
 from eurika.ml.features import FEATURE_NAMES
-from eurika.ml.market_store import ml_root, read_jsonl_rows
+from eurika.ml.market_store import ml_root, read_jsonl_rows, read_jsonl_tail_rows
 from eurika.ml.paper_trader import is_executed_trade, load_paper_trades
 from eurika.ml.torch_runtime import preferred_device, torch_available
 
@@ -235,6 +235,9 @@ def train_market_policy(
 
     rows = load_paper_trades(project_root)
     xs, ys, ws = _rows_to_xy(rows)
+    from eurika.ml.llm_teacher import mix_teacher_xy
+
+    xs, ys, ws, n_llm = mix_teacher_xy(project_root, xs, ys, ws)
     if len(xs) < 8:
         return {
             "ok": False,
@@ -298,6 +301,7 @@ def train_market_policy(
         "sample_weight_max": round(w_max, 4),
         "arch": POLICY_ARCH,
         "hidden": h,
+        "llm_teacher_samples": int(n_llm),
         "note": "train_accuracy is in-sample on paper_trades.jsonl; loss weighted by pnl_usdt/edge",
     }
     meta_path(project_root).write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
@@ -444,8 +448,15 @@ def entry_setup_ok(action: str, features: Mapping[str, Any] | Sequence[float] | 
     return True
 
 
-def load_exit_samples(project_root: str | Path) -> list[dict[str, Any]]:
-    return read_jsonl_rows(exit_samples_path(project_root))
+def load_exit_samples(
+    project_root: str | Path,
+    *,
+    max_rows: int | None = None,
+) -> list[dict[str, Any]]:
+    path = exit_samples_path(project_root)
+    if max_rows is None:
+        return read_jsonl_rows(path)
+    return read_jsonl_tail_rows(path, int(max_rows))
 
 
 def append_exit_samples(project_root: str | Path, samples: Sequence[dict[str, Any]]) -> int:
@@ -487,11 +498,16 @@ def train_market_exit_policy(
     *,
     epochs: int = 40,
     lr: float = 0.05,
+    max_samples: int | None = None,
 ) -> dict[str, Any]:
     """Train HOLD/CLOSE exit linear model on retro 1m samples.
 
     CLOSE rows with positive MFE / giveback get higher sample weight so the
     model learns to bank fades instead of waiting for horizon.
+
+    ``max_samples`` keeps micro-train cheap once ``exit_samples.jsonl`` grows
+    into hundreds of thousands of rows (otherwise every Live tick re-parses
+    and trains on the whole file on CPU).
     """
     if not torch_available():
         return {
@@ -502,7 +518,10 @@ def train_market_exit_policy(
     import torch
     import torch.nn as nn
 
-    rows = load_exit_samples(project_root)
+    rows = load_exit_samples(
+        project_root,
+        max_rows=int(max_samples) if max_samples is not None else None,
+    )
     xs, ys, ws = _exit_rows_to_xy(rows)
     if len(xs) < 8:
         return {
@@ -555,6 +574,7 @@ def train_market_exit_policy(
         "sample_weight": "close_mfe|giveback",
         "sample_weight_mean": round(w_mean, 4),
         "sample_weight_max": round(w_max, 4),
+        "max_samples": int(max_samples) if max_samples is not None else None,
     }
     exit_meta_path(project_root).write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
     return {"ok": True, "error": None, **meta}
@@ -691,6 +711,9 @@ def train_market_levels_policy(
 
     rows = load_paper_trades(project_root)
     xs, ys = _levels_rows_to_xy(rows)
+    from eurika.ml.llm_teacher import mix_teacher_levels_xy
+
+    xs, ys, n_llm_lv = mix_teacher_levels_xy(project_root, xs, ys)
     if len(xs) < 8:
         return {
             "ok": False,
@@ -735,6 +758,7 @@ def train_market_levels_policy(
         "epochs": int(epochs),
         "device": device,
         "weights": str(wpath),
+        "llm_teacher_samples": int(n_llm_lv),
     }
     levels_meta_path(project_root).write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
     return {"ok": True, "error": None, **meta}

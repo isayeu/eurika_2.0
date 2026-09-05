@@ -165,9 +165,6 @@ def apply_llm_api_preset_env(
     set_provider_openai: bool = True,
 ) -> dict[str, str]:
     """Return env updates for a preset (does not write os.environ by itself)."""
-    import os
-
-    env = dict(environ if environ is not None else os.environ)
     preset = get_llm_api_preset(preset_id)
     if not preset:
         return {}

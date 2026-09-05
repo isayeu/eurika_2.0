@@ -497,6 +497,7 @@ def humanize_llm_error(err: str | None) -> str:
             "Эта модель Cursor недоступна на аккаунте (Router / auto-smart — только Teams). "
             "В Models выбери Composer 2.5 или Auto и повтори."
         )
+    if "cloudflare" in low or "cf-ray" in low or "error 1010" in low:
         return (
             "Groq недоступен (Cloudflare 1010/403). Включите VPN и повторите. "
             "Локальный Ollama для Desktop agent-loop обычно не тянет prompt."

@@ -54,6 +54,26 @@ def test_market_situation_intent(tmp_path: Path) -> None:
     assert match_direct_intent(tmp_path, "что по маркету?") == ("market_situation", None)
 
 
+def test_market_learning_report_intent(tmp_path: Path) -> None:
+    clear_cache()
+    from eurika.api import chat as chat_mod
+    from eurika.api.chat_direct import resolve_direct_handler
+    from eurika.ml.paper_portfolio import ensure_portfolio
+
+    q = "как твои успехи на маркете и обучении торговле?"
+    assert match_direct_intent(tmp_path, q) == ("market_learning_report", None)
+    assert resolve_direct_handler(tmp_path, q) == ("market_learning_report", None)
+    # Generic ML-in-project question still goes to LLM (facts injected), not this handler.
+    assert resolve_direct_handler(tmp_path, "как успехи обучения ML в проекте?") == (None, None)
+    ensure_portfolio(tmp_path)
+    out = chat_mod.chat_send(tmp_path, q)
+    text = out.get("text") or ""
+    assert out.get("error") is None
+    assert "Paper-экзамен" in text
+    assert "| equity |" in text
+    assert "LLM-учитель" in text
+
+
 def test_market_ml_scope_intent(tmp_path: Path) -> None:
     clear_cache()
     q = (
@@ -62,6 +82,84 @@ def test_market_ml_scope_intent(tmp_path: Path) -> None:
         "или при изучении поведения тикеров применяет это обучение в целом для рынка?"
     )
     assert match_direct_intent(tmp_path, q) == ("market_ml_scope", None)
+
+
+def test_portfolio_agent_intents(tmp_path: Path) -> None:
+    clear_cache()
+    assert match_direct_intent(tmp_path, "запусти portfolio цикл") == (
+        "portfolio_agent_once",
+        None,
+    )
+    assert match_direct_intent(tmp_path, "статус portfolio") == (
+        "portfolio_agent_status",
+        None,
+    )
+
+
+def test_chat_portfolio_agent_status(tmp_path: Path) -> None:
+    clear_cache()
+    from eurika.api import chat as chat_mod
+    from eurika.ml.holistic_portfolio import ensure_holistic
+
+    ensure_holistic(tmp_path)
+    out = chat_mod.chat_send(tmp_path, "статус portfolio")
+    text = out.get("text") or ""
+    assert out.get("error") is None
+    assert "HOLISTIC" in text or "Portfolio" in text
+
+
+def test_chat_portfolio_agent_once_no_key(tmp_path: Path, monkeypatch) -> None:
+    clear_cache()
+    from eurika.api import chat as chat_mod
+
+    monkeypatch.setattr(
+        "eurika.agent.cursor_judge.cursor_key_status",
+        lambda _root: {"api_key_set": False},
+    )
+    out = chat_mod.chat_send(tmp_path, "запусти portfolio цикл")
+    text = out.get("text") or ""
+    assert out.get("error") is None
+    assert "CURSOR_API_KEY" in text
+
+
+def test_market_ticker_brief_not_ml_scope(tmp_path: Path) -> None:
+    clear_cache()
+    from eurika.api.chat_direct import looks_like_market_ml_scope_request
+
+    q = (
+        "у тебя же есть доступ к API Binance через маркет, "
+        "проведи разбор тикера BTCUSDT на фьючерсах, перспектива, вход TP/SL"
+    )
+    assert looks_like_market_ml_scope_request(q) is False
+    assert match_direct_intent(tmp_path, q) == ("market_ticker_brief", None)
+
+
+def test_chat_market_ticker_brief_reply(tmp_path: Path) -> None:
+    clear_cache()
+    from eurika.api import chat as chat_mod
+    from eurika.ml.market_store import save_candles
+    from eurika.ml.paper_portfolio import ensure_portfolio
+
+    ensure_portfolio(tmp_path)
+    bars = [
+        {
+            "open_time": i * 60_000,
+            "open": 70_000.0 + i,
+            "high": 70_100.0 + i,
+            "low": 69_900.0 + i,
+            "close": 70_050.0 + i,
+            "volume": 10.0,
+        }
+        for i in range(40)
+    ]
+    save_candles(tmp_path, bars, symbol="BTCUSDT", interval="15m", market="futures")
+    save_candles(tmp_path, bars, symbol="BTCUSDT", interval="1h", market="futures")
+    out = chat_mod.chat_send(tmp_path, "разбор тикера BTCUSDT на фьючерсах")
+    text = out.get("text") or ""
+    assert out.get("error") is None
+    assert "BTCUSDT" in text
+    assert "MLP" in text
+    assert "общая модель, не per-ticker" not in text
 
 
 def test_market_logic_intent(tmp_path: Path) -> None:

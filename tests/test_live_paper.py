@@ -526,7 +526,23 @@ def test_universe_shadow_resolution_triggers_micro_train(
         event for event in out["events"] if event.get("kind") == "shadow_outcome"
     )
     assert shadow_summary["shadow_resolved"] == 1
-    assert "запускаем дообучение" in shadow_summary["message"]
+    assert "метки записаны" in shadow_summary["message"]
+
+
+def test_micro_train_throttled_and_exit_samples_capped(tmp_path: Path) -> None:
+    import json
+
+    events: list[dict] = []
+    lp._append_learn_events(events, tmp_path, epochs=1, markets=("futures",))
+    first_n = len(events)
+    assert first_n > 0  # attempted learn (may be skip messages)
+    # Immediately again: stamp from first call must throttle.
+    lp._append_learn_events(events, tmp_path, epochs=1, markets=("futures",))
+    assert len(events) == first_n
+    last = int(json.loads(lp.micro_train_stamp_path(tmp_path).read_text())["last_ms"])
+    assert not lp._micro_train_due(tmp_path, now_ms=last + 60_000)
+    assert lp._micro_train_due(tmp_path, now_ms=last + lp.MICRO_TRAIN_MIN_INTERVAL_MS)
+    assert lp.MICRO_EXIT_MAX_SAMPLES == 20_000
 
 
 def test_universe_resolves_orphan_without_reopen(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

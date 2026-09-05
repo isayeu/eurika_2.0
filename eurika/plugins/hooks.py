@@ -92,7 +92,7 @@ class HookContext:
         safe_payload = _json_safe(payload or {})
         safe_metadata = _json_safe(metadata or {})
         return cls(
-            event=event_name,  # type: ignore[arg-type]
+            event=event_name,
             project_root=Path(project_root).resolve(),
             status=str(status),
             payload=_freeze(safe_payload),

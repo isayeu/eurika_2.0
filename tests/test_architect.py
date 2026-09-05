@@ -499,6 +499,34 @@ def test_rate_limit_without_ollama_returns_friendly_error(monkeypatch) -> None:
     assert "Ollama" in err
 
 
+def test_call_llm_cursor_skips_groq_and_ollama(monkeypatch) -> None:
+    from eurika.reasoning.architect import call_llm_with_prompt
+
+    monkeypatch.setenv("EURIKA_CHAT_PROVIDER", "cursor")
+    monkeypatch.setenv("OPENAI_API_KEY", "gsk-test")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://api.groq.com/openai/v1")
+    with (
+        patch(
+            "eurika.agent.cursor_judge.complete_chat",
+            return_value=("from cursor", None),
+        ) as cursor_chat,
+        patch(
+            "eurika.reasoning.architect._call_ollama_cli",
+            return_value=("from ollama", None),
+        ) as ollama,
+        patch(
+            "eurika.reasoning.architect._init_primary_openai_client",
+            return_value=(object(), "llama-3.3-70b-versatile", None),
+        ) as groq,
+    ):
+        text, err = call_llm_with_prompt("что дальше по плану?", max_tokens=64)
+    assert err is None
+    assert text == "from cursor"
+    cursor_chat.assert_called_once()
+    ollama.assert_not_called()
+    groq.assert_not_called()
+
+
 def test_message_text_reads_gpt_oss_reasoning() -> None:
     from types import SimpleNamespace
 

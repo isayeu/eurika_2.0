@@ -92,6 +92,51 @@ def read_jsonl_rows(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def read_jsonl_tail_rows(path: Path, max_rows: int) -> list[dict[str, Any]]:
+    """Last ``max_rows`` JSONL objects. Avoids full-file parse for huge logs."""
+    limit = max(0, int(max_rows))
+    if limit <= 0:
+        return []
+    if not path.is_file():
+        return []
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return []
+    if size <= 0:
+        return []
+    # Small files: cheaper to stream once than seek.
+    if size < 2_000_000:
+        rows = read_jsonl_rows(path)
+        return rows[-limit:] if len(rows) > limit else rows
+
+    chunk = 256 * 1024
+    data = b""
+    try:
+        with path.open("rb") as fh:
+            pos = size
+            while pos > 0 and data.count(b"\n") <= limit:
+                step = min(chunk, pos)
+                pos -= step
+                fh.seek(pos)
+                data = fh.read(step) + data
+                if pos == 0:
+                    break
+    except OSError:
+        return []
+    text = data.decode("utf-8", errors="ignore")
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    parsed: list[dict[str, Any]] = []
+    for line in lines[-limit:]:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict):
+            parsed.append(row)
+    return parsed
+
+
 def _read_candle_file(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
         return []

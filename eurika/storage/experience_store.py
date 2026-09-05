@@ -38,14 +38,20 @@ def plan_hash_from_ops(ops: List[Any]) -> str:
 def proposal_hash_from_op(operation: Any) -> str:
     """Fingerprint one concrete proposal, including transformation details."""
     if isinstance(operation, dict):
-        get = operation.get
+        target_file = operation.get("target_file", "")
+        kind = operation.get("kind", "")
+        params = operation.get("params")
+        diff = operation.get("diff", "")
     else:
-        get = lambda key, default=None: getattr(operation, key, default)
+        target_file = getattr(operation, "target_file", "")
+        kind = getattr(operation, "kind", "")
+        params = getattr(operation, "params", None)
+        diff = getattr(operation, "diff", "")
     payload = {
-        "target_file": str(get("target_file", "") or ""),
-        "kind": str(get("kind", "") or ""),
-        "params": get("params"),
-        "diff": str(get("diff", "") or ""),
+        "target_file": str(target_file or ""),
+        "kind": str(kind or ""),
+        "params": params,
+        "diff": str(diff or ""),
     }
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str, separators=(",", ":"))
     return hashlib.sha256(raw.encode()).hexdigest()[:16]

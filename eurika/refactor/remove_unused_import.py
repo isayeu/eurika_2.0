@@ -16,8 +16,8 @@ from typing import Optional, Set
 def _remove_unused_imports_libcst(content: str, filename: str = "") -> Optional[str]:
     """Use libcst codemod when available. Returns new content or None on error/no-op."""
     try:
-        from libcst.codemod import CodemodContext, transform_module  # type: ignore[import-not-found]
-        from libcst.codemod.commands.remove_unused_imports import (  # type: ignore[import-not-found]
+        from libcst.codemod import CodemodContext, transform_module
+        from libcst.codemod.commands.remove_unused_imports import (
             RemoveUnusedImportsCommand,
         )
     except ImportError:

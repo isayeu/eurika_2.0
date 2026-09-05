@@ -358,6 +358,9 @@ def propose_size(
     budget = equity * mf
     free = max(0.0, budget - used)
     margin = min(equity * rf, free)
+    cash_cap = portfolio.get("_holistic_cash_free")
+    if isinstance(cash_cap, (int, float)):
+        margin = min(margin, max(0.0, float(cash_cap)))
     if margin < equity * rf * 0.5 or margin < 0.5:
         return {
             "ok": False,
