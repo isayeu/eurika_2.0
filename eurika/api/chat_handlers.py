@@ -654,11 +654,11 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             polygon_propose_require_llm,
             polygon_propose_sandbox,
         )
-        from eurika.orchestration.prove_cycle import (
-            format_prove_cycle_summary,
-            run_prove_propose,
+        from eurika.api.polygon_propose import (
+            format_polygon_propose_summary,
+            polygon_pending_plan_ready,
+            run_polygon_propose,
         )
-        from eurika.orchestration.team_mode import has_pending_plan
 
         drill = polygon_propose_drill_id(msg)
         require_llm = polygon_propose_require_llm(msg)
@@ -678,14 +678,14 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         )
 
         def _fallback() -> tuple[bool, str]:
-            payload = run_prove_propose(
+            payload = run_polygon_propose(
                 root,
-                dry_run=False,
                 drill=drill,
                 require_llm=require_llm,
                 sandbox=use_sandbox,
+                dry_run=False,
             )
-            summary = format_prove_cycle_summary(payload)
+            summary = format_polygon_propose_summary(payload)
             ok_local = bool(payload.get("ok", True))
             if not ok_local and payload.get("error"):
                 summary = f"{summary}\n\nerror: {payload.get('error')}"
@@ -697,7 +697,7 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             fallback=_fallback,
             emit_cmd=emit_cmd or f"$ {propose_shell}",
         )
-        queued = 1 if ok and has_pending_plan(root) else 0
+        queued = 1 if ok and polygon_pending_plan_ready(root) else 0
         target_by_drill = {
             "extractable_block": "eurika/polygon/extractable_block.py",
             "long_function": "eurika/polygon/long_function.py",

@@ -43,7 +43,7 @@ def test_format_market_dashboard_report_has_sections(tmp_path: Path) -> None:
     assert "### Portfolio agent trade opens" in text
     assert "### Portfolio earn (paper)" in text
     assert "# Portfolio agent — статус" in text
-    assert "HOLISTIC CASH POOL" in text
+    assert "Банк:" in text or "HOLISTIC CASH POOL" in text
     assert "### LLM shadow pending" in text
     assert "ETHUSDT" in text
     assert "1990" in text

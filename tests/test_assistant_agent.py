@@ -46,6 +46,8 @@ def test_parse_assistant_actions_json_fence() -> None:
 
 
 def test_build_agent_prompt_includes_book(tmp_path: Path) -> None:
+    from eurika.ml.portfolio_agent import PORTFOLIO_FUTURES_ONLY
+
     sym = "BTCUSDT"
     save_ticker_lists(tmp_path, futures=[sym])
     bars = _bars(50, 50000.0)
@@ -56,9 +58,13 @@ def test_build_agent_prompt_includes_book(tmp_path: Path) -> None:
     prompt = build_agent_prompt(tmp_path, now_ms=1_700_000_000_000)
     assert "ASSISTANT PAPER BOOK" in prompt
     assert "HOLISTIC CASH POOL" in prompt
-    assert "EARN PAPER BOOK" in prompt
     assert "BTCUSDT" in prompt
     assert "portfolio_actions" in prompt
+    if PORTFOLIO_FUTURES_ONLY:
+        assert "EARN PAPER BOOK" not in prompt
+        assert "FUTURES ONLY" in prompt
+    else:
+        assert "EARN PAPER BOOK" in prompt
 
 
 def test_run_agent_cycle_mock_hold(tmp_path: Path, monkeypatch) -> None:

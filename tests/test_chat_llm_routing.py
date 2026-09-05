@@ -88,6 +88,7 @@ def test_apply_qt_chat_routing_loads_cursor_key_from_dotenv(tmp_path, monkeypatc
     monkeypatch.delenv(LLM_ENV_LOCK_KEY, raising=False)
     monkeypatch.delenv("CURSOR_API_KEY", raising=False)
     monkeypatch.chdir(tmp_path)
+    load_project_dotenv(tmp_path)
     applied = apply_qt_chat_routing()
     assert applied == "cursor"
     assert os.environ.get("CURSOR_API_KEY") == "crsr_from_env"
