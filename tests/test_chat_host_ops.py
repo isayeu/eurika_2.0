@@ -118,7 +118,10 @@ def test_bare_sed_polygon_read_is_tool_call() -> None:
 
 
 def test_host_command_mutates_workspace_blocks_writes() -> None:
-    from eurika.api.chat_host_ops import host_command_mutates_workspace
+    from eurika.api.chat_host_ops import (
+        host_command_is_system_admin,
+        host_command_mutates_workspace,
+    )
 
     assert host_command_mutates_workspace("sed -n '1,80p' eurika/polygon/deep_nesting.py") is False
     assert host_command_mutates_workspace("python -c \"print(1)\"") is False
@@ -135,7 +138,24 @@ def test_host_command_mutates_workspace_blocks_writes() -> None:
     assert host_command_mutates_workspace("git status") is False
     assert host_command_mutates_workspace("git diff") is False
     assert host_command_mutates_workspace("git log -8 --oneline") is False
+    # OS admin is not a project-tree mutation (sudo still via privilege UI).
+    assert host_command_is_system_admin("sudo pacman -S cups") is True
+    assert host_command_mutates_workspace("sudo pacman -S cups") is False
+    assert host_command_mutates_workspace("apt install -y cups") is False
+    assert host_command_mutates_workspace("systemctl status cups") is False
+    assert host_command_mutates_workspace("journalctl -u cups -n 30 --no-pager") is False
+    assert host_command_mutates_workspace("lpstat -p -d") is False
 
+
+def test_tool_protocol_teaches_host_diagnosis_not_phrasebook() -> None:
+    proto = tool_protocol_instructions()
+    assert "journalctl" in proto
+    assert "pacman" in proto or "apt install" in proto
+    assert "не умею" in proto or "нет доступа" in proto
+    assert "Approvals" in proto or "применяй" in proto
+    # No printer phrase→handler: printer is only an example class of host problems.
+    assert 'if "принтер"' not in proto
+    assert "printer_broken" not in proto
 
 def test_pwd_and_pipes_are_allowed() -> None:
     assert is_safe_host_command("pwd") is True
@@ -173,6 +193,32 @@ def test_fake_allowlist_answer_triggers_recovery() -> None:
     assert "Каталог" in result.text
 
 
+def test_fake_no_network_refusal_triggers_ticker_cmds() -> None:
+    """Live price questions must not die as invented 'no external API' lectures."""
+    from eurika.api.chat_host_ops import looks_like_fake_no_network, tool_protocol_instructions
+
+    lecture = (
+        "К сожалению, я не могу выполнить запрос к внешнему API, поэтому сейчас "
+        "не могу получить актуальную цену BTC. Если у вас есть локальный источник "
+        "данных (например, кэшированный файл JSON), предоставьте его."
+    )
+    assert looks_like_fake_no_network(lecture) is True
+    assert looks_like_fake_no_network("BTC около 100k по последним новостям.") is False
+    proto = tool_protocol_instructions()
+    assert "ticker_price" in proto
+    assert "binance.com" in proto or "api.binance" in proto
+    call = _scripted(
+        lecture,
+        "```eurika-cmds\necho {\"symbol\":\"BTCUSDT\",\"price\":\"95000.1\"}\n```",
+        "Сейчас BTCUSDT ≈ 95000.1 USDT (публичный тикер).",
+    )
+    result, err = run_llm_tool_loop("А посмотри стоимость btc", call=call)
+    assert err is None
+    assert result.commands
+    assert "95000" in result.text
+    assert "внешнему API" not in result.text
+
+
 def test_ungrounded_macos_network_advice_triggers_cmds() -> None:
     """Lecture about netstat/Activity Monitor must not replace a live host check."""
     from eurika.api.chat_host_ops import looks_like_ungrounded_host_advice
@@ -196,6 +242,87 @@ def test_ungrounded_macos_network_advice_triggers_cmds() -> None:
     assert result.commands == ["echo wlan0 Hotel_Kolyma"]
     assert "Hotel_Kolyma" in result.text
     assert "Activity Monitor" not in result.text
+
+
+def test_command_echo_whoami_runs_host_cmds(monkeypatch) -> None:
+    from eurika.api import chat_host_ops as hop
+    from eurika.api.chat_host_ops import looks_like_command_echo, parse_command_echo
+
+    assert looks_like_command_echo("whoami | hostname") is True
+    assert looks_like_command_echo("Пользователь andrei на host pavilion.") is False
+    assert parse_command_echo("whoami | hostname") == ["whoami", "hostname"]
+
+    def _fake_run(cmd, *, privilege_prompt=None, timeout=60.0, cwd=None):
+        return hop.HostCommandResult(0, "andrei" if "whoami" in cmd else "pavilion")
+
+    monkeypatch.setattr(hop, "run_host_command_with_privilege", _fake_run)
+    call = _scripted(
+        "whoami | hostname",
+        "Пользователь andrei, hostname pavilion.",
+    )
+    result, err = run_llm_tool_loop(
+        "кто я в системе и какой hostname?",
+        call=call,
+        user_message="кто я в системе и какой hostname?",
+        max_iters=4,
+    )
+    assert err is None
+    assert "whoami" in result.commands
+    assert "hostname" in result.commands
+    assert "andrei" in result.text and "pavilion" in result.text
+
+
+def test_tool_loop_surfaces_observations_when_final_llm_fails(monkeypatch) -> None:
+    from eurika.api import chat_host_ops as hop
+
+    def _fake_run(cmd, *, privilege_prompt=None, timeout=60.0, cwd=None):
+        return hop.HostCommandResult(0, "Bus 001 Device 001: Linux Foundation")
+
+    monkeypatch.setattr(hop, "run_host_command_with_privilege", _fake_run)
+
+    def _call(prompt: str, max_tokens: int):
+        if "Вывод выполненных" in prompt or "GROUND" in prompt or "Больше команд" in prompt:
+            return None, "rate limit"
+        return "```eurika-cmds\nlsusb\n```", None
+
+    result, err = run_llm_tool_loop("какие USB?", call=_call, user_message="какие USB?", max_iters=3)
+    assert err is None
+    assert "lsusb" in result.commands
+    assert "Linux Foundation" in result.text
+    assert "лимит" in result.text.lower() or "сбой" in result.text.lower()
+
+
+def test_directory_listing_offtopic_ci_nudges_ls(monkeypatch) -> None:
+    from eurika.api import chat_host_ops as hop
+    from eurika.api.chat_host_ops import (
+        commands_are_listing_offtopic,
+        message_asks_directory_listing,
+        tool_protocol_instructions,
+    )
+
+    q = "покажи содержимое каталога проекта"
+    assert message_asks_directory_listing(q) is True
+    assert message_asks_directory_listing("успехи на маркете?") is False
+    assert commands_are_listing_offtopic(["pytest -q", "ruff check .", "pacman -Qi ruff"]) is True
+    assert commands_are_listing_offtopic(["ls -la", "find . -maxdepth 2"]) is False
+    assert "pytest" in tool_protocol_instructions() and "ls -la" in tool_protocol_instructions()
+
+    def _fake_run(cmd, *, privilege_prompt=None, timeout=60.0, cwd=None):
+        if cmd.startswith("ls"):
+            return hop.HostCommandResult(0, "drwx eurika\ndrwx docs\ndrwx tests")
+        return hop.HostCommandResult(0, "ok")
+
+    monkeypatch.setattr(hop, "run_host_command_with_privilege", _fake_run)
+    call = _scripted(
+        "```eurika-cmds\npytest -q\nruff check .\npacman -Qi ruff\n```",
+        "```eurika-cmds\nls -la\n```",
+        "В корне: eurika, docs, tests.",
+    )
+    result, err = run_llm_tool_loop(q, call=call, user_message=q, max_iters=4)
+    assert err is None
+    assert "ls -la" in result.commands
+    assert "eurika" in result.text or "docs" in result.text
+    assert "pytest" not in result.text.lower()
 
 
 def test_socket_inventory_on_uplink_question_nudges_nmcli(monkeypatch) -> None:

@@ -497,6 +497,11 @@ def humanize_llm_error(err: str | None) -> str:
             "Эта модель Cursor недоступна на аккаунте (Router / auto-smart — только Teams). "
             "В Models выбери Composer 2.5 или Auto и повтори."
         )
+    if low in {"error", "err", "failed", "failure"}:
+        return (
+            "Агент Cursor вернул пустую ошибку (часто обрыв стрима). "
+            "Повтори запрос; при сбое Cursor Chat пробует локальный Ollama / remote."
+        )
     if "cloudflare" in low or "cf-ray" in low or "error 1010" in low:
         return (
             "Groq недоступен (Cloudflare 1010/403). Включите VPN и повторите. "
@@ -705,44 +710,11 @@ def _llm_interpret(summary: Dict[str, Any], history: Dict[str, Any], patch_plan:
     return (None, f"ollama CLI failed ({cli_reason or 'unknown'}); ollama HTTP failed ({fallback_init_reason or 'unknown'})")
 
 
-def call_llm_with_prompt(prompt: str, max_tokens: int=1024) -> tuple[str | None, str | None]:
-    """Call LLM with custom prompt. Local Ollama: CLI first (fast), then HTTP. Remote: primary/litellm → ollama.
-    ROADMAP 3.5.11: chat_send uses this."""
-    provider = _chat_llm_provider()
-    if provider == "cursor":
-        from eurika.agent.cursor_judge import complete_chat
-
-        return complete_chat(prompt)
-    if provider in {"openai", "codex"}:
-        return _call_remote_openai_chat(prompt, max_tokens)
-    if provider == "ollama":
-        import os
-        cli_model = os.environ.get('OLLAMA_OPENAI_MODEL', 'qwen2.5-coder:7b')
-        cli_text, cli_reason = _call_ollama_cli(cli_model, prompt)
-        if cli_text:
-            return (cli_text, None)
-        fallback_client, fallback_model, fallback_init_reason = _init_ollama_fallback_client()
-        http_reason = fallback_init_reason
-        if fallback_client and fallback_model:
-            text, http_reason = _call_llm_architect(
-                fallback_client,
-                fallback_model,
-                prompt,
-                max_tokens=max_tokens,
-                timeout_sec=_ollama_http_timeout_sec(),
-            )
-            if text:
-                return (text, None)
-        return (None, f"ollama CLI and HTTP failed (CLI: {cli_reason or 'unknown'}; HTTP: {http_reason or 'unknown'})")
-    if _should_use_litellm_first():
-        text, _ = _call_litellm(prompt, max_tokens=max_tokens)
-        if text:
-            return (text, None)
-        return _call_primary_openai_then_fallbacks(prompt, max_tokens=max_tokens)
-    if _has_remote_openai_compatible():
-        return _call_remote_openai_chat(prompt, max_tokens)
+def _call_ollama_stack(prompt: str, max_tokens: int) -> tuple[str | None, str | None]:
+    """Local Ollama: CLI first, then HTTP. Returns (text, error)."""
     import os
-    cli_model = os.environ.get('OLLAMA_OPENAI_MODEL', 'qwen2.5-coder:7b')
+
+    cli_model = os.environ.get("OLLAMA_OPENAI_MODEL", "qwen2.5-coder:7b")
     cli_text, cli_reason = _call_ollama_cli(cli_model, prompt)
     if cli_text:
         return (cli_text, None)
@@ -758,7 +730,46 @@ def call_llm_with_prompt(prompt: str, max_tokens: int=1024) -> tuple[str | None,
         )
         if text:
             return (text, None)
-    return (None, f"ollama CLI and HTTP failed (CLI: {cli_reason or 'unknown'}; HTTP: {http_reason or 'unknown'})")
+    return (
+        None,
+        f"ollama CLI and HTTP failed (CLI: {cli_reason or 'unknown'}; HTTP: {http_reason or 'unknown'})",
+    )
+
+
+def call_llm_with_prompt(prompt: str, max_tokens: int=1024) -> tuple[str | None, str | None]:
+    """Call LLM with custom prompt. Local Ollama: CLI first (fast), then HTTP. Remote: primary/litellm → ollama.
+    ROADMAP 3.5.11: chat_send uses this."""
+    provider = _chat_llm_provider()
+    if provider == "cursor":
+        from eurika.agent.cursor_judge import complete_chat
+
+        text, err = complete_chat(prompt)
+        if text:
+            return (text, None)
+        # Cursor SDK often returns bare "error" / empty stream — still answer via local/remote.
+        ollama_text, ollama_err = _call_ollama_stack(prompt, max_tokens)
+        if ollama_text:
+            return (ollama_text, None)
+        if _has_remote_openai_compatible():
+            remote_text, remote_err = _call_remote_openai_chat(prompt, max_tokens)
+            if remote_text:
+                return (remote_text, None)
+            bits = [b for b in (ollama_err, remote_err, err) if b]
+            return (None, "; ".join(bits) if bits else "llm unavailable")
+        bits = [b for b in (ollama_err, err) if b]
+        return (None, "; ".join(bits) if bits else "llm unavailable")
+    if provider in {"openai", "codex"}:
+        return _call_remote_openai_chat(prompt, max_tokens)
+    if provider == "ollama":
+        return _call_ollama_stack(prompt, max_tokens)
+    if _should_use_litellm_first():
+        text, _ = _call_litellm(prompt, max_tokens=max_tokens)
+        if text:
+            return (text, None)
+        return _call_primary_openai_then_fallbacks(prompt, max_tokens=max_tokens)
+    if _has_remote_openai_compatible():
+        return _call_remote_openai_chat(prompt, max_tokens)
+    return _call_ollama_stack(prompt, max_tokens)
 
 def interpret_architecture(summary: Dict[str, Any], history: Dict[str, Any], use_llm: bool=True, verbose: bool=True, patch_plan: Optional[Dict[str, Any]]=None, knowledge_provider: Optional['KnowledgeProvider']=None, knowledge_topic: Optional[Union[str, List[str]]]=None, recent_events: Optional[List['Event']]=None, *, template_formatter: Optional[Callable[[Dict[str, Any]], str]]=None) -> str:
     """

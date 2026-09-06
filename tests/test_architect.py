@@ -527,6 +527,29 @@ def test_call_llm_cursor_skips_groq_and_ollama(monkeypatch) -> None:
     groq.assert_not_called()
 
 
+def test_call_llm_cursor_falls_back_to_ollama_on_empty_error(monkeypatch) -> None:
+    """When Cursor returns bare 'error', Chat must still reach local LLM."""
+    from eurika.reasoning.architect import call_llm_with_prompt
+
+    monkeypatch.setenv("EURIKA_CHAT_PROVIDER", "cursor")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    with (
+        patch(
+            "eurika.agent.cursor_judge.complete_chat",
+            return_value=(None, "error"),
+        ) as cursor_chat,
+        patch(
+            "eurika.reasoning.architect._call_ollama_cli",
+            return_value=("ollama rescued", None),
+        ) as ollama,
+    ):
+        text, err = call_llm_with_prompt("Чувырла", max_tokens=64)
+    assert err is None
+    assert text == "ollama rescued"
+    cursor_chat.assert_called_once()
+    ollama.assert_called_once()
+
+
 def test_message_text_reads_gpt_oss_reasoning() -> None:
     from types import SimpleNamespace
 
