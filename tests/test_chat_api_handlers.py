@@ -1082,6 +1082,32 @@ def test_chat_send_greeting_without_llm(tmp_path: Path, monkeypatch) -> None:
     assert "puedo" not in text.lower()
 
 
+def test_chat_send_greeting_how_are_you_without_llm(tmp_path: Path, monkeypatch) -> None:
+    """Telegram-style 'Привет как твои дела?' must not fall through to Cursor SDK."""
+    import eurika.api.chat as chat_mod
+    from eurika.api.chat_direct import is_greeting, resolve_direct_handler
+
+    assert is_greeting("Привет как твои дела ?")
+    assert resolve_direct_handler(tmp_path, "Привет как твои дела ?")[0] == "greeting"
+    assert is_greeting("Йо, на связи?")
+    assert resolve_direct_handler(tmp_path, "Йо, на связи?")[0] == "greeting"
+    monkeypatch.setattr(
+        "eurika.api.chat_host_ops.run_llm_tool_loop",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("LLM/SDK should not be called")),
+    )
+    out = chat_mod.chat_send(tmp_path, "Привет как твои дела ?")
+    assert out.get("error") is None
+    assert "Eurika" in (out.get("text") or "")
+
+
+def test_extract_show_file_path_with_trailing_word() -> None:
+    from eurika.api.chat_direct import extract_file_path_from_show_request, is_show_file_request
+
+    msg = "покажи содержимое .eurika/llm_lease.json кратко"
+    assert is_show_file_request(msg) is True
+    assert extract_file_path_from_show_request(msg) == ".eurika/llm_lease.json"
+
+
 def test_chat_send_file_count_question_without_llm(tmp_path: Path, monkeypatch) -> None:
     """'сколько всего файлов в проекте?' should recount from disk."""
     import eurika.api.chat as chat_mod

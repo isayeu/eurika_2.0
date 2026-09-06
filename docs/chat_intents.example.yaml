@@ -24,7 +24,7 @@ version: 1
 
 # CR-G2: Cosine similarity threshold for fuzzy match. 0.68–0.85. Lower = more permissive.
 # Env override: EURIKA_VECTOR_MIN_SIM
-vector_min_similarity: 0.72
+vector_min_similarity: 0.82
 
 # Подсказки для LLM (русский). Используется в промпте, если задано.
 intent_hints: |

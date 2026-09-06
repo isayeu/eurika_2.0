@@ -40,6 +40,8 @@ from .chat_provider_handlers import (
     current_chat_provider,
     on_chat_api_preset_changed,
     on_chat_provider_changed,
+    on_cursor_model_changed,
+    on_cursor_router_changed,
     refresh_cursor_api_status,
     refresh_cursor_models,
     save_chat_preferences,

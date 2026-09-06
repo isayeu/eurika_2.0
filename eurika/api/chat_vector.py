@@ -9,8 +9,16 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+_DEFAULT_MIN_SIM = 0.82
+_MIN_MARGIN = 0.04
+
+
 def _cosine_sim(a: List[float], b: List[float]) -> float:
-    """Cosine similarity in [0, 1] for normalized vectors."""
+    """Cosine similarity clamped to [0, 1] (negative cosines → 0).
+
+    Do **not** remap with ``(raw + 1) / 2``: that lifts unrelated nomic pairs
+    (raw ~0.7–0.8) into the 0.85–0.9 band and false-triggers intents.
+    """
     if not a or not b or len(a) != len(b):
         return 0.0
     dot = sum((x * y for x, y in zip(a, b)))
@@ -19,11 +27,13 @@ def _cosine_sim(a: List[float], b: List[float]) -> float:
     if na <= 0 or nb <= 0:
         return 0.0
     raw = dot / (na * nb)
-    return max(0.0, min(1.0, (raw + 1) / 2))
+    return max(0.0, min(1.0, raw))
+
 
 def _use_vector_intent() -> bool:
     from eurika.utils.env import env_bool
     return env_bool("EURIKA_USE_VECTOR_INTENT")
+
 
 def _ollama_embed(text: str, *, model: str='nomic-embed-text', base_url: str='http://localhost:11434', timeout: float=5.0) -> Optional[List[float]]:
     """Call Ollama /api/embed. Returns embedding vector or None on failure."""
@@ -40,6 +50,7 @@ def _ollama_embed(text: str, *, model: str='nomic-embed-text', base_url: str='ht
         return None
     except Exception:
         return None
+
 
 def _intent_exemplars(cfg: Dict[str, Any]) -> List[Tuple[str, str, Optional[str]]]:
     """Collect (handler_id, exemplar_text, emit) from config intents.
@@ -66,8 +77,10 @@ def _intent_exemplars(cfg: Dict[str, Any]) -> List[Tuple[str, str, Optional[str]
                     result.append((handler_id, pat.strip(), emit))
     return result
 
+
 def _cache_path(root: Path) -> Path:
     return root / '.eurika' / 'vector_intent_cache.json'
+
 
 def _load_cache(root: Path) -> Dict[str, List[float]]:
     p = _cache_path(root)
@@ -79,6 +92,7 @@ def _load_cache(root: Path) -> Dict[str, List[float]]:
     except Exception:
         return {}
 
+
 def _save_cache(root: Path, cache: Dict[str, List[float]]) -> None:
     try:
         p = _cache_path(root)
@@ -87,22 +101,24 @@ def _save_cache(root: Path, cache: Dict[str, List[float]]) -> None:
     except Exception:
         pass
 
-def _extracted_block_147(sim_env: str) -> float:
+
+def _parse_threshold(sim_env: str) -> float:
     try:
         return float(sim_env)
     except ValueError:
-        return 0.72
+        return _DEFAULT_MIN_SIM
+
 
 def match_fuzzy_intent(root: Path, message: str, *, min_similarity: Optional[float]=None, embed_model: Optional[str]=None) -> Optional[Tuple[str, Optional[str], float]]:
     """
     Fuzzy intent match via embeddings. Returns (handler_id, emit, similarity) or None.
     CR-G2: Embeddings для fuzzy match (опционально).
 
-    min_similarity: 0.68–0.85. Lower = more permissive. Sources (priority):
+    min_similarity: 0.68–0.95. Lower = more permissive. Sources (priority):
       - argument
       - config vector_min_similarity
       - EURIKA_VECTOR_MIN_SIM env
-      - default 0.72
+      - default 0.82
     """
     if not _use_vector_intent():
         return None
@@ -127,11 +143,11 @@ def match_fuzzy_intent(root: Path, message: str, *, min_similarity: Optional[flo
         try:
             threshold = float(sim_cfg)
         except (TypeError, ValueError):
-            threshold = 0.72
+            threshold = _DEFAULT_MIN_SIM
     elif sim_env:
-        threshold = _extracted_block_147(sim_env)
+        threshold = _parse_threshold(sim_env)
     else:
-        threshold = 0.72
+        threshold = _DEFAULT_MIN_SIM
     threshold = max(0.5, min(0.95, threshold))
     model = embed_model or os.environ.get('OLLAMA_EMBED_MODEL', 'nomic-embed-text')
     msg = (message or '').strip()
@@ -146,9 +162,9 @@ def match_fuzzy_intent(root: Path, message: str, *, min_similarity: Optional[flo
     query_emb = _ollama_embed(msg, model=model, base_url=base_url)
     if not query_emb:
         return None
-    best_handler: Optional[str] = None
-    best_emit: Optional[str] = None
-    best_sim = threshold
+
+    # Best similarity per handler (avoid one noisy exemplar dominating margin).
+    per_handler: Dict[str, Tuple[float, Optional[str]]] = {}
     for handler_id, exemplar, emit in exemplars:
         key = f'{handler_id}:{exemplar}'
         if key not in cache:
@@ -156,13 +172,22 @@ def match_fuzzy_intent(root: Path, message: str, *, min_similarity: Optional[flo
             if emb:
                 cache[key] = emb
         emb = cache.get(key)
-        if emb:
-            sim = _cosine_sim(query_emb, emb)
-            if sim >= best_sim:
-                best_sim = sim
-                best_handler = handler_id
-                best_emit = emit
+        if not emb:
+            continue
+        sim = _cosine_sim(query_emb, emb)
+        prev = per_handler.get(handler_id)
+        if prev is None or sim > prev[0]:
+            per_handler[handler_id] = (sim, emit)
+
     _save_cache(root, cache)
-    if best_handler is not None:
-        return (best_handler, best_emit, best_sim)
-    return None
+    if not per_handler:
+        return None
+
+    ranked = sorted(per_handler.items(), key=lambda kv: kv[1][0], reverse=True)
+    best_handler, (best_sim, best_emit) = ranked[0]
+    second_sim = ranked[1][1][0] if len(ranked) > 1 else 0.0
+    if best_sim < threshold:
+        return None
+    if second_sim > 0 and (best_sim - second_sim) < _MIN_MARGIN:
+        return None
+    return (best_handler, best_emit, best_sim)

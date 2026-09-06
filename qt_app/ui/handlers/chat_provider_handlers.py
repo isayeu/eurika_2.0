@@ -177,6 +177,31 @@ def sync_cursor_router_enabled(main: MainWindow) -> None:
     _sync_chat_llm_badge(main)
 
 
+def on_cursor_model_changed(main: MainWindow, *_args: object) -> None:
+    """Persist Cursor model immediately (Models has no Save/Apply)."""
+    sync_cursor_router_enabled(main)
+    save_chat_preferences(main)
+    try:
+        from eurika.utils.env import apply_qt_chat_routing
+
+        apply_qt_chat_routing()
+    except Exception:
+        pass
+    refresh_cursor_api_status(main)
+
+
+def on_cursor_router_changed(main: MainWindow, *_args: object) -> None:
+    """Persist Router mode immediately."""
+    save_chat_preferences(main)
+    try:
+        from eurika.utils.env import apply_qt_chat_routing
+
+        apply_qt_chat_routing()
+    except Exception:
+        pass
+    _sync_chat_llm_badge(main)
+
+
 def refresh_cursor_api_status(main: MainWindow) -> None:
     label = getattr(main, "cursor_api_status", None)
     if label is None:

@@ -362,7 +362,11 @@ class MainWindow(
             self.chat_cursor_refresh_btn.clicked.connect(lambda: chat_handlers.refresh_cursor_models(self))
         if hasattr(self, "chat_cursor_model_combo"):
             self.chat_cursor_model_combo.currentIndexChanged.connect(
-                lambda *_: chat_handlers.sync_cursor_router_enabled(self)
+                lambda *_: chat_handlers.on_cursor_model_changed(self)
+            )
+        if hasattr(self, "chat_cursor_router_combo"):
+            self.chat_cursor_router_combo.currentIndexChanged.connect(
+                lambda *_: chat_handlers.on_cursor_router_changed(self)
             )
         if hasattr(self, "chat_api_preset_combo"):
             self.chat_api_preset_combo.currentIndexChanged.connect(

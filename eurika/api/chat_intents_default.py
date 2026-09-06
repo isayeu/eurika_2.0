@@ -16,7 +16,7 @@ from eurika.api.chat_identity import IDENTITY_REGEX_PATTERNS
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "version": 1,
-    "vector_min_similarity": 0.72,
+    "vector_min_similarity": 0.82,
     "intent_hints": (
         "- Принцип: вопрос → LLM; факты о хосте → eurika-cmds → снова LLM (sudo через UI). "
         "Без доменных intent-списков (bluetooth/gpu/…). Не советовать macOS/Activity Monitor: хост Linux.\n"

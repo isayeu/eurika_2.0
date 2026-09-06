@@ -496,6 +496,10 @@ def _accept_soft_handler(handler_id: Optional[str], msg: str) -> bool:
         return False
     if handler_id == "polygon_propose" and not is_polygon_propose_request(msg):
         return False
+    if handler_id == "bug_hunt" and not is_bug_hunt_request(msg):
+        return False
+    if handler_id == "learn_patterns" and not is_learn_patterns_request(msg):
+        return False
     if handler_id == "scan" and not is_scan_request(msg) and not looks_like_scan_typo(msg):
         return False
     if handler_id == "roadmap_verify" and not is_roadmap_verify_request(msg):
@@ -684,6 +688,16 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
         if polygon_propose_sandbox(msg):
             cmd += " --sandbox"
         return ("polygon_propose", cmd)
+    if is_bug_hunt_request(msg):
+        cmd = "$ eurika bug-hunt . --propose --sandbox"
+        if bug_hunt_wants_web(msg):
+            cmd += " --web"
+        return ("bug_hunt", cmd)
+    if is_learn_patterns_request(msg):
+        return (
+            "learn_patterns",
+            "$ eurika learn-github . --light --limit-repos 2 --scan --build-patterns",
+        )
     if is_release_check_request(msg):
         return ("release_check", "$ ./scripts/release_check.sh")
     if is_roadmap_verify_request(msg):
@@ -703,9 +717,28 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
         return ("git_push", None)
     if is_git_commit_request(msg):
         return ("git_commit", None)
-    # Soft match (ML/vector) must not steal questions or explicit LLM directives.
+    # Soft match (ML/vector) must not steal questions, LLM directives, or live-tool asks.
     raw = (msg or "").strip()
     if _QUESTION_START.search(raw) or is_llm_directive_message(raw):
+        return (None, None)
+    low = raw.lower()
+    if any(
+        cue in low
+        for cue in (
+            "цена",
+            "стоимость",
+            "price",
+            "ticker",
+            "тикер",
+            "nproc",
+            "uptime",
+            "ipv4",
+            "ip адрес",
+            "ip address",
+            "lsusb",
+            "pactl",
+        )
+    ):
         return (None, None)
     # User pasted a shell command — run it (sudo → privilege dialog), do not fuzzy-route.
     if is_bare_shell_request(raw):
@@ -742,18 +775,24 @@ def is_identity_question(message: str) -> bool:
 
 
 def is_greeting(message: str) -> bool:
-    """Detect short greetings — answer locally, not via LLM."""
+    """Detect short greetings / how-are-you — answer locally, not via LLM."""
     msg = _norm_msg(message)
-    if not msg or len(msg) > 50:
+    if not msg or len(msg) > 80:
         return False
     patterns = (
         r"^привет[!.…]*$",
+        r"^привет[!.…,\s]+(как\s+(у\s+тебя\s+|твои\s+)?дела|как\s+ты|что\s+нового|how\s+are\s+you).*$",
         r"^здравствуй",
         r"^добрый\s+(день|вечер|утро)",
+        r"^йо[!.…,\s]*(на\s+связи)?[?.!…]*$",
+        r"^на\s+связи[?.!…]*$",
         r"^hello[!.]*$",
         r"^hi[!.]*$",
         r"^hey[!.]*$",
+        r"^(hello|hi|hey)[!.…,\s]+(how\s+are\s+you|what'?s\s+up).*$",
         r"^good\s+(morning|evening|afternoon)",
+        r"^как\s+(у\s+тебя\s+|твои\s+)?дела[?.!…]*$",
+        r"^how\s+are\s+you[?.!…]*$",
     )
     return any(re.match(p, msg) for p in patterns)
 
@@ -867,18 +906,33 @@ def is_show_file_request(message: str) -> bool:
 def extract_file_path_from_show_request(message: str) -> str | None:
     """Extract relative file path from show-file request."""
     msg = (message or "").strip()
+    # Prefer an explicit path token anywhere («… содержимое .eurika/x.json кратко»).
+    for m in re.finditer(r"(?:^|\s)([./][\w./\-]*\.\w{1,12}|[\w./\-]+/[\w./\-]+\.\w{1,12})\b", msg):
+        cand = m.group(1).strip().rstrip(".,;:)")
+        if cand and ("/" in cand or cand.startswith(".")):
+            return cand
     m = re.search(r"(?:^|\s)([./\w][\w./\-]*(?:\.\w+)?)\s*$", msg)
     if m:
         cand = m.group(1).strip()
         if cand and ("/" in cand or cand.startswith(".") or ".py" in cand or ".md" in cand):
             return cand
-    for prefix in ("покажи файл ", "show file ", "read file ", "открой файл ", "покажи ", "открой "):
-        if prefix in msg.lower():
-            rest = msg[msg.lower().find(prefix) + len(prefix) :].strip()
+    for prefix in (
+        "покажи содержимое файла ",
+        "покажи содержимое ",
+        "покажи файл ",
+        "show file ",
+        "read file ",
+        "открой файл ",
+        "покажи ",
+        "открой ",
+    ):
+        low = msg.lower()
+        if prefix in low:
+            rest = msg[low.find(prefix) + len(prefix) :].strip()
             if rest and ("/" in rest or "." in rest):
                 first = rest.split()[0] if rest.split() else rest
                 if first and ("/" in first or first.startswith(".")):
-                    return first
+                    return first.rstrip(".,;:)")
     return None
 
 
@@ -1177,6 +1231,10 @@ def is_polygon_propose_request(message: str) -> bool:
         "четвертый полигон",
         "полигон llm",
         "llm_extract",
+        "пятый полигон",
+        "полигон deep",
+        "полигон nesting",
+        "deep_nesting",
         "полигон live",
         "live llm",
         "require-llm",
@@ -1190,10 +1248,73 @@ def is_polygon_propose_request(message: str) -> bool:
         return True
     if "полигон" in msg and any(
         w in msg
-        for w in ("предложи", "propose", "hitl", "approvals", "extract", "long", "nested", "llm")
+        for w in (
+            "предложи",
+            "propose",
+            "hitl",
+            "approvals",
+            "extract",
+            "long",
+            "nested",
+            "llm",
+            "deep",
+            "nesting",
+        )
     ):
         return True
     return False
+
+
+def is_bug_hunt_request(message: str) -> bool:
+    """C.14 v1.5: real-code smell → Approvals via bug-hunt --propose (not polygon)."""
+    msg = _norm_msg(message)
+    if not msg:
+        return False
+    # Polygon drills keep their own skill.
+    if "полигон" in msg or "polygon" in msg or "prove-cycle" in msg:
+        return False
+    needles = (
+        "найди баг",
+        "найди баги",
+        "поиск багов",
+        "bug hunt",
+        "bug-hunt",
+        "bughunt",
+        "предложи улучшение кода",
+        "предложи улучшение",
+        "self improve",
+        "self-improve",
+        "eurika bug-hunt",
+        "bug-hunt --propose",
+    )
+    return any(n in msg for n in needles)
+
+
+def bug_hunt_wants_web(message: str) -> bool:
+    msg = _norm_msg(message)
+    return any(w in msg for w in ("--web", "с интернетом", "web search", "web_search"))
+
+
+def is_learn_patterns_request(message: str) -> bool:
+    """Refresh OSS pattern_library via learn-github (feeds bug-hunt / extract)."""
+    msg = _norm_msg(message)
+    if not msg:
+        return False
+    needles = (
+        "обнови паттерны",
+        "обнови oss",
+        "обнови pattern",
+        "собрать паттерны",
+        "learn-github",
+        "learn github",
+        "pattern library",
+        "pattern_library",
+        "oss паттерн",
+        "паттерны github",
+        "паттерны из github",
+        "curated repos",
+    )
+    return any(n in msg for n in needles)
 
 
 def polygon_propose_drill_id(message: str) -> str:
@@ -1216,6 +1337,19 @@ def polygon_propose_drill_id(message: str) -> str:
     )
     if any(n in msg for n in llm_needles):
         return "llm_extract"
+    deep_needles = (
+        "deep_nesting",
+        "deep nesting",
+        "--drill deep",
+        "drill deep",
+        "пятый полигон",
+        "полигон deep",
+        "полигон nesting",
+        "предложи deep",
+        "предложи nesting",
+    )
+    if any(n in msg for n in deep_needles):
+        return "deep_nesting"
     long_needles = (
         "long_function",
         "extract_nested",

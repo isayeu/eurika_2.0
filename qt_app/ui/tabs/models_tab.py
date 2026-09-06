@@ -253,7 +253,10 @@ def _build_llm_subtab(main: MainWindow) -> QWidget:
     cursor_layout.addRow("Статус", main.cursor_api_status)
     cursor_row = QHBoxLayout()
     main.chat_cursor_model_combo = QComboBox()
-    main.chat_cursor_model_combo.setToolTip("Composer — конкретная модель. Auto + Router — Cursor сам выбирает.")
+    main.chat_cursor_model_combo.setToolTip(
+        "Выбор сохраняется сразу (кнопки Save/Apply нет).\n"
+        "Refresh — каталог аккаунта. Composer / Grok / Auto + Router."
+    )
     main.chat_cursor_refresh_btn = QPushButton("Refresh")
     main.chat_cursor_refresh_btn.setMaximumWidth(BTN_SMALL_WIDTH)
     main.chat_cursor_refresh_btn.setToolTip("Каталог моделей аккаунта по CURSOR_API_KEY")
