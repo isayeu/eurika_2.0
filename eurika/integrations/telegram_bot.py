@@ -1,7 +1,8 @@
 """Telegram channel to the same Eurika chat agent (VISION C.12 v1).
 
 Long-poll Bot API → ``chat_send`` → reply text. Does **not** auto-apply patches:
-HITL stays in Qt Approvals / ``eurika fix . --apply-approved``.
+HITL stays in Approvals — Telegram can **/approve** / **/reject** decisions
+(and inline buttons on push), then Qt/Desktop or ``eurika fix . --apply-approved``.
 
 Env:
   EURIKA_TELEGRAM_BOT_TOKEN   — required
@@ -29,6 +30,7 @@ ChatSendFn = Callable[..., dict[str, Any]]
 
 PID_REL = ".eurika/telegram_bot.pid"
 LOG_REL = ".eurika/telegram_bot.log"
+NOTIFY_STAMP_REL = ".eurika/telegram_notify.json"
 
 
 def _pid_path(project_root: Path) -> Path:
@@ -315,7 +317,11 @@ def extract_text_update(update: dict[str, Any]) -> tuple[int, int, str] | None:
 
 
 def telegram_slash_command(text: str) -> str | None:
-    """Return a canned reply for Bot API slash commands; else None."""
+    """Return a canned reply for Bot API slash commands; else None.
+
+    Approvals HITL (``/approve`` / ``/reject`` / ``/approvals``) is handled in
+    ``handle_text_message`` (needs project root) — not here.
+    """
     raw = (text or "").strip()
     if not raw.startswith("/"):
         return None
@@ -328,13 +334,110 @@ def telegram_slash_command(text: str) -> str | None:
             "• проведи ритуал\n"
             "• четвёртый полигон\n"
             "• статус apply / получилось?\n"
-            "• /status — жив ли long-poll процесс\n\n"
-            "Патчи из Telegram не применяются — только Approvals в Qt → "
+            "• /status — жив ли long-poll процесс\n"
+            "• /approvals — что в очереди\n"
+            "• /approve — отметить все ops approve (без apply)\n"
+            "• /reject — отметить все ops reject\n\n"
+            "Новые Approvals приходят push + кнопки Approve/Reject.\n"
+            "Apply на диск — только Qt/Desktop или "
             "`eurika fix . --apply-approved`."
         )
+    if cmd in {"/approve", "/reject", "/approvals"}:
+        return None  # handled with project root
     return (
         f"Команда `{cmd}` не используется. Напишите обычный запрос текстом "
-        "(без ведущего `/`)."
+        "(без ведущего `/`), или /help."
+    )
+
+
+def approvals_inline_keyboard() -> str:
+    """JSON ``reply_markup`` for Approvals HITL (no apply)."""
+    return json.dumps(
+        {
+            "inline_keyboard": [
+                [
+                    {"text": "Approve all", "callback_data": "eurika:approve"},
+                    {"text": "Reject all", "callback_data": "eurika:reject"},
+                ]
+            ]
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
+def format_approvals_status(project_root: Path) -> str:
+    """Short Approvals queue summary for Telegram."""
+    from eurika.orchestration.team_mode import load_pending_plan
+
+    root = Path(project_root).resolve()
+    plan = load_pending_plan(root)
+    if not plan:
+        return "Approvals: пусто (нет `.eurika/pending_plan.json`)."
+    ops = plan.get("operations") if isinstance(plan.get("operations"), list) else []
+    pending = n_appr = n_rej = 0
+    lines = ["Approvals (pending_plan):"]
+    for op in ops:
+        if not isinstance(op, dict):
+            continue
+        dec = str(op.get("team_decision") or "pending").strip().lower()
+        kind = str(op.get("kind") or "op")
+        target = str(op.get("target_file") or "")
+        if dec == "approve":
+            n_appr += 1
+            mark = "approve"
+        elif dec == "reject":
+            n_rej += 1
+            mark = "reject"
+        else:
+            pending += 1
+            mark = "pending"
+        bit = f"• [{mark}] `{kind}`"
+        if target:
+            bit += f" — `{target}`"
+        lines.append(bit)
+    lines.append(f"итог: pending={pending}, approve={n_appr}, reject={n_rej}")
+    if n_appr:
+        lines.append("дальше: `eurika fix . --apply-approved` (Telegram не apply)")
+    elif pending:
+        lines.append("команды: /approve или /reject (только решения, не apply)")
+    return "\n".join(lines)
+
+
+def handle_approvals_decision(
+    project_root: Path,
+    *,
+    decision: str,
+    approved_by: str = "telegram",
+) -> str:
+    """Approve/reject all pending ops; never apply patches.
+
+    Also mirrors the decision into Chat/Goals (Qt transcript poll) so a remote
+    HITL choice is visible when the desktop UI is open.
+    """
+    from eurika.api.fix_status import announce_approvals_decision
+    from eurika.orchestration.team_mode import decide_all_pending
+
+    root = Path(project_root).resolve()
+    out = decide_all_pending(
+        root,
+        decision=decision,
+        approved_by=approved_by,
+    )
+    if not out.get("ok"):
+        return f"Approvals: не вышло — {out.get('error') or 'error'}"
+    choice = str(out.get("decision") or decision)
+    n = int(out.get("n") or 0)
+    announced = announce_approvals_decision(
+        root,
+        decision=choice,
+        n=n,
+        approved_by=approved_by,
+        client="telegram",
+        publish_activity=True,
+    )
+    return str(announced.get("text") or "").strip() or (
+        f"Approvals: {choice} ×{n} (by {approved_by})"
     )
 
 
@@ -347,7 +450,16 @@ def format_telegram_reply(payload: dict[str, Any]) -> str:
     if text:
         parts.append(text)
     if err and not text:
-        parts.append(f"error: {err}")
+        # Avoid Telegram seeing bare "error: error".
+        err_s = str(err).strip() or "unknown"
+        if err_s.lower() in {"error", "err", "failed"}:
+            parts.append(
+                "Не удалось получить ответ агента. "
+                "Попробуй ещё раз или напиши конкретный запрос "
+                "(«что за проект?», «найди баг», «статус telegram-bot»)."
+            )
+        else:
+            parts.append(f"error: {err_s}")
     elif err and text:
         parts.append(f"(note: {err})")
     try:
@@ -363,6 +475,366 @@ def format_telegram_reply(payload: dict[str, Any]) -> str:
     if len(out) > 3900:
         out = out[:3850] + "\n…"
     return out
+
+
+def _notify_enabled() -> bool:
+    from eurika.utils.env import env_bool
+
+    # Default on when token+allowlist exist; EURIKA_TELEGRAM_NOTIFY_APPROVALS=0 disables.
+    if os.environ.get("EURIKA_TELEGRAM_NOTIFY_APPROVALS") is None:
+        return True
+    return env_bool("EURIKA_TELEGRAM_NOTIFY_APPROVALS")
+
+
+def _approvals_fingerprint(
+    operations: list[dict[str, Any]],
+    *,
+    created_at: str = "",
+) -> str:
+    import hashlib
+
+    parts: list[str] = []
+    for op in operations:
+        if not isinstance(op, dict):
+            continue
+        parts.append(
+            f"{op.get('kind')}|{op.get('target_file')}|{op.get('team_decision')}"
+        )
+    parts.sort()
+    raw = created_at + "\n" + "\n".join(parts)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:20]
+
+
+def format_approvals_notify_message(
+    project_root: Path,
+    operations: list[dict[str, Any]],
+    *,
+    patch_plan: dict[str, Any] | None = None,
+) -> str:
+    """Human text for a push when Approvals gains pending ops."""
+    root = Path(project_root).resolve()
+    pending = [
+        op
+        for op in operations
+        if isinstance(op, dict)
+        and str(op.get("team_decision") or "pending").strip().lower() == "pending"
+    ]
+    plan = patch_plan if isinstance(patch_plan, dict) else {}
+    source = str(
+        plan.get("source")
+        or plan.get("summary")
+        or plan.get("drill")
+        or plan.get("kind")
+        or "pending_plan"
+    ).strip()
+    lines = [
+        f"Eurika Approvals: {len(pending)} op(s) ждут review",
+        f"проект: `{root.name}`",
+    ]
+    if source:
+        lines.append(f"источник: {source}")
+    for op in pending[:8]:
+        kind = str(op.get("kind") or "op").strip()
+        target = str(op.get("target_file") or "").strip()
+        desc = str(op.get("description") or "").strip()
+        bit = f"• `{kind}`"
+        if target:
+            bit += f" — `{target}`"
+        elif desc:
+            bit += f" — {desc[:80]}"
+        lines.append(bit)
+    if len(pending) > 8:
+        lines.append(f"… и ещё {len(pending) - 8}")
+    lines.append("→ /approve или /reject здесь (только решения)")
+    lines.append("→ apply: Qt/Desktop или `eurika fix . --apply-approved`")
+    lines.append("(Telegram сам патчи на диск не пишет)")
+    out = "\n".join(lines)
+    if len(out) > 3900:
+        out = out[:3850] + "\n…"
+    return out
+
+
+def notify_approvals_pending(
+    project_root: Path,
+    *,
+    operations: list[dict[str, Any]] | None = None,
+    patch_plan: dict[str, Any] | None = None,
+    created_at: str = "",
+    token: str | None = None,
+    chat_ids: str | None = None,
+    allow_any: bool | None = None,
+    api: Callable[..., Any] | None = None,
+    force: bool = False,
+) -> dict[str, Any]:
+    """Push Approvals notice to allowlisted chats (best-effort; never raises).
+
+    Skips when token/allowlist missing, notify disabled, allow-any mode (no ids),
+    or the same fingerprint was already sent. Does **not** apply patches.
+    """
+    root = Path(project_root).resolve()
+    base: dict[str, Any] = {
+        "ok": True,
+        "sent": 0,
+        "skipped": None,
+        "chat_ids": [],
+    }
+    try:
+        if not force and not _notify_enabled():
+            return {**base, "skipped": "notify_disabled"}
+        tok = _env_token(token)
+        if not tok:
+            return {**base, "skipped": "no_token"}
+        allowed = parse_allowed_chat_ids(chat_ids, allow_any=allow_any)
+        if allowed is None:
+            return {**base, "skipped": "allow_any_no_targets"}
+        if not allowed:
+            return {**base, "skipped": "empty_allowlist"}
+
+        ops = list(operations or [])
+        if not ops:
+            from eurika.orchestration.team_mode import load_pending_plan
+
+            plan = load_pending_plan(root) or {}
+            raw_ops = plan.get("operations")
+            ops = [o for o in raw_ops if isinstance(o, dict)] if isinstance(raw_ops, list) else []
+            if patch_plan is None and isinstance(plan.get("patch_plan"), dict):
+                patch_plan = plan.get("patch_plan")  # type: ignore[assignment]
+            if not created_at:
+                created_at = str(plan.get("created_at") or "")
+        pending = [
+            op
+            for op in ops
+            if str(op.get("team_decision") or "pending").strip().lower() == "pending"
+        ]
+        if not pending:
+            return {**base, "skipped": "no_pending_ops"}
+
+        fp = _approvals_fingerprint(pending, created_at=created_at)
+        stamp_path = root / NOTIFY_STAMP_REL
+        if not force and stamp_path.is_file():
+            try:
+                prev = json.loads(stamp_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                prev = {}
+            if isinstance(prev, dict) and prev.get("fingerprint") == fp:
+                return {**base, "skipped": "already_notified", "fingerprint": fp}
+
+        text = format_approvals_notify_message(
+            root, pending, patch_plan=patch_plan if isinstance(patch_plan, dict) else {}
+        )
+        api_fn = api or telegram_api
+        sent: list[int] = []
+        errors: list[str] = []
+        for chat_id in sorted(allowed):
+            try:
+                api_fn(
+                    tok,
+                    "sendMessage",
+                    {
+                        "chat_id": chat_id,
+                        "text": text,
+                        "reply_markup": approvals_inline_keyboard(),
+                    },
+                )
+                sent.append(chat_id)
+            except Exception as exc:
+                errors.append(f"{chat_id}: {exc}")
+        try:
+            stamp_path.parent.mkdir(parents=True, exist_ok=True)
+            stamp_path.write_text(
+                json.dumps(
+                    {
+                        "fingerprint": fp,
+                        "sent_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                        "sent": sent,
+                        "n_ops": len(pending),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+        return {
+            "ok": not errors or bool(sent),
+            "sent": len(sent),
+            "chat_ids": sent,
+            "errors": errors,
+            "fingerprint": fp,
+            "skipped": None if sent else ("send_failed" if errors else "no_sent"),
+            "text": text[:200],
+        }
+    except Exception as exc:
+        return {**base, "ok": False, "skipped": "error", "error": str(exc)}
+
+
+def _apply_fingerprint(*, run_id: str, ok: bool, modified: list[Any], exit_code: int | None) -> str:
+    import hashlib
+
+    mods = ",".join(str(x) for x in modified[:20])
+    raw = f"{run_id}|{ok}|{exit_code}|{mods}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:20]
+
+
+def format_apply_notify_message(
+    project_root: Path,
+    *,
+    text: str,
+    ok: bool,
+) -> str:
+    """Push text after apply-approved (same facts as Chat итог)."""
+    root = Path(project_root).resolve()
+    mark = "ok" if ok else "fail"
+    header = f"Eurika apply-approved [{mark}] — `{root.name}`"
+    body = (text or "").strip() or format_last_fix_status(root)
+    out = f"{header}\n\n{body}"
+    if len(out) > 3900:
+        out = out[:3850] + "\n…"
+    return out
+
+
+def notify_apply_result(
+    project_root: Path,
+    *,
+    text: str,
+    ok: bool,
+    exit_code: int | None = None,
+    run_id: str = "",
+    modified: list[Any] | None = None,
+    token: str | None = None,
+    chat_ids: str | None = None,
+    allow_any: bool | None = None,
+    api: Callable[..., Any] | None = None,
+    force: bool = False,
+) -> dict[str, Any]:
+    """Push apply-approved outcome to allowlisted chats (best-effort; never raises).
+
+    Same gate as Approvals push (``EURIKA_TELEGRAM_NOTIFY_APPROVALS``). Does **not**
+    apply patches — only reports verify/modified after HITL apply elsewhere.
+    """
+    root = Path(project_root).resolve()
+    base: dict[str, Any] = {
+        "ok": True,
+        "sent": 0,
+        "skipped": None,
+        "chat_ids": [],
+    }
+    try:
+        if not force and not _notify_enabled():
+            return {**base, "skipped": "notify_disabled"}
+        tok = _env_token(token)
+        if not tok:
+            return {**base, "skipped": "no_token"}
+        allowed = parse_allowed_chat_ids(chat_ids, allow_any=allow_any)
+        if allowed is None:
+            return {**base, "skipped": "allow_any_no_targets"}
+        if not allowed:
+            return {**base, "skipped": "empty_allowlist"}
+
+        mods = list(modified or [])
+        rid = str(run_id or "").strip()
+        if not rid:
+            try:
+                report = json.loads(
+                    (root / "eurika_fix_report.json").read_text(encoding="utf-8")
+                )
+                if isinstance(report, dict):
+                    rid = str(report.get("run_id") or "")
+                    if not mods and isinstance(report.get("modified"), list):
+                        mods = list(report.get("modified") or [])
+            except Exception:
+                rid = ""
+        fp = _apply_fingerprint(
+            run_id=rid or "unknown",
+            ok=bool(ok),
+            modified=mods,
+            exit_code=exit_code,
+        )
+        stamp_path = root / NOTIFY_STAMP_REL
+        if not force and stamp_path.is_file():
+            try:
+                prev = json.loads(stamp_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                prev = {}
+            if isinstance(prev, dict) and prev.get("apply_fingerprint") == fp:
+                return {**base, "skipped": "already_notified", "fingerprint": fp}
+
+        msg = format_apply_notify_message(root, text=text, ok=bool(ok))
+        api_fn = api or telegram_api
+        sent: list[int] = []
+        errors: list[str] = []
+        for chat_id in sorted(allowed):
+            try:
+                api_fn(tok, "sendMessage", {"chat_id": chat_id, "text": msg})
+                sent.append(chat_id)
+            except Exception as exc:
+                errors.append(f"{chat_id}: {exc}")
+        try:
+            stamp_path.parent.mkdir(parents=True, exist_ok=True)
+            prev_blob: dict[str, Any] = {}
+            if stamp_path.is_file():
+                try:
+                    loaded = json.loads(stamp_path.read_text(encoding="utf-8"))
+                    if isinstance(loaded, dict):
+                        prev_blob = loaded
+                except (OSError, json.JSONDecodeError):
+                    prev_blob = {}
+            prev_blob.update(
+                {
+                    "apply_fingerprint": fp,
+                    "apply_sent_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "apply_sent": sent,
+                    "apply_ok": bool(ok),
+                }
+            )
+            stamp_path.write_text(
+                json.dumps(prev_blob, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+        return {
+            "ok": not errors or bool(sent),
+            "sent": len(sent),
+            "chat_ids": sent,
+            "errors": errors,
+            "fingerprint": fp,
+            "skipped": None if sent else ("send_failed" if errors else "no_sent"),
+            "text": msg[:200],
+        }
+    except Exception as exc:
+        return {**base, "ok": False, "skipped": "error", "error": str(exc)}
+
+
+def extract_callback_update(
+    update: dict[str, Any],
+) -> tuple[int, int, str, str] | None:
+    """Return (chat_id, update_id, callback_data, callback_query_id) or None."""
+    cq = update.get("callback_query")
+    if not isinstance(cq, dict):
+        return None
+    data = str(cq.get("data") or "").strip()
+    cq_id = str(cq.get("id") or "").strip()
+    msg = cq.get("message")
+    chat: dict[str, Any] | None = None
+    if isinstance(msg, dict) and isinstance(msg.get("chat"), dict):
+        chat = msg.get("chat")  # type: ignore[assignment]
+    else:
+        frm = cq.get("from")
+        if isinstance(frm, dict) and frm.get("id") is not None:
+            chat = {"id": frm.get("id")}
+    if not isinstance(chat, dict):
+        return None
+    try:
+        chat_id = int(chat.get("id"))
+        update_id = int(update.get("update_id") or 0)
+    except (TypeError, ValueError):
+        return None
+    if not data or not cq_id:
+        return None
+    return chat_id, update_id, data, cq_id
 
 
 def handle_text_message(
@@ -382,6 +854,16 @@ def handle_text_message(
         cmd = raw.split()[0].lower().split("@", 1)[0]
         if cmd == "/status":
             return format_telegram_bot_status(root)
+        if cmd == "/approvals":
+            return format_approvals_status(root)
+        if cmd == "/approve":
+            return handle_approvals_decision(
+                root, decision="approve", approved_by=f"telegram:{chat_id}"
+            )
+        if cmd == "/reject":
+            return handle_approvals_decision(
+                root, decision="reject", approved_by=f"telegram:{chat_id}"
+            )
     slash = telegram_slash_command(text)
     if slash is not None:
         return slash
@@ -413,14 +895,17 @@ def process_updates(
     allowed_chat_ids: set[int] | None,
     chat_send: ChatSendFn | None = None,
     send_message: Callable[[str, int, str], Any] | None = None,
+    api: Callable[..., Any] | None = None,
 ) -> int:
     """Handle a batch of updates; return highest update_id processed (0 if none)."""
     max_id = 0
+    api_fn = api or telegram_api
     sender = send_message or (
-        lambda tok, cid, text: telegram_api(
+        lambda tok, cid, text: api_fn(
             tok, "sendMessage", {"chat_id": cid, "text": text}
         )
     )
+    root = Path(project_root).resolve()
     for update in updates:
         if not isinstance(update, dict):
             continue
@@ -430,12 +915,39 @@ def process_updates(
             uid = 0
         if uid > max_id:
             max_id = uid
+
+        cb = extract_callback_update(update)
+        if cb is not None:
+            chat_id, _uid, data, cq_id = cb
+            if allowed_chat_ids is not None and chat_id not in allowed_chat_ids:
+                reply = "Этот chat_id не в allowlist (EURIKA_TELEGRAM_CHAT_IDS)."
+            elif data == "eurika:approve":
+                reply = handle_approvals_decision(
+                    root, decision="approve", approved_by=f"telegram:{chat_id}"
+                )
+            elif data == "eurika:reject":
+                reply = handle_approvals_decision(
+                    root, decision="reject", approved_by=f"telegram:{chat_id}"
+                )
+            else:
+                reply = f"Неизвестная кнопка `{data}`."
+            try:
+                api_fn(
+                    token,
+                    "answerCallbackQuery",
+                    {"callback_query_id": cq_id, "text": reply[:180]},
+                )
+            except Exception:
+                pass
+            sender(token, chat_id, reply)
+            continue
+
         extracted = extract_text_update(update)
         if extracted is None:
             continue
         chat_id, _upd, text = extracted
         reply = handle_text_message(
-            project_root,
+            root,
             chat_id,
             text,
             allowed_chat_ids=allowed_chat_ids,
@@ -484,48 +996,75 @@ def run_telegram_bot(
     root = Path(project_root).resolve()
     current_offset = int(offset)
     processed = 0
-    while True:
+    stopping = {"flag": False}
+
+    def _shutdown_cursor(_signum=None, _frame=None) -> None:
+        stopping["flag"] = True
         try:
-            result = api_fn(
-                tok,
-                "getUpdates",
-                {
-                    "timeout": int(poll_timeout),
+            from eurika.agent.cursor_bridge_gc import shutdown_cursor_sdk
+
+            shutdown_cursor_sdk()
+        except Exception:
+            pass
+
+    prev_term = signal.signal(signal.SIGTERM, _shutdown_cursor)
+    prev_int = signal.signal(signal.SIGINT, _shutdown_cursor)
+    try:
+        while True:
+            if stopping["flag"]:
+                return {
+                    "ok": True,
                     "offset": current_offset,
-                    "allowed_updates": json.dumps(["message"]),
-                },
-                timeout=float(poll_timeout) + 10.0,
-            )
-            updates = result if isinstance(result, list) else result.get("result") or []
-            if not isinstance(updates, list):
-                updates = []
-            max_id = process_updates(
-                root,
-                updates,
-                token=tok,
-                allowed_chat_ids=allowed,
-                chat_send=chat_send,
-                send_message=lambda _t, cid, text: api_fn(
-                    tok, "sendMessage", {"chat_id": cid, "text": text}
-                ),
-            )
-            if max_id:
-                current_offset = max_id + 1
-                processed += 1
-        except Exception as exc:
+                    "processed_batches": processed,
+                    "return_code": 0,
+                    "stopped": True,
+                }
+            try:
+                result = api_fn(
+                    tok,
+                    "getUpdates",
+                    {
+                        "timeout": int(poll_timeout),
+                        "offset": current_offset,
+                        "allowed_updates": json.dumps(["message", "callback_query"]),
+                    },
+                    timeout=float(poll_timeout) + 10.0,
+                )
+                updates = result if isinstance(result, list) else result.get("result") or []
+                if not isinstance(updates, list):
+                    updates = []
+                max_id = process_updates(
+                    root,
+                    updates,
+                    token=tok,
+                    allowed_chat_ids=allowed,
+                    chat_send=chat_send,
+                    send_message=lambda _t, cid, text: api_fn(
+                        tok, "sendMessage", {"chat_id": cid, "text": text}
+                    ),
+                    api=api_fn,
+                )
+                if max_id:
+                    current_offset = max_id + 1
+                    processed += 1
+            except Exception as exc:
+                if once:
+                    return {
+                        "ok": False,
+                        "error": str(exc),
+                        "offset": current_offset,
+                        "return_code": 1,
+                    }
+                time.sleep(sleep_on_error)
+                continue
             if once:
                 return {
-                    "ok": False,
-                    "error": str(exc),
+                    "ok": True,
                     "offset": current_offset,
-                    "return_code": 1,
+                    "processed_batches": processed,
+                    "return_code": 0,
                 }
-            time.sleep(sleep_on_error)
-            continue
-        if once:
-            return {
-                "ok": True,
-                "offset": current_offset,
-                "processed_batches": processed,
-                "return_code": 0,
-            }
+    finally:
+        signal.signal(signal.SIGTERM, prev_term)
+        signal.signal(signal.SIGINT, prev_int)
+        _shutdown_cursor()

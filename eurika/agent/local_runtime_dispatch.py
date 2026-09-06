@@ -163,4 +163,63 @@ def dispatch(
         if not isinstance(limit, int) or isinstance(limit, bool) or limit < 0:
             raise RpcError(ERR_INVALID_PARAMS, "limit must be a non-negative integer")
         return live_recent(runtime.workspace_root, after_offset=after, limit=limit)
+    if method == "idle-self-dev/prefs":
+        from eurika.orchestration.idle_self_dev import get_idle_prefs, set_idle_enabled
+
+        if "enabled" in params or "idle_self_dev" in params:
+            enabled = params.get("enabled", params.get("idle_self_dev"))
+            if not isinstance(enabled, bool):
+                raise RpcError(ERR_INVALID_PARAMS, "enabled must be a boolean")
+            return set_idle_enabled(enabled)
+        return get_idle_prefs()
+    if method == "idle-self-dev/status":
+        from eurika.orchestration.idle_self_dev import get_idle_prefs, status as idle_status
+
+        prefs = get_idle_prefs()
+        market_root = None
+        try:
+            from eurika.ml.root import resolve_market_root
+
+            market_root = str(resolve_market_root())
+        except Exception:
+            market_root = None
+        out = idle_status(
+            runtime.workspace_root,
+            market_llm_enabled=bool(prefs.get("market_llm_learn")),
+            portfolio_enabled=bool(prefs.get("market_portfolio_agent")),
+            market_root=market_root,
+        )
+        out["prefs"] = prefs
+        return out
+    if method == "idle-self-dev/run":
+        from eurika.orchestration.idle_self_dev import get_idle_prefs, maybe_run
+
+        prefs = get_idle_prefs()
+        force = bool(params.get("force", False))
+        market_llm = params.get("marketLlmEnabled")
+        if market_llm is None:
+            market_llm = prefs.get("market_llm_learn", False)
+        portfolio = params.get("portfolioEnabled")
+        if portfolio is None:
+            portfolio = prefs.get("market_portfolio_agent", False)
+        if not isinstance(market_llm, bool) or not isinstance(portfolio, bool):
+            raise RpcError(
+                ERR_INVALID_PARAMS,
+                "marketLlmEnabled and portfolioEnabled must be booleans when set",
+            )
+        market_root = None
+        try:
+            from eurika.ml.root import resolve_market_root
+
+            market_root = str(resolve_market_root())
+        except Exception:
+            market_root = None
+        return maybe_run(
+            runtime.workspace_root,
+            force=force,
+            market_llm_enabled=bool(market_llm),
+            portfolio_enabled=bool(portfolio),
+            market_root=market_root,
+            keep_sandbox=bool(params.get("keepSandbox", False)),
+        )
     raise RpcError(ERR_METHOD_NOT_FOUND, f"Method not found: {method}")

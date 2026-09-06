@@ -276,6 +276,9 @@ class MainWindow(
             self.learn_scan_check.toggled.connect(self._sync_preview)
             self.learn_build_patterns_check.toggled.connect(self._sync_preview)
             self.learn_limit_spin.valueChanged.connect(self._sync_preview)
+        if getattr(self, "bug_hunt_sandbox_check", None):
+            self.bug_hunt_sandbox_check.toggled.connect(self._sync_preview)
+            self.bug_hunt_web_check.toggled.connect(self._sync_preview)
         self.run_btn.clicked.connect(lambda: command_handlers.run_command(self))
         self.stop_btn.clicked.connect(self._command_service.stop)
         self.ruff_btn.clicked.connect(lambda: command_handlers.run_ruff(self))
@@ -306,6 +309,10 @@ class MainWindow(
             )
             self.chat_focus_approvals_btn.clicked.connect(
                 lambda: chat_handlers.focus_approvals_mode(self)
+            )
+        if hasattr(self, "idle_self_dev_check"):
+            self.idle_self_dev_check.toggled.connect(
+                lambda _c: chat_handlers.on_idle_self_dev_toggled(self)
             )
         self.chat_clear_btn.clicked.connect(lambda: chat_handlers.clear_chat_session(self))
         self.chat_transcript.anchorClicked.connect(
@@ -595,10 +602,26 @@ class MainWindow(
                 parts.extend(['--limit-repos', str(lim.value())])
             self.preview_label.setText(' '.join(parts))
             self.module_edit.setEnabled(False)
+            self._sync_learn_visibility()
+            return
+        if cmd == 'bug-hunt':
+            parts.append('--propose')
+            sandbox_w = getattr(self, 'bug_hunt_sandbox_check', None)
+            if sandbox_w is None or sandbox_w.isChecked():
+                parts.append('--sandbox')
+            else:
+                parts.append('--no-sandbox')
+            web_w = getattr(self, 'bug_hunt_web_check', None)
+            if web_w is not None and web_w.isChecked():
+                parts.append('--web')
+            self.preview_label.setText(' '.join(parts))
+            self.module_edit.setEnabled(False)
+            self._sync_learn_visibility()
             return
         if cmd in {'clean-imports', 'self-check'}:
             self.preview_label.setText(' '.join(parts))
             self.module_edit.setEnabled(False)
+            self._sync_learn_visibility()
             return
         if cmd in {'doctor', 'fix', 'cycle', 'explain'}:
             parts.extend(['--window', str(self.window_spin.value())])
@@ -624,12 +647,14 @@ class MainWindow(
         self._sync_learn_visibility()
 
     def _sync_learn_visibility(self) -> None:
-        """Show/hide learn-github options based on command."""
+        """Show/hide learn-github / bug-hunt option groups based on command."""
         cmd = self._get_current_command()
-        show_learn = cmd == "learn-github"
         learn_grp = getattr(self, "learn_group", None)
         if learn_grp is not None:
-            learn_grp.setVisible(show_learn)
+            learn_grp.setVisible(cmd == "learn-github")
+        bug_grp = getattr(self, "bug_hunt_group", None)
+        if bug_grp is not None:
+            bug_grp.setVisible(cmd == "bug-hunt")
 
     def _resolve_ollama_model_for_command(self) -> str:
         """Model for doctor/fix/cycle: prefer Installed combo (Models tab), else Chat model settings."""
@@ -680,6 +705,12 @@ class MainWindow(
 
         market_llm_learn.shutdown(self)
         market_portfolio_agent.shutdown(self)
+        from .handlers import idle_self_dev as idle_self_dev_handlers
+
+        idle_self_dev_handlers.shutdown(self)
+        idle_timer = getattr(self, "_idle_self_dev_timer", None)
+        if idle_timer is not None and idle_timer.isActive():
+            idle_timer.stop()
         # Unblock ChatWorker waiting on local-agent /chat before joining QThreads.
         gateway = getattr(self, "_gateway", None)
         if gateway is not None:
@@ -700,6 +731,9 @@ class MainWindow(
         portfolio_worker = getattr(self, "_market_portfolio_worker", None)
         self._force_stop_qthread(portfolio_worker)
         self._market_portfolio_worker = None
+        idle_worker = getattr(self, "_idle_self_dev_worker", None)
+        self._force_stop_qthread(idle_worker)
+        self._idle_self_dev_worker = None
         self._command_service.shutdown(timeout_ms=400)
         if self._terminal_process is not None:
             ollama_handlers.shutdown_qprocess(self._terminal_process, timeout_ms=400)
@@ -710,4 +744,10 @@ class MainWindow(
                 self._graph_web_view.setHtml('<!DOCTYPE html><html><body></body></html>', 'about:blank')
             except Exception:
                 pass
+        try:
+            from eurika.agent.cursor_bridge_gc import shutdown_cursor_sdk
+
+            shutdown_cursor_sdk()
+        except Exception:
+            pass
         super().closeEvent(event)

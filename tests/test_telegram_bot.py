@@ -258,3 +258,241 @@ def test_run_telegram_bot_requires_token(tmp_path: Path, monkeypatch) -> None:
     out = run_telegram_bot(tmp_path, once=True, token="")
     assert out.get("ok") is False
     assert "TOKEN" in (out.get("error") or "")
+
+
+def test_format_approvals_notify_message() -> None:
+    from eurika.integrations.telegram_bot import format_approvals_notify_message
+
+    text = format_approvals_notify_message(
+        Path("/tmp/demo"),
+        [
+            {
+                "kind": "remove_unused_import",
+                "target_file": "eurika/polygon/imports_ok.py",
+                "team_decision": "pending",
+            }
+        ],
+        patch_plan={"source": "prove_cycle_propose:imports", "summary": "C.14"},
+    )
+    assert "Approvals" in text
+    assert "imports_ok.py" in text
+    assert "prove_cycle_propose:imports" in text
+    assert "/approve" in text
+    assert "apply-approved" in text
+
+
+def test_notify_approvals_pending_sends_and_dedupes(tmp_path: Path, monkeypatch) -> None:
+    from eurika.integrations.telegram_bot import notify_approvals_pending
+
+    monkeypatch.setenv("EURIKA_TELEGRAM_BOT_TOKEN", "tok")
+    monkeypatch.setenv("EURIKA_TELEGRAM_CHAT_IDS", "11,22")
+    monkeypatch.delenv("EURIKA_TELEGRAM_ALLOW_ANY", raising=False)
+    monkeypatch.delenv("EURIKA_TELEGRAM_NOTIFY_APPROVALS", raising=False)
+
+    sent: list[tuple[int, str]] = []
+
+    def fake_api(_token: str, method: str, params=None, **_k):
+        assert method == "sendMessage"
+        assert params.get("reply_markup")
+        sent.append((int(params["chat_id"]), str(params["text"])))
+        return {"message_id": 1}
+
+    ops = [
+        {
+            "kind": "remove_unused_import",
+            "target_file": "eurika/polygon/imports_ok.py",
+            "team_decision": "pending",
+        }
+    ]
+    out = notify_approvals_pending(
+        tmp_path,
+        operations=ops,
+        patch_plan={"source": "idle_self_dev"},
+        created_at="2026-09-06T00:00:00Z",
+        api=fake_api,
+    )
+    assert out.get("skipped") is None
+    assert out.get("sent") == 2
+    assert {c for c, _ in sent} == {11, 22}
+    assert "Approvals" in sent[0][1]
+
+    again = notify_approvals_pending(
+        tmp_path,
+        operations=ops,
+        patch_plan={"source": "idle_self_dev"},
+        created_at="2026-09-06T00:00:00Z",
+        api=fake_api,
+    )
+    assert again.get("skipped") == "already_notified"
+    assert again.get("sent") == 0
+
+
+def test_save_pending_plan_notifies_telegram(tmp_path: Path, monkeypatch) -> None:
+    from eurika.orchestration.team_mode import save_pending_plan
+
+    calls: list[dict] = []
+
+    def fake_notify(root, **kwargs):
+        calls.append({"root": str(root), **kwargs})
+        return {"ok": True, "sent": 1, "skipped": None}
+
+    monkeypatch.setattr(
+        "eurika.integrations.telegram_bot.notify_approvals_pending",
+        fake_notify,
+    )
+    save_pending_plan(
+        tmp_path,
+        {"source": "unit-test", "summary": "one op"},
+        [{"kind": "agent_edit", "target_file": "a.py"}],
+        [],
+    )
+    assert len(calls) == 1
+    assert calls[0]["operations"][0]["kind"] == "agent_edit"
+
+
+def test_decide_all_pending_approve_reject(tmp_path: Path) -> None:
+    from eurika.orchestration.team_mode import (
+        decide_all_pending,
+        load_pending_plan,
+        save_pending_plan,
+    )
+
+    save_pending_plan(
+        tmp_path,
+        {"source": "t", "summary": "1"},
+        [
+            {
+                "kind": "remove_unused_import",
+                "target_file": "a.py",
+                "critic_verdict": "allow",
+            }
+        ],
+        [],
+        notify_telegram=False,
+    )
+    out = decide_all_pending(tmp_path, decision="approve", approved_by="tg")
+    assert out["ok"] is True and out["decision"] == "approve"
+    plan = load_pending_plan(tmp_path)
+    assert plan["operations"][0]["team_decision"] == "approve"
+    assert plan["operations"][0]["approved_by"] == "tg"
+    out2 = decide_all_pending(tmp_path, decision="reject")
+    assert out2["ok"] is True
+    plan2 = load_pending_plan(tmp_path)
+    assert plan2["operations"][0]["team_decision"] == "reject"
+
+
+def test_telegram_approve_slash_and_callback(tmp_path: Path) -> None:
+    from eurika.integrations.telegram_bot import (
+        handle_text_message,
+        process_updates,
+    )
+    from eurika.orchestration.team_mode import load_pending_plan, save_pending_plan
+
+    save_pending_plan(
+        tmp_path,
+        {"source": "idle", "summary": "op"},
+        [
+            {
+                "kind": "extract_block_to_helper",
+                "target_file": "eurika/polygon/deep_nesting.py",
+                "critic_verdict": "allow",
+            }
+        ],
+        [],
+        notify_telegram=False,
+    )
+    reply = handle_text_message(
+        tmp_path, 42, "/approve", allowed_chat_ids={42}
+    )
+    assert "approve" in reply.lower()
+    assert "apply-approved" in reply
+    plan = load_pending_plan(tmp_path)
+    assert plan["operations"][0]["team_decision"] == "approve"
+
+    save_pending_plan(
+        tmp_path,
+        {"source": "idle", "summary": "op"},
+        [
+            {
+                "kind": "remove_unused_import",
+                "target_file": "a.py",
+                "critic_verdict": "allow",
+            }
+        ],
+        [],
+        notify_telegram=False,
+    )
+    answered: list[str] = []
+    sent: list[str] = []
+
+    def fake_api(_tok: str, method: str, params=None, **_k):
+        if method == "answerCallbackQuery":
+            answered.append(str(params.get("text") or ""))
+            return {}
+        if method == "sendMessage":
+            sent.append(str(params.get("text") or ""))
+            return {"message_id": 1}
+        return {}
+
+    process_updates(
+        tmp_path,
+        [
+            {
+                "update_id": 9,
+                "callback_query": {
+                    "id": "cq1",
+                    "data": "eurika:reject",
+                    "message": {"chat": {"id": 42}},
+                },
+            }
+        ],
+        token="tok",
+        allowed_chat_ids={42},
+        api=fake_api,
+    )
+    assert answered and "reject" in answered[0].lower()
+    assert sent and "reject" in sent[0].lower()
+    plan3 = load_pending_plan(tmp_path)
+    assert plan3["operations"][0]["team_decision"] == "reject"
+
+
+def test_notify_apply_result_sends_and_dedupes(tmp_path: Path, monkeypatch) -> None:
+    from eurika.integrations.telegram_bot import notify_apply_result
+
+    monkeypatch.setenv("EURIKA_TELEGRAM_BOT_TOKEN", "tok")
+    monkeypatch.setenv("EURIKA_TELEGRAM_CHAT_IDS", "11")
+    monkeypatch.delenv("EURIKA_TELEGRAM_ALLOW_ANY", raising=False)
+    monkeypatch.delenv("EURIKA_TELEGRAM_NOTIFY_APPROVALS", raising=False)
+
+    sent: list[str] = []
+
+    def fake_api(_token: str, method: str, params=None, **_k):
+        assert method == "sendMessage"
+        sent.append(str(params["text"]))
+        return {"message_id": 1}
+
+    out = notify_apply_result(
+        tmp_path,
+        text="apply-approved (exit 0)\n\nverify ok",
+        ok=True,
+        exit_code=0,
+        run_id="run_a",
+        modified=["eurika/polygon/imports_ok.py"],
+        api=fake_api,
+    )
+    assert out.get("skipped") is None
+    assert out.get("sent") == 1
+    assert "apply-approved" in sent[0]
+    assert "imports_ok.py" in sent[0] or "verify" in sent[0].lower()
+
+    again = notify_apply_result(
+        tmp_path,
+        text="apply-approved (exit 0)\n\nverify ok",
+        ok=True,
+        exit_code=0,
+        run_id="run_a",
+        modified=["eurika/polygon/imports_ok.py"],
+        api=fake_api,
+    )
+    assert again.get("skipped") == "already_notified"
+    assert again.get("sent") == 0

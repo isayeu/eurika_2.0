@@ -89,6 +89,27 @@ def test_build_cli_args_learn_github() -> None:
     assert "2" in args
 
 
+def test_build_cli_args_bug_hunt() -> None:
+    args = build_cli_args(
+        command="bug-hunt",
+        project_root=".",
+        bug_hunt_sandbox=True,
+        bug_hunt_web=True,
+    )
+    assert args[0] == "bug-hunt"
+    assert "--propose" in args
+    assert "--sandbox" in args
+    assert "--web" in args
+    args2 = build_cli_args(
+        command="bug-hunt",
+        project_root="/proj",
+        bug_hunt_sandbox=False,
+        bug_hunt_web=False,
+    )
+    assert "--no-sandbox" in args2
+    assert "--web" not in args2
+
+
 def test_doctor_no_llm_runs_from_ui_args() -> None:
     """Verify doctor --no-llm completes when invoked as the Qt UI would."""
     args = build_cli_args(

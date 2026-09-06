@@ -65,7 +65,7 @@ def build_workspace_rail(main: MainWindow) -> tuple[QWidget, QPushButton]:
     tree.setColumnWidth(1, 28)
     tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
     tree.customContextMenuRequested.connect(
-        lambda pos: _on_chat_context_menu(main, pos)
+        lambda pos: _on_rail_context_menu(main, pos)
     )
     tree.itemClicked.connect(lambda item, col: _on_workspace_item(main, item, col))
     layout.addWidget(tree, 1)
@@ -230,13 +230,73 @@ def pick_workspace_root_for_new_chat(main: MainWindow) -> str:
     return str(selected or "").strip()
 
 
-def _on_chat_context_menu(main: MainWindow, pos: QPoint) -> None:
+def _on_rail_context_menu(main: MainWindow, pos: QPoint) -> None:
     tree = getattr(main, "workspace_tree", None)
     if tree is None:
         return
     item = tree.itemAt(pos)
-    if item is None or str(item.data(0, _ROLE_KIND) or "") != "chat":
+    if item is None:
         return
+    kind = str(item.data(0, _ROLE_KIND) or "")
+    if kind == "workspace":
+        _workspace_context_actions(main, tree, item, pos)
+        return
+    if kind == "chat":
+        _chat_context_actions(main, tree, item, pos)
+
+
+def _workspace_context_actions(
+    main: MainWindow, tree: QTreeWidget, item: QTreeWidgetItem, pos: QPoint
+) -> None:
+    path = str(item.data(0, _ROLE_PATH) or "")
+    if not path:
+        return
+    menu = QMenu(tree)
+    delete_act = menu.addAction("Удалить воркспейс из списка")
+    chosen = menu.exec(tree.viewport().mapToGlobal(pos))
+    if chosen != delete_act:
+        return
+    label = item.text(0) or workspace_display_name(path)
+    confirm = QMessageBox.question(
+        main,
+        "Удалить воркспейс",
+        (
+            f"Убрать «{label}» из списка воркспейсов?\n\n"
+            f"{path}\n\n"
+            "Каталог и чаты на диске не удаляются — только запись в списке."
+        ),
+        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        QMessageBox.StandardButton.No,
+    )
+    if confirm != QMessageBox.StandardButton.Yes:
+        return
+    remove_workspace_from_rail(main, path)
+
+
+def remove_workspace_from_rail(main: MainWindow, path: str) -> None:
+    """Drop workspace from prefs list; switch root if it was active."""
+    if not hasattr(main, "_settings"):
+        return
+    resolved = str(Path(path).expanduser().resolve()) if path else ""
+    if not resolved:
+        return
+    current = ""
+    if hasattr(main, "root_edit"):
+        current = str(main.root_edit.text() or "").strip()
+    current_resolved = (
+        str(Path(current).expanduser().resolve()) if current else ""
+    )
+    remaining = main._settings.forget_workspace_root(resolved)
+    if current_resolved == resolved and hasattr(main, "_set_project_root"):
+        # Empty string clears active root without re-adding to the rail.
+        main._set_project_root(remaining[0] if remaining else "")
+        return
+    refresh_workspace_rail(main)
+
+
+def _chat_context_actions(
+    main: MainWindow, tree: QTreeWidget, item: QTreeWidgetItem, pos: QPoint
+) -> None:
     path = str(item.data(0, _ROLE_PATH) or "")
     chat_id = str(item.data(0, _ROLE_CHAT) or "")
     if not path or not chat_id:

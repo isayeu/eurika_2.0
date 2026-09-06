@@ -84,9 +84,19 @@ def refresh_chat_goal_view(main: MainWindow) -> None:
     plan_stale = bool(pending_plan) and not plan_valid
     if plan_valid:
         main._pending_plan_token = str(pending_plan.get("token") or "")
+    project_root = ""
+    try:
+        project_root = str(main._settings.get_project_root() or "").strip()
+    except Exception:
+        project_root = ""
+    if not project_root and hasattr(main, "root_edit"):
+        project_root = (main.root_edit.text() or "").strip()
     main.chat_goal_view.setPlainText(
         format_agent_context_panel(
-            state_dict, plan_valid=plan_valid, plan_stale=plan_stale
+            state_dict,
+            plan_valid=plan_valid,
+            plan_stale=plan_stale,
+            project_root=project_root or None,
         )
     )
     raw_pending_git = state_dict.get("pending_git_commit")

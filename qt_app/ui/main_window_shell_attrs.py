@@ -42,6 +42,9 @@ class CommandsTabAttrs:
     learn_build_patterns_check: QCheckBox
     learn_limit_label: QLabel
     learn_limit_spin: QSpinBox
+    bug_hunt_group: QGroupBox
+    bug_hunt_sandbox_check: QCheckBox
+    bug_hunt_web_check: QCheckBox
     preview_label: QLabel
     run_btn: QPushButton
     stop_btn: QPushButton

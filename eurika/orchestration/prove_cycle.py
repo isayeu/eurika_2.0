@@ -4,9 +4,9 @@ Proves that Eurika's execution stack works end-to-end on a synthetic drill file
 under `.eurika/prove_cycle/`. Use before trusting full `eurika fix` on production code.
 
 C.14 HITL mode (`propose=True` / CLI `--propose [--drill …] [--sandbox]`):
-seed a polygon drill (`imports`, `extractable_block`, `long_function`, or
-`llm_extract`), optionally apply+smoke-verify in `.eurika/sandbox`, park one
-op in Approvals, do not apply on main. Human approves → `eurika fix . --apply-approved`.
+seed a polygon drill (`imports`, `extractable_block`, `long_function`,
+`deep_nesting`, or `llm_extract`), optionally apply+smoke-verify in `.eurika/sandbox`,
+park one op in Approvals, do not apply on main. Human approves → `eurika fix . --apply-approved`.
 """
 
 from __future__ import annotations
@@ -30,8 +30,15 @@ DRILL_REL_PATH = ".eurika/prove_cycle/drill_unused.py"
 POLYGON_IMPORTS_REL = "eurika/polygon/imports_ok.py"
 POLYGON_EXTRACTABLE_REL = "eurika/polygon/extractable_block.py"
 POLYGON_LONG_FUNCTION_REL = "eurika/polygon/long_function.py"
+POLYGON_DEEP_NESTING_REL = "eurika/polygon/deep_nesting.py"
 POLYGON_LLM_EXTRACT_REL = "eurika/polygon/refactor_code_smell_drill.py"
-PROPOSE_DRILLS = ("imports", "extractable_block", "long_function", "llm_extract")
+PROPOSE_DRILLS = (
+    "imports",
+    "extractable_block",
+    "long_function",
+    "deep_nesting",
+    "llm_extract",
+)
 DEFAULT_PROPOSE_DRILL = "imports"
 
 _DRILL_SEED = '''import os
@@ -147,6 +154,47 @@ def polygon_long_function() -> int:
 _POLYGON_LONG_FUNCTION_DESCRIPTION = (
     "C.14 polygon propose: extract_nested_function on "
     "eurika/polygon/long_function.py"
+)
+
+_POLYGON_DEEP_NESTING_SEED = '''"""DRILL_DEEP_NESTING: вложенные if с return в каждой ветке.
+
+- polygon_deep_nesting: return в каждой ветке — suggest_extract_block пропускает.
+- polygon_deep_nesting_extractable: внутренний блок 5+ строк без return — extractable.
+"""
+
+
+def polygon_deep_nesting(x: int) -> str:
+    """Вложенные if с return в каждой ветке."""
+    if x > 0:
+        if x > 1:
+            if x > 2:
+                if x > 3:
+                    return 'deep'
+                return 'mid'
+            return 'shallow'
+        return 'tiny'
+    return 'zero'
+
+
+def polygon_deep_nesting_extractable(x: int) -> int:
+    """Вложенные if с extractable блоком (5+ строк, без return)."""
+    result = 0
+    if x > 0:
+        if x > 1:
+            if x > 2:
+                if x > 3:
+                    if x > 4:
+                        a = x + 1
+                        b = a * 2
+                        c = b + x
+                        d = c * 2
+                        result = d
+    return result
+'''
+
+_POLYGON_DEEP_NESTING_DESCRIPTION = (
+    "C.14 polygon propose: extract_block_to_helper on "
+    "eurika/polygon/deep_nesting.py (polygon_deep_nesting_extractable)"
 )
 
 _POLYGON_LLM_EXTRACT_SEED = '''"""DRILL_REFACTOR_CODE_SMELL: long_function без extractable block/nested (REFACTOR_CODE_SMELL_PLAN Phase 2).
@@ -313,6 +361,10 @@ def normalize_propose_drill(drill: str | None) -> str:
         "extract_nested": "long_function",
         "extract_nested_function": "long_function",
         "third": "long_function",
+        "deep_nesting": "deep_nesting",
+        "deep": "deep_nesting",
+        "nesting": "deep_nesting",
+        "fifth": "deep_nesting",
         "llm_extract": "llm_extract",
         "llm": "llm_extract",
         "llm_extract_block": "llm_extract",
@@ -415,6 +467,15 @@ def seed_polygon_long_function(root: Path) -> Path:
     return target
 
 
+def seed_polygon_deep_nesting(root: Path) -> Path:
+    """Reseed deep_nesting drill (inline extractable block, helper not yet extracted)."""
+    root = root.resolve()
+    target = root / POLYGON_DEEP_NESTING_REL
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(_POLYGON_DEEP_NESTING_SEED, encoding="utf-8")
+    return target
+
+
 def seed_polygon_llm_extract(root: Path) -> Path:
     """Reseed refactor_code_smell_drill for llm_extract_block propose."""
     root = root.resolve()
@@ -430,6 +491,8 @@ def seed_polygon_for_drill(root: Path, drill_id: str) -> Path:
         return seed_polygon_extractable_block(root)
     if drill_id == "long_function":
         return seed_polygon_long_function(root)
+    if drill_id == "deep_nesting":
+        return seed_polygon_deep_nesting(root)
     if drill_id == "llm_extract":
         return seed_polygon_llm_extract(root)
     return seed_polygon_imports_ok(root)
@@ -462,6 +525,8 @@ def build_polygon_propose_operation(
         return _build_extractable_propose_operation(root)
     if drill_id == "long_function":
         return _build_long_function_propose_operation(root)
+    if drill_id == "deep_nesting":
+        return _build_deep_nesting_propose_operation(root)
     if drill_id == "llm_extract":
         return _build_llm_extract_propose_operation(root, require_llm=require_llm)
     seed_polygon_imports_ok(root)
@@ -539,6 +604,38 @@ def _build_long_function_propose_operation(root: Path) -> OperationRecord:
     }
 
 
+def _build_deep_nesting_propose_operation(root: Path) -> OperationRecord:
+    from eurika.refactor.extract_function import suggest_extract_block
+
+    seed_polygon_deep_nesting(root)
+    target = root.resolve() / POLYGON_DEEP_NESTING_REL
+    suggestion = suggest_extract_block(
+        target, "polygon_deep_nesting_extractable", min_lines=5
+    )
+    if suggestion is None:
+        raise RuntimeError(
+            "suggest_extract_block found no extractable block in "
+            f"{POLYGON_DEEP_NESTING_REL} after seed"
+        )
+    helper_name, block_line, _line_count, extra = suggestion
+    return {
+        "target_file": POLYGON_DEEP_NESTING_REL,
+        "kind": "extract_block_to_helper",
+        "smell_type": "deep_nesting",
+        "params": {
+            "location": "polygon_deep_nesting_extractable",
+            "block_start_line": int(block_line),
+            "helper_name": str(helper_name),
+            "extra_params": list(extra) if extra else [],
+        },
+        "description": _POLYGON_DEEP_NESTING_DESCRIPTION,
+        "approval_state": "pending",
+        "critic_verdict": "allow",
+        "decision_source": "prove_cycle_propose",
+        "team_decision": "pending",
+    }
+
+
 def _build_llm_extract_propose_operation(
     root: Path,
     *,
@@ -601,6 +698,8 @@ def _propose_drill_labels(drill_id: str) -> tuple[str, str]:
         return "polygon_extractable_block", POLYGON_EXTRACTABLE_REL
     if drill_id == "long_function":
         return "polygon_long_function", POLYGON_LONG_FUNCTION_REL
+    if drill_id == "deep_nesting":
+        return "polygon_deep_nesting", POLYGON_DEEP_NESTING_REL
     if drill_id == "llm_extract":
         return "polygon_llm_extract", POLYGON_LLM_EXTRACT_REL
     return "polygon_unused_import", POLYGON_IMPORTS_REL
@@ -669,6 +768,18 @@ def run_prove_propose(
                     "nested_function_name": "_compute_first_half",
                 },
                 "description": _POLYGON_LONG_FUNCTION_DESCRIPTION,
+                "approval_state": "pending",
+                "critic_verdict": "allow",
+                "decision_source": "prove_cycle_propose",
+                "team_decision": "pending",
+            }
+        elif drill_id == "deep_nesting":
+            preview = {
+                "target_file": POLYGON_DEEP_NESTING_REL,
+                "kind": "extract_block_to_helper",
+                "smell_type": "deep_nesting",
+                "params": {"location": "polygon_deep_nesting_extractable"},
+                "description": _POLYGON_DEEP_NESTING_DESCRIPTION,
                 "approval_state": "pending",
                 "critic_verdict": "allow",
                 "decision_source": "prove_cycle_propose",
@@ -797,7 +908,12 @@ def run_prove_propose(
             seed_polygon_for_drill(path, drill_id)
 
         operations: list[OperationRecord] = [operation]
-        patch_plan: PatchPlan = {"operations": operations}
+        patch_plan: PatchPlan = {
+            "operations": operations,
+            "source": f"prove_cycle_propose:{drill_id}",
+            "summary": f"C.14 polygon propose ({drill_id})",
+            "drill": drill_id,
+        }
         target_rel = str(operation.get("target_file") or "")
         seeded = path / target_rel
         seeded_text = seeded.read_text(encoding="utf-8") if seeded.is_file() else ""
@@ -844,7 +960,7 @@ def run_prove_propose(
             ),
             "seeded_extractable": (
                 "_extracted_block_" not in seeded_text
-                if drill_id == "extractable_block"
+                if drill_id in {"extractable_block", "deep_nesting"}
                 else None
             ),
             "seeded_nested": seeded_nested,

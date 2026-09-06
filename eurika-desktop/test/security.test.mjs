@@ -115,6 +115,16 @@ test("desktop can cancel an in-flight chat request", () => {
   assert.match(renderer, /agent\/event/);
 });
 
+test("desktop idle self-dev opt-in mirrors Qt", () => {
+  assert.match(html, /id="idle-self-dev"/);
+  assert.match(html, /Саморазвитие в простое LLM/);
+  assert.match(main, /idle-self-dev\/prefs/);
+  assert.match(main, /idle-self-dev\/run/);
+  assert.match(renderer, /syncIdleSelfDevFromPrefs/);
+  assert.match(renderer, /pollIdleSelfDev/);
+  assert.match(renderer, /IDLE_SELF_DEV_POLL_MS/);
+});
+
 test("desktop panes stay inside the window and scroll internally", async () => {
   const css = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
   assert.match(css, /grid-template-columns:\s*minmax\(0,\s*280px\)\s*minmax\(0,\s*1fr\)\s*minmax\(0,\s*360px\)/);

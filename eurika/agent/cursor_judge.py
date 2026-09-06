@@ -136,6 +136,9 @@ def complete_chat(
     workspace: str | Path | None = None,
     model: str | None = None,
     optimize_for: str | None = None,
+    lease_priority: str = "interactive",
+    lease_purpose: str = "chat",
+    lease_holder: str | None = None,
 ) -> tuple[str | None, str | None]:
     """Text-only Cursor completion for Eurika Chat (no workspace tools)."""
     root = _workspace(workspace or os.environ.get("EURIKA_CURSOR_CWD") or ".")
@@ -145,6 +148,9 @@ def complete_chat(
         model=model or selected_cursor_model(),
         optimize_for=optimize_for,
         tools=(),
+        lease_priority=lease_priority,
+        lease_purpose=lease_purpose,
+        lease_holder=lease_holder,
     )
     if result.get("ok"):
         text = str(result.get("text") or "").strip()
@@ -160,55 +166,79 @@ def prompt_local(
     model: str = DEFAULT_CURSOR_MODEL,
     optimize_for: str | None = None,
     tools: tuple[str, ...] | None = None,
+    lease_priority: str = "interactive",
+    lease_purpose: str = "cursor",
+    lease_holder: str | None = None,
 ) -> dict[str, Any]:
     """One-shot local Cursor agent against ``workspace``. Always call wait via prompt()."""
     from cursor_sdk import Agent, AgentOptions, CursorAgentError, LocalAgentOptions
 
+    from eurika.orchestration.llm_lease import acquire, release
+
     root = _workspace(workspace)
-    api_key = load_cursor_key(root)
-    kwargs: dict[str, Any] = {
-        "api_key": api_key,
-        "model": build_agent_model(model, optimize_for),
-        "local": LocalAgentOptions(cwd=root),
-    }
-    if tools is not None:
-        kwargs["tools"] = list(tools)
+    holder = (lease_holder or f"cursor:{lease_purpose}:{os.getpid()}").strip()
+    got = acquire(
+        root,
+        holder=holder,
+        priority=lease_priority,
+        purpose=lease_purpose,
+    )
+    if not got.get("ok"):
+        who = got.get("holder") or got.get("purpose") or "other"
+        return {
+            "ok": False,
+            "status": "lease_busy",
+            "error": f"LLM lease busy ({who})",
+            "retryable": True,
+            "lease": got,
+        }
     try:
-        result = Agent.prompt(message, AgentOptions(**kwargs))
-    except CursorAgentError as err:
-        failed = _unavailable_model_id(str(err))
-        fallback = _fallback_cursor_model(failed) if failed else ""
-        wanted = normalize_cursor_model(model)
-        if failed and fallback and fallback != wanted and fallback != failed:
-            kwargs["model"] = build_agent_model(fallback, None)
-            try:
-                result = Agent.prompt(message, AgentOptions(**kwargs))
-            except CursorAgentError as retry_err:
+        api_key = load_cursor_key(root)
+        kwargs: dict[str, Any] = {
+            "api_key": api_key,
+            "model": build_agent_model(model, optimize_for),
+            "local": LocalAgentOptions(cwd=root),
+        }
+        if tools is not None:
+            kwargs["tools"] = list(tools)
+        try:
+            result = Agent.prompt(message, AgentOptions(**kwargs))
+        except CursorAgentError as err:
+            failed = _unavailable_model_id(str(err))
+            fallback = _fallback_cursor_model(failed) if failed else ""
+            wanted = normalize_cursor_model(model)
+            if failed and fallback and fallback != wanted and fallback != failed:
+                kwargs["model"] = build_agent_model(fallback, None)
+                try:
+                    result = Agent.prompt(message, AgentOptions(**kwargs))
+                except CursorAgentError as retry_err:
+                    return {
+                        "ok": False,
+                        "status": "startup_error",
+                        "error": str(retry_err),
+                        "retryable": bool(getattr(retry_err, "is_retryable", False)),
+                        "request_id": getattr(retry_err, "request_id", None),
+                    }
+            else:
                 return {
                     "ok": False,
                     "status": "startup_error",
-                    "error": str(retry_err),
-                    "retryable": bool(getattr(retry_err, "is_retryable", False)),
-                    "request_id": getattr(retry_err, "request_id", None),
+                    "error": str(err),
+                    "retryable": bool(getattr(err, "is_retryable", False)),
+                    "request_id": getattr(err, "request_id", None),
                 }
-        else:
-            return {
-                "ok": False,
-                "status": "startup_error",
-                "error": str(err),
-                "retryable": bool(getattr(err, "is_retryable", False)),
-                "request_id": getattr(err, "request_id", None),
-            }
-    payload = getattr(result, "result", None)
-    text = payload if isinstance(payload, str) else str(payload or "")
-    status = str(getattr(result, "status", "") or "")
-    return {
-        "ok": status in {"finished", "ok", "success", ""} and bool(text),
-        "status": status or "finished",
-        "text": text,
-        "run_id": getattr(result, "id", None),
-        "agent_id": getattr(result, "agent_id", None),
-    }
+        payload = getattr(result, "result", None)
+        text = payload if isinstance(payload, str) else str(payload or "")
+        status = str(getattr(result, "status", "") or "")
+        return {
+            "ok": status in {"finished", "ok", "success", ""} and bool(text),
+            "status": status or "finished",
+            "text": text,
+            "run_id": getattr(result, "id", None),
+            "agent_id": getattr(result, "agent_id", None),
+        }
+    finally:
+        release(root, holder=holder)
 
 
 def judge_eurika_answer(

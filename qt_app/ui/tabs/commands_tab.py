@@ -36,6 +36,7 @@ CMD_ITEMS = [
     ("Снимок отчёта", "report-snapshot"),
     ("Метрики обучения", "learning-kpi"),
     ("Обучение из GitHub", "learn-github"),
+    ("Bug-hunt (C.14)", "bug-hunt"),
     ("Очистка импортов", "clean-imports"),
     ("Самопроверка", "self-check"),
     ("Черновик whitelist", "whitelist-draft"),
@@ -155,6 +156,26 @@ def build_commands_tab(main: MainWindow) -> None:
     learn_layout.addRow(learn_limit_row)
     main.learn_group.setVisible(False)  # показывается только для learn-github
     layout.addWidget(learn_group)
+
+    # === Опции bug-hunt (C.14) ===
+    main.bug_hunt_group = QGroupBox("Опции bug-hunt (HITL)")
+    bug_layout = QFormLayout(main.bug_hunt_group)
+    main.bug_hunt_sandbox_check = QCheckBox("Sandbox verify перед Approvals")
+    main.bug_hunt_sandbox_check.setChecked(True)
+    main.bug_hunt_sandbox_check.setToolTip(
+        "apply+smoke в .eurika/sandbox; на main только pending_plan"
+    )
+    main.bug_hunt_web_check = QCheckBox("Web research note")
+    main.bug_hunt_web_check.setChecked(False)
+    main.bug_hunt_web_check.setToolTip(
+        "Один web_search в description op (не патч). Нужен EURIKA_WEB_SEARCH"
+    )
+    bug_row = QHBoxLayout()
+    bug_row.addWidget(main.bug_hunt_sandbox_check)
+    bug_row.addWidget(main.bug_hunt_web_check)
+    bug_layout.addRow(bug_row)
+    main.bug_hunt_group.setVisible(False)
+    layout.addWidget(main.bug_hunt_group)
 
     # === Запуск ===
     run_group = QGroupBox("Запуск")

@@ -6,10 +6,10 @@
 
 | Вкладка | Назначение |
 |---------|------------|
-| **Chat** (первая) | Chat-first: слева **рейка как в Cursor** — воркспейс = Project root, дети = чаты; **‹/›** сворачивает панель; **Новый чат** выбирает каталог; **+** — тред в этом root; ПКМ по чату — переименовать/удалить. Подвкладки **Агент** / **Market**. Правки агента → **Approvals**. Market: Live paper, без live-ордеров. См. [CHAT.md](CHAT.md) |
+| **Chat** (первая) | Chat-first: слева **рейка как в Cursor** — воркспейс = Project root, дети = чаты; **‹/›** сворачивает панель; **Новый чат** выбирает каталог; **+** — тред в этом root; ПКМ по чату — переименовать/удалить; ПКМ по воркспейсу — убрать из списка (каталог на диске не трогается). Подвкладки **Агент** / **Market**. Правки агента → **Approvals**. Market: Live paper, без live-ордеров. См. [CHAT.md](CHAT.md) |
 | **Terminal** | Классический экран: ввод после `$ ` (Enter = Run), Stop/Clear сверху; вывод Commands + shell |
 | **Models** | Подвкладки **LLM** / **ML**. LLM: Ollama, GPU, chat provider. ML: PyTorch + **Market learning**. См. [CHAT.md](CHAT.md) / [HARDWARE.md](HARDWARE.md) |
-| **Commands** | scan/doctor/fix/cycle/explain/…, Run/Stop; Quality: Ruff, Mypy, Release check |
+| **Commands** | scan/doctor/fix/cycle/explain/…, **bug-hunt** (C.14 HITL), learn-github; Run/Stop; Quality: Ruff, Mypy, Release check |
 | **Dashboard** | Summary (modules, deps, cycles, risk, maturity, trends, **Energy**), Top risks, Operational metrics, Learning insights, **ARCHITECTURE METRICS** (blast radius, dependency_density, fragility heatmap 🟢🟡🔴 RV10); Energy — MetricVector (ROADMAP §5.7); автообновление при смене project root |
 | **Graph** | Интерактивный граф зависимостей. Требует `eurika scan .` перед использованием. |
 | **Approvals** | Chat-агент (Qt, `reviewInApprovals`) кладёт полный патч (`agent_edit`) в `.eurika/pending_plan.json`; после ответа с `approvalsQueued>0` вкладка открывается сама. Load plan → **approve** → **Save** или **Run apply-approved**. Desktop: та же цепочка через `approval/save` / `approval/apply`. `git_commit`/`git_push` в этом режиме **отложены** до apply на диск (потом отдельный HITL / повторный запрос). Также team-mode `eurika fix`. Для extract_block/extract_nested — OSS Reference (Learning from GitHub). |

@@ -72,6 +72,7 @@ class ChatTabAttrs:
     market_auto_check: QCheckBox
     market_micro_train_check: QCheckBox
     market_llm_learn_check: QCheckBox
+    idle_self_dev_check: QCheckBox
     market_llm_tf1_combo: QComboBox
     market_llm_tf2_combo: QComboBox
     market_explore_check: QCheckBox
@@ -106,6 +107,8 @@ class ChatTabAttrs:
     _market_llm_timer: QTimer | None
     _market_llm_worker: object | None
     _market_llm_warned_no_key: bool
+    _idle_self_dev_timer: QTimer | None
+    _idle_self_dev_worker: object | None
     workspace_rail: QFrame
     workspace_toggle_btn: QPushButton
     workspace_tree: QTreeWidget

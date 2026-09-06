@@ -4,6 +4,7 @@
 - polygon_deep_nesting_extractable: внутренний блок 5+ строк без return — extractable.
 """
 
+
 def polygon_deep_nesting(x: int) -> str:
     """Вложенные if с return в каждой ветке."""
     if x > 0:
@@ -16,12 +17,6 @@ def polygon_deep_nesting(x: int) -> str:
         return 'tiny'
     return 'zero'
 
-def _extracted_block_26(x):
-    a = x + 1
-    b = a * 2
-    c = b + x
-    d = c * 2
-    return d
 
 def polygon_deep_nesting_extractable(x: int) -> int:
     """Вложенные if с extractable блоком (5+ строк, без return)."""
@@ -31,5 +26,9 @@ def polygon_deep_nesting_extractable(x: int) -> int:
             if x > 2:
                 if x > 3:
                     if x > 4:
-                        result = _extracted_block_26(x)
+                        a = x + 1
+                        b = a * 2
+                        c = b + x
+                        d = c * 2
+                        result = d
     return result

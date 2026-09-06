@@ -934,6 +934,28 @@ def test_format_agent_context_panel_goal_release_and_empty() -> None:
     assert "token=abcd" in active
 
 
+def test_format_agent_context_panel_shows_team_approvals(tmp_path: Path) -> None:
+    from eurika.api.chat_context import format_agent_context_panel
+    from eurika.orchestration.team_mode import save_pending_plan
+
+    save_pending_plan(
+        tmp_path,
+        {"source": "idle_self_dev", "summary": "C.14", "drill": "imports"},
+        [
+            {
+                "kind": "remove_unused_import",
+                "target_file": "eurika/polygon/imports_ok.py",
+            }
+        ],
+        [],
+        notify_telegram=False,
+    )
+    panel = format_agent_context_panel({}, project_root=tmp_path)
+    assert "Approvals (team pending)" in panel
+    assert "imports_ok.py" in panel
+    assert "idle_self_dev" in panel
+
+
 def test_llm_fallback_does_not_pin_answer_as_active_goal(tmp_path: Path, monkeypatch) -> None:
     """Free-form LLM answers must not stick as active_goal (e.g. «git push»)."""
     import json
@@ -1106,6 +1128,13 @@ def test_extract_show_file_path_with_trailing_word() -> None:
     msg = "покажи содержимое .eurika/llm_lease.json кратко"
     assert is_show_file_request(msg) is True
     assert extract_file_path_from_show_request(msg) == ".eurika/llm_lease.json"
+
+def test_format_telegram_reply_avoids_bare_error() -> None:
+    from eurika.integrations.telegram_bot import format_telegram_reply
+
+    reply = format_telegram_reply({"text": "", "error": "error"})
+    assert "error: error" not in reply.lower()
+    assert "Не удалось" in reply or "агента" in reply
 
 
 def test_chat_send_file_count_question_without_llm(tmp_path: Path, monkeypatch) -> None:

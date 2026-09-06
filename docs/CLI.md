@@ -20,7 +20,9 @@ Scan → Diagnose → Plan → Patch → Verify → Log
 | Plan | `eurika fix . --dry-run` или `eurika agent patch-plan .` | Построить план патчей без применения |
 | Propose (team) | `eurika fix . --team-mode` | Сохранить план в `.eurika/pending_plan.json`; reviewer редактирует team_decision; затем `--apply-approved` (ROADMAP 3.0.4) |
 | Propose (C.14 polygon HITL) | `eurika prove-cycle . --propose [--drill …] [--require-llm] [--sandbox]` | Seed polygon + pending plan **без** apply на main; `--sandbox` = apply+smoke-verify в worktree/copy; Approve → `--apply-approved` |
-| Telegram (C.12) | `eurika telegram-bot .` | Long-poll → `chat_send`; allowlist chat ids; apply только через Approvals |
+| Bug-hunt (C.14 v1.5) | `eurika bug-hunt . --propose [--sandbox] [--web]` | Один реальный smell → sandbox → Approvals; `--web` = research note only |
+| Idle self-dev (C.14) | `eurika idle-self-dev . [--status\|--once\|--prune-sandboxes] [--force]` | Когда LLM lease quiet — один propose+sandbox (polygon + bug_hunt; без cron / без apply); `--prune-sandboxes` чистит stale worktree |
+| Telegram (C.12) | `eurika telegram-bot .` | Long-poll → `chat_send`; allowlist; push Approvals + `/approve`/`/reject`; apply только HITL |
 | Patch | `eurika fix .` или `eurika agent patch-apply . --apply` | Применить патчи (с бэкапами) |
 | Verify | встроено в `eurika fix` (pytest после apply) | pytest; при провале — подсказка rollback; при ухудшении метрик — автоматический откат |
 | Log | автоматически (events, history) | Исходы записываются в `.eurika/events.json`, architect получает recent_events |
@@ -283,7 +285,7 @@ eurika learning-kpi . --polygon
 
 - По умолчанию: seed+apply+verify в `.eurika/prove_cycle/drill_unused.py` (sandbox).
 - `--propose` (VISION C.14): seed polygon → `.eurika/pending_plan.json`, **без** apply. Дальше Approvals / `eurika fix . --apply-approved`.
-- `--drill` (только с `--propose`): `imports` (default), `extractable_block`, `long_function`, или `llm_extract`.
+- `--drill` (только с `--propose`): `imports` (default), `extractable_block`, `long_function`, `deep_nesting`, или `llm_extract`.
 - `--require-llm` (только с `--propose --drill llm_extract`): force live LLM patch; без валидного ответа — ошибка (не `synthetic_offline`).
 - `--sandbox` (с `--propose`): seed+apply+smoke-verify в `.eurika/sandbox/…` (git worktree при наличии git, иначе пустой copy); `pending_plan` на main только если sandbox ok. `--keep-sandbox` — не удалять каталог.
 
@@ -304,20 +306,56 @@ Chat: «предложи полигон эксперимент» / «второ�
 
 ---
 
-### eurika telegram-bot [path] [--token TOK] [--chat-ids IDS] [--allow-any] [--once] [--poll-timeout SEC]
+### eurika bug-hunt [path] --propose [--dry-run] [--sandbox|--no-sandbox] [--web] [--keep-sandbox] [--quiet]
 
-VISION C.12 v1: long-poll Telegram Bot API → тот же `chat_send`. **Не** применяет патчи сам — HITL в Approvals / `eurika fix . --apply-approved`.
+C.14 v1.5: pick one **non-polygon** smell op (KPI∩scan) → optional sandbox apply+smoke → `.eurika/pending_plan.json`. Never applies on main. `--web` / `EURIKA_BUG_HUNT_WEB=1` attaches a web research note to the description only. Recent parks are recorded in `.eurika/bug_hunt.json` so the next pick prefers a different target|kind.
+
+```bash
+eurika bug-hunt . --propose
+eurika bug-hunt . --propose --sandbox --web
+eurika bug-hunt . --propose --dry-run
+eurika bug-hunt . --propose --no-sandbox
+```
+
+Chat: «найди баг» / «предложи улучшение кода» / «bug hunt».
+
+Desktop Commands: `bug-hunt` (defaults `--propose --sandbox`), `learn-github` (defaults `--light --limit-repos 2 --scan --build-patterns`).
+
+Chat: «обнови паттерны» / «learn-github» — тот же light rebuild `pattern_library` (OSS hints для bug-hunt / extract).
+
+---
+
+### eurika idle-self-dev [path] [--once] [--status] [--force] [--keep-sandbox] [--prune-sandboxes] [--yield-market-llm] [--yield-portfolio] [--quiet]
+
+VISION C.14 idle self-dev (не cron): quiet LLM lease → один propose+sandbox по ротации `imports` → `extractable_block` → `long_function` → `deep_nesting` → `llm_extract` → `bug_hunt`. Anti-tread: stamp `drill_ok` ≥5 на deterministic; если unsaturated ≤1 — полный round-robin. **Не** вызывает apply на main.
+
+```bash
+eurika idle-self-dev . --status
+eurika idle-self-dev . --once --force
+eurika idle-self-dev . --once --yield-market-llm --yield-portfolio
+eurika idle-self-dev . --prune-sandboxes
+```
+
+Qt / Desktop: чекбокс Agent «Саморазвитие в простое LLM» (prefs `idle_self_dev` в `~/.eurika/qt_settings.json`). Desktop RPC: `idle-self-dev/prefs|run|status`. Lease: interactive/market > self_dev (см. `eurika.orchestration.llm_lease`).
+
+---
+
+### eurika telegram-bot [path] [--token TOK] [--chat-ids IDS] [--allow-any] [--once] [--poll-timeout SEC] [--notify-approvals]
+
+VISION C.12 v1+: long-poll Telegram Bot API → тот же `chat_send`. **Не** применяет патчи сам. Push Approvals + inline Approve/Reject; slash `/approvals` `/approve` `/reject` (решение зеркалится в Chat/Goals); **push итога apply-approved**. Apply: Qt/Desktop или `eurika fix . --apply-approved`. `EURIKA_TELEGRAM_NOTIFY_APPROVALS=0` выкл. оба push.
 
 - Токен: `--token` или `EURIKA_TELEGRAM_BOT_TOKEN`
 - Allowlist: `--chat-ids` / `EURIKA_TELEGRAM_CHAT_IDS` (обязателен, иначе `--allow-any` / `EURIKA_TELEGRAM_ALLOW_ANY=1` только для dogfood)
 - `/start` и другие `/…` не уходят в shell — короткий help; «статус apply» / «получилось?» читает `eurika_fix_report.json` (в Qt Chat — тот же handler; «что получилось?» остаётся goal reflection)
 - Chat «запусти telegram-bot» поднимает процесс в фоне (не HITL `run_command`); «останови telegram-bot» — стоп; «бот жив?» / `/status` — pid/running
+- `--notify-approvals` — один push текущего pending (smoke), без long-poll
 
 ```bash
 export EURIKA_TELEGRAM_BOT_TOKEN=…
 export EURIKA_TELEGRAM_CHAT_IDS=123456789
 eurika telegram-bot .
 eurika telegram-bot . --once   # один poll (smoke)
+eurika telegram-bot . --notify-approvals
 ```
 
 ---

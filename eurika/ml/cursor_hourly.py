@@ -250,7 +250,11 @@ def journal_body(text: str) -> str:
 def _default_chat(prompt: str) -> tuple[str | None, str | None]:
     from eurika.agent.cursor_judge import complete_chat
 
-    return complete_chat(prompt)
+    return complete_chat(
+        prompt,
+        lease_priority="market",
+        lease_purpose="cursor_hour",
+    )
 
 
 def _ensure_analysis_candles(project_root: str | Path) -> None:

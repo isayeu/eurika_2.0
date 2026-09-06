@@ -7,7 +7,8 @@ from pathlib import Path
 
 SUPPORTED_COMMANDS = {
     "scan", "doctor", "fix", "cycle", "explain", "report-snapshot", "learning-kpi",
-    "learn-github", "clean-imports", "self-check", "suggest-plan", "whitelist-draft", "campaign-undo",
+    "learn-github", "bug-hunt", "clean-imports", "self-check", "suggest-plan",
+    "whitelist-draft", "campaign-undo",
 }
 
 
@@ -28,6 +29,8 @@ def build_cli_args(
     learn_scan: bool = True,
     learn_build_patterns: bool = True,
     learn_limit_repos: int = 0,
+    bug_hunt_sandbox: bool = True,
+    bug_hunt_web: bool = False,
 ) -> list[str]:
     """Return argument vector for `python -m eurika_cli` execution."""
     if command not in SUPPORTED_COMMANDS:
@@ -57,6 +60,17 @@ def build_cli_args(
             args.append("--build-patterns")
         if learn_limit_repos > 0:
             args.extend(["--limit-repos", str(learn_limit_repos)])
+        return args
+
+    if command == "bug-hunt":
+        args.append(root)
+        args.append("--propose")
+        if bug_hunt_sandbox:
+            args.append("--sandbox")
+        else:
+            args.append("--no-sandbox")
+        if bug_hunt_web:
+            args.append("--web")
         return args
 
     if command in ("clean-imports", "self-check", "whitelist-draft", "campaign-undo"):
@@ -90,4 +104,3 @@ def build_cli_args(
     if command in {"fix", "cycle"} and runtime_mode and runtime_mode != "assist":
         args.extend(["--runtime-mode", runtime_mode])
     return args
-

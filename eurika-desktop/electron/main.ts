@@ -18,7 +18,13 @@ const REQUEST_METHODS = new Set([
   "panel/state",
   "approval/preview",
   "approval/save",
+  "approval/apply",
+  "context/preview",
+  "context/decide",
   "activity/recent",
+  "idle-self-dev/prefs",
+  "idle-self-dev/run",
+  "idle-self-dev/status",
   "command/run",
 ]);
 

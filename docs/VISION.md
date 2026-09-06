@@ -9,7 +9,7 @@
 - **Запрещено** вручную растить доменные request/response-листы (bluetooth / GPU / «посмотри что у меня» / …) — это не продукт, это костыль.
 - **Хардкод-листы допустимы только** если Eurika **сама** их составляет и обновляет из опыта (feedback, outcomes, journal, удачные tool-turns) — человек задаёт скелет обучения, не словарь фраз.
 - **Исключение (скелет, не знание домена):** HITL (`применяй`), диалог sudo/пароля для host tools, узкие project-facts (`ls`/`scan`) — пока без самописных phrase-books. Binary allowlist для chat host tools снят: команды из `eurika-cmds` выполняются, привилегии — через UI.
-- Цель Chat: **LLM-first** → tools → LLM; маршрутизация и «что спросить/ответить» со временем — из `.eurika/` опыта, не из новых `if "колонка" in msg`.
+- **Цель Chat:** **LLM-first** → tools (shell / сеть / пакеты ОС / Cursor) → LLM; маршрутизация и «что спросить/ответить» со временем — из `.eurika/` опыта, не из новых `if "колонка" in msg`. На любой запрос (хост, принтер, цена, код) Eurika сама выбирает средства; sudo и правки репозитория — через UI/HITL, не тихий rewrite.
 
 ### Политика выбора технологий
 
@@ -120,9 +120,9 @@
 
 ### C. Agent / платформа
 11. ~~**Plugin hooks** `after_*`~~ ✅ (2026-08-08, v1) — versioned JSON-safe immutable `HookContext`; canonical `after_scan/plan/apply/verify` (не CLI/Qt wrappers); конфиг `.eurika/plugins.toml` / `pyproject`; ordered + dedupe + fail-open; результаты в `report.plugin_hooks` и `.eurika/events.json`. Trusted in-process plugins, не sandbox.
-12. ~~**Telegram-канал**~~ частично ✅ (2026-09-04…05, v1) — `eurika telegram-bot` + Chat «запусти/останови/бот жив?»; allowlist; apply только Approvals.
-13. ~~**Goals / reflection / nudges (v1)**~~ частично ✅ — status/reflection/clear + nudge; reject/apply отпускают sticky goal; «какая цель?» показывает последний итог после release.
-14. ~~**Саморазвитие через полигон (HITL)**~~ частично ✅ (ритуал v1) — `eurika prove-cycle . --propose [--drill …] [--require-llm] [--sandbox]` → Approvals → `eurika fix . --apply-approved`. `--sandbox` — apply+smoke-verify в `.eurika/sandbox` (git worktree / copy) до pending_plan. Детали: [ROADMAP.md](ROADMAP.md) §4.6, [POLYGON_VERIFY_PLAYBOOK.md](POLYGON_VERIFY_PLAYBOOK.md).
+12. ~~**Telegram-канал**~~ частично ✅ (2026-09-04…06, v1+) — `eurika telegram-bot` + Chat «запусти/останови/бот жив?»; allowlist; **push** Approvals + **/approve**/**/reject**; **push итога apply-approved**; решение из Telegram **зеркалится в Chat/Goals** Qt/Desktop; apply на диск только Qt/Desktop/`eurika fix . --apply-approved`.
+13. ~~**Goals / reflection / nudges (v1)**~~ частично ✅ — status/reflection/clear + nudge; reject/apply отпускают sticky goal; «какая цель?» показывает последний итог после release; idle C.14 пишет `last_execution` + Approvals в панели Контекст (Qt/Desktop).
+14. ~~**Саморазвитие через полигон (HITL)**~~ частично ✅ (ритуал v1 + **v1.5 bug-hunt**) — `eurika prove-cycle . --propose [--drill …] [--sandbox]` → Approvals → `eurika fix . --apply-approved`. **Bug-hunt:** `eurika bug-hunt . --propose [--sandbox] [--web]` — один реальный smell (не polygon) → sandbox → Approvals; anti-repeat recent target|kind (`.eurika/bug_hunt.json`); Chat «найди баг» / «предложи улучшение кода». **OSS learning:** Chat «обнови паттерны» / Desktop Commands `learn-github` → `pattern_library` для hints. **Idle:** ротация `… → llm_extract → bug_hunt`; anti-tread по `drill_ok`; apply только HITL. Desktop RPC: `idle-self-dev/prefs|run|status`. Детали: [ROADMAP.md](ROADMAP.md) §4.6, [BOUNDED_EVOLUTION.md](BOUNDED_EVOLUTION.md) §8.
 
 ### Не брать
 Live-ордера / ключи / freqtrade с prodg; indicator-правила «RSI→buy» / «памп→buy» как ML-логика; OPT/aviation/vpn как домен; третий ТФ как отдельный торговый движок.

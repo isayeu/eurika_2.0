@@ -132,3 +132,44 @@ def test_add_chat_in_workspace_switches_root(tmp_path: Path, monkeypatch) -> Non
     assert reload_calls == ["reload"]
     assert main.tabs.index == 0
     assert len(list_chats(root)) == 2
+
+
+def test_remove_workspace_from_rail_switches_root(tmp_path: Path, monkeypatch) -> None:
+    from qt_app.services.settings_service import SettingsService
+    from qt_app.ui import workspace_rail
+
+    a = tmp_path / "ws_a"
+    b = tmp_path / "ws_b"
+    a.mkdir()
+    b.mkdir()
+    settings = SettingsService(settings_path=tmp_path / "qt_settings.json")
+    settings.remember_workspace_root(str(a))
+    settings.remember_workspace_root(str(b))
+
+    set_calls: list[str] = []
+
+    class _Edit:
+        def __init__(self) -> None:
+            self._text = str(b.resolve())
+
+        def text(self) -> str:
+            return self._text
+
+        def setText(self, value: str) -> None:
+            self._text = value
+
+    main = type("M", (), {})()
+    main.root_edit = _Edit()
+    main._settings = settings
+    main._set_project_root = lambda path: (
+        set_calls.append(path),
+        main.root_edit.setText(path),
+        settings.set_project_root(path) if path else settings.set_project_root(""),
+        settings.remember_workspace_root(path) if path else None,
+    )
+    monkeypatch.setattr(workspace_rail, "refresh_workspace_rail", lambda _main: None)
+    workspace_rail.remove_workspace_from_rail(main, str(b))
+    assert set_calls
+    assert Path(set_calls[0]).resolve() == a.resolve()
+    assert str(a.resolve()) in [str(Path(x).resolve()) for x in settings.list_workspace_roots()]
+    assert str(b.resolve()) not in [str(Path(x).resolve()) for x in settings.list_workspace_roots()]

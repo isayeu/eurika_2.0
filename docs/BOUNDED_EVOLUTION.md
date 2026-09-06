@@ -161,6 +161,8 @@ Architecture Freeze **не** означает «Eurika не трогает св�
 
 **Ритуал v1:** `eurika prove-cycle . --propose [--drill imports|extractable_block|long_function|llm_extract]` → Approvals → `eurika fix . --apply-approved` (см. POLYGON_VERIFY_PLAYBOOK).
 
+**Idle self-dev (2026-09-05…06):** не cron. Opt-in (`eurika idle-self-dev` / Qt+Desktop): quiet LLM lease → один propose+sandbox по ротации `imports → extractable_block → long_function → deep_nesting → llm_extract → bug_hunt`. Anti-tread: idle stamp `drill_ok` (≥5) на deterministic drills; если unsaturated ≤1 — полный round-robin. **Bug-hunt v1.5:** реальный smell → sandbox → Approvals (не silent rewrite). Apply на main только HITL.
+
 См. ROADMAP §4.6 (уточнение), Architecture.md §2, VISION.md C.14.
 
 ---

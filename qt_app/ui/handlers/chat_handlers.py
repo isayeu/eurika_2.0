@@ -275,7 +275,9 @@ def _apply_live_activity_event(main: "MainWindow", event: dict[str, Any]) -> Non
     phase = str(event.get("phase") or "")
     client = str(event.get("client") or "api")
     kind = str(event.get("kind") or "")
-    visible = phase == "start" or kind == "http"
+    method = str(event.get("method") or "")
+    is_self_dev = method == "idle_self_dev" or client == "idle_self_dev"
+    visible = phase in {"start", "progress"} or kind == "http"
     echo_chat = _live_event_echoes_in_chat(event)
     if visible:
         suffix = ""
@@ -283,7 +285,11 @@ def _apply_live_activity_event(main: "MainWindow", event: dict[str, Any]) -> Non
             suffix = " — fail"
         elif phase == "done" and kind == "http":
             suffix = " — ok"
-        line = f"[API {client}] {title}{suffix}"
+        # Prefer concrete self-dev titles over "[API idle_self_dev] idle_self_dev"
+        if is_self_dev:
+            line = title if title.startswith("саморазвитие") else f"[саморазвитие] {title}"
+        else:
+            line = f"[API {client}] {title}{suffix}"
         if hasattr(main, "status_label"):
             main.status_label.setText(line[:120])
         if echo_chat:
@@ -293,10 +299,24 @@ def _apply_live_activity_event(main: "MainWindow", event: dict[str, Any]) -> Non
             _scroll_transcript_to_bottom(main)
             if kind == "http":
                 _maybe_show_chat_tab(main)
-        if phase == "start":
+        if phase in {"start", "progress"}:
             return
     if phase != "done":
         return
+    # Idle self-dev: echo the concrete outcome (drill / Approvals / error).
+    if is_self_dev and echo_chat:
+        done_text = str(event.get("text") or "").strip() or title
+        if done_text:
+            if not done_text.startswith("саморазвитие"):
+                done_text = f"[саморазвитие] {done_text}"
+            err_flag = event.get("ok") is False or bool(event.get("error"))
+            _append_transcript(
+                main,
+                _format_chat_line(main, "assistant", done_text, is_error=err_flag),
+            )
+            _scroll_transcript_to_bottom(main)
+            if hasattr(main, "status_label"):
+                main.status_label.setText(done_text[:120])
     cmd = str(event.get("terminal_cmd") or "").strip()
     out = str(event.get("terminal_output") or "").strip()
     if cmd or out:
@@ -319,15 +339,15 @@ def _apply_live_activity_event(main: "MainWindow", event: dict[str, Any]) -> Non
     if queued > 0:
         QTimer.singleShot(0, lambda: focus_approvals_mode(main))
     err = str(event.get("error") or "").strip()
-    if err:
+    if err and not is_self_dev:
         _append_transcript(main,
             _format_chat_line(main, "assistant", f"[API error] {err}", is_error=True)
         )
         _scroll_transcript_to_bottom(main)
-    elif event.get("ok") is False:
+    elif event.get("ok") is False and not is_self_dev:
         if hasattr(main, "status_label"):
             main.status_label.setText(f"API failed: {title[:80]}")
-    elif hasattr(main, "status_label") and not getattr(main, "_chat_worker", None):
+    elif hasattr(main, "status_label") and not getattr(main, "_chat_worker", None) and not is_self_dev:
         main.status_label.setText(f"API done: {title[:80]}")
 
 
@@ -345,6 +365,19 @@ def refresh_chat_mention_candidates(main: "MainWindow") -> None:
     main.chat_input.refresh_mentions_from_root(root or None)
     if hasattr(main.chat_input, "set_project_root"):
         main.chat_input.set_project_root(root or None)
+
+
+def on_idle_self_dev_toggled(main: MainWindow) -> None:
+    """Persist opt-in and start/stop the idle self-dev poll timer."""
+    data = main._settings.load()
+    enabled = bool(
+        getattr(main, "idle_self_dev_check", None) and main.idle_self_dev_check.isChecked()
+    )
+    data["idle_self_dev"] = enabled
+    main._settings.save(data)
+    from . import idle_self_dev as idle_self_dev_handlers
+
+    idle_self_dev_handlers.sync_timer(main)
 
 
 def load_chat_preferences(main: MainWindow) -> None:
@@ -387,6 +420,13 @@ def load_chat_preferences(main: MainWindow) -> None:
     start_live_activity_follow(main)
     refresh_chat_mention_candidates(main)
     main.chat_timeout_spin.setValue(min(9999, max(0, timeout)))
+    if hasattr(main, "idle_self_dev_check"):
+        main.idle_self_dev_check.blockSignals(True)
+        main.idle_self_dev_check.setChecked(bool(data.get("idle_self_dev", False)))
+        main.idle_self_dev_check.blockSignals(False)
+        from . import idle_self_dev as idle_self_dev_handlers
+
+        idle_self_dev_handlers.sync_timer(main)
     main.ollama_hsa_edit.setText(str(data.get("ollama_hsa_override_gfx", "")))
     main.ollama_rocr_edit.setText(str(data.get("ollama_rocr_visible_devices", "")))
     main.ollama_hip_edit.setText(str(data.get("ollama_hip_visible_devices", "")))

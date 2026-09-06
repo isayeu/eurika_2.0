@@ -31,6 +31,32 @@ RPC_METHOD_CONTRACTS: dict[str, dict[str, Any]] = {
             },
         },
     },
+    "idle-self-dev/prefs": {
+        "mutatesWorkspace": False,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "enabled": {"type": "boolean"},
+                "idle_self_dev": {"type": "boolean"},
+            },
+        },
+    },
+    "idle-self-dev/status": {
+        "mutatesWorkspace": False,
+        "inputSchema": {"type": "object"},
+    },
+    "idle-self-dev/run": {
+        "mutatesWorkspace": True,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "force": {"type": "boolean"},
+                "marketLlmEnabled": {"type": "boolean"},
+                "portfolioEnabled": {"type": "boolean"},
+                "keepSandbox": {"type": "boolean"},
+            },
+        },
+    },
     "proposal/prepare": {
         "mutatesWorkspace": False,
         "inputSchema": {"type": "object"},

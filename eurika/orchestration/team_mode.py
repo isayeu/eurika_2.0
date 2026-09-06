@@ -34,6 +34,8 @@ def save_pending_plan(
     operations: list[dict[str, Any]],
     policy_decisions: list[dict[str, Any]],
     session_id: str | None = None,
+    *,
+    notify_telegram: bool = True,
 ) -> Path:
     """Save plan for team approval. Returns path to saved file."""
     path = _pending_path(project_root)
@@ -63,6 +65,20 @@ def save_pending_plan(
         ),
     }
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    if notify_telegram and ops_with_team:
+        try:
+            from eurika.integrations.telegram_bot import notify_approvals_pending
+
+            notify_approvals_pending(
+                project_root,
+                operations=ops_with_team,
+                patch_plan=payload.get("patch_plan")
+                if isinstance(payload.get("patch_plan"), dict)
+                else {},
+                created_at=str(payload.get("created_at") or ""),
+            )
+        except Exception:
+            pass
     return path
 
 
@@ -298,3 +314,53 @@ def update_team_decisions(
         return True, "saved"
     except Exception as e:
         return False, str(e)
+
+
+def decide_all_pending(
+    project_root: Path,
+    *,
+    decision: str,
+    approved_by: str = "telegram",
+) -> dict[str, Any]:
+    """Set team_decision on every op in pending_plan (HITL; does not apply)."""
+    root = Path(project_root).resolve()
+    choice = str(decision or "").strip().lower()
+    if choice in {"approve", "approved", "yes"}:
+        choice = "approve"
+    elif choice in {"reject", "rejected", "no"}:
+        choice = "reject"
+    else:
+        return {
+            "ok": False,
+            "error": f"unknown decision {decision!r}; use approve|reject",
+            "n": 0,
+        }
+    data = load_pending_plan(root)
+    if not data:
+        return {"ok": False, "error": "no pending plan", "n": 0}
+    ops = data.get("operations")
+    if not isinstance(ops, list) or not ops:
+        return {"ok": False, "error": "pending plan has no operations", "n": 0}
+    by = str(approved_by or "telegram").strip() or "telegram"
+    updates: list[dict[str, Any]] = []
+    for op in ops:
+        if not isinstance(op, dict):
+            return {"ok": False, "error": "invalid pending plan", "n": 0}
+        row = dict(op)
+        if choice == "approve":
+            row["team_decision"] = "approve"
+            row["approval_state"] = "approved"
+            row["approved_by"] = by
+        else:
+            row["team_decision"] = "reject"
+            row["approval_state"] = "rejected"
+            row["approved_by"] = None
+        updates.append(row)
+    ok, msg = update_team_decisions(root, updates)
+    return {
+        "ok": bool(ok),
+        "error": None if ok else msg,
+        "n": len(updates),
+        "decision": choice,
+        "message": msg,
+    }

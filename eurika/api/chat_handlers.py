@@ -701,6 +701,7 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         target_by_drill = {
             "extractable_block": "eurika/polygon/extractable_block.py",
             "long_function": "eurika/polygon/long_function.py",
+            "deep_nesting": "eurika/polygon/deep_nesting.py",
             "llm_extract": "eurika/polygon/refactor_code_smell_drill.py",
         }
         target = target_by_drill.get(drill, "eurika/polygon/imports_ok.py")
@@ -740,6 +741,180 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         poly_result = _with_terminal(poly_result, term_cmd, output, code)
         publish_done(root, started, ok=ok, result=poly_result)
         return poly_result
+    if handler_id == 'bug_hunt':
+        from eurika.agent.live_activity import publish_done, publish_start
+        from eurika.api.bug_hunt_propose import (
+            bug_hunt_pending_plan_ready,
+            format_bug_hunt_propose_summary,
+            run_bug_hunt_propose_api,
+        )
+        from eurika.api.chat_direct import bug_hunt_wants_web
+
+        use_web = bug_hunt_wants_web(msg)
+        propose_shell = "eurika bug-hunt . --propose --sandbox"
+        if use_web:
+            propose_shell += " --web"
+        started = publish_start(
+            root,
+            "bug-hunt --propose --sandbox" + (" --web" if use_web else ""),
+            {"message": msg},
+            client="qt-chat",
+        )
+
+        def _bug_fallback() -> tuple[bool, str]:
+            payload = run_bug_hunt_propose_api(
+                root, sandbox=True, web=use_web, dry_run=False
+            )
+            summary = format_bug_hunt_propose_summary(payload)
+            ok_local = bool(payload.get("ok", True))
+            if not ok_local and payload.get("error"):
+                summary = f"{summary}\n\nerror: {payload.get('error')}"
+            return ok_local, summary
+
+        term_cmd, output, code, ok = _shell_for_chat(
+            shell_cmd=propose_shell,
+            run_command_with_result=run_command_with_result,
+            fallback=_bug_fallback,
+            emit_cmd=emit_cmd or f"$ {propose_shell}",
+        )
+        queued = 1 if ok and bug_hunt_pending_plan_ready(root) else 0
+        target = ""
+        try:
+            from eurika.orchestration.team_mode import load_pending_plan
+
+            plan = load_pending_plan(root) or {}
+            ops = plan.get("operations") if isinstance(plan, dict) else None
+            if isinstance(ops, list) and ops and isinstance(ops[0], dict):
+                target = str(ops[0].get("target_file") or "")
+        except Exception:
+            target = ""
+        state['active_goal'] = {
+            'intent': 'bug_hunt',
+            'source': 'chat_direct',
+            'target': target or 'pending_plan',
+        }
+        store_last_execution(
+            state,
+            {
+                'ok': ok,
+                'summary': (
+                    'bug-hunt propose → .eurika/pending_plan.json'
+                    if ok
+                    else 'bug-hunt propose failed'
+                ),
+                'artifacts_changed': [target] if target else [],
+            },
+        )
+        save_dialog_state(root, state)
+        text = (
+            'C.14 v1.5: bug-hunt → Approvals (реальный код, без apply).\n\n'
+            f'{output.strip() or "(no output)"}\n\n'
+            'Дальше: вкладка **Approvals** → approve → '
+            '`eurika fix . --apply-approved`.'
+        )
+        text = append_goal_nudge(text, state)
+        release_active_goal_keep_execution(state)
+        save_dialog_state(root, state)
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        bug_result: Dict[str, Any] = {
+            'text': text,
+            'error': None if ok else (output or 'propose failed'),
+            'approvalsQueued': queued,
+        }
+        bug_result = _with_terminal(bug_result, term_cmd, output, code)
+        publish_done(root, started, ok=ok, result=bug_result)
+        return bug_result
+    if handler_id == 'learn_patterns':
+        from eurika.agent.live_activity import publish_done, publish_start
+
+        shell = (
+            "eurika learn-github . --light --limit-repos 2 "
+            "--scan --build-patterns"
+        )
+        started = publish_start(
+            root,
+            "learn-github --light --build-patterns",
+            {"message": msg},
+            client="qt-chat",
+        )
+
+        def _learn_fallback() -> tuple[bool, str]:
+            import subprocess
+            import sys
+
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "eurika_cli",
+                    "learn-github",
+                    str(root),
+                    "--light",
+                    "--limit-repos",
+                    "2",
+                    "--scan",
+                    "--build-patterns",
+                ],
+                cwd=str(root),
+                capture_output=True,
+                text=True,
+                timeout=900,
+                check=False,
+            )
+            out = ((proc.stdout or "") + (proc.stderr or "")).strip()
+            return proc.returncode == 0, out or f"exit {proc.returncode}"
+
+        term_cmd, output, code, ok = _shell_for_chat(
+            shell_cmd=shell,
+            run_command_with_result=run_command_with_result,
+            fallback=_learn_fallback,
+            emit_cmd=emit_cmd or f"$ {shell}",
+        )
+        lib = root / ".eurika" / "pattern_library.json"
+        lib_note = (
+            f"pattern_library: `{lib}`"
+            if lib.is_file()
+            else "pattern_library ещё нет — смотри лог clone/scan"
+        )
+        state['active_goal'] = {
+            'intent': 'learn_patterns',
+            'source': 'chat_direct',
+            'target': '.eurika/pattern_library.json',
+        }
+        store_last_execution(
+            state,
+            {
+                'ok': ok,
+                'summary': (
+                    'learn-github → pattern_library'
+                    if ok
+                    else 'learn-github failed'
+                ),
+                'artifacts_changed': (
+                    ['.eurika/pattern_library.json'] if ok and lib.is_file() else []
+                ),
+            },
+        )
+        save_dialog_state(root, state)
+        text = (
+            'OSS learning (C.14): curated repos → pattern_library.\n\n'
+            f'{output.strip() or "(no output)"}\n\n'
+            f'{lib_note}\n'
+            'Дальше: «найди баг» / bug-hunt подхватит OSS hints в description.'
+        )
+        text = append_goal_nudge(text, state)
+        release_active_goal_keep_execution(state)
+        save_dialog_state(root, state)
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        learn_result: Dict[str, Any] = {
+            'text': text,
+            'error': None if ok else (output or 'learn-github failed'),
+        }
+        learn_result = _with_terminal(learn_result, term_cmd, output, code)
+        publish_done(root, started, ok=ok, result=learn_result)
+        return learn_result
     if handler_id == 'release_check':
         exit_code = -1
         term_cmd = None

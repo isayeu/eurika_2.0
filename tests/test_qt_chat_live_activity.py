@@ -55,6 +55,79 @@ def test_apply_session_chat_updates_status_not_transcript(monkeypatch) -> None:
     assert "session/chat" in status.text
 
 
+def test_apply_idle_self_dev_echoes_concrete_steps(monkeypatch) -> None:
+    appended: list[str] = []
+    terminal: list[str] = []
+    status = SimpleNamespace(text="")
+    status.setText = lambda t: setattr(status, "text", t)
+    monkeypatch.setattr(
+        "qt_app.ui.handlers.chat_handlers._append_transcript",
+        lambda _main, html: appended.append(html),
+    )
+    monkeypatch.setattr(
+        "qt_app.ui.handlers.chat_handlers._format_chat_line",
+        lambda _main, _role, text, is_error=False: text,
+    )
+    monkeypatch.setattr(
+        "qt_app.ui.handlers.chat_handlers._scroll_transcript_to_bottom",
+        lambda _main: None,
+    )
+    monkeypatch.setattr(
+        "qt_app.ui.handlers.chat_handlers.focus_approvals_mode",
+        lambda _main: None,
+    )
+    monkeypatch.setattr(
+        "qt_app.ui.handlers.chat_handlers.QTimer.singleShot",
+        lambda _ms, cb: None,
+    )
+    main = SimpleNamespace(
+        status_label=status,
+        terminal_emulator_output=SimpleNamespace(append=terminal.append),
+        _chat_worker=None,
+    )
+    _apply_live_activity_event(
+        cast(MainWindow, main),
+        {
+            "kind": "rpc",
+            "phase": "start",
+            "client": "idle_self_dev",
+            "method": "idle_self_dev",
+            "title": "саморазвитие: убрать unused import `os` в eurika/polygon/imports_ok.py",
+        },
+    )
+    assert any("саморазвитие" in line and "imports_ok.py" in line for line in appended)
+    appended.clear()
+    _apply_live_activity_event(
+        cast(MainWindow, main),
+        {
+            "kind": "progress",
+            "phase": "progress",
+            "client": "idle_self_dev",
+            "method": "idle_self_dev",
+            "title": "саморазвитие: sandbox apply+verify для drill `imports`…",
+        },
+    )
+    assert any("sandbox apply+verify" in line for line in appended)
+    appended.clear()
+    _apply_live_activity_event(
+        cast(MainWindow, main),
+        {
+            "kind": "rpc",
+            "phase": "done",
+            "client": "idle_self_dev",
+            "method": "idle_self_dev",
+            "title": "саморазвитие: убрать unused import",
+            "ok": True,
+            "text": (
+                "саморазвитие: drill `imports` — убрать unused import `os` "
+                "в eurika/polygon/imports_ok.py → Approvals"
+            ),
+            "approvalsQueued": 1,
+        },
+    )
+    assert any("Approvals" in line for line in appended)
+
+
 def test_apply_done_with_approvals_focuses(monkeypatch) -> None:
     focused: list[bool] = []
     terminal: list[str] = []

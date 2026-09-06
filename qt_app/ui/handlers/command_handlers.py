@@ -86,6 +86,10 @@ def run_command(main: MainWindow) -> None:
     learn_build = bool(learn_build_w.isChecked()) if learn_build_w is not None else False
     learn_limit_w = getattr(main, "learn_limit_spin", None)
     learn_limit = int(learn_limit_w.value()) if learn_limit_w is not None else 0
+    bug_sandbox_w = getattr(main, "bug_hunt_sandbox_check", None)
+    bug_web_w = getattr(main, "bug_hunt_web_check", None)
+    bug_sandbox = bool(bug_sandbox_w.isChecked()) if bug_sandbox_w is not None else True
+    bug_web = bool(bug_web_w.isChecked()) if bug_web_w is not None else False
     if cmd == "cycle":
         main.tabs.setCurrentIndex(main.tabs.indexOf(main.commands_tab))
         main._command_service.run_ritual(
@@ -120,6 +124,8 @@ def run_command(main: MainWindow) -> None:
         learn_scan=learn_scan,
         learn_build_patterns=learn_build,
         learn_limit_repos=learn_limit,
+        bug_hunt_sandbox=bug_sandbox,
+        bug_hunt_web=bug_web,
     )
 
 
@@ -250,8 +256,26 @@ def on_command_finished(main: MainWindow, exit_code: int) -> None:
             main.terminal_emulator_output.append(summary)
     if "apply-approved" in cmd:
         from . import approve_handlers
+        from . import chat_handlers as _chat_handlers
+        from .chat_pending_handlers import refresh_chat_goal_view
 
         approve_handlers.reload_pending_plan_after_apply(main)
+        # CLI announce_apply_approved writes chat.jsonl; pull it into the UI now.
+        try:
+            _chat_handlers.poll_live_activity(main)
+        except Exception:
+            pass
+        try:
+            refresh_chat_goal_view(main)
+        except Exception:
+            pass
+    if "bug-hunt" in cmd and exit_code == 0:
+        from . import chat_handlers as _chat_handlers
+
+        try:
+            _chat_handlers.focus_approvals_mode(main)
+        except Exception:
+            pass
     from .dashboard_handlers import refresh_dashboard
 
     refresh_dashboard(main)

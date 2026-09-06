@@ -25,6 +25,8 @@ COMMANDS = (
     "report-snapshot",
     "learning-kpi",
     "self-check",
+    "bug-hunt",
+    "learn-github",
 )
 
 
@@ -106,6 +108,14 @@ class PanelService:
             emit=emit,
         )
         exit_code = int(result.get("exitCode") or 0) if isinstance(result, dict) else 1
+        # CLI already announced to chat.jsonl; expose the same summary for RPC/Desktop.
+        text = ""
+        try:
+            from eurika.api.fix_status import format_last_fix_status
+
+            text = f"apply-approved (exit {exit_code})\n\n{format_last_fix_status(self.tools.root)}"
+        except Exception:
+            text = f"apply-approved (exit {exit_code})"
         return {
             "ok": exit_code == 0,
             "exitCode": exit_code,
@@ -113,6 +123,7 @@ class PanelService:
             "stderr": result.get("stderr") if isinstance(result, dict) else "",
             "saved": saved,
             "command": "eurika fix . --apply-approved",
+            "text": text,
         }
 
     def command_run(
@@ -138,6 +149,10 @@ class PanelService:
             argv.extend([module, str(self.tools.root)])
         else:
             argv.append(str(self.tools.root))
+        if command == "bug-hunt" and "--propose" not in extra:
+            argv.extend(["--propose", "--sandbox"])
+        if command == "learn-github" and "--build-patterns" not in extra:
+            argv.extend(["--light", "--limit-repos", "2", "--scan", "--build-patterns"])
         argv.extend(extra)
         return self.tools._run_process(
             argv,
@@ -198,7 +213,10 @@ class PanelService:
         plan_valid = bool(pending and is_pending_plan_valid(pending))
         plan_stale = bool(pending and not plan_valid)
         text = format_agent_context_panel(
-            state, plan_valid=plan_valid, plan_stale=plan_stale
+            state,
+            plan_valid=plan_valid,
+            plan_stale=plan_stale,
+            project_root=self.tools.root,
         )
         token = str(pending.get("token") or "").strip()
         fingerprint = ""

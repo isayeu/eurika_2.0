@@ -207,6 +207,15 @@ def _build_dialog_page(main: MainWindow) -> QWidget:
     jump_row.addStretch(1)
     context_layout.addLayout(jump_row)
 
+    main.idle_self_dev_check = QCheckBox("Саморазвитие в простое LLM")
+    main.idle_self_dev_check.setChecked(False)
+    main.idle_self_dev_check.setToolTip(
+        "Когда Cursor/LLM свободен ≥3 мин и Market не due — "
+        "один C.14 propose+sandbox по полигону (imports → extract → long_function) "
+        "→ Approvals. В чате видны шаги drill. Без apply на main."
+    )
+    context_layout.addWidget(main.idle_self_dev_check)
+
     main_split = QSplitter(Qt.Orientation.Horizontal)
     main_split.addWidget(chat_split)
     main_split.addWidget(context)
@@ -540,4 +549,6 @@ def _build_market_page(main: MainWindow) -> QWidget:
     main._market_llm_timer = None
     main._market_llm_worker = None
     main._market_llm_warned_no_key = False
+    main._idle_self_dev_timer = None
+    main._idle_self_dev_worker = None
     return page

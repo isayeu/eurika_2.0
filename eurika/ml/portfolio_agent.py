@@ -571,7 +571,11 @@ def build_portfolio_prompt(root: str | Path, *, now_ms: int | None = None) -> st
 def _default_chat(prompt: str) -> tuple[str | None, str | None]:
     from eurika.agent.cursor_judge import complete_chat
 
-    return complete_chat(prompt)
+    return complete_chat(
+        prompt,
+        lease_priority="market",
+        lease_purpose="portfolio_agent",
+    )
 
 
 def _harvest_learning(

@@ -130,6 +130,8 @@ def test_normalize_propose_drill_aliases() -> None:
     assert normalize_propose_drill("third") == "long_function"
     assert normalize_propose_drill("llm") == "llm_extract"
     assert normalize_propose_drill("fourth") == "llm_extract"
+    assert normalize_propose_drill("deep") == "deep_nesting"
+    assert normalize_propose_drill("fifth") == "deep_nesting"
 
 
 def test_propose_extractable_writes_pending_and_seeds(tmp_path: Path) -> None:

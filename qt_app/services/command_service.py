@@ -69,6 +69,8 @@ class CommandService(QObject):
         learn_scan: bool = True,
         learn_build_patterns: bool = True,
         learn_limit_repos: int = 0,
+        bug_hunt_sandbox: bool = True,
+        bug_hunt_web: bool = False,
     ) -> None:
         if self._process.state() != QProcess.NotRunning:
             self.error_line.emit("A command is already running.")
@@ -91,6 +93,8 @@ class CommandService(QObject):
                 learn_scan=learn_scan,
                 learn_build_patterns=learn_build_patterns,
                 learn_limit_repos=learn_limit_repos,
+                bug_hunt_sandbox=bug_hunt_sandbox,
+                bug_hunt_web=bug_hunt_web,
             )
         except ValueError as exc:
             self.error_line.emit(str(exc))

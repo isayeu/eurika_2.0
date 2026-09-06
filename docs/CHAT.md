@@ -2,7 +2,7 @@
 
 Справочник для вкладки **Chat** в `eurika-qt` и для `eurika.api.chat_send`.
 
-Чат работает с **текущим Project root** (воркспейс, как папка в Cursor) и выбранным **чатом** в левой рейке. **Новый чат** открывает диалог каталога; **+** у корня — новый тред в этом root; ПКМ по чату — переименовать/удалить.
+Чат работает с **текущим Project root** (воркспейс, как папка в Cursor) и выбранным **чатом** в левой рейке. **Новый чат** открывает диалог каталога; **+** у корня — новый тред в этом root; ПКМ по чату — переименовать/удалить; ПКМ по воркспейсу — убрать из списка (файлы на диске не удаляются).
 
 ## Два режима ответа
 
@@ -18,9 +18,9 @@
 
 Один цикл вместо двухфазного ритуала: **LLM → инструмент → LLM**.
 
-1. Модель получает описание инструмента `host_shell` (cwd = project root) и, если нужны факты, выводит блок ```` ```eurika-cmds ```` с командами (`ls -la`, `git status`, `pwd`, …).
-2. Eurika выполняет их сама через `bash -c` (**без** binary allowlist), пишет `$ cmd` + вывод во вкладку **Terminal**. Если нужны права — Qt предлагает: пароль sudo / продолжить без пароля (с ограничениями) / пропустить.
-3. Вывод возвращается модели, она отвечает своими словами. Пустой блок `eurika-cmds` — модели сообщают об этом, и она может повторить. Если вместо проверки хоста модель выдала лекцию (`netstat`/`ifconfig`/Activity Monitor) — цикл один раз требует реальный `eurika-cmds`. Если на вопрос про Wi‑Fi/VPN она сняла только порты (`ss`/`lsof`/`netstat`) — цикл требует `nmcli`/`ip`. Обычные ```` ```bash ```` / ```` ```python ```` **не** автозапускаются (для UI Copy/Run).
+1. Модель получает описание инструмента `host_shell` (cwd = project root) и, если нужны факты, выводит блок ```` ```eurika-cmds ```` с командами (`ls -la`, `git status`, `journalctl`, `pacman -S …`, `pwd`, …).
+2. Eurika выполняет их сама через `bash -c` (**без** binary allowlist), пишет `$ cmd` + вывод во вкладку **Terminal**. Если нужны права — Qt предлагает: пароль sudo / продолжить без пароля (с ограничениями) / пропустить. **Запрещены** только записи в дерево проекта (`rm`/`tee`/`>`/`git commit`); пакеты и сервисы ОС (pacman/apt/systemctl) — разрешены под sudo UI. Правки кода — Approvals / Cursor.
+3. Вывод возвращается модели, она отвечает своими словами. Пустой блок `eurika-cmds` — модели сообщают об этом, и она может повторить. Если вместо проверки хоста модель выдала лекцию (`netstat`/`ifconfig`/Activity Monitor) — цикл один раз требует реальный `eurika-cmds`. Если модель отказывается «нет внешнего API / интернета» на живых фактах (цена тикера и т.п.) — тот же recovery: Binance read-only / curl через `eurika-cmds`, без phrase-book «стоимость BTC». Если на «содержимое каталога» ушла в pytest/ruff/pacman — recovery требует `ls -la`. Если на вопрос про Wi‑Fi/VPN она сняла только порты (`ss`/`lsof`/`netstat`) — цикл требует `nmcli`/`ip`. Обычные ```` ```bash ```` / ```` ```python ```` **не** автозапускаются (для UI Copy/Run).
 4. Удачные tool-turns пишутся в `.eurika/chat_tool_turns.jsonl` (команды + `outcome_hint`) и подмешиваются в промпт **по релевантности** к текущему сообщению (не только хвост файла; не YAML phrase-book).
 5. В каждый промпт кладётся `[Host identity]` (`uname` / os-release) — чтобы не выдумывать macOS. Вопросы про **успехи обучения market ML** — факты из `resolve_market_root()` (`[Market facts]` = `format_market_learning_report`: таблицы банк / live / тени / головы / ворота / LLM-учитель + **вердикт** по equity/net edge). Прямой интент «успехи на маркете» отдаёт тот же отчёт без сжатия LLM. **Не** `eurika scan`. Убыток по банку нельзя смягчать через accuracy.
 
@@ -72,11 +72,20 @@
 | `второй полигон` / `предложи полигон extract` | C.14: seed `extractable_block` (`extract_block_to_helper`) → Approvals |
 | `третий полигон` / `предложи полигон long` | C.14: seed `long_function` (`extract_nested_function`) → Approvals |
 | `четвёртый полигон` / `полигон llm` | C.14: seed `llm_extract` (`llm_extract_block`, live LLM или offline synthetic) → Approvals |
+| `пятый полигон` / `полигон deep` | C.14: seed `deep_nesting` (`extract_block_to_helper` на `deep_nesting.py`) → Approvals |
+| `найди баг` / `предложи улучшение кода` / `bug hunt` | C.14 v1.5: один реальный smell → sandbox → Approvals (**не** polygon; без apply) |
+| *(Qt Commands)* Bug-hunt (C.14) | То же: `--propose` + sandbox/web opts; после ok — фокус Approvals |
+| `обнови паттерны` / `learn-github` | C.14: `learn-github --light --limit-repos 2 --scan --build-patterns` → `.eurika/pattern_library.json` (OSS для bug-hunt) |
 | `полигон live` / `require-llm` | C.14: `llm_extract --require-llm` (без synthetic fallback) |
-| `запусти telegram-bot` | C.12: фоновый long-poll (`eurika telegram-bot .`); лог `.eurika/telegram_bot.log` |
+| `полигон sandbox` / `в песочнице` | C.14: тот же propose с `--sandbox` |
+| *(Qt / Desktop)* «Саморазвитие в простое LLM» | Idle: ротация … / llm_extract / **bug_hunt**; anti-tread по `drill_ok`; prefs `idle_self_dev` |
+| `запусти telegram-bot` | C.12: фоновый long-poll (`eurika telegram-bot .`); лог `.eurika/telegram_bot.log`; push Approvals + кнопки Approve/Reject |
 | `останови telegram-bot` | C.12: остановить фоновый процесс |
 | `статус telegram-bot` / `бот жив?` | C.12: pid / running / token / allowlist |
+| *(Telegram)* `/approvals` `/approve` `/reject` | HITL: статус очереди / approve all / reject all (**без** apply на диск); решение → Chat/Goals Qt |
+| *(после apply)* | Push в Telegram: итог apply-approved (verify / modified); тот же `EURIKA_TELEGRAM_NOTIFY_APPROVALS` |
 | `статус apply` / `получилось?` | Последний `eurika_fix_report.json` (verify / modified); не путать с «что получилось?» |
+| *(после)* Run apply-approved | В Chat сразу итог apply (verify / modified / pending_plan); Goals → Итог; Qt подтягивает через poll transcript |
 | опечатка вроде `scsn` | Подсказка; **да** → scan, **нет** → отмена (не list_docs) |
 | `покажи отчёт`, `doctor report` | Отчёт doctor |
 | `какие документы по проекту?`, `покажи документацию` | Список README / docs / rules |
@@ -101,7 +110,7 @@
 | `включи EURIKA_USE_VECTOR_INTENT=1` | Fuzzy embeddings (нужен `nomic-embed-text`) |
 | вопрос про тикеры / общую модель market ML | Прямой ответ из кода (без LLM) |
 
-В Qt панель **Контекст** (справа в Агент) показывает те же блоки: Цель / Pending Diff / Итог; после run цель может быть «нет», а итог ещё виден до «сбрось цель». В Desktop — вкладка **Context** (`panel/state` → `context`), тот же `format_agent_context_panel`; **Diff / Apply / Reject** для HITL `dialog_state.pending_plan` (`context/preview`, `context/decide`) — не путать с Approvals `.eurika/pending_plan.json`.
+В Qt панель **Контекст** (справа в Агент) показывает те же блоки: Цель / Pending Diff / Итог / **Approvals** (`.eurika/pending_plan.json`); после run цель может быть «нет», а итог ещё виден до «сбрось цель». Idle self-dev тоже пишет итог. В Desktop — вкладка **Context** (`panel/state` → `context`), тот же `format_agent_context_panel`; **Diff / Apply / Reject** для HITL `dialog_state.pending_plan` (`context/preview`, `context/decide`) — не путать с Approvals `.eurika/pending_plan.json`.
 
 ### Git
 
@@ -149,6 +158,8 @@
 | `CURSOR_API_KEY` | User API key Cursor (gitignored `.env`) |
 | `CURSOR_MODEL` | id модели (`composer-2.5`, `auto-smart`, …) |
 | `CURSOR_OPTIMIZE_FOR` | Router: `cost` \| `balanced` \| `intelligence` (только Auto / auto-smart) |
+
+**Cursor SDK bridge:** каждый процесс, зовущий Cursor, поднимает Node `cursor-sdk-bridge` (~100–250 MiB). Qt раньше выходил через `os._exit` и **не** вызывал atexit SDK → мосты оставались сиротами под сессией. Сейчас: `shutdown_cursor_sdk` при закрытии Qt/telegram + `prune_orphan_cursor_bridges` на старте Qt (мёртвый callback-port). Ручной сброс: `python -c "from eurika.agent.cursor_bridge_gc import prune_orphan_cursor_bridges; print(prune_orphan_cursor_bridges())"`.
 
 **Поведение `auto`:** при наличии `OPENAI_API_KEY` — remote OpenAI-compatible API; иначе Ollama. `codex` — только remote API, без fallback на Ollama. `cursor` — модели Cursor SDK (`CURSOR_API_KEY` в `.env`; вкладка Models → Cursor model / Router).
 

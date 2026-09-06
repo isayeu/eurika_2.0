@@ -1078,6 +1078,7 @@ def test_approval_apply_persists_then_runs_apply_approved(
     )
     assert result["ok"] is True
     assert result["saved"]["approved"] == 1
+    assert "apply-approved" in str(result.get("text") or "")
     assert captured and "--apply-approved" in captured[0]
     assert "--verify-cmd" in captured[0] and "true" in captured[0]
     pending = json.loads(

@@ -251,6 +251,19 @@ main {
   flex: 0 0 auto;
   min-width: 0;
 }
+#idle-self-dev-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 0;
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: #a8b0bd;
+  user-select: none;
+}
+#idle-self-dev-label input {
+  margin: 0;
+}
 #prompt {
   grid-column: 1 / -1;
   min-width: 0;

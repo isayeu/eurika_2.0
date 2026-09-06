@@ -211,7 +211,7 @@ def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
         metavar="NAME",
         help=(
             "With --propose: imports (default), extractable_block, "
-            "long_function, or llm_extract"
+            "long_function, deep_nesting, or llm_extract"
         ),
     )
     prove_cycle_parser.add_argument(
@@ -244,6 +244,96 @@ def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Verify step timeout in seconds (default: 60)",
     )
 
+    bug_hunt_parser = subparsers.add_parser(
+        "bug-hunt",
+        help=(
+            "C.14 v1.5: pick one real smell op → sandbox verify → Approvals "
+            "(no apply on main)"
+        ),
+    )
+    bug_hunt_parser.add_argument(
+        "path", nargs="?", default=".", type=Path, help="Project root (default: .)"
+    )
+    bug_hunt_parser.add_argument(
+        "--propose",
+        action="store_true",
+        help="Required: park one op in .eurika/pending_plan.json after sandbox",
+    )
+    bug_hunt_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Pick op and print plan without writing pending_plan",
+    )
+    bug_hunt_parser.add_argument(
+        "--sandbox",
+        action="store_true",
+        default=True,
+        help="Apply+smoke-verify in .eurika/sandbox before parking (default on)",
+    )
+    bug_hunt_parser.add_argument(
+        "--no-sandbox",
+        action="store_true",
+        help="Skip sandbox (still does not apply on main; park only)",
+    )
+    bug_hunt_parser.add_argument(
+        "--web",
+        action="store_true",
+        help="Attach one web_search research note to op description (not a patch)",
+    )
+    bug_hunt_parser.add_argument(
+        "--keep-sandbox",
+        action="store_true",
+        help="Keep .eurika/sandbox worktree/copy after propose",
+    )
+    bug_hunt_parser.add_argument("--quiet", "-q", action="store_true", help="JSON only")
+
+    idle_self_dev_parser = subparsers.add_parser(
+        "idle-self-dev",
+        help=(
+            "C.14 idle self-dev: when LLM lease is quiet, one propose+sandbox "
+            "(polygon drills + bug_hunt; no apply on main)"
+        ),
+    )
+    idle_self_dev_parser.add_argument(
+        "path", nargs="?", default=".", type=Path, help="Project root (default: .)"
+    )
+    idle_self_dev_parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Run one maybe_run cycle (default when not --status)",
+    )
+    idle_self_dev_parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Print idle/lease/due status JSON (no propose)",
+    )
+    idle_self_dev_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Ignore min-interval stamp (still respects lease/pending/quiet)",
+    )
+    idle_self_dev_parser.add_argument(
+        "--keep-sandbox",
+        action="store_true",
+        help="Keep .eurika/sandbox worktree after propose",
+    )
+    idle_self_dev_parser.add_argument(
+        "--yield-market-llm",
+        action="store_true",
+        help="Skip when cursor_hourly.is_due (Market LLM would want the lease)",
+    )
+    idle_self_dev_parser.add_argument(
+        "--yield-portfolio",
+        action="store_true",
+        help="Skip when portfolio_agent.is_due",
+    )
+    idle_self_dev_parser.add_argument(
+        "--prune-sandboxes",
+        action="store_true",
+        help="Remove stale .eurika/sandbox propose_* dirs + git worktree prune (no propose)",
+    )
+    idle_self_dev_parser.add_argument("--quiet", "-q", action="store_true", help="JSON only")
+
     tg_parser = subparsers.add_parser(
         "telegram-bot",
         help="C.12: Telegram long-poll → chat_send (HITL apply stays in Approvals)",
@@ -271,6 +361,11 @@ def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
         default=25,
         metavar="SEC",
         help="Long-poll timeout seconds (default: 25)",
+    )
+    tg_parser.add_argument(
+        "--notify-approvals",
+        action="store_true",
+        help="Push current pending Approvals to allowlisted chats and exit (no long-poll)",
     )
 
     serve_parser = subparsers.add_parser("serve", help="Run JSON API server for future UI (GET /api/summary, /api/history, /api/diff)")

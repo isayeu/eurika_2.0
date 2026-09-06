@@ -111,6 +111,14 @@ def _title(method: str, params: dict[str, Any]) -> str:
         return f"tool/call {tool} {path}".strip()
     if method == "POST /api/exec":
         return f"exec {_clip(params.get('command'), 160)}"
+    if method == "idle_self_dev":
+        detail = str(params.get("detail") or params.get("message") or "").strip()
+        drill = str(params.get("drill") or "").strip()
+        if detail:
+            return f"саморазвитие: {detail}"
+        if drill:
+            return f"саморазвитие: drill {drill} (polygon → sandbox → Approvals)"
+        return "саморазвитие: C.14 propose+sandbox"
     return method
 
 
@@ -153,6 +161,28 @@ def publish_start(
             "client": client,
             "method": method,
             "title": _title(method, params),
+            "message": _clip(message, 500) if message else "",
+        },
+    )
+
+
+def publish_progress(
+    workspace: Path,
+    *,
+    method: str,
+    title: str,
+    client: str = "http",
+    message: str = "",
+) -> dict[str, Any]:
+    """Mid-flight note for Chat (e.g. idle self-dev steps)."""
+    return publish(
+        workspace,
+        {
+            "phase": "progress",
+            "kind": "progress",
+            "client": client,
+            "method": method,
+            "title": _clip(title, 240),
             "message": _clip(message, 500) if message else "",
         },
     )

@@ -64,6 +64,9 @@ const seenChatKeys = new Set<string>();
 const seenActivityKeys = new Set<string>();
 let activityOffset = 0;
 let livePollTimer: number | undefined;
+let idleSelfDevTimer: number | undefined;
+let idleSelfDevBusy = false;
+const IDLE_SELF_DEV_POLL_MS = 60_000;
 
 function chatKey(role: string, text: string): string {
   return `${role}:${text.trim().slice(0, 800)}`;
@@ -159,6 +162,7 @@ async function openWorkspace(requested?: string): Promise<void> {
   await restoreChatHistory();
   await refreshFiles();
   startLiveFollow();
+  await syncIdleSelfDevFromPrefs();
 }
 
 async function restoreChatHistory(): Promise<void> {
@@ -189,9 +193,12 @@ async function pollLiveActivity(): Promise<void> {
         title?: string;
         method?: string;
         kind?: string;
+        text?: string;
         terminal_cmd?: string;
         terminal_output?: string;
         error?: string;
+        ok?: boolean;
+        approvalsQueued?: number;
       }>;
       offset: number;
     }>("activity/recent", { afterOffset: activityOffset, limit: 80 });
@@ -201,14 +208,35 @@ async function pollLiveActivity(): Promise<void> {
       if (seenActivityKeys.has(key)) continue;
       seenActivityKeys.add(key);
       if (event.client === "agent" && event.kind !== "http") continue;
+      const isSelfDev =
+        event.client === "idle_self_dev" || event.method === "idle_self_dev";
       const title = event.title || event.method || "API";
-      if (event.phase === "start" || event.kind === "http") {
-        terminal.writeln(`[API] ${title}`);
-        appendMessage("assistant", `[API] ${title}`);
+      if (event.phase === "start" || event.phase === "progress" || event.kind === "http") {
+        const line = isSelfDev
+          ? title.startsWith("саморазвитие")
+            ? title
+            : `[саморазвитие] ${title}`
+          : `[API] ${title}`;
+        terminal.writeln(line);
+        appendMessage("assistant", line);
+      }
+      if (event.phase === "done" && isSelfDev) {
+        const doneText = (event.text || title || "").trim();
+        if (doneText) {
+          const line = doneText.startsWith("саморазвитие")
+            ? doneText
+            : `[саморазвитие] ${doneText}`;
+          appendMessage("assistant", line);
+        }
+        if ((event.approvalsQueued ?? 0) > 0) {
+          void runUi(() => showPanel("approvals"));
+        } else {
+          void runUi(() => showPanel("context"));
+        }
       }
       if (event.terminal_cmd) terminal.writeln(event.terminal_cmd);
       if (event.terminal_output) terminal.writeln(event.terminal_output);
-      if (event.error) appendMessage("assistant", `[API error] ${event.error}`);
+      if (event.error && !isSelfDev) appendMessage("assistant", `[API error] ${event.error}`);
     }
     const history = await window.eurika.request<{
       messages: Array<{ role: string; content: string }>;
@@ -219,6 +247,61 @@ async function pollLiveActivity(): Promise<void> {
     }
   } catch {
     // Backend may be restarting; the next tick retries.
+  }
+}
+
+async function syncIdleSelfDevFromPrefs(): Promise<void> {
+  const box = required("idle-self-dev") as HTMLInputElement;
+  try {
+    const prefs = await window.eurika.request<{ idle_self_dev?: boolean }>(
+      "idle-self-dev/prefs",
+    );
+    box.checked = Boolean(prefs.idle_self_dev);
+  } catch {
+    box.checked = false;
+  }
+  syncIdleSelfDevTimer();
+}
+
+function syncIdleSelfDevTimer(): void {
+  const box = required("idle-self-dev") as HTMLInputElement;
+  if (!box.checked) {
+    if (idleSelfDevTimer !== undefined) {
+      window.clearInterval(idleSelfDevTimer);
+      idleSelfDevTimer = undefined;
+    }
+    return;
+  }
+  if (idleSelfDevTimer === undefined) {
+    idleSelfDevTimer = window.setInterval(() => {
+      void pollIdleSelfDev();
+    }, IDLE_SELF_DEV_POLL_MS);
+  }
+  void pollIdleSelfDev();
+}
+
+async function pollIdleSelfDev(): Promise<void> {
+  const box = required("idle-self-dev") as HTMLInputElement;
+  if (!box.checked || idleSelfDevBusy || chatRequestId) return;
+  idleSelfDevBusy = true;
+  try {
+    const result = await window.eurika.request<{
+      skipped?: string | null;
+      message?: string;
+      approvalsQueued?: number;
+      ok?: boolean;
+    }>("idle-self-dev/run");
+    if (result.skipped) return;
+    if ((result.approvalsQueued ?? 0) > 0) {
+      void runUi(() => showPanel("approvals"));
+    }
+  } catch (error) {
+    appendMessage(
+      "assistant",
+      `саморазвитие: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  } finally {
+    idleSelfDevBusy = false;
   }
 }
 
@@ -921,7 +1004,17 @@ function renderApprovals(data: Record<string, unknown>): void {
       terminal.writeln(
         `[apply-approved exit ${String(result.exitCode ?? "?")}] saved=${JSON.stringify(result.saved ?? null)}`,
       );
+      const applyText = String(result.text ?? "").trim();
+      if (applyText) {
+        appendMessage("assistant", applyText);
+      } else {
+        appendMessage(
+          "assistant",
+          `apply-approved (exit ${String(result.exitCode ?? "?")})`,
+        );
+      }
       await showPanel("approvals");
+      void runUi(() => showPanel("context"));
     });
     actions.append(save, apply);
     productPanel.append(actions);
@@ -979,6 +1072,13 @@ required("refresh-files").onclick = () => void runUi(refreshFiles);
 required("restore-checkpoint").onclick = () => void runUi(restoreCheckpoint);
 required("clear-chat").onclick = () => void runUi(clearChatHistory);
 required("cancel-chat").onclick = () => void runUi(cancelChat);
+required("idle-self-dev").addEventListener("change", () => {
+  void runUi(async () => {
+    const box = required("idle-self-dev") as HTMLInputElement;
+    await window.eurika.request("idle-self-dev/prefs", { enabled: box.checked });
+    syncIdleSelfDevTimer();
+  });
+});
 required("chat-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const input = required("prompt") as HTMLTextAreaElement;

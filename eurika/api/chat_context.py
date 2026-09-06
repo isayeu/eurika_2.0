@@ -317,16 +317,105 @@ def release_active_goal_keep_execution(state: Dict[str, Any]) -> Dict[str, Any]:
     return state
 
 
+def record_c14_approvals_outcome(
+    root: Path,
+    *,
+    drill: str,
+    target: str,
+    ok: bool,
+    source: str = "idle_self_dev",
+    error: str | None = None,
+) -> Dict[str, Any]:
+    """Pin goal+итог when C.14 parks/fails Approvals (idle / polygon parity).
+
+    Releases sticky ``active_goal`` but keeps ``last_execution`` for
+    «какая цель?» / «что получилось?» and the Context panel.
+    """
+    state = load_dialog_state(root)
+    intent = "idle_self_dev" if source == "idle_self_dev" else "polygon_propose"
+    state["active_goal"] = {
+        "intent": intent,
+        "source": source,
+        "target": str(target or "").strip() or f"drill:{drill}",
+        "drill": str(drill or "").strip(),
+    }
+    summary = (
+        f"{source}: drill `{drill}` → .eurika/pending_plan.json"
+        if ok
+        else f"{source}: drill `{drill}` failed"
+        + (f" — {error}" if error else "")
+    )
+    store_last_execution(
+        state,
+        {
+            "ok": bool(ok),
+            "summary": summary,
+            "artifacts_changed": [str(target)] if ok and target else [],
+        },
+    )
+    release_active_goal_keep_execution(state)
+    save_dialog_state(root, state)
+    return state
+
+
+def format_approvals_queue_lines(project_root: Path | None) -> List[str]:
+    """Short Approvals (.eurika/pending_plan.json) block for Context panel."""
+    if project_root is None:
+        return []
+    try:
+        from eurika.orchestration.team_mode import load_pending_plan
+
+        plan = load_pending_plan(Path(project_root).resolve())
+    except Exception:
+        return []
+    if not isinstance(plan, dict):
+        return []
+    ops = plan.get("operations")
+    if not isinstance(ops, list):
+        return []
+    pending = [
+        op
+        for op in ops
+        if isinstance(op, dict)
+        and str(op.get("team_decision") or "pending").strip().lower() == "pending"
+    ]
+    if not pending:
+        return []
+    patch = plan.get("patch_plan") if isinstance(plan.get("patch_plan"), dict) else {}
+    source = str(
+        (patch or {}).get("source")
+        or (patch or {}).get("summary")
+        or (patch or {}).get("drill")
+        or "pending_plan"
+    ).strip()
+    lines = ["", f"Approvals (team pending): {len(pending)} op(s)"]
+    if source:
+        lines.append(f"- source={source}")
+    for op in pending[:5]:
+        kind = str(op.get("kind") or "op").strip()
+        target = str(op.get("target_file") or "").strip()
+        if target:
+            lines.append(f"- `{kind}` → `{target}`")
+        else:
+            lines.append(f"- `{kind}`")
+    if len(pending) > 5:
+        lines.append(f"- … +{len(pending) - 5} more")
+    lines.append("- Qt/Desktop Approvals → approve → `eurika fix . --apply-approved`")
+    return lines
+
+
 def format_agent_context_panel(
     state: Optional[Dict[str, Any]],
     *,
     plan_valid: bool = False,
     plan_stale: bool = False,
+    project_root: Path | None = None,
 ) -> str:
     """Text for Qt Agent «Контекст» panel (goal / pending / итог).
 
     Shows last_execution even without active_goal (post-run release). Empty state
-    hints chat phrases for reflection / roadmap.
+    hints chat phrases for reflection / roadmap. With ``project_root``, also
+    surfaces team Approvals from ``.eurika/pending_plan.json``.
     """
     if not isinstance(state, dict):
         state = {}
@@ -401,6 +490,10 @@ def format_agent_context_panel(
             f"target={pending_plan.get('target', '-')}"
         )
 
+    approvals_lines = format_approvals_queue_lines(project_root)
+    if approvals_lines:
+        lines.extend(approvals_lines)
+
     last = state.get("last_execution")
     if isinstance(last, dict) and last:
         lines.append("")
@@ -435,7 +528,7 @@ def format_agent_context_panel(
         isinstance(last, dict) and bool(last)
     ) or (
         isinstance(pending_git, dict) and bool(pending_git.get("message"))
-    )
+    ) or bool(approvals_lines)
     if not has_substance:
         return (
             "Нет активной цели и итога.\n"

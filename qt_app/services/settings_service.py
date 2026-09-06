@@ -76,6 +76,40 @@ class SettingsService:
         data["project_root"] = path
         self.save(data)
 
+    def forget_workspace_root(self, project_root: str) -> list[str]:
+        """Remove a workspace from the rail list (does not delete files on disk).
+
+        Returns the remaining roots. If the forgotten path was the active
+        ``project_root``, switches active root to the first remaining (or ``""``).
+        """
+        target = str(project_root or "").strip()
+        if not target:
+            return self.list_workspace_roots()
+        try:
+            target_resolved = str(Path(target).expanduser().resolve())
+        except OSError:
+            target_resolved = target
+
+        def _same(a: str) -> bool:
+            raw = str(a or "").strip()
+            if not raw:
+                return False
+            if raw == target or raw == target_resolved:
+                return True
+            try:
+                return str(Path(raw).expanduser().resolve()) == target_resolved
+            except OSError:
+                return False
+
+        roots = [r for r in self.list_workspace_roots() if not _same(r)]
+        data = self.load()
+        data["workspace_roots"] = roots[:12]
+        current = str(data.get("project_root") or "").strip()
+        if current and _same(current):
+            data["project_root"] = roots[0] if roots else ""
+        self.save(data)
+        return roots
+
     def get_theme(self) -> str:
         """Return 'light' or 'dark'."""
         data = self.load()
