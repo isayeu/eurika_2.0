@@ -211,10 +211,17 @@ def poll_live_activity(main: "MainWindow") -> None:
         root = Path(str(main._api._root()))
     except Exception:
         return
-    from eurika.agent.live_activity import activity_path, chat_history_path, consume_jsonl
+    from eurika.agent.live_activity import activity_path, chat_history_path, consume_jsonl, file_end
 
+    chat_path = chat_history_path(root)
+    act_path = activity_path(root)
     chat_offset = int(getattr(main, "_live_chat_offset", 0) or 0)
-    records, chat_offset = consume_jsonl(chat_history_path(root), chat_offset)
+    act_offset = int(getattr(main, "_live_activity_offset", 0) or 0)
+    # Cheap idle: both logs unchanged → skip open/parse on the UI thread.
+    if file_end(chat_path) == chat_offset and file_end(act_path) == act_offset:
+        return
+
+    records, chat_offset = consume_jsonl(chat_path, chat_offset)
     main._live_chat_offset = chat_offset
     drew_chat = False
     for record in records:
@@ -231,8 +238,7 @@ def poll_live_activity(main: "MainWindow") -> None:
         _scroll_transcript_to_bottom(main)
         _maybe_show_chat_tab(main)
 
-    act_offset = int(getattr(main, "_live_activity_offset", 0) or 0)
-    events, act_offset = consume_jsonl(activity_path(root), act_offset)
+    events, act_offset = consume_jsonl(act_path, act_offset)
     main._live_activity_offset = act_offset
     seen_ids = getattr(main, "_live_activity_ids", None)
     if not isinstance(seen_ids, set):
@@ -249,14 +255,24 @@ def poll_live_activity(main: "MainWindow") -> None:
 
 
 def _maybe_show_chat_tab(main: "MainWindow") -> None:
+    """Follow live chat only when the user is already in Chat — never steal other tabs."""
     chat_input = getattr(main, "chat_input", None)
     if chat_input is not None and chat_input.hasFocus():
         return
-    if hasattr(main, "tabs") and hasattr(main, "chat_tab_index"):
-        main.tabs.setCurrentIndex(main.chat_tab_index)
+    tabs = getattr(main, "tabs", None)
+    chat_idx = getattr(main, "chat_tab_index", None)
+    if tabs is None or chat_idx is None:
+        return
+    # Do not yank focus from Dashboard / Terminal / Graph / etc.
+    if tabs.currentIndex() != int(chat_idx):
+        return
     inner = getattr(main, "chat_inner_tabs", None)
     if inner is not None and hasattr(main, "chat_dialog_subtab_index"):
-        inner.setCurrentIndex(main.chat_dialog_subtab_index)
+        dialog_idx = int(main.chat_dialog_subtab_index)
+        if inner.currentIndex() != dialog_idx:
+            # User is on Market/Learn/Approvals inside Chat — leave them there.
+            return
+        inner.setCurrentIndex(dialog_idx)
 
 
 def _live_event_echoes_in_chat(event: dict[str, Any]) -> bool:

@@ -64,6 +64,9 @@ def consume_jsonl(path: Path, offset: int) -> tuple[list[dict[str, Any]], int]:
         size = path.stat().st_size
         if offset > size:
             offset = 0
+        # Hot path for Qt live poll: nothing new — avoid open/seek.
+        if offset == size:
+            return ([], offset)
         with path.open("r", encoding="utf-8") as stream:
             stream.seek(offset)
             for line in stream:

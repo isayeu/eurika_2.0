@@ -279,6 +279,21 @@ def _ollama_preflight_check(model: str) -> str | None:
         return str(e)
 
 _OLLAMA_CLI_MAX_PROMPT_CHARS = 12_000
+_OLLAMA_FALLBACK_PROMPT_CHARS = 8_000
+
+
+def _shrink_prompt_for_local_llm(prompt: str, *, limit: int = _OLLAMA_FALLBACK_PROMPT_CHARS) -> str:
+    """Keep head+tail so local 7B models can answer when remote rate-limits."""
+    text = prompt or ""
+    if len(text) <= limit:
+        return text
+    head = (limit * 2) // 3
+    tail = max(200, limit - head - 64)
+    return (
+        text[:head]
+        + "\n\n[…truncated for local LLM fallback…]\n\n"
+        + text[-tail:]
+    )
 
 
 def _call_ollama_cli(model: str, prompt: str, timeout_override: int | None=None) -> tuple[str | None, str | None]:
@@ -602,12 +617,13 @@ def _call_primary_openai_then_fallbacks(
         _trace_architect(f'litellm failed: {litellm_reason}; trying ollama HTTP...')
     fallback_client, fallback_model, fallback_init_reason = _init_ollama_fallback_client()
     fallback_reason = fallback_init_reason
+    local_prompt = _shrink_prompt_for_local_llm(prompt) if rate_limit_reason else prompt
     if fallback_client and fallback_model:
         fallback_text, fallback_call_reason = _call_llm_architect(
             fallback_client,
             fallback_model,
-            prompt,
-            max_tokens=max_tokens,
+            local_prompt,
+            max_tokens=min(max_tokens, 512) if rate_limit_reason else max_tokens,
             timeout_sec=_ollama_http_timeout_sec(),
         )
         if fallback_text:
@@ -619,7 +635,9 @@ def _call_primary_openai_then_fallbacks(
         fallback_reason = fallback_call_reason
     cli_model = fallback_model or 'qwen2.5-coder:7b'
     _trace_architect(f'architect: ollama CLI fallback (model={cli_model}), до 120s...')
-    cli_prompt = ollama_cli_prompt if ollama_cli_prompt is not None else prompt
+    cli_prompt = ollama_cli_prompt if ollama_cli_prompt is not None else local_prompt
+    if rate_limit_reason:
+        cli_prompt = _shrink_prompt_for_local_llm(cli_prompt)
     cli_text, cli_reason = _call_ollama_cli(cli_model, cli_prompt)
     if cli_text:
         _trace_architect('ollama CLI ok')

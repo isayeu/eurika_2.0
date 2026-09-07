@@ -1113,6 +1113,10 @@ def test_chat_send_greeting_how_are_you_without_llm(tmp_path: Path, monkeypatch)
     assert resolve_direct_handler(tmp_path, "Привет как твои дела ?")[0] == "greeting"
     assert is_greeting("Йо, на связи?")
     assert resolve_direct_handler(tmp_path, "Йо, на связи?")[0] == "greeting"
+    assert is_greeting("Салют!")
+    assert resolve_direct_handler(tmp_path, "Салют!")[0] == "greeting"
+    assert is_greeting("Хэй!")
+    assert resolve_direct_handler(tmp_path, "Хэй!")[0] == "greeting"
     monkeypatch.setattr(
         "eurika.api.chat_host_ops.run_llm_tool_loop",
         lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("LLM/SDK should not be called")),

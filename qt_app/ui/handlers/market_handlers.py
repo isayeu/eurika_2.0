@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import re
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QThread, QTimer, Signal
@@ -483,9 +484,7 @@ def update_market_status_label(main: MainWindow, extra: str = "") -> None:
     root_pnl = _project_root(main)
     if root_pnl:
         try:
-            from eurika.ml.learning_status import market_learning_status
-
-            pnl_st = market_learning_status(root_pnl)
+            pnl_st = _cached_market_learning_status(main, root_pnl)
             pnl = (pnl_st.get("pnl") or {}).get("session") or {}
             live_p = (pnl_st.get("pnl") or {}).get("live") or {}
             bank = pnl_st.get("portfolio") or {}
@@ -541,6 +540,34 @@ def update_market_status_label(main: MainWindow, extra: str = "") -> None:
         if extra:
             short = f"{short} · {extra}"
         main.chat_mode_status_label.setText(short)
+
+
+_MARKET_STATUS_TTL_SEC = 2.5
+
+
+def _cached_market_learning_status(main: MainWindow, root: Path, *, force: bool = False) -> dict[str, Any]:
+    """Avoid re-scanning paper_trades.jsonl on every prefs click / status paint."""
+    import time
+
+    now = time.monotonic()
+    cache = getattr(main, "_market_status_cache", None)
+    if (
+        not force
+        and isinstance(cache, dict)
+        and cache.get("root") == str(root)
+        and (now - float(cache.get("ts") or 0.0)) < _MARKET_STATUS_TTL_SEC
+        and isinstance(cache.get("data"), dict)
+    ):
+        return cache["data"]
+    from eurika.ml.learning_status import market_learning_status
+
+    data = market_learning_status(root)
+    main._market_status_cache = {"root": str(root), "ts": now, "data": data}
+    return data
+
+
+def invalidate_market_status_cache(main: MainWindow) -> None:
+    main._market_status_cache = None
 
 
 def drop_market_orphans(main: MainWindow) -> None:
@@ -829,15 +856,34 @@ def _sync_market_explore_controls(main: MainWindow) -> None:
 
 
 def on_market_prefs_changed(main: MainWindow) -> None:
-    save_market_preferences(main)
+    """Debounce disk + heavy status so spin/combo spam does not stall the UI thread."""
+    from PySide6.QtCore import QTimer
+
     _sync_market_explore_controls(main)
+    # Cheap label bits (mode/candle) without forcing a full paper scan every click.
     update_market_status_label(main)
+    timer = getattr(main, "_market_prefs_debounce", None)
+    if timer is None:
+        timer = QTimer(main)
+        timer.setSingleShot(True)
+        timer.timeout.connect(lambda: _flush_market_prefs(main))
+        main._market_prefs_debounce = timer
+    timer.start(280)
+
+
+def _flush_market_prefs(main: MainWindow) -> None:
+    if getattr(main, "_is_closing", False):
+        return
+    save_market_preferences(main)
     _sync_timer(main)
     from . import market_llm_learn
     from . import market_portfolio_agent
 
     market_llm_learn.sync_timer(main)
     market_portfolio_agent.sync_timer(main)
+    # After save, refresh bank numbers once (invalidate cache).
+    invalidate_market_status_cache(main)
+    update_market_status_label(main)
 
 
 def reset_explore_counter(main: MainWindow) -> None:
@@ -1127,6 +1173,7 @@ def run_market_tick(main: MainWindow, *, from_timer: bool = False) -> None:
             f"далее={action_ru(str(sug.get('action') or 'HOLD'))}"
             f"@{sug.get('entry')}"
         )
+        invalidate_market_status_cache(main)
         update_market_status_label(main, extra)
         try:
             from . import ml_handlers

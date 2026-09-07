@@ -87,6 +87,7 @@ def refresh_graph(main: MainWindow) -> None:
             main._graph_table_fallback.setPlainText(msg)
         if main.graph_hint:
             main.graph_hint.setText("No graph — run eurika scan . first")
+        main._graph_content_loaded = True
         return
     nodes = data.get("nodes") or []
     edges = data.get("edges") or []
@@ -101,6 +102,7 @@ def refresh_graph(main: MainWindow) -> None:
         main._graph_table_fallback.setPlainText("\n".join(lines))
     if main.graph_hint:
         main.graph_hint.setText(f"{len(nodes)} modules, {len(edges)} dependencies")
+    main._graph_content_loaded = True
 
 
 def _render_graph_html(main: MainWindow, payload: dict[str, Any]) -> None:

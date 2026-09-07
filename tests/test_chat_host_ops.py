@@ -600,7 +600,11 @@ def test_record_and_load_tool_turn_experience(tmp_path: Path) -> None:
 def test_bare_shell_sudo_whoami_not_list_docs() -> None:
     from pathlib import Path
 
-    from eurika.api.chat_direct import is_bare_shell_request, resolve_direct_handler
+    from eurika.api.chat_direct import (
+        is_bare_shell_request,
+        resolve_direct_handler,
+        shell_command_from_run_phrase,
+    )
 
     assert is_bare_shell_request("sudo whoami") is True
     assert is_bare_shell_request("pwd") is True
@@ -610,6 +614,30 @@ def test_bare_shell_sudo_whoami_not_list_docs() -> None:
     assert is_bare_shell_request("покажи пример в блоке bash: pwd") is False
     handler, _ = resolve_direct_handler(Path("."), "sudo whoami")
     assert handler == "host_shell"
+    assert shell_command_from_run_phrase("выполни whoami") == "whoami"
+    assert is_bare_shell_request("выполни whoami") is True
+    assert resolve_direct_handler(Path("."), "выполни whoami")[0] == "host_shell"
+    assert resolve_direct_handler(Path("."), "run free -h")[0] == "host_shell"
+    assert resolve_direct_handler(Path("."), "uptime")[0] == "host_shell"
+    assert resolve_direct_handler(Path("."), "nproc")[0] == "host_shell"
+    assert shell_command_from_run_phrase("выполни рефакторинг") is None
+    # Prose questions still fall through (not host_shell).
+    assert resolve_direct_handler(Path("."), "какой сейчас uptime?")[0] is None
+
+
+def test_market_explore_policy_detection() -> None:
+    from eurika.api.chat_host_ops import (
+        market_explore_policy_facts,
+        message_asks_market_explore_policy,
+        message_asks_market_learning,
+    )
+
+    assert message_asks_market_explore_policy("explore сейчас можно включать?")
+    assert message_asks_market_learning("explore сейчас можно включать?")
+    facts = market_explore_policy_facts()
+    assert "systemd" in facts.lower() or "explore.service" in facts
+    assert "НЕ включать explore" in facts or "не включать explore" in facts.lower()
+    assert "не выдумывай" in facts.lower() or "НЕ systemd" in facts or "не systemd" in facts.lower()
 
 
 def test_host_facts_still_go_to_llm_not_direct(tmp_path: Path) -> None:

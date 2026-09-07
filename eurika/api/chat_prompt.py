@@ -9,8 +9,10 @@ from typing import Any, Dict, List, Optional
 from eurika.api.chat_host_ops import (
     _tokenize_for_tool_exp,
     host_identity_prompt_facts,
+    market_explore_policy_facts,
     market_learning_prompt_facts,
     message_asks_llm_teacher_stats,
+    message_asks_market_explore_policy,
     message_asks_market_learning,
     llm_teacher_prompt_facts,
     llm_teacher_execution_prompt_facts,
@@ -324,6 +326,8 @@ def build_chat_prompt(
         context_block += "\n" + llm_teacher_prompt_facts() + "\n\n"
     elif not save_target and message_asks_market_learning(message):
         context_block += "\n" + market_learning_prompt_facts() + "\n\n"
+    elif not save_target and message_asks_market_explore_policy(message):
+        context_block += "\n" + market_explore_policy_facts() + "\n\n"
     if feedback_snippet:
         context_block += feedback_snippet
     if rag_examples:

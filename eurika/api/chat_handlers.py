@@ -116,14 +116,16 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
     if not handler_id:
         return None
     if handler_id == 'host_shell':
-        from eurika.api.chat_direct import is_bare_shell_request
+        from eurika.api.chat_direct import is_bare_shell_request, shell_command_from_run_phrase
         from eurika.api.chat_host_ops import run_host_command_with_privilege
 
         if not is_bare_shell_request(msg):
             return None
+        extracted = shell_command_from_run_phrase(msg)
+        shell_src = extracted if extracted else (msg or "")
         lines = [
             ln.strip().lstrip("$ ").strip()
-            for ln in (msg or "").splitlines()
+            for ln in shell_src.splitlines()
             if ln.strip() and not ln.strip().startswith("#")
         ]
         log_parts: list[str] = []

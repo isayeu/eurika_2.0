@@ -74,11 +74,23 @@ _LIVE_TICKER_CURL = (
 
 _MARKET_ASK_RE = re.compile(
     r"(?is)("
-    r"маркет|market|paper[\s_-]?trad|"
+    r"маркет|market|paper[\s_-]?trad|paper\s+equity|вердикт.{0,20}экзамен|экзамен.{0,20}(paper|маркет)|"
     r"успех\w*.{0,40}(ml|мл|обучен|market|маркет)|"
     r"(обучен|learning).{0,20}(ml|мл|market|маркет)|"
-    r"(разбор|аудит|статус|pnl|прибыл|убыт|equity|банк|стратег).{0,40}(маркет|market|paper|обучен|ml)|"
-    r"(маркет|market|paper).{0,40}(разбор|аудит|успех|статус|pnl|прибыл|убыт|стратег)"
+    r"(разбор|аудит|статус|pnl|прибыл|убыт|equity|банк|стратег|вердикт).{0,40}(маркет|market|paper|обучен|ml|экзамен)|"
+    r"(маркет|market|paper).{0,40}(разбор|аудит|успех|статус|pnl|прибыл|убыт|стратег|вердикт|equity|экзамен)|"
+    r"\bexplore\b|(замороз|freeze).{0,40}(маркет|market|explore|entry|htf)|"
+    r"(можно|стоит|нужно).{0,25}(включ\w*).{0,25}explore|"
+    r"explore.{0,25}(включ|можно|on|off|сейчас)"
+    r")"
+)
+
+_MARKET_EXPLORE_ASK_RE = re.compile(
+    r"(?is)("
+    r"\bexplore\b|"
+    r"(замороз|freeze).{0,40}(маркет|market|explore|entry|htf)|"
+    r"(включ\w*|можно|стоит).{0,30}explore|"
+    r"explore.{0,30}(включ|можно|on|off|сейчас)"
     r")"
 )
 
@@ -601,6 +613,11 @@ def message_asks_market_learning(message: str) -> bool:
     return bool(_MARKET_ASK_RE.search(message or ""))
 
 
+def message_asks_market_explore_policy(message: str) -> bool:
+    """True when the user asks whether Market explore / freeze allows enabling explore."""
+    return bool(_MARKET_EXPLORE_ASK_RE.search(message or ""))
+
+
 def message_asks_llm_teacher_stats(message: str) -> bool:
     """True when the user asks for settled LLM teacher win/loss counts."""
     return bool(_LLM_TEACHER_ASK_RE.search(message or ""))
@@ -644,6 +661,32 @@ def llm_teacher_prompt_facts() -> str:
         return f"[LLM teacher facts]\nне удалось прочитать: {type(exc).__name__}: {exc}"
 
 
+def market_explore_policy_facts() -> str:
+    """Short freeze/explore policy for prompt injection (no systemd, no inventing services)."""
+    explore = "OFF (default / ops freeze)"
+    try:
+        from pathlib import Path
+        import json
+
+        prefs = Path.home() / ".eurika" / "qt_settings.json"
+        if prefs.is_file():
+            data = json.loads(prefs.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and "market_explore" in data:
+                explore = "ON" if data.get("market_explore") else "OFF"
+    except Exception:
+        pass
+    return (
+        "[Market explore / freeze policy]\n"
+        f"- prefs explore = {explore} (Qt live_paper flag; ops window expects OFF).\n"
+        "- Окно наблюдения с 2026-08-01: НЕ включать explore, НЕ предлагать live-ордера, "
+        "НЕ добавлять HTF/новый entry без разбора market_journal / paper_trades.\n"
+        "- «explore» здесь — флаг paper Market ML, НЕ systemd-юнит и НЕ сервис хоста. "
+        "Не выдумывай explore.service / systemctl.\n"
+        "- Если спрашивают «можно ли включать explore сейчас?» → ответ: нет, freeze; "
+        "сначала журнал и вердикт экзамена, не systemctl.\n"
+    )
+
+
 def market_learning_prompt_facts() -> str:
     """Inject live paper facts from the stable Market root (no shell, no Path('.'))."""
     try:
@@ -658,8 +701,10 @@ def market_learning_prompt_facts() -> str:
         st = market_learning_status(root)
         verdict = market_economic_verdict(st)
         block = format_market_learning_report(st)
+        policy = market_explore_policy_facts()
         return (
             f"[Market facts — root={root}]\n{block}\n"
+            f"{policy}\n"
             f"Правило ответа: экономический вердикт = «{verdict.get('label')}». "
             f"Следующий шаг = «{verdict.get('next_step')}». "
             "Ответ пользователю — полный markdown с таблицами из блока выше "
@@ -672,7 +717,8 @@ def market_learning_prompt_facts() -> str:
         )
     except Exception as exc:
         return (
-            f"[Market facts]\nне удалось прочитать статус: {type(exc).__name__}: {exc}"
+            f"[Market facts]\nне удалось прочитать статус: {type(exc).__name__}: {exc}\n"
+            f"{market_explore_policy_facts()}"
         )
 
 

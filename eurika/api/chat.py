@@ -1,8 +1,10 @@
 """Chat endpoint for UI (ROADMAP 3.5.11.A, 3.5.11.B, 3.5.11.C). P0.4: split into chat_*, chat_direct."""
 from __future__ import annotations
+import contextvars
 import json
 import os
 import shlex
+import threading
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +18,12 @@ from .chat_handlers import run_direct_handlers as _run_direct_handlers
 from .chat_metrics import record_chat_metric as _record_chat_metric
 from .chat_utils import enforce_eurika_persona as _enforce_eurika_persona, format_execution_report as _format_execution_report, grounded_ui_tabs_text as _grounded_ui_tabs_text, infer_default_save_target as _infer_default_save_target, safe_create_empty_file as _safe_create_empty_file, safe_delete_file as _safe_delete_file, safe_write_file as _safe_write_file
 DEFAULT_SAVE_TARGET = 'app.py'
+
+# When False, chat_send must not append to the active Qt transcript (dogfood / parallel API).
+_PERSIST_CHAT_HISTORY: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "eurika_persist_chat_history", default=True
+)
+_CHAT_HISTORY_LOCK = threading.Lock()
 
 
 def _terminal_fields_for_report(report: Dict[str, Any]) -> Dict[str, Any]:
@@ -44,8 +52,12 @@ def append_chat_history(project_root: Path, role: str, content: str, context_sna
     log_path = transcript_path(root)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     record = {'ts': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'), 'role': role, 'content': content[:10000], 'context_snapshot': context_snapshot[:500] if context_snapshot else None}
-    with open(log_path, 'a', encoding='utf-8') as f:
-        f.write(json.dumps(record, ensure_ascii=False) + '\n')
+    line = json.dumps(record, ensure_ascii=False) + '\n'
+    with _CHAT_HISTORY_LOCK:
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(line)
+            f.flush()
+
 
 def load_chat_history(project_root: Path, limit: int = 80) -> List[Dict[str, str]]:
     """Load recent valid user/assistant messages for UI and LLM context."""
@@ -86,8 +98,20 @@ def clear_chat_history(project_root: Path) -> None:
         pass
 
 
+def _chat_history_persist_enabled() -> bool:
+    """Whether this call stack should write the active Qt/Desktop transcript."""
+    if not _PERSIST_CHAT_HISTORY.get():
+        return False
+    raw = (os.environ.get("EURIKA_CHAT_PERSIST_HISTORY") or "").strip().lower()
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return True
+
+
 def _append_chat_history_safe(project_root: Path, role: str, content: str, context_snapshot: Optional[str]=None) -> None:
     """Best-effort history append: never break chat flow on write errors."""
+    if not _chat_history_persist_enabled():
+        return
     try:
         append_chat_history(project_root, role, content, context_snapshot)
     except Exception:
@@ -144,7 +168,7 @@ def _apply_chat_llm_routing() -> None:
     except Exception:
         pass
 
-def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str, str]]]=None, on_system_action: Optional[Callable[[str], None]]=None, run_command_with_result: Optional[Callable[[str], tuple[str, int]]]=None, privilege_prompt: Optional[PrivilegePrompt]=None, client_terminal_text: Optional[str]=None) -> Dict[str, Any]:
+def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str, str]]]=None, on_system_action: Optional[Callable[[str], None]]=None, run_command_with_result: Optional[Callable[[str], tuple[str, int]]]=None, privilege_prompt: Optional[PrivilegePrompt]=None, client_terminal_text: Optional[str]=None, *, persist_history: bool = True) -> Dict[str, Any]:
     """
     Send user message through Eurika layer to LLM; return response.
 
@@ -154,7 +178,26 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
     on_system_action: optional callback for actions (e.g. for Terminal tab: rm, touch, eurika fix).
     privilege_prompt: optional (cmd, hint) -> (action, password) where action is
         password | continue | skip — used when host tools need sudo.
+    persist_history: when False, do not append to the active chat.jsonl that Qt
+        live-polls (use for dogfood / parallel API so UI turns do not interleave).
+        Also honored via EURIKA_CHAT_PERSIST_HISTORY=0.
     """
+    token = _PERSIST_CHAT_HISTORY.set(bool(persist_history))
+    try:
+        return _chat_send_impl(
+            project_root,
+            message,
+            history=history,
+            on_system_action=on_system_action,
+            run_command_with_result=run_command_with_result,
+            privilege_prompt=privilege_prompt,
+            client_terminal_text=client_terminal_text,
+        )
+    finally:
+        _PERSIST_CHAT_HISTORY.reset(token)
+
+
+def _chat_send_impl(project_root: Path, message: str, history: Optional[List[Dict[str, str]]]=None, on_system_action: Optional[Callable[[str], None]]=None, run_command_with_result: Optional[Callable[[str], tuple[str, int]]]=None, privilege_prompt: Optional[PrivilegePrompt]=None, client_terminal_text: Optional[str]=None) -> Dict[str, Any]:
     root = Path(project_root).resolve()
     msg = (message or '').strip()
     if not msg:
@@ -285,12 +328,20 @@ def chat_send(project_root: Path, message: str, history: Optional[List[Dict[str,
         target = interpretation.target
     except Exception:
         pass
-    # A1: ls/tree/git-status facts must not become HITL run_command — LLM tool-loop.
+    # A1: ls/tree/git-status / bare shell must not become HITL run_command — LLM tool-loop.
     try:
-        from eurika.api.chat_direct import is_git_status_request, is_ls_request, is_tree_request
+        from eurika.api.chat_direct import (
+            is_bare_shell_request,
+            is_git_status_request,
+            is_ls_request,
+            is_tree_request,
+        )
 
         if intent in {None, 'run_command'} and (
-            is_ls_request(msg) or is_tree_request(msg) or is_git_status_request(msg)
+            is_ls_request(msg)
+            or is_tree_request(msg)
+            or is_git_status_request(msg)
+            or is_bare_shell_request(msg)
         ):
             intent = None
             interpretation = None

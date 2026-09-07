@@ -170,7 +170,7 @@ def run_qt_smoke_test(project_root: Path, timeout: int = 120) -> str:
 
 
 _QUESTION_START = re.compile(
-    r"^(кто|что|как|зачем|почему|чем|где|какой|какие|каков|в\s*ч[её]м|who|when|why|what|how|where|which)\s",
+    r"^(кто|что|как|зачем|почему|чем|где|какой|какие|каков|сколько|в\s*ч[её]м|who|when|why|what|how|where|which)\s",
     re.IGNORECASE,
 )
 
@@ -190,6 +190,8 @@ _SHELL_FIRST_TOKENS = frozenset(
         "uname",
         "hostname",
         "hostnamectl",
+        "nproc",
+        "uptime",
         "df",
         "du",
         "free",
@@ -261,12 +263,28 @@ _SHELL_FIRST_TOKENS = frozenset(
 )
 
 
-def is_bare_shell_request(message: str) -> bool:
-    """True when the user pasted a shell command (not Russian prose / chat question).
+def shell_command_from_run_phrase(message: str) -> str | None:
+    """Extract ``whoami`` from «выполни whoami» / ``run free -h`` when the rest is bare shell."""
+    s = (message or "").strip()
+    if not s:
+        return None
+    m = re.match(
+        r"^(?:выполни|запусти|execute|run)\s+(.+)$",
+        s,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if not m:
+        return None
+    rest = m.group(1).strip().lstrip("$ ").strip()
+    if not rest or re.search(r"[а-яА-ЯёЁ]{3,}", rest):
+        return None
+    if _is_bare_shell_core(rest):
+        return rest
+    return None
 
-    Examples: ``pwd``, ``sudo whoami``, ``ls -la``. Counter-examples: «какой pwd?»,
-    «покажи пример в блоке bash: pwd», ``remember my name``, ``please refactor``.
-    """
+
+def _is_bare_shell_core(message: str) -> bool:
+    """Bare-shell check without run-phrase unwrapping."""
     s = (message or "").strip()
     if not s or len(s) > 400:
         return False
@@ -294,7 +312,6 @@ def is_bare_shell_request(message: str) -> bool:
             # ``sudo -u root whoami`` — skip flags until a token.
             idx = 1
             while idx < len(parts) and parts[idx].startswith("-"):
-                # sudo -u NAME CMD
                 if parts[idx] in {"-u", "-g", "-h", "-p"} and idx + 1 < len(parts):
                     idx += 2
                 else:
@@ -310,7 +327,18 @@ def is_bare_shell_request(message: str) -> bool:
     return True
 
 
-# Free-form LLM instructions must not be fuzzy-mapped to project_overview/ritual/etc.
+def is_bare_shell_request(message: str) -> bool:
+    """True when the user pasted a shell command (not Russian prose / chat question).
+
+    Examples: ``pwd``, ``sudo whoami``, ``ls -la``, «выполни whoami».
+    Counter-examples: «какой pwd?», «покажи пример в блоке bash: pwd».
+    """
+    extracted = shell_command_from_run_phrase(message)
+    if extracted:
+        return True
+    return _is_bare_shell_core(message)
+
+
 _LLM_DIRECTIVE = re.compile(
     r"(?:"
     r"^(?:ответь|скажи|напиши|повтори|выведи|произнеси|reply|say|write|respond|answer)\b"
@@ -641,6 +669,8 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
             pass
         elif hid == "roadmap_verify" and not is_roadmap_verify_request(msg):
             pass
+        elif hid == "file_recount" and not is_file_recount_request(msg):
+            pass
         elif hid == "web_search" and looks_like_web_page_question(msg):
             pass
         else:
@@ -721,6 +751,10 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
     raw = (msg or "").strip()
     if _QUESTION_START.search(raw) or is_llm_directive_message(raw):
         return (None, None)
+    # User pasted a shell command — run it (sudo → privilege dialog) before cue demotion.
+    # Otherwise bare ``uptime`` / ``nproc`` hit the live-tool cue list and fall through to LLM.
+    if is_bare_shell_request(raw):
+        return ("host_shell", None)
     low = raw.lower()
     if any(
         cue in low
@@ -740,9 +774,6 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
         )
     ):
         return (None, None)
-    # User pasted a shell command — run it (sudo → privilege dialog), do not fuzzy-route.
-    if is_bare_shell_request(raw):
-        return ("host_shell", None)
     # CR-G3: optional ML intent router (YAML/factual already tried)
     try:
         from eurika.ml.intent_router import match_ml_intent
@@ -786,6 +817,9 @@ def is_greeting(message: str) -> bool:
         r"^добрый\s+(день|вечер|утро)",
         r"^йо[!.…,\s]*(на\s+связи)?[?.!…]*$",
         r"^на\s+связи[?.!…]*$",
+        r"^салют[!.…]*$",
+        r"^хэй[!.…]*$",
+        r"^хей[!.…]*$",
         r"^hello[!.]*$",
         r"^hi[!.]*$",
         r"^hey[!.]*$",
@@ -893,7 +927,7 @@ def is_show_file_request(message: str) -> bool:
     if any(t in lower for t in triggers):
         return True
     # Legacy: «покажи path/to/file.py» with extension or slash.
-    if lower.startswith("покажи ") or lower.startswith("открой "):
+    if lower.startswith("покажи ") or lower.startswith("открой ") or lower.startswith("прочитай "):
         return "." in msg or "/" in msg
     if "покажи содержимое" in lower:
         # Require a path-like token; bare «содержимое» alone is not a file read.
@@ -920,6 +954,8 @@ def extract_file_path_from_show_request(message: str) -> str | None:
         "покажи содержимое файла ",
         "покажи содержимое ",
         "покажи файл ",
+        "прочитай файл ",
+        "прочитай ",
         "show file ",
         "read file ",
         "открой файл ",
@@ -1860,6 +1896,16 @@ def is_file_recount_request(message: str) -> bool:
     """Detect request to recount files on disk."""
     msg = _norm_msg(message)
     if not msg:
+        return False
+    # «сколько строк в файле X» / конкретный путь — не recount всего дерева.
+    raw = message or ""
+    if re.search(r"строк\w*\s+в\s+файл", msg):
+        return False
+    if re.search(
+        r"[\w./\-]+\.(jsonl|json|py|md|ya?ml|txt|log|toml|csv)\b",
+        raw,
+        re.I,
+    ):
         return False
     # Allow filler words: «сколько всего там файлов?», «сколько в проекте файлов?»
     if re.search(r"\bсколько\s+(?:\w+\s+){0,6}файл", msg):

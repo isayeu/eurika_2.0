@@ -248,10 +248,12 @@ class MainWindow(
             chat_handlers.redraw_chat_transcript(self)
 
     def _on_tab_changed(self, index: int) -> None:
-        """Lazy-load Graph WebEngine when user first opens Graph tab."""
+        """Lazy-load Graph WebEngine once; Refresh button reloads."""
         if index == self.graph_tab_index:
             graph_tab.ensure_graph_widget(self)
-            graph_tab.refresh_graph(self)
+            if not getattr(self, "_graph_content_loaded", False):
+                graph_tab.refresh_graph(self)
+                self._graph_content_loaded = True
 
     def _wire_events(self) -> None:
         self.browse_btn.clicked.connect(self._select_root)
@@ -456,6 +458,7 @@ class MainWindow(
         chat_handlers.refresh_chat_goal_view(self)
         dashboard_handlers.refresh_dashboard(self)
         notes_handlers.load_notes(self)
+        self._graph_content_loaded = False
         if self.tabs.currentIndex() == self.graph_tab_index:
             graph_tab.refresh_graph(self)
         self._sync_preview()

@@ -134,3 +134,22 @@ def test_rename_and_remove_extra_chat(tmp_path: Path) -> None:
     assert len(list_chats(tmp_path)) == 1
     assert remove_chat(tmp_path, "default") is False
 
+
+def test_chat_send_persist_history_false_skips_active_transcript(tmp_path: Path) -> None:
+    """Dogfood/API probe must not pollute the Qt live-polled chat.jsonl."""
+    from eurika.api.chat import chat_send, load_chat_history
+
+    log_path = tmp_path / ".eurika" / "chat_history" / "chat.jsonl"
+    out = chat_send(tmp_path, "привет", persist_history=False)
+    assert out.get("error") is None
+    assert out.get("text")
+    assert not log_path.exists()
+    assert load_chat_history(tmp_path) == []
+
+    out2 = chat_send(tmp_path, "привет", persist_history=True)
+    assert out2.get("error") is None
+    assert log_path.is_file()
+    hist = load_chat_history(tmp_path)
+    assert any(item.get("role") == "user" and item.get("content") == "привет" for item in hist)
+    assert any(item.get("role") == "assistant" for item in hist)
+

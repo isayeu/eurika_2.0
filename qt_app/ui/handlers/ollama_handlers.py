@@ -252,10 +252,18 @@ def sync_ollama_buttons(main: MainWindow) -> None:
 def refresh_ollama_health(main: MainWindow) -> None:
     healthy = main._api.is_ollama_healthy()
     main.ollama_health.setText("API: healthy" if healthy else "API: unavailable")
-    if healthy:
-        refresh_ollama_models(main)
-    else:
+    if not healthy:
         main._last_models_error = ""
+        return
+    # Listing models hits the network on the UI thread — only when the combo is empty
+    # or the user asked Refresh. Periodic health stays a cheap ping.
+    combo = getattr(main, "chat_ollama_model", None) or getattr(main, "ollama_installed_combo", None)
+    need_models = False
+    if combo is not None:
+        cur = (combo.currentText() or "").strip()
+        need_models = combo.count() <= 0 or cur.startswith("(no local") or cur.startswith("(")
+    if need_models:
+        refresh_ollama_models(main)
 
 
 def _populate_model_combo(combo, models: list[str], *, current: str = "") -> None:
