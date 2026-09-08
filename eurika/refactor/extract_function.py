@@ -213,6 +213,36 @@ def _names_bound_by_block_node(node: ast.AST) -> Set[str]:
                 result.add(var.id)
     return result
 
+def _loop_target_names_in_statements(stmts: List[ast.stmt]) -> Set[str]:
+    """For/with targets inside stmts — loop locals, never extract return values."""
+    names: Set[str] = set()
+    for stmt in stmts:
+        for node in ast.walk(stmt):
+            if isinstance(node, (ast.For, ast.AsyncFor)):
+                for t in ast.walk(node.target):
+                    if isinstance(t, ast.Name) and isinstance(t.ctx, ast.Store):
+                        names.add(t.id)
+            elif isinstance(node, (ast.With, ast.AsyncWith)):
+                for item in node.items:
+                    var = item.optional_vars
+                    if var is None:
+                        continue
+                    for t in ast.walk(var):
+                        if isinstance(t, ast.Name) and isinstance(t.ctx, ast.Store):
+                            names.add(t.id)
+    return names
+
+
+def _outer_augassign_names(stmts: List[ast.stmt], outer: Set[str]) -> Set[str]:
+    """Outer names updated via ``+=`` / ``-=`` etc. — unsafe for single-return extract."""
+    names: Set[str] = set()
+    for stmt in stmts:
+        for node in ast.walk(stmt):
+            if isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name):
+                if node.target.id in outer:
+                    names.add(node.target.id)
+    return names
+
 def _names_used_in_statements(stmts: List[ast.stmt]) -> Set[str]:
     """Collect names loaded in statements."""
     loaded: Set[str] = set()
@@ -232,6 +262,19 @@ def names_assigned_in_excluding(node: ast.AST, exclude: ast.AST) -> Set[str]:
     full = names_assigned_in(node)
     in_exclude = names_assigned_in(exclude)
     return full - in_exclude
+
+
+def _names_loaded_outside(parent: ast.AST, block: ast.AST) -> Set[str]:
+    """Names loaded in ``parent`` excluding the ``block`` subtree."""
+    skip = {id(n) for n in ast.walk(block)}
+    names: Set[str] = set()
+    for n in ast.walk(parent):
+        if id(n) in skip:
+            continue
+        if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load):
+            names.add(n.id)
+    return names
+
 
 def _module_level_bound_names(tree: ast.AST) -> Set[str]:
     """Collect names bound at module scope (globals accessible to extracted helper)."""
@@ -306,6 +349,8 @@ def suggest_extract_block(file_path: Path, function_name: str, *, min_lines: int
             if body and isinstance(body, list):
                 if _block_contains_extracted_call(node):
                     pass
+                elif _is_low_value_extract_body(body):
+                    pass
                 elif not _block_has_control_flow_exit(body):
                     used = _names_used_in_statements(body)
                     assigned = names_assigned_in_statements(body)
@@ -353,6 +398,249 @@ def _block_has_extracted_call(n: ast.AST) -> bool:
                 return True
     return False
 
+
+def _is_trivial_call_wrapper_body(body: List[ast.stmt]) -> bool:
+    """True when body only forwards to another non-builtin call (useless extract).
+
+    ``threshold = float(x)`` is NOT trivial. ``handled = try_review_in_approvals_call(...)`` is.
+    Also ``log.write(); log.flush(); return subprocess.Popen(...)`` — thin spawn wrapper.
+    """
+    builtin_names = set(dir(builtins))
+    setup_attrs = {
+        "write",
+        "flush",
+        "close",
+        "seek",
+        "truncate",
+        "update",
+        "clear",
+        "append",
+    }
+
+    def _is_forwarding_call(call: ast.expr) -> bool:
+        if not isinstance(call, ast.Call):
+            return False
+        func = call.func
+        if isinstance(func, ast.Name):
+            return func.id not in builtin_names
+        if isinstance(func, ast.Attribute):
+            return True
+        return False
+
+    def _is_setup_side_effect(stmt: ast.stmt) -> bool:
+        if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
+            func = stmt.value.func
+            if isinstance(func, ast.Attribute) and func.attr in setup_attrs:
+                return True
+        return False
+
+    def _stmt_is_forwarding(stmt: ast.stmt) -> bool:
+        if isinstance(stmt, ast.Expr) and _is_forwarding_call(stmt.value):
+            return True
+        if (
+            isinstance(stmt, ast.Assign)
+            and len(stmt.targets) == 1
+            and _is_forwarding_call(stmt.value)
+        ):
+            return True
+        if isinstance(stmt, ast.AnnAssign) and _is_forwarding_call(stmt.value):
+            return True
+        if isinstance(stmt, ast.Return) and _is_forwarding_call(stmt.value):
+            return True
+        return False
+
+    if not body:
+        return False
+    if len(body) == 1:
+        return _stmt_is_forwarding(body[0])
+    if len(body) == 2:
+        first, second = body
+        if (
+            isinstance(first, ast.Assign)
+            and len(first.targets) == 1
+            and isinstance(first.targets[0], ast.Name)
+            and _is_forwarding_call(first.value)
+            and isinstance(second, ast.Return)
+            and isinstance(second.value, ast.Name)
+            and second.value.id == first.targets[0].id
+        ):
+            return True
+        # ``side_effect_call(); return True`` after rewriting ``flag = True``.
+        if (
+            isinstance(first, ast.Expr)
+            and _is_forwarding_call(first.value)
+            and isinstance(second, ast.Return)
+            and isinstance(second.value, ast.Constant)
+        ):
+            return True
+    # Setup side-effects then one forwarding call/return (Popen spawn extract).
+    if _stmt_is_forwarding(body[-1]) and all(_is_setup_side_effect(s) for s in body[:-1]):
+        return True
+    return False
+
+
+def _is_trivial_presentation_body(body: List[ast.stmt]) -> bool:
+    """True for f-string / message assembly with no real control structure.
+
+    HITL rejects like ``_extracted_block_1317(trained)`` that only format a status line.
+    """
+    if not body:
+        return False
+    builtin_names = set(dir(builtins))
+    allowed_attrs = {
+        "get",
+        "format",
+        "join",
+        "strip",
+        "replace",
+        "lower",
+        "upper",
+        "append",
+        "extend",
+    }
+    has_stringy = False
+
+    def _leaf_stmts(stmts: List[ast.stmt]) -> bool:
+        for part in stmts:
+            if isinstance(part, (ast.For, ast.While, ast.Try, ast.With)):
+                return False
+            if isinstance(part, ast.If):
+                if not _leaf_stmts(list(part.body)):
+                    return False
+                orelse = list(getattr(part, "orelse", None) or [])
+                # elif chains are nested If in orelse — allow.
+                if not _leaf_stmts(orelse):
+                    return False
+                continue
+            if isinstance(part, (ast.Assign, ast.AugAssign, ast.AnnAssign, ast.Expr, ast.Pass, ast.Return)):
+                continue
+            return False
+        return True
+
+    for stmt in body:
+        if isinstance(stmt, (ast.For, ast.While, ast.Try, ast.With)):
+            return False
+        if isinstance(stmt, ast.If):
+            if not _leaf_stmts([stmt]):
+                return False
+
+    for node in ast.walk(ast.Module(body=list(body), type_ignores=[])):
+        if isinstance(node, ast.JoinedStr):
+            has_stringy = True
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str) and len(node.value) >= 8:
+            has_stringy = True
+        elif isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Name) and func.id not in builtin_names:
+                return False
+            if isinstance(func, ast.Attribute) and func.attr not in allowed_attrs:
+                return False
+    return has_stringy
+
+
+def _is_low_value_extract_body(body: List[ast.stmt]) -> bool:
+    return _is_trivial_call_wrapper_body(body) or _is_trivial_presentation_body(body)
+
+def _line_indent(line: str) -> str:
+    return line[: len(line) - len(line.lstrip(" \t"))]
+
+
+def _dedent_prefixed_block(text: str, indent: str) -> str:
+    """Strip a common leading indent from each line (preserve relative indents)."""
+    if not text:
+        return text
+    out: list[str] = []
+    for line in text.splitlines(True):
+        if indent and line.startswith(indent):
+            out.append(line[len(indent) :])
+        elif line.strip() == "":
+            out.append("\n" if line.endswith("\n") else line)
+        else:
+            out.append(line.lstrip(" \t"))
+    return "".join(out)
+
+
+def _indent_block(text: str, indent: str = "    ") -> str:
+    out: list[str] = []
+    for line in text.splitlines(True):
+        if line.strip() == "":
+            out.append("\n")
+        elif line.endswith("\n"):
+            out.append(indent + line)
+        else:
+            out.append(indent + line + "\n")
+    return "".join(out)
+
+
+def _splice_extract_block_source(
+    content: str,
+    *,
+    parent_func: ast.FunctionDef,
+    body: List[ast.stmt],
+    helper_name: str,
+    extra: List[str],
+    return_var: Optional[str],
+    rewrite_last_assign_to_return: bool,
+) -> Optional[str]:
+    """Surgical text edit: insert helper + replace block body; preserve file formatting."""
+    if not body:
+        return None
+    first = body[0]
+    last = body[-1]
+    start = int(getattr(first, "lineno", 0) or 0)
+    end = int(getattr(last, "end_lineno", None) or getattr(last, "lineno", 0) or 0)
+    if start < 1 or end < start:
+        return None
+    lines = content.splitlines(keepends=True)
+    if end > len(lines):
+        return None
+    body_indent = _line_indent(lines[start - 1])
+    args = ", ".join(extra)
+    if return_var:
+        call_line = f"{body_indent}{return_var} = {helper_name}({args})\n"
+    else:
+        call_line = f"{body_indent}{helper_name}({args})\n"
+
+    if rewrite_last_assign_to_return:
+        if not isinstance(last, ast.Assign) or not last.targets:
+            return None
+        last_start = int(getattr(last, "lineno", 0) or 0)
+        if last_start < start:
+            return None
+        prefix = "".join(lines[start - 1 : last_start - 1])
+        val_seg = ast.get_source_segment(content, last.value)
+        if val_seg is None:
+            return None
+        body_for_helper = prefix + f"{body_indent}return {val_seg}\n"
+    else:
+        body_for_helper = "".join(lines[start - 1 : end])
+        if return_var:
+            body_for_helper = body_for_helper.rstrip("\n") + f"\n{body_indent}return {return_var}\n"
+
+    helper_inner = _dedent_prefixed_block(body_for_helper, body_indent)
+    if not helper_inner.strip():
+        return None
+    helper_src = f"def {helper_name}({args}):\n{_indent_block(helper_inner)}"
+    if not helper_src.endswith("\n"):
+        helper_src += "\n"
+    helper_src += "\n"
+
+    replaced = lines[: start - 1] + [call_line] + lines[end:]
+    insert_at = int(parent_func.lineno) - 1
+    if insert_at < 0 or insert_at > len(replaced):
+        return None
+    helper_lines = helper_src.splitlines(keepends=True)
+    out_lines = replaced[:insert_at] + helper_lines + replaced[insert_at:]
+    result = "".join(out_lines)
+    if not result.endswith("\n") and content.endswith("\n"):
+        result += "\n"
+    try:
+        compile(ast.parse(result), "<eurika-extract-splice>", "exec")
+    except Exception:
+        return None
+    return result
+
+
 def extract_block_to_helper(file_path: Path, parent_function_name: str, block_start_line: int, helper_name: str, extra_params: Optional[List[str]]=None) -> Optional[str]:
     """
     Extract a block (if/for/while/with body) into a new helper function.
@@ -393,20 +681,73 @@ def extract_block_to_helper(file_path: Path, parent_function_name: str, block_st
     if not candidates:
         return None
     block_node, body, _, _ = sorted(candidates, key=lambda item: (item[2], -item[3], getattr(item[0], 'lineno', 10 ** 9)))[0]
+    if _is_low_value_extract_body(body):
+        return None
     block_bound = _names_bound_by_block_node(block_node)
     body_used = _names_used_in_statements(body) - names_assigned_in_statements(body)
     for name in sorted(block_bound & body_used):
         if name not in extra:
             extra.append(name)
     plocals = parent_locals(parent_func)
+    # True outer writes: assigned in block AND (used outside block OR already bound in parent).
+    # Intermediate temps (a=…; b=a*2; result=b) are not outer just because parent_locals sees them.
+    used_outside = _names_loaded_outside(parent_func, block_node)
+    pre_existing = parent_param_names(parent_func) | names_assigned_in_excluding(parent_func, block_node)
+    loop_locals = _loop_target_names_in_statements(body)
+    outer_scope = (used_outside | pre_existing) - block_bound - loop_locals
+    if _outer_augassign_names(body, outer_scope):
+        # ``n_exp += 1`` etc. cannot safely move without in/out params.
+        return None
+    assigned_outer = (names_assigned_in_statements(body) & (used_outside | pre_existing)) - block_bound - loop_locals
     return_var: Optional[str] = None
     if body and isinstance(body[-1], ast.Assign):
         last = body[-1]
         if len(last.targets) == 1 and isinstance(last.targets[0], ast.Name):
             out_name = last.targets[0].id
-            if out_name in plocals and out_name not in block_bound:
+            if (
+                out_name in plocals
+                and out_name not in block_bound
+                and out_name not in loop_locals
+            ):
                 return_var = out_name
+    if return_var is None:
+        # e.g. try/except that assigns ``threshold`` — last stmt is Try, not Assign.
+        if len(assigned_outer) == 1:
+            return_var = next(iter(assigned_outer))
+        elif len(assigned_outer) > 1:
+            # Multiple outer writes — cannot pack into one return safely.
+            return None
+    elif len(assigned_outer) > 1:
+        # Last-stmt Assign would return one name and drop sibling outer writes.
+        return None
 
+    rewrite_last_assign_to_return = False
+    if return_var:
+        if (
+            body
+            and isinstance(body[-1], ast.Assign)
+            and len(body[-1].targets) == 1
+            and isinstance(body[-1].targets[0], ast.Name)
+            and body[-1].targets[0].id == return_var
+        ):
+            rewrite_last_assign_to_return = True
+    elif (names_assigned_in_statements(body) & (used_outside | pre_existing)) - block_bound - loop_locals:
+        # Would drop outer assignments with a bare call — refuse.
+        return None
+
+    spliced = _splice_extract_block_source(
+        content,
+        parent_func=parent_func,
+        body=body,
+        helper_name=helper_name,
+        extra=extra,
+        return_var=return_var,
+        rewrite_last_assign_to_return=rewrite_last_assign_to_return,
+    )
+    if spliced is not None:
+        return spliced
+
+    # Fallback: full-module ast.unparse (loses formatting — last resort).
     def replace_body_with_call(node: ast.AST) -> bool:
         if node is block_node:
             call_args: List[ast.expr] = [ast.Name(id=p, ctx=ast.Load()) for p in extra]
@@ -428,14 +769,18 @@ def extract_block_to_helper(file_path: Path, parent_function_name: str, block_st
         return False
     if not replace_body_with_call(parent_func):
         return None
+    helper_body: List[ast.stmt] = list(body)
     if return_var:
-        new_body = list(body[:-1])
-        last_stmt = body[-1]
-        if isinstance(last_stmt, ast.Assign) and last_stmt.targets:
-            new_body.append(ast.Return(last_stmt.value))
-        body = new_body
+        if rewrite_last_assign_to_return:
+            new_body = list(body[:-1])
+            last_stmt = body[-1]
+            if isinstance(last_stmt, ast.Assign) and last_stmt.targets:
+                new_body.append(ast.Return(last_stmt.value))
+            helper_body = new_body
+        else:
+            helper_body = list(body) + [ast.Return(value=ast.Name(id=return_var, ctx=ast.Load()))]
     args_list = [ast.arg(arg=p) for p in extra]
-    extracted = ast.FunctionDef(name=helper_name, args=ast.arguments(posonlyargs=[], args=args_list, vararg=None, kwonlyargs=[], kw_defaults=[], kwarg=None, defaults=[]), body=body, decorator_list=[], returns=None)
+    extracted = ast.FunctionDef(name=helper_name, args=ast.arguments(posonlyargs=[], args=args_list, vararg=None, kwonlyargs=[], kw_defaults=[], kwarg=None, defaults=[]), body=helper_body, decorator_list=[], returns=None)
     ast.copy_location(extracted, block_node)
     ast.fix_missing_locations(extracted)
 

@@ -91,6 +91,7 @@
 | `какие документы по проекту?`, `покажи документацию` | Список README / docs / rules |
 | `прочти всю документацию, что реализовано?` | Аудит VISION/ROADMAP vs код (LLM/Groq; fallback по ✅) |
 | `какая цель?`, `что в контексте?` | Статус active_goal / pending; после release — последний итог + «что получилось?» |
+| `модель себя`, `какое состояние?` | Self + Capability + Goal snapshot (факты → `.eurika/self_model.json`); CLI `eurika self-model .`; scores включают **HITL accept-rate** и recent experiment records |
 | `что получилось?`, `итог цели` | Reflection: факты + краткий narrative (Groq/Ollama); без LLM — только факты |
 | ↑/↓ в поле Chat | История отправленных запросов (персист `.eurika/chat_prompt_history.json`) |
 | `@` в поле Chat | Автодополнение модулей из `self_map.json` и smell-типов (`@patch_engine.py`, `@god_module`); Tab/Enter — вставить, Esc — закрыть |
@@ -110,7 +111,7 @@
 | `включи EURIKA_USE_VECTOR_INTENT=1` | Fuzzy embeddings (нужен `nomic-embed-text`) |
 | вопрос про тикеры / общую модель market ML | Прямой ответ из кода (без LLM) |
 
-В Qt панель **Контекст** (справа в Агент) показывает те же блоки: Цель / Pending Diff / Итог / **Approvals** (`.eurika/pending_plan.json`); после run цель может быть «нет», а итог ещё виден до «сбрось цель». Idle self-dev тоже пишет итог. В Desktop — вкладка **Context** (`panel/state` → `context`), тот же `format_agent_context_panel`; **Diff / Apply / Reject** для HITL `dialog_state.pending_plan` (`context/preview`, `context/decide`) — не путать с Approvals `.eurika/pending_plan.json`.
+В Qt панель **Контекст** (справа в Агент) показывает те же блоки: Цель / Pending Diff / Итог / **Approvals** (`.eurika/pending_plan.json`) / краткий **Self·Capability·Goal**; после run цель может быть «нет», а итог ещё виден до «сбрось цель». Idle self-dev тоже пишет итог. В Desktop — вкладка **Context** (`panel/state` → `context`), тот же `format_agent_context_panel`; **Diff / Apply / Reject** для HITL `dialog_state.pending_plan` (`context/preview`, `context/decide`) — не путать с Approvals `.eurika/pending_plan.json`.
 
 ### Git
 

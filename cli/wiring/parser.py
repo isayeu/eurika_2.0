@@ -334,6 +334,28 @@ def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     idle_self_dev_parser.add_argument("--quiet", "-q", action="store_true", help="JSON only")
 
+    self_model_parser = subparsers.add_parser(
+        "self-model",
+        help=(
+            "Self + Capability + Goal snapshot (VISION § Master); "
+            "rebuilds from facts → .eurika/self_model.json"
+        ),
+    )
+    self_model_parser.add_argument(
+        "path", nargs="?", default=".", type=Path, help="Project root (default: .)"
+    )
+    self_model_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print full JSON snapshot",
+    )
+    self_model_parser.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="Alias for --json",
+    )
+
     tg_parser = subparsers.add_parser(
         "telegram-bot",
         help="C.12: Telegram long-poll → chat_send (HITL apply stays in Approvals)",

@@ -34,7 +34,8 @@ during migration; it is not the primary coding-agent transport.
   change, clean checkpoint restore, restore conflict on a later user edit,
   terminal/command, git_commit, and git_push refused without explicit
   approval, shared Approvals (apply-approved)/Commands/Context (Diff/Apply for dialog_state)/Market panel state, structured
-  diagnostics after apply, and cancellation of an in-flight terminal tool.
+  diagnostics after apply, cancellation of an in-flight terminal tool, and
+  idle-self-dev prefs/status (Qt↔Desktop shared opt-in; no LLM propose in dogfood).
   Requires `@eurika/client` build output under `clients/eurika-client/lib/`
   (`npm --prefix clients/eurika-client run build`; predogfood runs this).
 - Desktop type safety and production bundle:

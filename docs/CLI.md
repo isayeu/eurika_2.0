@@ -22,6 +22,7 @@ Scan → Diagnose → Plan → Patch → Verify → Log
 | Propose (C.14 polygon HITL) | `eurika prove-cycle . --propose [--drill …] [--require-llm] [--sandbox]` | Seed polygon + pending plan **без** apply на main; `--sandbox` = apply+smoke-verify в worktree/copy; Approve → `--apply-approved` |
 | Bug-hunt (C.14 v1.5) | `eurika bug-hunt . --propose [--sandbox] [--web]` | Один реальный smell → sandbox → Approvals; `--web` = research note only |
 | Idle self-dev (C.14) | `eurika idle-self-dev . [--status\|--once\|--prune-sandboxes] [--force]` | Когда LLM lease quiet — один propose+sandbox (polygon + bug_hunt; без cron / без apply); `--prune-sandboxes` чистит stale worktree |
+| Self model (v0) | `eurika self-model . [--json]` | Self + Capability + Goal snapshot из фактов → `.eurika/self_model.json` (VISION § Master) |
 | Telegram (C.12) | `eurika telegram-bot .` | Long-poll → `chat_send`; allowlist; push Approvals + `/approve`/`/reject`; apply только HITL |
 | Patch | `eurika fix .` или `eurika agent patch-apply . --apply` | Применить патчи (с бэкапами) |
 | Verify | встроено в `eurika fix` (pytest после apply) | pytest; при провале — подсказка rollback; при ухудшении метрик — автоматический откат |
@@ -337,6 +338,19 @@ eurika idle-self-dev . --prune-sandboxes
 ```
 
 Qt / Desktop: чекбокс Agent «Саморазвитие в простое LLM» (prefs `idle_self_dev` в `~/.eurika/qt_settings.json`). Desktop RPC: `idle-self-dev/prefs|run|status`. Lease: interactive/market > self_dev (см. `eurika.orchestration.llm_lease`).
+
+---
+
+### eurika self-model [path] [--json|-q]
+
+VISION § Master v0: пересобрать **Self + Capability + Goal** из фактов (dialog_state, idle/bug_hunt stamps, events, artifacts) → `.eurika/self_model.json`. Не ручной JSON. Capability scores помечают `insufficient_data`, когда мало наблюдений; bug-hunt level не путает propose с accept.
+
+```bash
+eurika self-model .
+eurika self-model . --json
+```
+
+Chat: «модель себя», «какое состояние?». Панель Контекст (Qt/Desktop) показывает краткий блок.
 
 ---
 

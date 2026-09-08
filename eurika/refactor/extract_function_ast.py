@@ -39,6 +39,8 @@ def names_assigned_in(node: ast.AST) -> Set[str]:
                     assigned.add(t.id)
         elif isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name):
             assigned.add(n.target.id)
+        elif isinstance(n, ast.AugAssign) and isinstance(n.target, ast.Name):
+            assigned.add(n.target.id)
         elif isinstance(n, (ast.For, ast.With)):
             for inner in ast.iter_child_nodes(n):
                 if isinstance(inner, ast.Name) and isinstance(getattr(inner, 'ctx', None), ast.Store):

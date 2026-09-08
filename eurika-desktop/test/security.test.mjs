@@ -97,6 +97,8 @@ test("sidecar dogfood covers independent apply, restore conflict, and terminal a
   assert.match(dogfood, /tool: "git_push"/);
   assert.match(dogfood, /git_commit ran without explicit approval/);
   assert.match(dogfood, /AbortController/);
+  assert.match(dogfood, /idle-self-dev\/prefs/);
+  assert.match(dogfood, /idle-self-dev\/status/);
 });
 
 test("desktop requires folder trust before starting the backend", () => {

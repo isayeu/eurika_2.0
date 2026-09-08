@@ -6,11 +6,11 @@
 
 ## 1. Принцип и текущая задача
 
-**Основная задача:** саморазвитие — анализ и исправление собственного кода, добавление функций по запросу. Eurika работает над собой (scan/doctor/fix по своей кодовой базе). Использование на других проектах — вторично.
+**Основная задача / главная цель:** саморазвивающаяся инженерная система — измеримое самонаблюдение и самоулучшение (observe→…→learn), не иллюзия сознания. Канон и этапы: [VISION.md](VISION.md) § Master. Сейчас на ядре: scan/doctor/fix + C.14 + Self/Capability/Goal v0 + **HITL journal / experiment records**. Следующее: Hypothesis Engine с явным evidence; richer self-improvement metrics. Использование на других проектах — вторично, но входит в Stage 6.
 
 **Продуктовая оболочка:** Cursor-подобный chat-first shell + learning loop + paper Market ML ([VISION.md](VISION.md)). Сейчас (ops): окно наблюдения Market — explore off, без правок trading-ML; детали в MEMORY / VISION.
 
-**Долгосрочное видение:** полноценный AI-агент (звонки, финансы, код по запросу); до этого далеко.
+**Долгосрочное видение:** Stage 6 (general engineering + earn); до этого — дожать Observer→Experimenter на существующем контуре HITL.
 
 ---
 

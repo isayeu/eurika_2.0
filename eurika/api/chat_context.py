@@ -355,6 +355,12 @@ def record_c14_approvals_outcome(
     )
     release_active_goal_keep_execution(state)
     save_dialog_state(root, state)
+    try:
+        from eurika.api.self_model import persist_self_model
+
+        persist_self_model(root)
+    except Exception:
+        pass
     return state
 
 
@@ -494,6 +500,17 @@ def format_agent_context_panel(
     if approvals_lines:
         lines.extend(approvals_lines)
 
+    self_lines: List[str] = []
+    if project_root is not None:
+        try:
+            from eurika.api.self_model import format_self_model_brief
+
+            self_lines = format_self_model_brief(Path(project_root))
+            if self_lines:
+                lines.extend(self_lines)
+        except Exception:
+            self_lines = []
+
     last = state.get("last_execution")
     if isinstance(last, dict) and last:
         lines.append("")
@@ -528,12 +545,12 @@ def format_agent_context_panel(
         isinstance(last, dict) and bool(last)
     ) or (
         isinstance(pending_git, dict) and bool(pending_git.get("message"))
-    ) or bool(approvals_lines)
+    ) or bool(approvals_lines) or bool(self_lines)
     if not has_substance:
         return (
             "Нет активной цели и итога.\n"
             "Chat: «просканируй проект», «что получилось?», "
-            "«что дальше по развитию?», «сбрось цель»."
+            "«что дальше по развитию?», «модель себя», «сбрось цель»."
         )
     return "\n".join(lines)
 

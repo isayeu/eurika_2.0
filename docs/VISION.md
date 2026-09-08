@@ -1,8 +1,56 @@
 # Eurika — продуктовое видение
 
-**Одна фраза:** Cursor-подобная оболочка для работы с кодом и агентом, плюс самообучение и paper-торговля как режимы того же продукта — не отдельные приложения.
+**Одна фраза (продукт сейчас):** Cursor-подобная оболочка для работы с кодом и агентом, плюс самообучение и paper-торговля как режимы того же продукта — не отдельные приложения.
 
-**Северная звезда:** ты строишь **скелет** (данные, метки, банк, verify, journal); Eurika **сама учится зарабатывать** — сначала измеримую ценность (paper equity / успешные outcomes), не обязательно только Binance. Политики и пороги — рычаги скелета; «как именно зарабатывать» должно вытекать из опыта (`.eurika/events.json`, `.eurika/ml/`), а не из ручных правил «RSI→buy».
+**Главная цель (master):** постепенно превратить Eurika из статического анализатора кода в **саморазвивающуюся интеллектуальную инженерную систему** — наблюдать себя, анализировать состояние, исследовать внешнюю информацию, формировать гипотезы, предлагать улучшения, проверять их экспериментально и помогать человеку создавать и развивать другие проекты. Не иллюзия сознания, а **инженерно управляемая** автономия: измеримые механизмы самонаблюдения и самоулучшения.
+
+**Северная звезда ценности:** ты строишь **скелет** (данные, метки, банк, verify, journal, HITL); Eurika **сама учится** давать измеримую ценность — успешные coding outcomes / paper equity — из опыта (`.eurika/events.json`, `.eurika/ml/`), не из ручных правил «RSI→buy».
+
+**Единица прогресса:** не число фич, а способность **самостоятельно обнаруживать, объяснять, проверять и исправлять собственные ограничения** (с HITL на опасных действиях). Каждый новый модуль обязан отвечать: *какую измеримую способность он добавляет?* Ответ «так будет умнее» — модуль не создавать.
+
+## Master: цикл саморазвития
+
+```text
+OBSERVE → UNDERSTAND → MODEL → RESEARCH → REASON → PROPOSE
+  → PLAN → VERIFY → ACT → MEASURE → LEARN → MEMORIZE → OBSERVE AGAIN
+```
+
+Reasoning **предлагает**; Policy/Safety **разрешает**; Executor делает **только разрешённое**. Граница: Observation / Reasoning / Proposal / Authorization / Execution / Verification — не смешивать. Автоapply потенциально опасных действий запрещён.
+
+**Целевой проход (инженерное саморазвитие):**
+наблюдаю себя → понимаю состояние → нахожу проблему → ищу решения (источники / AI-консультанты) → гипотеза → план → безопасный эксперимент → измеряю → accept/reject → сохраняю опыт → обновляю модель себя → следующая возможность.
+
+Поколения: `v0.1 → анализ → ограничения → proposal → verify → v0.2 → …` — механизм, которым Eurika **создаёт следующую версию себя**, а не «конечная Eurika сразу».
+
+### Принципы доказательности
+
+Утверждение по возможности: источник · наблюдение · доказательство · уверенность · проверяемость · история. Разрешены ответы «не знаю» / «недостаточно данных». Не выдумывать знания, исходы экспериментов и успешность своих правок. Гипотеза ≠ факт. Улучшение — только измерениями, не самооценкой «я стала умнее».
+
+### Архитектурные уровни (целевая схема)
+
+Self / World / User models → Knowledge → Reasoning → Planning → Policy → Action → Verification → Memory → Learning.
+
+Первое крупное расширение ядра (не новый автономный агент): **Self Model + Capability Model + Goal Model**.
+
+### Этапы и карта к существующему ядру
+
+| Stage | Смысл | Уже есть / частично | Пробел |
+|-------|--------|---------------------|--------|
+| **0 Observer** | scan · analyze · measure · report · remember | scan/doctor/graph/smells, EventLog, journal, live_activity; **Self Model v0** (`.eurika/self_model.json`, Chat «модель себя», CLI `self-model`) | полнота Self (deps/versions/problems как first-class, не только snapshot) |
+| **1 Architect** | architecture · history · diff · trends · recommendations | project graph, smells, CYCLE_REPORT, Architecture Freeze | тренды/регрессии архитектуры как first-class |
+| **2 Researcher** | web · sources · KB · external AI consultant | web_search в bug-hunt, `learn-github` / pattern_library, multi-model chat | сравнение нескольких AI + evidence-store с confidence |
+| **3 Reasoner** | hypotheses · planning · decisions | planner, goals/reflection v1, chat interpreter; **Goal Model v0** в snapshot | Hypothesis Engine с явным evidence/expected |
+| **4 Experimenter** | sandbox · A/B · rollback | polygon, prove-cycle, propose+sandbox, worktree; **Experiment Memory v0** (`.eurika/experiments.json`) | formal A/B benchmarks beyond C.14 |
+| **5 Self-improving** | controlled self-mod · anti-regression | C.14 HITL, idle self-dev, bug-hunt → Approvals; caps BOUNDED_EVOLUTION; Capability scores v0 + **HITL accept-rate** (`.eurika/hitl_journal.json`) | richer success metrics beyond accept-rate |
+| **6 General engineering** | host assist · projects · domains · finance/earn | Chat host tools (HITL/sudo), coding shell, paper Market | read-only admin-ассистент; Project Creation pipeline; earn вне paper-лабы |
+
+**Не делать преждевременно:** fake consciousness; бесконечный autonomous loop; полный доступ к ОС; silent rewrite production; multi-agent «ради агентов»; LLM там, где хватает алгоритма; сложная память без потребителя; оптимизация без измерения.
+
+**Safe self-modification (канон = текущий C.14):** propose → backup/isolated workspace → modify → tests/static/arch → compare baseline → accept/reject (HITL). Никогда не подменять рабочую версию напрямую. Детали ритуала: [BOUNDED_EVOLUTION.md](BOUNDED_EVOLUTION.md) §8, ROADMAP §4.6.
+
+**Память (целевые слои vs сейчас):** Working / Episodic / Semantic / Procedural / Architectural / Experiment / KB. Сейчас: `.eurika/events.json`, dialog/goals, pattern_library, ml journal, pending_plan — различать fact / observation / hypothesis / decision / experiment / result / lesson при наращивании, не смешивать.
+
+**Домены позже (не сейчас в окне):** host admin (read-only default), vision/screen как наблюдения, engineering domains, financial intelligence с uncertainty, Ability to Earn (problem→MVP→measure) — Market paper остаётся **экзамен политики**, не live-деньги.
 
 ### Политика хардкода (Chat / Agent)
 
@@ -122,7 +170,7 @@
 11. ~~**Plugin hooks** `after_*`~~ ✅ (2026-08-08, v1) — versioned JSON-safe immutable `HookContext`; canonical `after_scan/plan/apply/verify` (не CLI/Qt wrappers); конфиг `.eurika/plugins.toml` / `pyproject`; ordered + dedupe + fail-open; результаты в `report.plugin_hooks` и `.eurika/events.json`. Trusted in-process plugins, не sandbox.
 12. ~~**Telegram-канал**~~ частично ✅ (2026-09-04…06, v1+) — `eurika telegram-bot` + Chat «запусти/останови/бот жив?»; allowlist; **push** Approvals + **/approve**/**/reject**; **push итога apply-approved**; решение из Telegram **зеркалится в Chat/Goals** Qt/Desktop; apply на диск только Qt/Desktop/`eurika fix . --apply-approved`.
 13. ~~**Goals / reflection / nudges (v1)**~~ частично ✅ — status/reflection/clear + nudge; reject/apply отпускают sticky goal; «какая цель?» показывает последний итог после release; idle C.14 пишет `last_execution` + Approvals в панели Контекст (Qt/Desktop).
-14. ~~**Саморазвитие через полигон (HITL)**~~ частично ✅ (ритуал v1 + **v1.5 bug-hunt**) — `eurika prove-cycle . --propose [--drill …] [--sandbox]` → Approvals → `eurika fix . --apply-approved`. **Bug-hunt:** `eurika bug-hunt . --propose [--sandbox] [--web]` — один реальный smell (не polygon) → sandbox → Approvals; anti-repeat recent target|kind (`.eurika/bug_hunt.json`); Chat «найди баг» / «предложи улучшение кода». **OSS learning:** Chat «обнови паттерны» / Desktop Commands `learn-github` → `pattern_library` для hints. **Idle:** ротация `… → llm_extract → bug_hunt`; anti-tread по `drill_ok`; apply только HITL. Desktop RPC: `idle-self-dev/prefs|run|status`. Детали: [ROADMAP.md](ROADMAP.md) §4.6, [BOUNDED_EVOLUTION.md](BOUNDED_EVOLUTION.md) §8.
+14. ~~**Саморазвитие через полигон (HITL)**~~ частично ✅ (ритуал v1 + **v1.5 bug-hunt**) — `eurika prove-cycle . --propose [--drill …] [--sandbox]` → Approvals → `eurika fix . --apply-approved`. **Bug-hunt:** `eurika bug-hunt . --propose [--sandbox] [--web]` — один реальный smell (не polygon) → sandbox → Approvals; anti-repeat recent target|kind (`.eurika/bug_hunt.json`); Chat «найди баг» / «предложи улучшение кода». **OSS learning:** Chat «обнови паттерны» / Desktop Commands `learn-github` → `pattern_library` для hints. **Idle:** ротация `… → llm_extract → bug_hunt`; anti-tread по `drill_ok`; apply только HITL. Desktop RPC: `idle-self-dev/prefs|run|status`. **Self+Capability+Goal v0:** `eurika self-model .` / Chat «модель себя» → `.eurika/self_model.json` + блок в Контексте. **HITL accept-rate + Experiment Memory v0:** `.eurika/hitl_journal.json` + `.eurika/experiments.json` (propose→decide→apply). Детали: [ROADMAP.md](ROADMAP.md) §4.6, [BOUNDED_EVOLUTION.md](BOUNDED_EVOLUTION.md) §8.
 
 ### Не брать
 Live-ордера / ключи / freqtrade с prodg; indicator-правила «RSI→buy» / «памп→buy» как ML-логика; OPT/aviation/vpn как домен; третий ТФ как отдельный торговый движок.

@@ -17,6 +17,7 @@ from .core_handlers_learn import handle_learn_github
 from .core_handlers_bug_hunt import handle_bug_hunt
 from .core_handlers_prove_cycle import handle_prove_cycle
 from .core_handlers_idle_self_dev import handle_idle_self_dev
+from .core_handlers_self_model import handle_self_model
 from .core_handlers_report import handle_learning_kpi, handle_report, handle_report_snapshot
 from .core_handlers_scan import handle_scan, handle_self_check
 from .core_handlers_serve import handle_serve
@@ -38,6 +39,7 @@ __all__ = [
     "handle_fix",
     "handle_help",
     "handle_idle_self_dev",
+    "handle_self_model",
     "handle_learn_github",
     "handle_learning_kpi",
     "handle_ml_market",

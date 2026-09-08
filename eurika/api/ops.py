@@ -131,6 +131,7 @@ def _build_extract_block_op(
         "location": location,
         "block_start_line": block_start_line,
         "helper_name": helper_name,
+        "line_count": int(line_count),
     }
     if extra_params:
         params["extra_params"] = extra_params
@@ -162,7 +163,11 @@ def _build_extract_nested_op(
     root: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """Build extract_nested_function operation payload."""
-    params: Dict[str, Any] = {"location": location, "nested_function_name": nested_name}
+    params: Dict[str, Any] = {
+        "location": location,
+        "nested_function_name": nested_name,
+        "line_count": int(line_count),
+    }
     if extra_params:
         params["extra_params"] = extra_params
     desc = f"Extract nested function {nested_name} from {rel_path}:{location} ({line_count} lines)"
@@ -380,7 +385,7 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
                 nested_ok = allow_extract_nested or _is_whitelisted_for_kind(root, _LLM_EXTRACT_DRILL, "extract_nested_function")
                 if nested_ok and suggest_extract_nested_function(drill_path, smell.location):
                     continue
-                if suggest_extract_block(drill_path, smell.location, min_lines=3):
+                if suggest_extract_block(drill_path, smell.location, min_lines=5):
                     continue
                 try:
                     from eurika.reasoning.planner.llm_adapter import ask_llm_extract_patch
@@ -417,6 +422,8 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
                             suggestion[1],
                             (suggestion[2] if len(suggestion) > 2 else []),
                         )
+                        if line_count < 5:
+                            continue
                         if _should_skip_extract_nested_candidate(rel, nested_name):
                             continue
                         ops.append(
@@ -426,7 +433,7 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
                         )
                         fixed_locations.add(loc_key)
                         continue
-                block_suggestion = suggest_extract_block(file_path, smell.location, min_lines=3)
+                block_suggestion = suggest_extract_block(file_path, smell.location, min_lines=5)
                 if block_suggestion and not _should_skip_extract_block_target(rel):
                     helper_name, block_line, line_count, extra = block_suggestion
                     ops.append(
@@ -447,7 +454,7 @@ def get_code_smell_operations(project_root: Path) -> List[Dict[str, Any]]:
                 if deep_mode == "skip" or loc_key in fixed_locations:
                     continue
                 if deep_mode in ("heuristic", "hybrid"):
-                    block_suggestion = suggest_extract_block(file_path, smell.location, min_lines=3)
+                    block_suggestion = suggest_extract_block(file_path, smell.location, min_lines=5)
                     if block_suggestion and not _should_skip_extract_block_target(rel):
                         helper_name, block_line, line_count, extra = block_suggestion
                         ops.append(

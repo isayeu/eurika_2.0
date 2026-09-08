@@ -65,6 +65,18 @@ def save_pending_plan(
         ),
     }
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    try:
+        from eurika.api.experiment_memory import record_proposals
+
+        record_proposals(
+            project_root,
+            ops_with_team,
+            patch_plan=payload.get("patch_plan")
+            if isinstance(payload.get("patch_plan"), dict)
+            else {},
+        )
+    except Exception:
+        pass
     if notify_telegram and ops_with_team:
         try:
             from eurika.integrations.telegram_bot import notify_approvals_pending
@@ -285,6 +297,7 @@ def update_team_decisions(
             return False, "invalid pending plan"
         if len(operations) != len(existing):
             return False, f"count mismatch: expected {len(existing)}, got {len(operations)}"
+        before_ops = [dict(op) if isinstance(op, dict) else {} for op in existing]
         merged = []
         for old, new in zip(existing, operations):
             if not isinstance(old, dict):
@@ -311,6 +324,23 @@ def update_team_decisions(
         if isinstance(patch_plan, dict):
             data["patch_plan"] = dict(patch_plan, operations=merged)
         path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        try:
+            from eurika.api.experiment_memory import record_decision_transitions
+
+            by = None
+            for row in merged:
+                if isinstance(row, dict) and row.get("approved_by"):
+                    by = row.get("approved_by")
+                    break
+            source = f"approvals:{by}" if by else "approvals"
+            record_decision_transitions(
+                project_root,
+                before_ops,
+                merged,
+                source=str(source)[:64],
+            )
+        except Exception:
+            pass
         return True, "saved"
     except Exception as e:
         return False, str(e)

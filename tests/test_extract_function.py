@@ -1,4 +1,5 @@
 """Tests for eurika.refactor.extract_function (extract nested function, extract block to helper)."""
+import ast
 from pathlib import Path
 
 from eurika.refactor.extract_function import (
@@ -276,6 +277,273 @@ def foo(x):
     assert ns["foo"](5) == 34, "foo(5): a=6,b=12,c=17,d=34 => result=34"
     assert "result = " in (tmp_path / "mod.py").read_text()
     assert "return " in (tmp_path / "mod.py").read_text()
+
+
+def test_extract_block_to_helper_returns_value_from_try_except_assign(tmp_path: Path) -> None:
+    """try/except that assigns outer local must become return + call-site assign (not bare call)."""
+    code = """
+def match_fuzzy(sim_cfg, default=0.7):
+    threshold = default
+    if sim_cfg is None:
+        threshold = default
+    elif sim_cfg is not None:
+        try:
+            threshold = float(sim_cfg)
+        except (TypeError, ValueError):
+            threshold = default
+    return threshold
+"""
+    path = tmp_path / "mod.py"
+    path.write_text(code)
+    # Target the elif body (try/except) — last stmt is Try, not Assign.
+    out = extract_block_to_helper(
+        path,
+        "match_fuzzy",
+        block_start_line=7,
+        helper_name="_extracted_block_7",
+        extra_params=["sim_cfg", "default"],
+    )
+    assert out is not None, "extract must succeed for try/except assign"
+    assert "threshold = _extracted_block_7(" in out
+    assert "return threshold" in out or "return float(sim_cfg)" in out
+    # Must not leave a discarded helper call.
+    tree = ast.parse(out)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+            func = node.value.func
+            if isinstance(func, ast.Name) and func.id.startswith("_extracted_block_"):
+                raise AssertionError(f"bare call to {func.id} discards return value")
+    path.write_text(out)
+    ns: dict = {}
+    exec(compile(out, "mod.py", "exec"), ns)
+    assert ns["match_fuzzy"]("0.8") == 0.8
+    assert ns["match_fuzzy"]("bad") == 0.7
+    assert ns["match_fuzzy"](None) == 0.7
+
+
+def test_extract_block_preserves_surrounding_formatting(tmp_path: Path) -> None:
+    """Surgical splice must not rewrite quotes/layout outside the extracted region."""
+    code = '''
+def _uses_completion_tokens(model: str) -> bool:
+    """Reasoning/gpt-oss models treat max_tokens as a prompt cap and return empty content."""
+    key = (model or "").lower()
+    return "gpt-oss" in key or key.startswith("o1")
+
+
+def _call_litellm(prompt: str, max_tokens: int = 350) -> tuple[str | None, str | None]:
+    api_key = None
+    base = "https://example.com"
+    model = "gpt"
+    kwargs: dict[str, object] = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "timeout": 60.0,
+    }
+    if base:
+        # Other OpenAI-compatible hosts (Cerebras, Gemini OpenAI bridge, …).
+        kwargs["model"] = model if str(model).startswith("openai/") else f"openai/{str(model).split('/')[-1]}"
+        kwargs["api_base"] = base
+        if api_key:
+            kwargs["api_key"] = api_key
+    return None, None
+'''
+    path = tmp_path / "architect_like.py"
+    path.write_text(code)
+    out = extract_block_to_helper(
+        path,
+        "_call_litellm",
+        block_start_line=16,
+        helper_name="_extracted_block_16",
+        extra_params=["api_key", "base", "kwargs", "model"],
+    )
+    assert out is not None
+    assert 'key = (model or "").lower()' in out
+    assert '"gpt-oss" in key' in out
+    assert 'kwargs: dict[str, object] = {' in out
+    assert "_extracted_block_16(api_key, base, kwargs, model)" in out
+    assert out.count('"""') >= 2  # docstring kept
+    # Must not flip surrounding double quotes wholesale.
+    assert "return 'gpt-oss'" not in out
+
+
+def test_suggest_extract_block_skips_single_call_wrapper(tmp_path: Path) -> None:
+    """Do not propose extract that only wraps one existing call."""
+    code = """
+def try_review_in_approvals_call(tools, session, *, name, arguments, call_id):
+    return True
+
+def _dispatch_tool_calls(runtime, session, name, arguments, call_id):
+    if name in {"agent_edit", "git_commit", "git_push"}:
+        handled = try_review_in_approvals_call(
+            runtime.tools,
+            session,
+            name=name,
+            arguments=arguments,
+            call_id=call_id,
+        )
+        return handled
+    return False
+"""
+    path = tmp_path / "mod.py"
+    path.write_text(code)
+    assert suggest_extract_block(path, "_dispatch_tool_calls", min_lines=5) is None
+    assert (
+        extract_block_to_helper(
+            path,
+            "_dispatch_tool_calls",
+            block_start_line=8,
+            helper_name="_extracted_block_8",
+            extra_params=["arguments", "call_id", "name", "runtime", "session"],
+        )
+        is None
+    )
+
+
+def test_extract_block_refuses_outer_augassign(tmp_path: Path) -> None:
+    code = """
+def settle_teacher(now, rows, sample, i, n_exp, MATCH_WINDOW_MS):
+    ts = int(sample.get("ts") or 0)
+    if now - ts > MATCH_WINDOW_MS:
+        expired = dict(sample)
+        expired["settled"] = True
+        expired["skip"] = True
+        expired["expired"] = True
+        rows[i] = expired
+        n_exp += 1
+        changed = True
+    return n_exp, changed
+"""
+    path = tmp_path / "mod.py"
+    path.write_text(code)
+    out = extract_block_to_helper(
+        path,
+        "settle_teacher",
+        block_start_line=4,
+        helper_name="_extracted_block_4",
+        extra_params=["i", "rows", "sample"],
+    )
+    assert out is None
+
+
+def test_extract_block_mutates_via_loop_without_returning_loop_var(tmp_path: Path) -> None:
+    """Inner for-target must not become return_var (would invent ``th = helper()``)."""
+    code = """
+def run_book_tick(now, opens, theses, filled):
+    for pos in filled:
+        opens.append(pos)
+        for th in theses:
+            if th.get("id") == pos.get("thesis_id"):
+                th["status"] = "open"
+                th["updated_ms"] = now
+    return opens
+"""
+    path = tmp_path / "mod.py"
+    path.write_text(code)
+    out = extract_block_to_helper(
+        path,
+        "run_book_tick",
+        block_start_line=3,
+        helper_name="_extracted_block_4",
+        extra_params=["now", "opens", "pos", "theses"],
+    )
+    assert out is not None
+    assert "return th" not in out
+    assert "th = _extracted_block_4" not in out
+    assert "_extracted_block_4(now, opens, pos, theses)" in out
+    # side-effect bare or no bogus assign
+    assert "opens.append(pos)" in out
+
+    code = """
+import os
+import subprocess
+import time
+
+def start_telegram_bot_background(cmd, log_f, root):
+    try:
+        log_f.write(f"\\n--- start {time.strftime('%Y-%m-%d %H:%M:%S')} ---\\n")
+        log_f.flush()
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(root),
+            stdout=log_f,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+            env=os.environ.copy(),
+        )
+    except OSError as exc:
+        return None
+    return proc
+"""
+    path = tmp_path / "mod.py"
+    path.write_text(code)
+    assert suggest_extract_block(path, "start_telegram_bot_background", min_lines=5) is None
+    assert (
+        extract_block_to_helper(
+            path,
+            "start_telegram_bot_background",
+            block_start_line=8,
+            helper_name="_extracted_block_8",
+            extra_params=["cmd", "log_f", "root"],
+        )
+        is None
+    )
+
+
+def test_suggest_extract_block_skips_status_bits_appends(tmp_path: Path) -> None:
+    code = """
+def format_self_check_for_chat(raw, verdict_bits):
+    if "pytorch" in raw:
+        low = raw.lower()
+        if "available: yes" in low or "available:yes" in low.replace(" ", ""):
+            verdict_bits.append("PyTorch available")
+        if "cuda: no" in low or "device: cpu" in low:
+            verdict_bits.append("inference on CPU")
+        elif "cuda: yes" in low:
+            verdict_bits.append("CUDA present")
+    return verdict_bits
+"""
+    path = tmp_path / "mod.py"
+    path.write_text(code)
+    assert suggest_extract_block(path, "format_self_check_for_chat", min_lines=5) is None
+
+
+def test_suggest_extract_block_skips_presentation_message_builder(tmp_path: Path) -> None:
+    """Do not extract f-string status message builders into `_extracted_block_*`."""
+    code = """
+def run_direct_handlers(trained):
+    if trained.get("ok"):
+        acc = float(trained.get("train_accuracy") or 0)
+        extra = (
+            f"\\nRouter trained: samples={trained.get('samples')}, "
+            f"classes={trained.get('classes')}, acc={acc:.3f}"
+        )
+        if acc < 0.5:
+            extra += "\\nlow acc warning"
+        return extra
+    return ""
+"""
+    path = tmp_path / "mod.py"
+    path.write_text(code)
+    assert suggest_extract_block(path, "run_direct_handlers", min_lines=5) is None
+
+
+def test_extract_block_to_helper_refuses_multi_outer_assigns(tmp_path: Path) -> None:
+    """Refuse extract when block writes multiple parent locals (unsafe single return)."""
+    code = """
+def foo(x):
+    a = 0
+    b = 0
+    if x > 0:
+        a = x + 1
+        b = x + 2
+    return a + b
+"""
+    path = tmp_path / "mod.py"
+    path.write_text(code)
+    out = extract_block_to_helper(
+        path, "foo", block_start_line=4, helper_name="_extracted_block_4", extra_params=["x"]
+    )
+    assert out is None
 
 
 def test_extract_block_to_helper_supports_nested_parent_function(tmp_path: Path) -> None:

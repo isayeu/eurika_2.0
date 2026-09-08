@@ -171,7 +171,7 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             'Привет! Я Eurika — архитектурный coding-ассистент этого проекта. '
             'Могу показать структуру, scan, помочь с кодом. '
             'Например: «что за проект?», «сколько файлов?», «покажи дерево», '
-            '«какая цель?», «что получилось?», «сбрось цель».'
+            '«какая цель?», «модель себя», «что получилось?», «сбрось цель».'
         )
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
@@ -422,6 +422,14 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         return {'text': text, 'error': None}
     if handler_id == 'goal_status':
         text = format_dialog_goal_block(load_dialog_state(root))
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'self_model':
+        from eurika.api.self_model import format_self_model_text, load_self_model
+
+        snap = load_self_model(root, refresh=True, persist=True)
+        text = format_self_model_text(snap, mode='full')
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}

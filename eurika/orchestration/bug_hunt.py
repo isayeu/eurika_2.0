@@ -5,6 +5,7 @@ Never applies on main. Web search only enriches the op description.
 
 from __future__ import annotations
 
+import ast
 import os
 import shutil
 from pathlib import Path
@@ -119,6 +120,42 @@ def smoke_bug_hunt_change(
                 "ok": False,
                 "error": "bug_hunt: extract_block expected new helper def",
             }
+        discarded = _bare_extracted_calls_discarding_return(after)
+        if discarded:
+            return {
+                "ok": False,
+                "error": (
+                    "bug_hunt: extract call discards helper result "
+                    f"(bare `{discarded[0]}()` — expected assign)"
+                ),
+            }
+        lost = _bare_extracted_calls_with_lost_name_assigns(after)
+        if lost:
+            return {
+                "ok": False,
+                "error": (
+                    "bug_hunt: extract call discards helper result "
+                    f"(bare `{lost[0]}()` assigns locals without return)"
+                ),
+            }
+        missing_ret = _extracted_helpers_missing_return(after)
+        if missing_ret:
+            return {
+                "ok": False,
+                "error": (
+                    "bug_hunt: helper "
+                    f"`{missing_ret[0]}` has no return but result is assigned"
+                ),
+            }
+        churn = _extract_diff_line_count(before, after)
+        if churn > 80:
+            return {
+                "ok": False,
+                "error": (
+                    "bug_hunt: extract formatting churn "
+                    f"({churn} diff lines; expected surgical edit)"
+                ),
+            }
     elif kind == "extract_nested_function":
         params = operation.get("params") if isinstance(operation.get("params"), dict) else {}
         nested = str(params.get("nested_function_name") or "").strip()
@@ -135,6 +172,15 @@ def smoke_bug_hunt_change(
                 }
         elif after.count("\ndef ") < before.count("\ndef "):
             return {"ok": False, "error": "bug_hunt: extract_nested reduced def count unexpectedly"}
+        churn = _extract_diff_line_count(before, after)
+        if churn > 80:
+            return {
+                "ok": False,
+                "error": (
+                    "bug_hunt: extract formatting churn "
+                    f"({churn} diff lines; expected surgical edit)"
+                ),
+            }
     elif kind == "remove_unused_import":
         # Content already differs; import-line heuristics are brittle on first-line imports.
         pass
@@ -142,6 +188,116 @@ def smoke_bug_hunt_change(
         if "def " not in after:
             return {"ok": False, "error": "bug_hunt: llm_extract left no defs"}
     return {"ok": True}
+
+
+def _extract_diff_line_count(before: str, after: str) -> int:
+    import difflib
+
+    return sum(
+        1
+        for line in difflib.unified_diff(
+            before.splitlines(), after.splitlines(), lineterm=""
+        )
+        if line.startswith("+") or line.startswith("-")
+    )
+
+
+def _extracted_helper_defs(source: str) -> dict[str, ast.FunctionDef]:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return {}
+    out: dict[str, ast.FunctionDef] = {}
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name.startswith("_extracted_block_"):
+            out[node.name] = node
+    return out
+
+
+def _bare_extracted_block_call_names(source: str) -> list[str]:
+    """Names of ``_extracted_block_*`` called as a bare Expr (result discarded)."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return ["<syntax>"]
+    found: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Expr) or not isinstance(node.value, ast.Call):
+            continue
+        func = node.value.func
+        if isinstance(func, ast.Name) and func.id.startswith("_extracted_block_"):
+            found.append(func.id)
+    return found
+
+
+def _bare_extracted_calls_discarding_return(source: str) -> list[str]:
+    """Bare calls to helpers that ``return`` a value (call site must assign)."""
+    helpers = _extracted_helper_defs(source)
+    bad: list[str] = []
+    for name in _bare_extracted_block_call_names(source):
+        helper = helpers.get(name)
+        if helper is None:
+            continue
+        if any(isinstance(n, ast.Return) for n in ast.walk(helper)):
+            bad.append(name)
+    return bad
+
+
+def _helper_has_simple_name_assign(helper: ast.FunctionDef) -> bool:
+    for node in ast.walk(helper):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    return True
+        if (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.value is not None
+        ):
+            return True
+    return False
+
+
+def _bare_extracted_calls_with_lost_name_assigns(source: str) -> list[str]:
+    """Bare calls whose helper binds locals via ``name = …`` and never returns.
+
+    Side-effect extracts that only mutate params (``kwargs['x']=…``, ``parts.append``)
+    are allowed; the chat_vector failure mode was ``threshold = …`` with no return.
+    """
+    helpers = _extracted_helper_defs(source)
+    bad: list[str] = []
+    for name in _bare_extracted_block_call_names(source):
+        helper = helpers.get(name)
+        if helper is None:
+            continue
+        if any(isinstance(n, ast.Return) for n in ast.walk(helper)):
+            continue
+        if _helper_has_simple_name_assign(helper):
+            bad.append(name)
+    return bad
+
+
+def _extracted_helpers_missing_return(source: str) -> list[str]:
+    """Helpers whose result is assigned but the def has no ``return``."""
+    helpers = _extracted_helper_defs(source)
+    missing: list[str] = []
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return ["<syntax>"]
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        val = node.value
+        if not isinstance(val, ast.Call) or not isinstance(val.func, ast.Name):
+            continue
+        name = val.func.id
+        helper = helpers.get(name)
+        if helper is None or not name.startswith("_extracted_block_"):
+            continue
+        if not any(isinstance(n, ast.Return) for n in ast.walk(helper)):
+            missing.append(name)
+    return missing
 
 
 def bug_hunt_web_enabled(*, explicit: bool | None = None) -> bool:
@@ -159,6 +315,12 @@ def _llm_extract_allowed() -> bool:
 def _is_polygon_target(target: str) -> bool:
     rel = str(target or "").replace("\\", "/").lstrip("./")
     return rel.startswith("eurika/polygon/")
+
+
+def _is_market_freeze_target(target: str) -> bool:
+    """Ops window: do not park HITL refactors under Market ML (VISION freeze)."""
+    rel = str(target or "").replace("\\", "/").lstrip("./")
+    return rel.startswith("eurika/ml/")
 
 
 def _deny_keys(project_root: Path) -> set[tuple[str, str]]:
@@ -237,15 +399,24 @@ def _score_op(op: dict[str, Any], *, prefer: set[tuple[str, str]]) -> int:
     return score
 
 
+def _target_exists_on_main(project_root: Path, target: str) -> bool:
+    rel = str(target or "").replace("\\", "/").lstrip("./")
+    if not rel or ".." in Path(rel).parts:
+        return False
+    return (Path(project_root).resolve() / rel).is_file()
+
+
 def filter_bug_hunt_candidates(
     operations: list[dict[str, Any]],
     *,
     deny: set[tuple[str, str]] | None = None,
     allow_llm: bool | None = None,
+    project_root: Path | None = None,
 ) -> list[dict[str, Any]]:
     """Drop polygon / denied / unsafe LLM ops; keep HITL-safe kinds."""
     llm_ok = _llm_extract_allowed() if allow_llm is None else bool(allow_llm)
     blocked = deny if deny is not None else set()
+    root = Path(project_root).resolve() if project_root is not None else None
     out: list[dict[str, Any]] = []
     for op in operations:
         if not isinstance(op, dict):
@@ -256,6 +427,10 @@ def filter_bug_hunt_candidates(
             continue
         if _is_polygon_target(tf):
             continue
+        if _is_market_freeze_target(tf):
+            continue
+        if root is not None and not _target_exists_on_main(root, tf):
+            continue
         if (tf, kind) in blocked:
             continue
         if kind == LLM_KIND:
@@ -263,8 +438,35 @@ def filter_bug_hunt_candidates(
                 continue
         elif kind not in SAFE_KINDS:
             continue
+        if kind in {"extract_block_to_helper", "extract_nested_function"} and _is_trivial_extract_block_op(op):
+            continue
         out.append(op)
     return out
+
+
+def _is_trivial_extract_block_op(op: dict[str, Any]) -> bool:
+    """Skip micro-extracts (e.g. 3 dict assignments → `_extracted_block_*`)."""
+    kind = str(op.get("kind") or "")
+    params = op.get("params") if isinstance(op.get("params"), dict) else {}
+    line_count = params.get("line_count")
+    try:
+        if line_count is not None and int(line_count) < 5:
+            return True
+    except (TypeError, ValueError):
+        pass
+    desc = str(op.get("description") or "")
+    # Descriptions look like: "... (line 59, 3 lines) ..." or "... (_finalize) (3 lines)"
+    import re
+
+    m = re.search(r",\s*(\d+)\s+lines?\)", desc) or re.search(
+        r"\((\d+)\s+lines?\)", desc
+    )
+    if m and int(m.group(1)) < 5:
+        return True
+    if kind == "extract_nested_function" and not line_count:
+        # Fall back to description-only size gate above.
+        pass
+    return False
 
 
 def pick_bug_hunt_operation(
@@ -274,6 +476,19 @@ def pick_bug_hunt_operation(
     allow_llm: bool | None = None,
 ) -> dict[str, Any] | None:
     """Pick one non-polygon smell op ranked by learning insights."""
+    ranked = list_bug_hunt_candidates(
+        project_root, operations=operations, allow_llm=allow_llm
+    )
+    return dict(ranked[0]) if ranked else None
+
+
+def list_bug_hunt_candidates(
+    project_root: Path,
+    *,
+    operations: list[dict[str, Any]] | None = None,
+    allow_llm: bool | None = None,
+) -> list[dict[str, Any]]:
+    """Ranked eligible ops (best first)."""
     root = Path(project_root).resolve()
     if operations is None:
         from eurika.api.ops import get_code_smell_operations
@@ -283,20 +498,158 @@ def pick_bug_hunt_operation(
     recent = recent_propose_keys(root)
     prefer = _prefer_keys(root)
     candidates = filter_bug_hunt_candidates(
-        list(operations), deny=deny | recent, allow_llm=allow_llm
+        list(operations), deny=deny | recent, allow_llm=allow_llm, project_root=root
     )
     if not candidates and recent:
         # Nothing fresh left — allow a repeat rather than stall idle forever.
         candidates = filter_bug_hunt_candidates(
-            list(operations), deny=deny, allow_llm=allow_llm
+            list(operations), deny=deny, allow_llm=allow_llm, project_root=root
         )
     if not candidates:
-        return None
-    ranked = sorted(
+        return []
+    return sorted(
         candidates,
         key=lambda op: (-_score_op(op, prefer=prefer), str(op.get("target_file") or "")),
     )
-    return dict(ranked[0])
+
+
+def _preflight_bug_hunt_op(project_root: Path, operation: dict[str, Any]) -> str | None:
+    """Return error if the op would no-op on main; None if ok to sandbox."""
+    kind = str(operation.get("kind") or "")
+    rel = str(operation.get("target_file") or "").replace("\\", "/").lstrip("./")
+    if not rel:
+        return "empty target_file"
+    path = Path(project_root).resolve() / rel
+    if not path.is_file():
+        return f"missing target on main: {rel}"
+    params = operation.get("params") if isinstance(operation.get("params"), dict) else {}
+    if kind == "extract_block_to_helper":
+        parent = str(params.get("location") or "").strip()
+        helper = str(params.get("helper_name") or "").strip()
+        try:
+            line = int(params.get("block_start_line") or 0)
+        except (TypeError, ValueError):
+            line = 0
+        if not parent or not helper or line < 1:
+            return "extract_block params incomplete"
+        try:
+            from eurika.refactor.extract_function import extract_block_to_helper
+
+            before = path.read_text(encoding="utf-8")
+            after = extract_block_to_helper(
+                path,
+                parent,
+                line,
+                helper,
+                list(params.get("extra_params") or [])
+                if isinstance(params.get("extra_params"), list)
+                else None,
+            )
+        except Exception as exc:
+            return f"extract preflight error: {exc}"
+        if after is None:
+            return "extract_block returned None (would no-op)"
+        if after == before:
+            return "extract_block left file unchanged"
+        if _extracted_helper_is_call_wrapper(after, helper):
+            return "extract_block is a trivial single-call wrapper"
+        if _extracted_helper_is_presentation(after, helper):
+            return "extract_block is a trivial presentation/message builder"
+        if _extracted_helper_returns_loop_target(after, helper):
+            return "extract_block returns a for/with loop target"
+        smoke = smoke_bug_hunt_change(
+            before=before,
+            after=after,
+            operation=operation,
+            modified=[rel],
+        )
+        if not smoke.get("ok"):
+            return str(smoke.get("error") or "extract smoke failed")
+        return None
+    if kind == "extract_nested_function":
+        parent = str(params.get("location") or "").strip()
+        nested = str(params.get("nested_function_name") or "").strip()
+        if not parent or not nested:
+            return "extract_nested params incomplete"
+        try:
+            lc = int(params.get("line_count") or 0)
+        except (TypeError, ValueError):
+            lc = 0
+        if lc and lc < 5:
+            return f"extract_nested too small ({lc} lines)"
+        try:
+            from eurika.refactor.extract_function import extract_nested_function
+
+            before = path.read_text(encoding="utf-8")
+            after = extract_nested_function(
+                path,
+                parent,
+                nested,
+                list(params.get("extra_params") or [])
+                if isinstance(params.get("extra_params"), list)
+                else None,
+            )
+        except Exception as exc:
+            return f"extract_nested preflight error: {exc}"
+        if after is None:
+            return "extract_nested returned None (would no-op)"
+        if after == before:
+            return "extract_nested left file unchanged"
+        smoke = smoke_bug_hunt_change(
+            before=before,
+            after=after,
+            operation=operation,
+            modified=[rel],
+        )
+        if not smoke.get("ok"):
+            return str(smoke.get("error") or "extract_nested smoke failed")
+        return None
+    return None
+
+
+def _extracted_helper_is_call_wrapper(source: str, helper_name: str) -> bool:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == helper_name:
+            from eurika.refactor.extract_function import _is_trivial_call_wrapper_body
+
+            return _is_trivial_call_wrapper_body(list(node.body))
+    return False
+
+
+def _extracted_helper_is_presentation(source: str, helper_name: str) -> bool:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == helper_name:
+            from eurika.refactor.extract_function import _is_trivial_presentation_body
+
+            return _is_trivial_presentation_body(list(node.body))
+    return False
+
+
+def _extracted_helper_returns_loop_target(source: str, helper_name: str) -> bool:
+    """True if helper ``return name`` where ``name`` is a for/with target in the helper."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    from eurika.refactor.extract_function import _loop_target_names_in_statements
+
+    for node in tree.body:
+        if not (isinstance(node, ast.FunctionDef) and node.name == helper_name):
+            continue
+        loop_names = _loop_target_names_in_statements(list(node.body))
+        for stmt in node.body:
+            if isinstance(stmt, ast.Return) and isinstance(stmt.value, ast.Name):
+                if stmt.value.id in loop_names:
+                    return True
+    return False
 
 
 def _enrich_with_web(op: dict[str, Any]) -> dict[str, Any]:
@@ -395,10 +748,12 @@ def run_bug_hunt_propose(
     web: bool | None = None,
     keep_sandbox: bool = False,
     operations: list[dict[str, Any]] | None = None,
+    max_attempts: int = 24,
 ) -> dict[str, Any]:
     """Pick one real-code op, optionally sandbox-verify, park in Approvals.
 
-    Never applies on main. If ``sandbox`` and verify fails — do not write pending.
+    Never applies on main. If ``sandbox`` and verify fails — try the next ranked
+    candidate (up to ``max_attempts``); do not write pending on total failure.
     """
     path = Path(project_root).resolve()
     base: dict[str, Any] = {
@@ -419,142 +774,167 @@ def run_bug_hunt_propose(
             "pending_plan": PENDING_PLAN_FILE,
         }
 
-    picked = pick_bug_hunt_operation(path, operations=operations)
-    if not picked:
+    ranked = list_bug_hunt_candidates(path, operations=operations)
+    if not ranked:
         return {
             **base,
             "error": "no eligible non-polygon smell op (scan empty or all skipped)",
         }
 
     use_web = bug_hunt_web_enabled(explicit=web)
-    operation = _enrich_with_web(picked) if use_web else dict(picked)
-    operation.setdefault("approval_state", "pending")
-    operation.setdefault("critic_verdict", "allow")
-    operation.setdefault("decision_source", "bug_hunt_propose")
-    operation.setdefault("team_decision", "pending")
-    target_rel = str(operation.get("target_file") or "")
-    kind = str(operation.get("kind") or "")
-    oss_examples = operation.get("oss_examples")
-    oss_n = len(oss_examples) if isinstance(oss_examples, list) else 0
     lib_path = path / ".eurika" / "pattern_library.json"
     oss_missing = not lib_path.is_file()
+    attempts = max(1, int(max_attempts or 1))
+    skipped: list[dict[str, Any]] = []
+    last_error = "no candidate survived preflight/sandbox"
 
-    if dry_run:
-        return {
-            **base,
-            "ok": True,
-            "dry_run": True,
-            "kind": kind,
-            "target_file": target_rel,
-            "operations": [operation],
-            "pending_plan": PENDING_PLAN_FILE,
-            "return_code": 0,
-            "web": use_web and bool(operation.get("research_note")),
-            "oss_examples": oss_n,
-            "oss_missing": oss_missing,
-        }
+    for picked in ranked[:attempts]:
+        operation = _enrich_with_web(picked) if use_web else dict(picked)
+        operation.setdefault("approval_state", "pending")
+        operation.setdefault("critic_verdict", "allow")
+        operation.setdefault("decision_source", "bug_hunt_propose")
+        operation.setdefault("team_decision", "pending")
+        target_rel = str(operation.get("target_file") or "")
+        kind = str(operation.get("kind") or "")
+        oss_examples = operation.get("oss_examples")
+        oss_n = len(oss_examples) if isinstance(oss_examples, list) else 0
 
-    sandbox_meta: dict[str, Any] | None = None
-    sandbox_verify: dict[str, Any] | None = None
-    build_root = path
-    try:
-        if sandbox:
-            from eurika.orchestration.propose_sandbox import (
-                apply_and_smoke_verify,
-                create_propose_sandbox,
-                remove_propose_sandbox,
-            )
-
+        preflight_err = _preflight_bug_hunt_op(path, operation)
+        if preflight_err:
+            skipped.append({"target_file": target_rel, "kind": kind, "error": preflight_err})
             try:
-                sandbox_meta = create_propose_sandbox(path, drill_id=BUG_HUNT_DRILL)
-                build_root = Path(sandbox_meta["path"])
-                _materialize_target(path, build_root, target_rel)
-            except Exception as exc:
-                return {
-                    **base,
-                    "error": f"sandbox create failed: {exc}",
-                    "verify_success": False,
-                }
-
-            sandbox_verify = apply_and_smoke_verify(
-                build_root, operation, drill_id=BUG_HUNT_DRILL
-            )
-            if not sandbox_verify.get("ok"):
-                return {
-                    **base,
-                    "error": (
-                        "sandbox verify failed: "
-                        f"{sandbox_verify.get('error') or 'unknown'}"
-                    ),
-                    "sandbox_path": str(build_root),
-                    "sandbox_mode": (sandbox_meta or {}).get("mode"),
-                    "sandbox_verify": sandbox_verify,
-                    "kind": kind,
-                    "target_file": target_rel,
-                    "verify_success": False,
-                }
-
-        operations_out = [operation]
-        patch_plan = {
-            "operations": operations_out,
-            "source": "bug_hunt_propose",
-            "summary": f"C.14 bug-hunt propose ({kind} → {target_rel})",
-            "drill": BUG_HUNT_DRILL,
-        }
-        pending_path = save_pending_plan(
-            path,
-            patch_plan,
-            operations_out,
-            policy_decisions=[
-                {"index": 1, "decision": "allow", "reason": "bug_hunt_propose"}
-            ],
-            session_id="bug_hunt_propose",
-        )
-        try:
-            remember_bug_hunt_propose(path, target_file=target_rel, kind=kind)
-        except Exception:
-            pass
-        try:
-            pending_rel = str(pending_path.relative_to(path))
-        except ValueError:
-            pending_rel = str(pending_path)
-        out: dict[str, Any] = {
-            "ok": True,
-            "bug_hunt": True,
-            "propose": True,
-            "drill_id": BUG_HUNT_DRILL,
-            "kind": kind,
-            "target_file": target_rel,
-            "pending_plan": pending_rel,
-            "pending_plan_path": str(pending_path),
-            "operations": operations_out,
-            "modified": [],
-            "verify_success": True if sandbox else None,
-            "return_code": 0,
-            "sandbox": bool(sandbox),
-            "web": use_web and bool(operation.get("research_note")),
-            "oss_examples": oss_n,
-            "oss_missing": oss_missing,
-            "instructions": (
-                "Review Approvals / .eurika/pending_plan.json, set team_decision=approve, "
-                "then: eurika fix . --apply-approved"
-            ),
-        }
-        if sandbox and sandbox_meta:
-            out["sandbox_path"] = str(build_root)
-            out["sandbox_mode"] = sandbox_meta.get("mode")
-            out["sandbox_verify"] = sandbox_verify
-            out["sandbox_kept"] = bool(keep_sandbox)
-        return out
-    finally:
-        if sandbox and sandbox_meta and not keep_sandbox:
-            from eurika.orchestration.propose_sandbox import remove_propose_sandbox
-
-            try:
-                remove_propose_sandbox(
-                    path,
-                    Path(sandbox_meta["path"]),
-                    mode=str(sandbox_meta.get("mode") or ""),
-                )
+                remember_bug_hunt_propose(path, target_file=target_rel, kind=kind)
             except Exception:
                 pass
+            last_error = f"preflight failed: {preflight_err}"
+            continue
+
+        if dry_run:
+            return {
+                **base,
+                "ok": True,
+                "dry_run": True,
+                "kind": kind,
+                "target_file": target_rel,
+                "operations": [operation],
+                "pending_plan": PENDING_PLAN_FILE,
+                "return_code": 0,
+                "web": use_web and bool(operation.get("research_note")),
+                "oss_examples": oss_n,
+                "oss_missing": oss_missing,
+                "skipped": skipped,
+            }
+
+        sandbox_meta: dict[str, Any] | None = None
+        sandbox_verify: dict[str, Any] | None = None
+        build_root = path
+        try:
+            if sandbox:
+                from eurika.orchestration.propose_sandbox import (
+                    apply_and_smoke_verify,
+                    create_propose_sandbox,
+                    remove_propose_sandbox,
+                )
+
+                try:
+                    sandbox_meta = create_propose_sandbox(path, drill_id=BUG_HUNT_DRILL)
+                    build_root = Path(sandbox_meta["path"])
+                    _materialize_target(path, build_root, target_rel)
+                except Exception as exc:
+                    skipped.append(
+                        {
+                            "target_file": target_rel,
+                            "kind": kind,
+                            "error": f"sandbox create failed: {exc}",
+                        }
+                    )
+                    last_error = f"sandbox create failed: {exc}"
+                    continue
+
+                sandbox_verify = apply_and_smoke_verify(
+                    build_root, operation, drill_id=BUG_HUNT_DRILL
+                )
+                if not sandbox_verify.get("ok"):
+                    err = str(sandbox_verify.get("error") or "unknown")
+                    skipped.append(
+                        {"target_file": target_rel, "kind": kind, "error": err}
+                    )
+                    try:
+                        remember_bug_hunt_propose(path, target_file=target_rel, kind=kind)
+                    except Exception:
+                        pass
+                    last_error = f"sandbox verify failed: {err}"
+                    continue
+
+            operations_out = [operation]
+            patch_plan = {
+                "operations": operations_out,
+                "source": "bug_hunt_propose",
+                "summary": f"C.14 bug-hunt propose ({kind} → {target_rel})",
+                "drill": BUG_HUNT_DRILL,
+            }
+            pending_path = save_pending_plan(
+                path,
+                patch_plan,
+                operations_out,
+                policy_decisions=[
+                    {"index": 1, "decision": "allow", "reason": "bug_hunt_propose"}
+                ],
+                session_id="bug_hunt_propose",
+            )
+            try:
+                remember_bug_hunt_propose(path, target_file=target_rel, kind=kind)
+            except Exception:
+                pass
+            try:
+                pending_rel = str(pending_path.relative_to(path))
+            except ValueError:
+                pending_rel = str(pending_path)
+            out: dict[str, Any] = {
+                "ok": True,
+                "bug_hunt": True,
+                "propose": True,
+                "drill_id": BUG_HUNT_DRILL,
+                "kind": kind,
+                "target_file": target_rel,
+                "pending_plan": pending_rel,
+                "pending_plan_path": str(pending_path),
+                "operations": operations_out,
+                "modified": [],
+                "verify_success": True if sandbox else None,
+                "return_code": 0,
+                "sandbox": bool(sandbox),
+                "web": use_web and bool(operation.get("research_note")),
+                "oss_examples": oss_n,
+                "oss_missing": oss_missing,
+                "skipped": skipped,
+                "instructions": (
+                    "Review Approvals / .eurika/pending_plan.json, set team_decision=approve, "
+                    "then: eurika fix . --apply-approved"
+                ),
+            }
+            if sandbox and sandbox_meta:
+                out["sandbox_path"] = str(build_root)
+                out["sandbox_mode"] = sandbox_meta.get("mode")
+                out["sandbox_verify"] = sandbox_verify
+                out["sandbox_kept"] = bool(keep_sandbox)
+            return out
+        finally:
+            if sandbox and sandbox_meta and not keep_sandbox:
+                from eurika.orchestration.propose_sandbox import remove_propose_sandbox
+
+                try:
+                    remove_propose_sandbox(
+                        path,
+                        Path(sandbox_meta["path"]),
+                        mode=str(sandbox_meta.get("mode") or ""),
+                    )
+                except Exception:
+                    pass
+
+    return {
+        **base,
+        "error": last_error,
+        "verify_success": False,
+        "skipped": skipped,
+    }

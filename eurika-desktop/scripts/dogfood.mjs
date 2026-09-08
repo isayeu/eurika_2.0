@@ -164,6 +164,23 @@ try {
     throw new Error("Context panel did not return shared dialog_state text");
   }
 
+  // Qt/Desktop shared idle self-dev prefs (C.14) — no LLM run in dogfood.
+  const idleBefore = await backend.client.request("idle-self-dev/prefs", {});
+  const idleWas = Boolean(idleBefore.idle_self_dev);
+  const idleOff = await backend.client.request("idle-self-dev/prefs", { enabled: false });
+  if (idleOff.idle_self_dev !== false) {
+    throw new Error("idle-self-dev/prefs did not disable");
+  }
+  const idleOn = await backend.client.request("idle-self-dev/prefs", { enabled: true });
+  if (idleOn.idle_self_dev !== true) {
+    throw new Error("idle-self-dev/prefs did not enable");
+  }
+  const idleStatus = await backend.client.request("idle-self-dev/status", {});
+  if (typeof idleStatus !== "object" || idleStatus === null || !idleStatus.prefs) {
+    throw new Error("idle-self-dev/status missing prefs");
+  }
+  await backend.client.request("idle-self-dev/prefs", { enabled: idleWas });
+
   const samplePath = resolve(workspace, "context_hitl.txt");
   const histDir = resolve(workspace, ".eurika", "chat_history");
   await mkdir(histDir, { recursive: true });

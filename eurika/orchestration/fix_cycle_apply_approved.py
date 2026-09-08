@@ -36,6 +36,12 @@ def run_apply_approved_path(path: Path, *, session_id: str | None, quiet: bool, 
         _announce_apply_to_chat(path, exit_code=1)
         return out
     record_team_rejections(path, payload)
+    try:
+        from eurika.api.experiment_memory import sync_decisions_from_pending
+
+        sync_decisions_from_pending(path, payload, source="apply-approved")
+    except Exception:
+        pass
     if not approved:
         clear_pending_plan_after_apply(path)
         report: FixReport = {
@@ -80,5 +86,17 @@ def run_apply_approved_path(path: Path, *, session_id: str | None, quiet: bool, 
         code = int(out.get("return_code") if isinstance(out, dict) else (0 if verify_success else 1))
     except (TypeError, ValueError):
         code = 0 if verify_success else 1
+    try:
+        from eurika.api.experiment_memory import record_apply_outcome
+
+        record_apply_outcome(
+            path,
+            approved,
+            verify_ok=bool(verify_success),
+            exit_code=code,
+            source="apply-approved",
+        )
+    except Exception:
+        pass
     _announce_apply_to_chat(path, exit_code=code)
     return out
