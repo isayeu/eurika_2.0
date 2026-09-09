@@ -34,7 +34,11 @@ def _add_fix_cycle_common_args(parser: argparse.ArgumentParser, *, include_no_ll
     parser.add_argument("--quiet", "-q", action="store_true", help="Minimal output; final JSON only")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose progress (DEBUG)")
     if include_no_llm:
-        parser.add_argument("--no-llm", action="store_true", help="Architect: use template only (no API key)")
+        parser.add_argument(
+            "--no-llm",
+            action="store_true",
+            help="Skip LLM: doctor/architect template; fix/cycle also disable planner split-hints",
+        )
     parser.add_argument("--no-clean-imports", action="store_true", help="Skip remove-unused-imports step (default: included)")
     parser.add_argument("--no-code-smells", action="store_true", help="Skip refactor_code_smell (long_function, deep_nesting) ops (default: included)")
     parser.add_argument("--verify-cmd", type=str, default=None, metavar="CMD", help="Override verify command (e.g. 'python manage.py test'); else [tool.eurika] verify_cmd or pytest")
@@ -350,6 +354,50 @@ def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Print full JSON snapshot",
     )
     self_model_parser.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="Alias for --json",
+    )
+
+    hyp_parser = subparsers.add_parser(
+        "hypotheses",
+        help=(
+            "Hypothesis Engine v0 (VISION Stage 3): "
+            "evidence+expected from facts → .eurika/hypotheses.json"
+        ),
+    )
+    hyp_parser.add_argument(
+        "path", nargs="?", default=".", type=Path, help="Project root (default: .)"
+    )
+    hyp_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print full JSON payload",
+    )
+    hyp_parser.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="Alias for --json",
+    )
+
+    ab_parser = subparsers.add_parser(
+        "ab-compare",
+        help=(
+            "Formal A/B v0 (VISION Stage 4): "
+            "baseline vs sandbox trials → .eurika/ab_trials.json"
+        ),
+    )
+    ab_parser.add_argument(
+        "path", nargs="?", default=".", type=Path, help="Project root (default: .)"
+    )
+    ab_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print full JSON payload",
+    )
+    ab_parser.add_argument(
         "--quiet",
         "-q",
         action="store_true",

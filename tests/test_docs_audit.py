@@ -20,6 +20,28 @@ def test_self_map_blurb_counts_modules_not_dump(tmp_path: Path) -> None:
     assert "modules=40" in blurb
     assert "m0.py" not in blurb
     assert len(blurb) < 200
+    assert "smells≈?" in blurb
+
+
+def test_self_map_blurb_reads_history_smells(tmp_path: Path) -> None:
+    (tmp_path / "self_map.json").write_text(
+        json.dumps({"modules": [{"path": "a.py"}], "dependencies": []}),
+        encoding="utf-8",
+    )
+    eurika = tmp_path / ".eurika"
+    eurika.mkdir()
+    (eurika / "history.json").write_text(
+        json.dumps(
+            {
+                "history": [
+                    {"modules": 1, "total_smells": 7, "cycles": 0},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    blurb = _self_map_blurb(tmp_path)
+    assert "smells≈7" in blurb
 
 
 def test_docs_audit_intent_beats_list_docs(tmp_path: Path) -> None:

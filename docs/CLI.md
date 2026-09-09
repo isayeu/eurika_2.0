@@ -23,6 +23,8 @@ Scan → Diagnose → Plan → Patch → Verify → Log
 | Bug-hunt (C.14 v1.5) | `eurika bug-hunt . --propose [--sandbox] [--web]` | Один реальный smell → sandbox → Approvals; `--web` = research note only |
 | Idle self-dev (C.14) | `eurika idle-self-dev . [--status\|--once\|--prune-sandboxes] [--force]` | Когда LLM lease quiet — один propose+sandbox (polygon + bug_hunt; без cron / без apply); `--prune-sandboxes` чистит stale worktree |
 | Self model (v0) | `eurika self-model . [--json]` | Self + Capability + Goal snapshot из фактов → `.eurika/self_model.json` (VISION § Master) |
+| Hypotheses (v0) | `eurika hypotheses . [--json]` | Hypothesis Engine + ranking (`rank_score`) → `.eurika/hypotheses.json` (Stage 3) |
+| A/B compare (v0) | `eurika ab-compare . [--json]` | Formal A/B: baseline vs sandbox trials → `.eurika/ab_trials.json` (Stage 4; не autoapply) |
 | Telegram (C.12) | `eurika telegram-bot .` | Long-poll → `chat_send`; allowlist; push Approvals + `/approve`/`/reject`; apply только HITL |
 | Patch | `eurika fix .` или `eurika agent patch-apply . --apply` | Применить патчи (с бэкапами) |
 | Verify | встроено в `eurika fix` (pytest после apply) | pytest; при провале — подсказка rollback; при ухудшении метрик — автоматический откат |
@@ -343,7 +345,7 @@ Qt / Desktop: чекбокс Agent «Саморазвитие в простое 
 
 ### eurika self-model [path] [--json|-q]
 
-VISION § Master v0: пересобрать **Self + Capability + Goal** из фактов (dialog_state, idle/bug_hunt stamps, events, artifacts) → `.eurika/self_model.json`. Не ручной JSON. Capability scores помечают `insufficient_data`, когда мало наблюдений; bug-hunt level не путает propose с accept.
+VISION § Master v0: пересобрать **Self + Capability + Goal** из фактов (dialog_state, idle/bug_hunt stamps, events, artifacts) → `.eurika/self_model.json`. Не ручной JSON. Capability scores помечают `insufficient_data`, когда мало наблюдений; bug-hunt level не путает propose с accept. Stage 5 metrics: `apply_ok_rate`, `verify_by_kind`, `time_to_decide`, `hypotheses_supported` (также в `.eurika/hitl_journal.json` / `experiments.json` → `self_improvement`).
 
 ```bash
 eurika self-model .
@@ -351,6 +353,32 @@ eurika self-model . --json
 ```
 
 Chat: «модель себя», «какое состояние?». Панель Контекст (Qt/Desktop) показывает краткий блок.
+
+---
+
+### eurika hypotheses [path] [--json|-q]
+
+VISION Stage 3 v0: **Hypothesis Engine** — детерминированные гипотезы из HITL/idle/events с явными `evidence` и `expected` → `.eurika/hypotheses.json`. Статусы: open / supported / refuted / insufficient. **Ranking v0:** `rank_score`, несколько reject_pattern, soft signals в bug-hunt. Не LLM, не apply.
+
+```bash
+eurika hypotheses .
+eurika hypotheses . --json
+```
+
+Chat: «гипотезы», «какие гипотезы?».
+
+---
+
+### eurika ab-compare [path] [--json|-q]
+
+VISION Stage 4 v0: **Formal A/B** — recent trials comparing baseline (main `self_map`) vs treatment (sandbox) on fixed metrics `energy`, `risk_score`, `total_smells`, `cycles`, `smoke_ok` → `.eurika/ab_trials.json`. Trials are written automatically after bug-hunt/prove-cycle `--sandbox` smoke ok. Winner does **not** auto-apply. `EURIKA_AB_RESCAN=auto` (default) rescans sandbox when architecture metrics are stable and self_map was seeded; `on` forces; `off` disables.
+
+```bash
+eurika ab-compare .
+eurika ab-compare . --json
+```
+
+Chat: «a/b», «сравни sandbox».
 
 ---
 

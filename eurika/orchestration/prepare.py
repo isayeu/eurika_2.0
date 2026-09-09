@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import os
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -349,24 +350,40 @@ def run_fix_diagnose_stage(
     window: int,
     quiet: bool,
     execution_context: Any | None = None,
+    *,
+    no_llm: bool = False,
 ) -> Any:
     """Run diagnose stage via ArchReviewAgentCore.
 
     When execution_context with snapshot_before is provided, agent uses it
     for patch planning (EXECUTION_MODEL_PLAN §E) instead of reloading structure.
+    When no_llm is True, planner LLM split-hints are disabled (EURIKA_USE_LLM_HINTS=0).
     """
     from agent_core import InputEvent
     from agent_core_arch_review import ArchReviewAgentCore
 
     if not quiet:
         _LOG.info("--- Step 2/4: diagnose ---")
-        _LOG.info("diagnose: architect (LLM) + planner hints — может занять 1–2 мин при Ollama")
+        if no_llm:
+            _LOG.info("diagnose: planner heuristics only (--no-llm; no API hints)")
+        else:
+            _LOG.info("diagnose: architect (LLM) + planner hints — может занять 1–2 мин при Ollama")
     agent = ArchReviewAgentCore(project_root=path)
     payload: dict[str, Any] = {"path": str(path), "window": window}
     if execution_context is not None:
         payload["execution_context"] = execution_context
     event = InputEvent(type="arch_review", payload=payload, source="cli")
-    return agent.handle(event)
+    if not no_llm:
+        return agent.handle(event)
+    prev = os.environ.pop("EURIKA_USE_LLM_HINTS", None)
+    try:
+        os.environ["EURIKA_USE_LLM_HINTS"] = "0"
+        return agent.handle(event)
+    finally:
+        if prev is not None:
+            os.environ["EURIKA_USE_LLM_HINTS"] = prev
+        else:
+            os.environ.pop("EURIKA_USE_LLM_HINTS", None)
 
 
 def extract_patch_plan_from_result(
@@ -470,6 +487,7 @@ def prepare_fix_cycle_operations(
     run_scan: Any,
     allow_campaign_retry: bool = False,
     allow_low_risk_campaign: bool = False,
+    no_llm: bool = False,
 ) -> tuple[dict[str, Any] | None, Any, PatchPlan | None, list[OperationRecord]]:
     """Prepare diagnose result, patch plan and operations; return early payload on stop conditions."""
     if not skip_scan:
@@ -480,7 +498,9 @@ def prepare_fix_cycle_operations(
             )
 
     ctx = _build_execution_context(path, None)
-    result = run_fix_diagnose_stage(path, window, quiet, execution_context=ctx)
+    result = run_fix_diagnose_stage(
+        path, window, quiet, execution_context=ctx, no_llm=no_llm
+    )
     if not result.success:
         return _early_exit(1, result.output, result, None, [])
     _attach_llm_hint_runtime(result)

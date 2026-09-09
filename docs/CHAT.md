@@ -91,7 +91,9 @@
 | `какие документы по проекту?`, `покажи документацию` | Список README / docs / rules |
 | `прочти всю документацию, что реализовано?` | Аудит VISION/ROADMAP vs код (LLM/Groq; fallback по ✅) |
 | `какая цель?`, `что в контексте?` | Статус active_goal / pending; после release — последний итог + «что получилось?» |
-| `модель себя`, `какое состояние?` | Self + Capability + Goal snapshot (факты → `.eurika/self_model.json`); CLI `eurika self-model .`; scores включают **HITL accept-rate** и recent experiment records |
+| `модель себя`, `какое состояние?` | Self + Capability + Goal snapshot (факты → `.eurika/self_model.json`); CLI `eurika self-model .`; scores: HITL accept-rate, **apply_ok_rate**, verify_by_kind, time_to_decide, hypotheses_supported |
+| `гипотезы`, `какие гипотезы?` | Hypothesis Engine v0 + **ranking** (`rank_score`, multi reject); CLI `eurika hypotheses .`; hypothesis ≠ fact |
+| `a/b`, `сравни sandbox` | Formal A/B v0 (baseline vs sandbox → `.eurika/ab_trials.json`); `EURIKA_AB_RESCAN=auto` (default) rescans when metrics stable; CLI `eurika ab-compare .`; не autoapply |
 | `что получилось?`, `итог цели` | Reflection: факты + краткий narrative (Groq/Ollama); без LLM — только факты |
 | ↑/↓ в поле Chat | История отправленных запросов (персист `.eurika/chat_prompt_history.json`) |
 | `@` в поле Chat | Автодополнение модулей из `self_map.json` и smell-типов (`@patch_engine.py`, `@god_module`); Tab/Enter — вставить, Esc — закрыть |

@@ -165,6 +165,18 @@ Architecture Freeze **не** означает «Eurika не трогает св�
 
 **Idle self-dev (2026-09-05…06):** не cron. Opt-in (`eurika idle-self-dev` / Qt+Desktop): quiet LLM lease → один propose+sandbox по ротации `imports → extractable_block → long_function → deep_nesting → llm_extract → bug_hunt`. Anti-tread: idle stamp `drill_ok` (≥5) на deterministic drills; если unsaturated ≤1 — полный round-robin. **Bug-hunt v1.5:** реальный smell → sandbox → Approvals (не silent rewrite). Apply на main только HITL.
 
+**Hypothesis Engine v0 (2026-09-08):** `eurika hypotheses .` / Chat «гипотезы» — явные evidence/expected из HITL/idle/events → `.eurika/hypotheses.json` (не apply, не LLM). Связь с Experiment Memory: structured `expected`/`evidence` на proposal records. **Hypothesis→bug-hunt ranking:** open `reject_pattern` deprioritizes that action kind in `list_bug_hunt_candidates` (−40 score; not hard-deny / not autoapply).
+
+**Multi-hypothesis ranking v0 (2026-09-08):** `rank_score` (confidence × status × kind urgency); несколько `reject_pattern` kinds; `hypothesis_ranking_signals` → confidence-scaled caution weights + `prefer_safe_delta` (verify_events/apply_loop) в bug-hunt. Chat/CLI показывают rank; **не** hard-deny / **не** autoapply.
+
+**Self-improvement metrics v0 (2026-09-08):** beyond accept-rate — `apply_ok_rate`, `verify_by_kind`, `time_to_decide`, `hypotheses_supported` в Self/Capability snapshot и блоке `self_improvement` в `.eurika/hitl_journal.json` / `experiments.json`.
+
+**Formal A/B v0 (2026-09-08):** после propose+sandbox smoke — baseline (main `self_map`) vs treatment (sandbox) по фиксированным метрикам `energy`, `risk_score`, `total_smells`, `cycles`, `smoke_ok` → `.eurika/ab_trials.json` + `metrics.ab_v0` на experiment. Winner: sandbox|baseline|tie|insufficient. **Не** autoapply. CLI `eurika ab-compare .` / Chat «a/b» / «сравни sandbox». Worktree без gitignored `self_map.json` → seed с main (`self_map_seeded`).
+
+**A/B rescan-when-stable (2026-09-08):** `EURIKA_AB_RESCAN=auto` (default) | `on` | `off`. Auto: rescan sandbox только если architecture history stable (малый swing smells/modules, cycles unchanged) **и** self_map был seeded в worktree — иначе treatment всегда tie. Trial пишет `rescanned`, `metrics_stable`, `rescan_skip_reason`.
+
+**Planning coupling v0 (2026-09-08):** bug-hunt ranking читает Formal A/B (decisive sandbox/baseline по kind) и low `verify_by_kind` → soft score deltas; stamps `planning_*` на ops. **Не** hard-deny, **не** autoapply (как hypothesis caution).
+
 См. ROADMAP §4.6 (уточнение), Architecture.md §2, VISION.md C.14.
 
 ---

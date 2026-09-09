@@ -43,6 +43,8 @@ def dispatch_command(parser: argparse.ArgumentParser, args: Any) -> int:
         "bug-hunt": lambda: handlers.handle_bug_hunt(args),
         "idle-self-dev": lambda: handlers.handle_idle_self_dev(args),
         "self-model": lambda: handlers.handle_self_model(args),
+        "hypotheses": lambda: handlers.handle_hypotheses(args),
+        "ab-compare": lambda: handlers.handle_ab_compare(args),
         "telegram-bot": lambda: handlers.handle_telegram_bot(args),
         "watch": lambda: handlers.handle_watch(args),
         "serve": lambda: handlers.handle_serve(args),

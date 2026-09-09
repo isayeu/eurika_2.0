@@ -40,6 +40,9 @@ def test_record_proposals_and_decisions(tmp_path: Path) -> None:
     assert len(recs) == 1
     assert recs[0]["status"] == "proposed"
     assert recs[0]["conclusion"] == "pending"
+    assert isinstance(recs[0].get("expected"), dict)
+    assert isinstance(recs[0].get("evidence"), list)
+    assert recs[0].get("expected_result")
 
     pending = json.loads(path.read_text(encoding="utf-8"))
     after = [dict(pending["operations"][0])]
@@ -131,3 +134,59 @@ def test_self_model_includes_hitl_score(tmp_path: Path) -> None:
     assert "hitl_accept_rate" in text
     assert snap["experiments"]["hitl"]["approve"] == 2
     assert snap["experiments"]["experiment_records"]["n"] >= 3
+    assert "apply_ok_rate" in snap["capabilities"]["scores"]
+    assert "hypotheses_supported" in snap["capabilities"]["scores"]
+    assert "self_improvement" in snap
+
+
+def test_self_improvement_metrics_apply_and_lag(tmp_path: Path) -> None:
+    from eurika.api.experiment_memory import (
+        compute_self_improvement_metrics,
+        load_hitl_journal,
+        record_apply_outcome,
+        record_decision_transitions,
+        record_proposals,
+    )
+    from eurika.api.hypothesis_engine import refresh_hypotheses
+
+    (tmp_path / ".eurika").mkdir()
+    op = {
+        "kind": "extract_block_to_helper",
+        "target_file": "a.py",
+        "description": "extract",
+        "params": {"x": 1},
+    }
+    record_proposals(tmp_path, [op], patch_plan={"source": "bug_hunt", "drill": "bug_hunt"})
+    before = [dict(op, team_decision="pending", approval_state="pending")]
+    after = [
+        dict(
+            op,
+            team_decision="approve",
+            approval_state="approved",
+            approved_by="t",
+        )
+    ]
+    assert record_decision_transitions(tmp_path, before, after, source="test") == 1
+    assert record_apply_outcome(tmp_path, [op], verify_ok=True) == 1
+    # second apply fail → apply_ok_rate measurable
+    op2 = {
+        "kind": "remove_unused_import",
+        "target_file": "b.py",
+        "description": "drop",
+    }
+    record_proposals(tmp_path, [op2], patch_plan={"source": "t"})
+    record_apply_outcome(tmp_path, [op2], verify_ok=False, exit_code=1)
+
+    refresh_hypotheses(tmp_path)
+    m = compute_self_improvement_metrics(tmp_path)
+    assert m["apply_ok_rate"]["insufficient_data"] is False
+    assert m["apply_ok_rate"]["rate"] == 0.5
+    assert m["apply_ok_rate"]["apply_ok"] == 1
+    assert m["apply_ok_rate"]["n"] == 2
+    # at least one propose→decide lag sample (may still be insufficient_data until 2)
+    assert m["time_to_decide"]["samples"] >= 1
+    assert m["hypotheses_supported"]["n"] >= 1
+
+    journal = load_hitl_journal(tmp_path)
+    assert isinstance(journal.get("self_improvement"), dict)
+    assert journal["self_improvement"]["apply_ok_rate"]["rate"] == 0.5

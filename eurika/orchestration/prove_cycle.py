@@ -24,7 +24,7 @@ from .apply_stage import (
 from .contracts import OperationRecord, PatchPlan
 from .deps import load_fix_cycle_deps
 from .pipeline_model import PipelineStage, attach_pipeline_trace
-from .team_mode import PENDING_PLAN_FILE, save_pending_plan
+from .team_mode import PENDING_PLAN_FILE, has_pending_plan, save_pending_plan
 
 DRILL_REL_PATH = ".eurika/prove_cycle/drill_unused.py"
 POLYGON_IMPORTS_REL = "eurika/polygon/imports_ok.py"
@@ -744,6 +744,21 @@ def run_prove_propose(
             "verify_success": None,
             "return_code": 1,
         }
+    if not dry_run and has_pending_plan(path):
+        drill_name, target_rel = _propose_drill_labels(drill_id)
+        return {
+            "ok": False,
+            "prove_cycle": True,
+            "propose": True,
+            "drill": drill_name,
+            "drill_id": drill_id,
+            "target_file": target_rel,
+            "error": "pending_plan already exists — resolve Approvals first",
+            "pending_plan": PENDING_PLAN_FILE,
+            "modified": [],
+            "verify_success": None,
+            "return_code": 1,
+        }
     if dry_run:
         drill_name, target_rel = _propose_drill_labels(drill_id)
         if drill_id == "extractable_block":
@@ -786,7 +801,10 @@ def run_prove_propose(
                 "team_decision": "pending",
             }
         elif drill_id == "llm_extract":
-            preview_source = "llm" if require_llm else "synthetic_offline"
+            # Dry-run must not claim a live LLM patch was produced.
+            preview_source = (
+                "dry_run_require_llm" if require_llm else "dry_run_synthetic"
+            )
             preview = {
                 "target_file": POLYGON_LLM_EXTRACT_REL,
                 "kind": "llm_extract_block",
@@ -832,7 +850,9 @@ def run_prove_propose(
             "sandbox": bool(sandbox),
         }
         if drill_id == "llm_extract":
-            out_dry["llm_extract_source"] = "llm" if require_llm else "synthetic_offline"
+            out_dry["llm_extract_source"] = (
+                "dry_run_require_llm" if require_llm else "dry_run_synthetic"
+            )
             out_dry["require_llm"] = bool(require_llm)
         return out_dry
 
@@ -977,6 +997,23 @@ def run_prove_propose(
             out["sandbox_mode"] = sandbox_meta.get("mode")
             out["sandbox_verify"] = sandbox_verify
             out["sandbox_kept"] = bool(keep_sandbox)
+            if isinstance(sandbox_verify, dict) and sandbox_verify.get("ok"):
+                try:
+                    from eurika.evaluation.ab_compare import run_ab_compare
+
+                    ab_trial = run_ab_compare(
+                        path,
+                        build_root,
+                        smoke_ok=True,
+                        sandbox_mode=str(sandbox_meta.get("mode") or ""),
+                        operation=operation if isinstance(operation, dict) else {},
+                        source="prove_cycle_propose",
+                        drill=drill_id,
+                    )
+                    if ab_trial:
+                        out["ab_v0"] = ab_trial
+                except Exception:
+                    pass
         return out
     finally:
         if sandbox and sandbox_meta and not keep_sandbox:
@@ -1122,10 +1159,25 @@ def format_prove_cycle_summary(payload: dict[str, Any]) -> str:
             sv = payload.get("sandbox_verify")
             if isinstance(sv, dict) and sv.get("ok") is not None:
                 lines.append(f"- sandbox verify: **{sv.get('ok')}**")
+            ab = payload.get("ab_v0")
+            if isinstance(ab, dict) and ab.get("winner"):
+                lines.append(
+                    f"- A/B v0: winner=**{ab.get('winner')}** "
+                    f"(graph_unchanged={ab.get('graph_unchanged')}, "
+                    f"rescanned={ab.get('rescanned')}, "
+                    f"metrics_stable={ab.get('metrics_stable')})"
+                )
         if payload.get("error"):
             lines.append(f"- error: {payload.get('error')}")
         if payload.get("dry_run"):
             lines.append("- dry-run: pending plan not written; re-run without `--dry-run`")
+        elif payload.get("ok") is False or payload.get("error"):
+            if "pending_plan already exists" in str(payload.get("error") or ""):
+                lines.append(
+                    "- next: resolve Approvals (approve/reject), then re-run propose"
+                )
+            else:
+                lines.append("- next: fix error above, then re-run propose")
         else:
             lines.append(
                 "- next: Approvals → approve → `eurika fix . --apply-approved` "

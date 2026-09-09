@@ -245,6 +245,11 @@ def test_os_check_not_roadmap_verify(tmp_path: Path) -> None:
     assert resolve_direct_handler(tmp_path, "проверь фазу 2.7")[0] == "roadmap_verify"
     assert resolve_direct_handler(tmp_path, "проведи self-check")[0] == "self_check"
     assert is_roadmap_verify_request("проверь фазу CR-B") is True
+    # Dogfood phrases that previously fell through to freeform LLM.
+    assert resolve_direct_handler(tmp_path, "перечисли docs")[0] == "list_docs"
+    assert resolve_direct_handler(tmp_path, "хост health")[0] == "host_health"
+    assert resolve_direct_handler(tmp_path, "отчёт обучения market")[0] == "market_learning_report"
+    assert resolve_direct_handler(tmp_path, "предложи polygon с llm")[0] == "polygon_propose"
 
 
 def test_dir_contents_goes_to_llm_not_show_file(tmp_path: Path) -> None:
@@ -356,6 +361,8 @@ def test_long_brief_does_not_hijack_apply_or_roadmap_verify() -> None:
     assert is_apply_confirmation("применяй") is True
     assert is_apply_confirmation("применяй token:abcd1234") is True
     assert is_apply_confirmation("apply token:abcd1234") is True
+    assert is_apply_confirmation("одобрить") is True
+    assert is_apply_confirmation("approve") is True
 
     plan_brief = (
         "Задача саморазвития, только диагностика, файлы репозитория не меняй.\n"

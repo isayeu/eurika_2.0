@@ -10,6 +10,15 @@ def _extracted_block_126(fix_path, report):
     if fix.get('telemetry'):
         report['last_fix_telemetry'] = fix['telemetry']
 
+def _extracted_block_136(paths, project_reports):
+    agg = _aggregate_multi_repo_reports(project_reports, paths)
+    out_path = paths[0] / 'eurika_doctor_report_aggregated.json'
+    try:
+        out_path.write_text(json.dumps(agg, indent=2, ensure_ascii=False), encoding='utf-8')
+        _clog().info('eurika: eurika_doctor_report_aggregated.json written to %s', out_path)
+    except Exception:
+        pass
+
 def handle_doctor(args: Any) -> int:
     """Diagnostics only: report + architect (no patches). Saves to eurika_doctor_report.json."""
     paths = _paths_from_args(args)
@@ -134,11 +143,5 @@ def handle_doctor(args: Any) -> int:
             pass
         project_reports.append(report)
     if len(paths) > 1 and project_reports:
-        agg = _aggregate_multi_repo_reports(project_reports, paths)
-        out_path = paths[0] / 'eurika_doctor_report_aggregated.json'
-        try:
-            out_path.write_text(json.dumps(agg, indent=2, ensure_ascii=False), encoding='utf-8')
-            _clog().info('eurika: eurika_doctor_report_aggregated.json written to %s', out_path)
-        except Exception:
-            pass
+        _extracted_block_136(paths, project_reports)
     return exit_code

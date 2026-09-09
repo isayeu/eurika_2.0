@@ -40,9 +40,13 @@ def test_build_self_model_from_facts(tmp_path: Path) -> None:
     idle = snap["capabilities"]["scores"]["c14_idle_drills"]
     assert idle["insufficient_data"] is False
     assert idle["level"] > 0
+    for key in ("apply_ok_rate", "verify_by_kind", "time_to_decide", "hypotheses_supported"):
+        assert key in snap["capabilities"]["scores"]
+    assert "self_improvement" in snap
     text = format_self_model_text(snap, mode="full")
     assert "Self Model" in text
     assert "c14_idle_drills" in text
+    assert "apply_ok_rate" in text
     assert "intent=scan" in text
 
 
@@ -61,10 +65,24 @@ def test_format_agent_context_panel_includes_self_model(tmp_path: Path) -> None:
     from eurika.api.chat_context import format_agent_context_panel
 
     (tmp_path / ".eurika").mkdir()
+    # seed minimal HITL so apply_ok_rate appears when present
+    (tmp_path / ".eurika" / "hitl_journal.json").write_text(
+        json.dumps(
+            {
+                "aggregates": {"approve": 2, "reject": 1, "apply_ok": 1, "apply_fail": 1},
+                "decisions": [],
+                "applies": [],
+            }
+        ),
+        encoding="utf-8",
+    )
     panel = format_agent_context_panel({}, project_root=tmp_path)
     assert "Self / Capability / Goal" in panel
+    assert "apply_ok_rate" in panel
+    assert "hypotheses_supported" in panel
     brief = format_self_model_brief(tmp_path)
     assert any("goal.status" in ln for ln in brief)
+    assert any("apply_ok_rate" in ln for ln in brief)
 
 
 def test_self_model_chat_intent(tmp_path: Path, monkeypatch) -> None:

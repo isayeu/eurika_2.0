@@ -212,6 +212,65 @@ def test_anti_repeat_skips_recent_then_falls_back(tmp_path: Path, monkeypatch: A
     assert picked2["target_file"] in {"eurika/a.py", "eurika/b.py"}
 
 
+def test_pick_deprioritizes_reject_pattern_kind(tmp_path: Path, monkeypatch: Any) -> None:
+    """Hypothesis caution: frequently rejected kind ranks below other SAFE kinds."""
+    import json
+
+    monkeypatch.setattr(
+        "eurika.orchestration.bug_hunt._deny_keys",
+        lambda _root: set(),
+    )
+    monkeypatch.setattr(
+        "eurika.orchestration.bug_hunt._prefer_keys",
+        lambda _root: set(),
+    )
+    eurika = tmp_path / ".eurika"
+    eurika.mkdir()
+    (eurika / "hitl_journal.json").write_text(
+        json.dumps(
+            {
+                "aggregates": {"approve": 0, "reject": 3, "apply_ok": 0, "apply_fail": 0},
+                "decisions": [
+                    {
+                        "decision": "reject",
+                        "kind": "extract_block_to_helper",
+                        "target": f"t{i}.py",
+                        "proposal_hash": f"h{i}",
+                        "ts_ms": 1000 + i,
+                    }
+                    for i in range(3)
+                ],
+                "applies": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    for rel in ("eurika/extract_me.py", "eurika/imports_me.py"):
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("x = 1\n", encoding="utf-8")
+    ops = [
+        _op(target="eurika/extract_me.py", kind="extract_block_to_helper"),
+        _op(target="eurika/imports_me.py", kind="remove_unused_import"),
+    ]
+    from eurika.api.hypothesis_engine import caution_action_kinds
+    from eurika.orchestration.bug_hunt import list_bug_hunt_candidates
+
+    assert "extract_block_to_helper" in caution_action_kinds(tmp_path)
+    ranked = list_bug_hunt_candidates(tmp_path, operations=ops, allow_llm=False)
+    assert ranked
+    assert ranked[0]["kind"] == "remove_unused_import"
+    assert ranked[0].get("hypothesis_caution") is not True
+    cautioned = [r for r in ranked if r.get("kind") == "extract_block_to_helper"]
+    assert cautioned and cautioned[0].get("hypothesis_caution") is True
+    assert cautioned[0].get("hypothesis_caution_delta", 0) < 0
+    assert cautioned[0].get("hypothesis_ranking_v0") is True
+
+    picked = pick_bug_hunt_operation(tmp_path, operations=ops, allow_llm=False)
+    assert picked is not None
+    assert picked["kind"] == "remove_unused_import"
+
+
 def test_smoke_bug_hunt_requires_change() -> None:
     from eurika.orchestration.bug_hunt import smoke_bug_hunt_change
 
@@ -374,6 +433,43 @@ def test_run_bug_hunt_skips_noop_extract_and_tries_next(
     pending = load_pending_plan(tmp_path)
     assert pending is not None
     assert len(out.get("skipped") or []) == 1
+
+
+def test_run_bug_hunt_dry_run_allowed_with_pending(tmp_path: Path, monkeypatch: Any) -> None:
+    """dry-run must not require clearing Approvals."""
+    from eurika.orchestration.bug_hunt import run_bug_hunt_propose
+    from eurika.orchestration.team_mode import save_pending_plan
+
+    target = tmp_path / "eurika" / "demo.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("def demo():\n    return 1\n", encoding="utf-8")
+    op = _op(target="eurika/demo.py", kind="remove_unused_import")
+    save_pending_plan(
+        tmp_path,
+        {"operations": [op], "source": "prior", "summary": "prior"},
+        [op],
+        policy_decisions=[{"index": 1, "decision": "allow", "reason": "t"}],
+        session_id="prior",
+        notify_telegram=False,
+    )
+    monkeypatch.setattr(
+        "eurika.orchestration.bug_hunt._preflight_bug_hunt_op",
+        lambda *_a, **_k: None,
+    )
+    monkeypatch.setattr(
+        "eurika.orchestration.bug_hunt._deny_keys",
+        lambda _root: set(),
+    )
+    monkeypatch.setattr(
+        "eurika.orchestration.bug_hunt._prefer_keys",
+        lambda _root: set(),
+    )
+    out = run_bug_hunt_propose(
+        tmp_path, operations=[op], sandbox=False, web=False, dry_run=True
+    )
+    assert out.get("ok") is True
+    assert out.get("dry_run") is True
+    assert out.get("kind") == "remove_unused_import"
 
 
 def test_run_bug_hunt_success_parks_pending(tmp_path: Path, monkeypatch: Any) -> None:

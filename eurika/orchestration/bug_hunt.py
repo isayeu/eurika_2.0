@@ -208,7 +208,7 @@ def _extracted_helper_defs(source: str) -> dict[str, ast.FunctionDef]:
     except SyntaxError:
         return {}
     out: dict[str, ast.FunctionDef] = {}
-    for node in tree.body:
+    for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name.startswith("_extracted_block_"):
             out[node.name] = node
     return out
@@ -243,38 +243,95 @@ def _bare_extracted_calls_discarding_return(source: str) -> list[str]:
     return bad
 
 
-def _helper_has_simple_name_assign(helper: ast.FunctionDef) -> bool:
+def _names_assigned_simple(helper: ast.FunctionDef) -> set[str]:
+    names: set[str] = set()
     for node in ast.walk(helper):
         if isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name):
-                    return True
+                    names.add(target.id)
         if (
             isinstance(node, ast.AnnAssign)
             and isinstance(node.target, ast.Name)
             and node.value is not None
         ):
-            return True
-    return False
+            names.add(node.target.id)
+    return names
 
 
 def _bare_extracted_calls_with_lost_name_assigns(source: str) -> list[str]:
-    """Bare calls whose helper binds locals via ``name = …`` and never returns.
+    """Bare calls that drop values the parent still reads after the call.
 
-    Side-effect extracts that only mutate params (``kwargs['x']=…``, ``parts.append``)
-    are allowed; the chat_vector failure mode was ``threshold = …`` with no return.
+    Side-effect extracts (write file, mutate params) with internal temps and no
+    return are OK. Fail when a helper binds ``name = …`` without return and the
+    enclosing function still loads ``name`` (outside the helper def).
     """
     helpers = _extracted_helper_defs(source)
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
     bad: list[str] = []
-    for name in _bare_extracted_block_call_names(source):
-        helper = helpers.get(name)
-        if helper is None:
-            continue
-        if any(isinstance(n, ast.Return) for n in ast.walk(helper)):
-            continue
-        if _helper_has_simple_name_assign(helper):
-            bad.append(name)
-    return bad
+
+    def _loads_in(node: ast.AST, *, skip: ast.AST | None = None) -> set[str]:
+        skip_ids = {id(n) for n in ast.walk(skip)} if skip is not None else set()
+        out: set[str] = set()
+        for sub in ast.walk(node):
+            if id(sub) in skip_ids:
+                continue
+            if isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Load):
+                out.add(sub.id)
+        return out
+
+    def _scan_block(stmts: list[ast.stmt], parent_fn: ast.AST) -> None:
+        for stmt in stmts:
+            if isinstance(stmt, ast.If):
+                _scan_block(list(stmt.body), parent_fn)
+                _scan_block(list(stmt.orelse or []), parent_fn)
+                continue
+            if isinstance(stmt, (ast.For, ast.While, ast.With, ast.AsyncWith, ast.AsyncFor)):
+                _scan_block(list(stmt.body), parent_fn)
+                _scan_block(list(getattr(stmt, "orelse", None) or []), parent_fn)
+                continue
+            if isinstance(stmt, ast.Try):
+                _scan_block(list(stmt.body), parent_fn)
+                for h in stmt.handlers:
+                    _scan_block(list(h.body), parent_fn)
+                _scan_block(list(stmt.orelse or []), parent_fn)
+                _scan_block(list(stmt.finalbody or []), parent_fn)
+                continue
+            if not (
+                isinstance(stmt, ast.Expr)
+                and isinstance(stmt.value, ast.Call)
+                and isinstance(stmt.value.func, ast.Name)
+                and stmt.value.func.id.startswith("_extracted_block_")
+            ):
+                continue
+            name = stmt.value.func.id
+            helper = helpers.get(name)
+            if helper is None:
+                continue
+            if any(isinstance(n, ast.Return) for n in ast.walk(helper)):
+                continue
+            assigned = _names_assigned_simple(helper)
+            if not assigned:
+                continue
+            parent_loads = _loads_in(parent_fn, skip=helper)
+            if assigned & parent_loads:
+                bad.append(name)
+
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            # Only scan this function's body; nested defs are visited separately.
+            _scan_block(list(node.body), node)
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for name in bad:
+        if name not in seen:
+            seen.add(name)
+            out.append(name)
+    return out
 
 
 def _extracted_helpers_missing_return(source: str) -> list[str]:
@@ -384,18 +441,45 @@ def _prefer_keys(project_root: Path) -> set[tuple[str, str]]:
     return out
 
 
-def _score_op(op: dict[str, Any], *, prefer: set[tuple[str, str]]) -> int:
+def _score_op(
+    op: dict[str, Any],
+    *,
+    prefer: set[tuple[str, str]],
+    caution_kinds: set[str] | None = None,
+    caution_weights: dict[str, int] | None = None,
+    prefer_safe_delta: int = 0,
+    planning_signals: dict[str, Any] | None = None,
+) -> int:
     tf = str(op.get("target_file") or "").replace("\\", "/")
     kind = str(op.get("kind") or "")
     score = 0
     if kind in SAFE_KINDS:
         score += 10
+        if prefer_safe_delta:
+            score += int(prefer_safe_delta)
     if (tf, kind) in prefer:
         score += 50
     if ("*", kind) in prefer:
         score += 5
     if kind == LLM_KIND:
         score -= 20
+    # Multi-hypothesis ranking v0: confidence-scaled caution (not deny).
+    if caution_weights and kind in caution_weights:
+        try:
+            score += int(caution_weights[kind])
+        except (TypeError, ValueError):
+            score -= 40
+    elif caution_kinds and kind in caution_kinds:
+        score -= 40
+    # Planning coupling v0: A/B + verify_by_kind soft deltas (not deny / not apply).
+    if planning_signals:
+        try:
+            from eurika.api.planning_coupling import score_delta_for_kind
+
+            delta, _stamp = score_delta_for_kind(kind, planning_signals)
+            score += int(delta)
+        except Exception:
+            pass
     return score
 
 
@@ -497,6 +581,34 @@ def list_bug_hunt_candidates(
     deny = _deny_keys(root)
     recent = recent_propose_keys(root)
     prefer = _prefer_keys(root)
+    caution_kinds: set[str] = set()
+    caution_weights: dict[str, int] = {}
+    prefer_safe_delta = 0
+    try:
+        from eurika.api.hypothesis_engine import hypothesis_ranking_signals
+
+        hyp_signals = hypothesis_ranking_signals(root)
+        raw_w = hyp_signals.get("caution_weights")
+        if isinstance(raw_w, dict):
+            caution_weights = {
+                str(k): int(v) for k, v in raw_w.items() if k is not None
+            }
+            caution_kinds = set(caution_weights.keys())
+        prefer_safe_delta = int(hyp_signals.get("prefer_safe_delta") or 0)
+    except Exception:
+        try:
+            from eurika.api.hypothesis_engine import caution_action_kinds
+
+            caution_kinds = caution_action_kinds(root)
+        except Exception:
+            caution_kinds = set()
+    planning_signals: dict[str, Any] | None = None
+    try:
+        from eurika.api.planning_coupling import load_planning_signals
+
+        planning_signals = load_planning_signals(root)
+    except Exception:
+        planning_signals = None
     candidates = filter_bug_hunt_candidates(
         list(operations), deny=deny | recent, allow_llm=allow_llm, project_root=root
     )
@@ -507,10 +619,43 @@ def list_bug_hunt_candidates(
         )
     if not candidates:
         return []
-    return sorted(
+    ranked = sorted(
         candidates,
-        key=lambda op: (-_score_op(op, prefer=prefer), str(op.get("target_file") or "")),
+        key=lambda op: (
+            -_score_op(
+                op,
+                prefer=prefer,
+                caution_kinds=caution_kinds,
+                caution_weights=caution_weights,
+                prefer_safe_delta=prefer_safe_delta,
+                planning_signals=planning_signals,
+            ),
+            str(op.get("target_file") or ""),
+        ),
     )
+    # Stamp ranking hints for summaries (not an apply gate).
+    stamped: list[dict[str, Any]] = []
+    for op in ranked:
+        kind = str(op.get("kind") or "")
+        row = dict(op)
+        if caution_kinds and kind in caution_kinds:
+            row["hypothesis_caution"] = True
+            row["hypothesis_caution_kind"] = kind
+            if kind in caution_weights:
+                row["hypothesis_caution_delta"] = caution_weights[kind]
+            row["hypothesis_ranking_v0"] = True
+        if prefer_safe_delta and kind in SAFE_KINDS:
+            row["hypothesis_prefer_safe_delta"] = prefer_safe_delta
+            row["hypothesis_ranking_v0"] = True
+        stamped.append(row)
+    if planning_signals:
+        try:
+            from eurika.api.planning_coupling import stamp_planning_on_ops
+
+            stamped = stamp_planning_on_ops(stamped, planning_signals)
+        except Exception:
+            pass
+    return stamped
 
 
 def _preflight_bug_hunt_op(project_root: Path, operation: dict[str, Any]) -> str | None:
@@ -555,6 +700,8 @@ def _preflight_bug_hunt_op(project_root: Path, operation: dict[str, Any]) -> str
             return "extract_block is a trivial single-call wrapper"
         if _extracted_helper_is_presentation(after, helper):
             return "extract_block is a trivial presentation/message builder"
+        if _extracted_helper_is_guard(after, helper):
+            return "extract_block is a trivial guard/validation wrapper"
         if _extracted_helper_returns_loop_target(after, helper):
             return "extract_block returns a for/with loop target"
         smoke = smoke_bug_hunt_change(
@@ -633,6 +780,19 @@ def _extracted_helper_is_presentation(source: str, helper_name: str) -> bool:
     return False
 
 
+def _extracted_helper_is_guard(source: str, helper_name: str) -> bool:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == helper_name:
+            from eurika.refactor.extract_function import _is_trivial_guard_body
+
+            return _is_trivial_guard_body(list(node.body))
+    return False
+
+
 def _extracted_helper_returns_loop_target(source: str, helper_name: str) -> bool:
     """True if helper ``return name`` where ``name`` is a for/with target in the helper."""
     try:
@@ -707,22 +867,64 @@ def format_bug_hunt_summary(payload: dict[str, Any]) -> str:
         return f"Bug-hunt propose: fail — {err}"
     if payload.get("dry_run"):
         op = (payload.get("operations") or [{}])[0]
-        return (
-            "Bug-hunt dry-run (не записано):\n"
-            f"- kind: `{op.get('kind')}`\n"
-            f"- target: `{op.get('target_file')}`\n"
-            f"- pending would be: `{PENDING_PLAN_FILE}`"
-        )
+        if not isinstance(op, dict):
+            op = {}
+        lines = [
+            "Bug-hunt dry-run (не записано):",
+            f"- kind: `{op.get('kind')}`",
+            f"- target: `{op.get('target_file')}`",
+            f"- pending would be: `{PENDING_PLAN_FILE}`",
+        ]
+        if op.get("hypothesis_caution") or payload.get("hypothesis_caution"):
+            lines.append(
+                f"- hypothesis caution: kind `{op.get('hypothesis_caution_kind') or op.get('kind')}`"
+            )
+        if op.get("planning_coupling_v0") or payload.get("planning_coupling_v0"):
+            src = op if op.get("planning_coupling_v0") else payload
+            lines.append(
+                f"- planning coupling v0: score_delta={src.get('planning_score_delta')} "
+                f"ab={src.get('planning_ab_bias')} verify_rate={src.get('planning_verify_rate')}"
+            )
+        return "\n".join(lines)
     lines = [
         "Bug-hunt propose → Approvals (без apply на main):",
         f"- kind: `{payload.get('kind')}`",
         f"- target: `{payload.get('target_file')}`",
         f"- pending: `{payload.get('pending_plan') or PENDING_PLAN_FILE}`",
     ]
+    if payload.get("hypothesis_caution"):
+        lines.append(
+            f"- hypothesis caution: kind `{payload.get('hypothesis_caution_kind') or payload.get('kind')}` "
+            f"delta={payload.get('hypothesis_caution_delta', -40)} "
+            "(reject_pattern ranking; still proposed only as fallback)"
+        )
+    if payload.get("planning_coupling_v0"):
+        bits = []
+        if payload.get("planning_ab_bias"):
+            bits.append(
+                f"ab={payload.get('planning_ab_bias')}({payload.get('planning_ab_delta')})"
+            )
+        if payload.get("planning_verify_rate") is not None:
+            bits.append(
+                f"verify_rate={payload.get('planning_verify_rate')}"
+                f"({payload.get('planning_verify_delta')})"
+            )
+        if bits:
+            lines.append(
+                f"- planning coupling v0: {', '.join(bits)} "
+                f"(score_delta={payload.get('planning_score_delta')}; not apply gate)"
+            )
     if payload.get("sandbox"):
         lines.append(
             f"- sandbox: ok"
             + (f" ({payload.get('sandbox_mode')})" if payload.get("sandbox_mode") else "")
+        )
+    ab = payload.get("ab_v0")
+    if isinstance(ab, dict) and ab.get("winner"):
+        lines.append(
+            f"- A/B v0: winner=`{ab.get('winner')}` "
+            f"(smoke_ok={ab.get('smoke_ok')}, graph_unchanged={ab.get('graph_unchanged')}, "
+            f"rescanned={ab.get('rescanned')}, metrics_stable={ab.get('metrics_stable')})"
         )
     if payload.get("web"):
         lines.append("- web: research note attached to description")
@@ -767,7 +969,7 @@ def run_bug_hunt_propose(
         "sandbox": bool(sandbox),
         "web": False,
     }
-    if has_pending_plan(path):
+    if has_pending_plan(path) and not dry_run:
         return {
             **base,
             "error": "pending_plan already exists — resolve Approvals first",
@@ -810,7 +1012,7 @@ def run_bug_hunt_propose(
             continue
 
         if dry_run:
-            return {
+            dry_out: dict[str, Any] = {
                 **base,
                 "ok": True,
                 "dry_run": True,
@@ -823,7 +1025,20 @@ def run_bug_hunt_propose(
                 "oss_examples": oss_n,
                 "oss_missing": oss_missing,
                 "skipped": skipped,
+                "hypothesis_caution": bool(operation.get("hypothesis_caution")),
+                "hypothesis_caution_kind": operation.get("hypothesis_caution_kind"),
             }
+            for _k in (
+                "planning_coupling_v0",
+                "planning_ab_bias",
+                "planning_ab_delta",
+                "planning_verify_rate",
+                "planning_verify_delta",
+                "planning_score_delta",
+            ):
+                if _k in operation:
+                    dry_out[_k] = operation.get(_k)
+            return dry_out
 
         sandbox_meta: dict[str, Any] | None = None
         sandbox_verify: dict[str, Any] | None = None
@@ -890,6 +1105,27 @@ def run_bug_hunt_propose(
                 pending_rel = str(pending_path.relative_to(path))
             except ValueError:
                 pending_rel = str(pending_path)
+            ab_trial: dict[str, Any] | None = None
+            if (
+                sandbox
+                and sandbox_meta
+                and isinstance(sandbox_verify, dict)
+                and sandbox_verify.get("ok")
+            ):
+                try:
+                    from eurika.evaluation.ab_compare import run_ab_compare
+
+                    ab_trial = run_ab_compare(
+                        path,
+                        build_root,
+                        smoke_ok=True,
+                        sandbox_mode=str(sandbox_meta.get("mode") or ""),
+                        operation=operation,
+                        source="bug_hunt_propose",
+                        drill=BUG_HUNT_DRILL,
+                    )
+                except Exception:
+                    ab_trial = None
             out: dict[str, Any] = {
                 "ok": True,
                 "bug_hunt": True,
@@ -908,16 +1144,30 @@ def run_bug_hunt_propose(
                 "oss_examples": oss_n,
                 "oss_missing": oss_missing,
                 "skipped": skipped,
+                "hypothesis_caution": bool(operation.get("hypothesis_caution")),
+                "hypothesis_caution_kind": operation.get("hypothesis_caution_kind"),
                 "instructions": (
                     "Review Approvals / .eurika/pending_plan.json, set team_decision=approve, "
                     "then: eurika fix . --apply-approved"
                 ),
             }
+            for _k in (
+                "planning_coupling_v0",
+                "planning_ab_bias",
+                "planning_ab_delta",
+                "planning_verify_rate",
+                "planning_verify_delta",
+                "planning_score_delta",
+            ):
+                if _k in operation:
+                    out[_k] = operation.get(_k)
             if sandbox and sandbox_meta:
                 out["sandbox_path"] = str(build_root)
                 out["sandbox_mode"] = sandbox_meta.get("mode")
                 out["sandbox_verify"] = sandbox_verify
                 out["sandbox_kept"] = bool(keep_sandbox)
+            if ab_trial:
+                out["ab_v0"] = ab_trial
             return out
         finally:
             if sandbox and sandbox_meta and not keep_sandbox:

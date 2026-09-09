@@ -6,7 +6,7 @@
 
 ## 1. Принцип и текущая задача
 
-**Основная задача / главная цель:** саморазвивающаяся инженерная система — измеримое самонаблюдение и самоулучшение (observe→…→learn), не иллюзия сознания. Канон и этапы: [VISION.md](VISION.md) § Master. Сейчас на ядре: scan/doctor/fix + C.14 + Self/Capability/Goal v0 + **HITL journal / experiment records**. Следующее: Hypothesis Engine с явным evidence; richer self-improvement metrics. Использование на других проектах — вторично, но входит в Stage 6.
+**Основная задача / главная цель:** саморазвивающаяся инженерная система — измеримое самонаблюдение и самоулучшение (observe→…→learn), не иллюзия сознания. Канон и этапы: [VISION.md](VISION.md) § Master. Сейчас на ядре: scan/doctor/fix + C.14 + Self/Capability/Goal + HITL/experiment + Hypothesis Engine + Formal A/B + planning coupling + A/B rescan-when-stable + **multi-hypothesis ranking v0**. Следующее: planner-core coupling beyond bug-hunt. Использование на других проектах — вторично, но входит в Stage 6.
 
 **Продуктовая оболочка:** Cursor-подобный chat-first shell + learning loop + paper Market ML ([VISION.md](VISION.md)). Сейчас (ops): окно наблюдения Market — explore off, без правок trading-ML; детали в MEMORY / VISION.
 

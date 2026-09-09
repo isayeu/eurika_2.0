@@ -171,7 +171,7 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             'Привет! Я Eurika — архитектурный coding-ассистент этого проекта. '
             'Могу показать структуру, scan, помочь с кодом. '
             'Например: «что за проект?», «сколько файлов?», «покажи дерево», '
-            '«какая цель?», «модель себя», «что получилось?», «сбрось цель».'
+            '«какая цель?», «модель себя», «гипотезы», «a/b», «что получилось?», «сбрось цель».'
         )
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
@@ -430,6 +430,21 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
 
         snap = load_self_model(root, refresh=True, persist=True)
         text = format_self_model_text(snap, mode='full')
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'hypotheses':
+        from eurika.api.hypothesis_engine import format_hypotheses_text, refresh_hypotheses
+
+        payload = refresh_hypotheses(root)
+        text = format_hypotheses_text(payload, mode='full')
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'ab_compare':
+        from eurika.evaluation.ab_compare import format_ab_text
+
+        text = format_ab_text(root, limit=8)
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
@@ -698,7 +713,9 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             summary = format_polygon_propose_summary(payload)
             ok_local = bool(payload.get("ok", True))
             if not ok_local and payload.get("error"):
-                summary = f"{summary}\n\nerror: {payload.get('error')}"
+                err = str(payload.get("error"))
+                if err and err not in summary:
+                    summary = f"{summary}\n\nerror: {err}"
             return ok_local, summary
 
         term_cmd, output, code, ok = _shell_for_chat(
@@ -734,10 +751,18 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         save_dialog_state(root, state)
         text = (
             'C.14: полигон → Approvals (без apply).\n\n'
-            f'{output.strip() or "(no output)"}\n\n'
-            'Дальше: вкладка **Approvals** (открою сейчас) → approve → '
-            '`eurika fix . --apply-approved`.'
+            f'{output.strip() or "(no output)"}'
         )
+        if ok:
+            text += (
+                '\n\nДальше: вкладка **Approvals** (открою сейчас) → approve → '
+                '`eurika fix . --apply-approved`.'
+            )
+        elif 'pending_plan already exists' in (output or ''):
+            text += (
+                '\n\nСначала resolve Approvals (approve/reject), '
+                'затем повтори propose.'
+            )
         text = append_goal_nudge(text, state)
         release_active_goal_keep_execution(state)
         save_dialog_state(root, state)
@@ -778,7 +803,9 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             summary = format_bug_hunt_propose_summary(payload)
             ok_local = bool(payload.get("ok", True))
             if not ok_local and payload.get("error"):
-                summary = f"{summary}\n\nerror: {payload.get('error')}"
+                err = str(payload.get("error"))
+                if err and err not in summary:
+                    summary = f"{summary}\n\nerror: {err}"
             return ok_local, summary
 
         term_cmd, output, code, ok = _shell_for_chat(
@@ -818,10 +845,18 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         save_dialog_state(root, state)
         text = (
             'C.14 v1.5: bug-hunt → Approvals (реальный код, без apply).\n\n'
-            f'{output.strip() or "(no output)"}\n\n'
-            'Дальше: вкладка **Approvals** → approve → '
-            '`eurika fix . --apply-approved`.'
+            f'{output.strip() or "(no output)"}'
         )
+        if ok:
+            text += (
+                '\n\nДальше: вкладка **Approvals** → approve → '
+                '`eurika fix . --apply-approved`.'
+            )
+        elif 'pending_plan already exists' in (output or ''):
+            text += (
+                '\n\nСначала resolve Approvals (approve/reject), '
+                'затем повтори bug-hunt.'
+            )
         text = append_goal_nudge(text, state)
         release_active_goal_keep_execution(state)
         save_dialog_state(root, state)

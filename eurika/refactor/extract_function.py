@@ -483,6 +483,7 @@ def _is_trivial_presentation_body(body: List[ast.stmt]) -> bool:
     """True for f-string / message assembly with no real control structure.
 
     HITL rejects like ``_extracted_block_1317(trained)`` that only format a status line.
+    Simple ``for row in …: lines.append(f"…")`` loops are still presentation.
     """
     if not body:
         return False
@@ -499,11 +500,16 @@ def _is_trivial_presentation_body(body: List[ast.stmt]) -> bool:
         "extend",
     }
     has_stringy = False
+    has_mutation = False
 
     def _leaf_stmts(stmts: List[ast.stmt]) -> bool:
         for part in stmts:
-            if isinstance(part, (ast.For, ast.While, ast.Try, ast.With)):
+            if isinstance(part, (ast.While, ast.Try, ast.With)):
                 return False
+            if isinstance(part, ast.For):
+                if not _leaf_stmts(list(part.body)):
+                    return False
+                continue
             if isinstance(part, ast.If):
                 if not _leaf_stmts(list(part.body)):
                     return False
@@ -518,9 +524,9 @@ def _is_trivial_presentation_body(body: List[ast.stmt]) -> bool:
         return True
 
     for stmt in body:
-        if isinstance(stmt, (ast.For, ast.While, ast.Try, ast.With)):
+        if isinstance(stmt, (ast.While, ast.Try, ast.With)):
             return False
-        if isinstance(stmt, ast.If):
+        if isinstance(stmt, (ast.If, ast.For)):
             if not _leaf_stmts([stmt]):
                 return False
 
@@ -528,18 +534,106 @@ def _is_trivial_presentation_body(body: List[ast.stmt]) -> bool:
         if isinstance(node, ast.JoinedStr):
             has_stringy = True
         elif isinstance(node, ast.Constant) and isinstance(node.value, str) and len(node.value) >= 8:
-            has_stringy = True
+            # Long literals alone are weak; prefer JoinedStr / format paths.
+            pass
         elif isinstance(node, ast.Call):
             func = node.func
             if isinstance(func, ast.Name) and func.id not in builtin_names:
                 return False
             if isinstance(func, ast.Attribute) and func.attr not in allowed_attrs:
                 return False
+            if isinstance(func, ast.Attribute) and func.attr in {"append", "extend", "join", "format"}:
+                # append/join of strings → presentation signal
+                for arg in list(node.args) + [kw.value for kw in node.keywords]:
+                    if isinstance(arg, ast.JoinedStr):
+                        has_stringy = True
+                    if isinstance(arg, ast.Constant) and isinstance(arg.value, str) and len(arg.value) >= 4:
+                        has_stringy = True
+        elif isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Store):
+            has_mutation = True
+        elif isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store):
+            has_mutation = True
+    if has_mutation:
+        return False
     return has_stringy
 
 
+def _if_is_guard_raise(node: ast.If) -> bool:
+    """True when If body is a lone Raise (optional elif Raise chain)."""
+    if len(node.body) != 1 or not isinstance(node.body[0], ast.Raise):
+        return False
+    orelse = list(node.orelse or [])
+    if not orelse:
+        return True
+    if len(orelse) == 1 and isinstance(orelse[0], ast.If):
+        return _if_is_guard_raise(orelse[0])
+    if len(orelse) == 1 and isinstance(orelse[0], ast.Raise):
+        return True
+    return False
+
+
+def _is_trivial_guard_body(body: List[ast.stmt]) -> bool:
+    """True for validation-only extracts: ``if not x: raise …`` then fetch/return.
+
+    HITL rejects like ``_extracted_block_272(runtime, session_id, tool_results)`` that
+    only check params and call ``runtime._session(...)``.
+    """
+    if not body:
+        return False
+    has_raise = False
+    builtin_names = set(dir(builtins))
+
+    def _is_forwarding_call(call: ast.expr) -> bool:
+        if not isinstance(call, ast.Call):
+            return False
+        func = call.func
+        if isinstance(func, ast.Name):
+            return func.id not in builtin_names
+        if isinstance(func, ast.Attribute):
+            return True
+        return False
+
+    def _stmt_is_forwarding(stmt: ast.stmt) -> bool:
+        if isinstance(stmt, ast.Expr) and _is_forwarding_call(stmt.value):
+            return True
+        if (
+            isinstance(stmt, ast.Assign)
+            and len(stmt.targets) == 1
+            and _is_forwarding_call(stmt.value)
+        ):
+            return True
+        if isinstance(stmt, ast.AnnAssign) and stmt.value is not None and _is_forwarding_call(stmt.value):
+            return True
+        if isinstance(stmt, ast.Return) and stmt.value is not None and _is_forwarding_call(stmt.value):
+            return True
+        return False
+
+    for i, stmt in enumerate(body):
+        if isinstance(stmt, (ast.For, ast.While, ast.Try, ast.With)):
+            return False
+        if isinstance(stmt, ast.If):
+            if not _if_is_guard_raise(stmt):
+                return False
+            has_raise = True
+            continue
+        if isinstance(stmt, ast.Raise):
+            has_raise = True
+            if i != len(body) - 1:
+                # bare raise mid-body is odd but still a guard script
+                continue
+            continue
+        if i == len(body) - 1 and _stmt_is_forwarding(stmt):
+            continue
+        return False
+    return has_raise
+
+
 def _is_low_value_extract_body(body: List[ast.stmt]) -> bool:
-    return _is_trivial_call_wrapper_body(body) or _is_trivial_presentation_body(body)
+    return (
+        _is_trivial_call_wrapper_body(body)
+        or _is_trivial_presentation_body(body)
+        or _is_trivial_guard_body(body)
+    )
 
 def _line_indent(line: str) -> str:
     return line[: len(line) - len(line.lstrip(" \t"))]

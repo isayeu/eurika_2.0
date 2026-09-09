@@ -49,7 +49,27 @@ def _self_map_blurb(root: Path) -> str:
     deps = data.get("dependencies")
     n_deps = len(deps) if isinstance(deps, list) else data.get("n_dependencies", "?")
     smells = data.get("smells") or data.get("findings") or []
-    n_smells = len(smells) if isinstance(smells, list) else 0
+    n_smells: int | str
+    if isinstance(smells, list) and smells:
+        n_smells = len(smells)
+    else:
+        # self_map often has no smells list — use last architecture history point.
+        n_smells = "?"
+        hist = root / ".eurika" / "history.json"
+        if hist.is_file():
+            try:
+                hdata = json.loads(hist.read_text(encoding="utf-8"))
+                points = None
+                if isinstance(hdata, dict):
+                    points = hdata.get("history") or hdata.get("points")
+                elif isinstance(hdata, list):
+                    points = hdata
+                if isinstance(points, list) and points:
+                    last = points[-1]
+                    if isinstance(last, dict) and last.get("total_smells") is not None:
+                        n_smells = int(last["total_smells"])
+            except (OSError, json.JSONDecodeError, TypeError, ValueError):
+                pass
     summary = data.get("summary") if isinstance(data.get("summary"), dict) else {}
     cycles = summary.get("cycles", "?") if summary else "?"
     return f"self_map: modules={n_mods}, deps={n_deps}, cycles={cycles}, smells≈{n_smells}"

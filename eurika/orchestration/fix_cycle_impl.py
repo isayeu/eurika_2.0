@@ -32,6 +32,7 @@ def run_fix_cycle_impl(
     dry_run: bool = False,
     quiet: bool = False,
     skip_scan: bool = False,
+    no_llm: bool = False,
     no_clean_imports: bool = False,
     no_code_smells: bool = False,
     verify_cmd: str | None = None,
@@ -80,6 +81,7 @@ def run_fix_cycle_impl(
             "dry_run": dry_run,
             "no_clean_imports": no_clean_imports,
             "no_code_smells": no_code_smells,
+            "no_llm": no_llm,
             "runtime_mode": runtime_mode,
             "skip_scan": skip_scan,
             "team_mode": team_mode,
@@ -131,6 +133,7 @@ def run_fix_cycle_impl(
         no_code_smells=no_code_smells,
         allow_campaign_retry=allow_campaign_retry,
         allow_low_risk_campaign=allow_low_risk_campaign,
+        no_llm=no_llm,
         run_scan=run_scan,
     )
     if early is not None:

@@ -511,6 +511,28 @@ def format_agent_context_panel(
         except Exception:
             self_lines = []
 
+    hyp_lines: List[str] = []
+    if project_root is not None:
+        try:
+            from eurika.api.hypothesis_engine import format_hypotheses_brief
+
+            hyp_lines = format_hypotheses_brief(Path(project_root), limit=2)
+            if hyp_lines:
+                lines.extend(hyp_lines)
+        except Exception:
+            hyp_lines = []
+
+    ab_lines: List[str] = []
+    if project_root is not None:
+        try:
+            from eurika.evaluation.ab_compare import format_ab_brief
+
+            ab_lines = format_ab_brief(Path(project_root), limit=2)
+            if ab_lines:
+                lines.extend(ab_lines)
+        except Exception:
+            ab_lines = []
+
     last = state.get("last_execution")
     if isinstance(last, dict) and last:
         lines.append("")
@@ -545,12 +567,12 @@ def format_agent_context_panel(
         isinstance(last, dict) and bool(last)
     ) or (
         isinstance(pending_git, dict) and bool(pending_git.get("message"))
-    ) or bool(approvals_lines) or bool(self_lines)
+    ) or bool(approvals_lines) or bool(self_lines) or bool(hyp_lines) or bool(ab_lines)
     if not has_substance:
         return (
             "Нет активной цели и итога.\n"
             "Chat: «просканируй проект», «что получилось?», "
-            "«что дальше по развитию?», «модель себя», «сбрось цель»."
+            "«что дальше по развитию?», «модель себя», «гипотезы», «a/b», «сбрось цель»."
         )
     return "\n".join(lines)
 

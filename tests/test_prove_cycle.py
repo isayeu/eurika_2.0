@@ -65,6 +65,25 @@ def test_propose_dry_run_does_not_seed_or_write_plan(tmp_path: Path) -> None:
     assert "Approvals" in format_prove_cycle_summary(out)
 
 
+def test_propose_dry_run_llm_extract_does_not_claim_live_llm(tmp_path: Path) -> None:
+    """--dry-run --require-llm must not report llm_extract_source=llm (no call made)."""
+    out = run_prove_cycle(
+        tmp_path,
+        dry_run=True,
+        propose=True,
+        quiet=True,
+        drill="llm_extract",
+        require_llm=True,
+    )
+    assert out.get("ok") is True
+    assert out.get("dry_run") is True
+    assert out.get("require_llm") is True
+    assert out.get("llm_extract_source") == "dry_run_require_llm"
+    assert out.get("llm_extract_source") != "llm"
+    ops = out.get("operations") or []
+    assert ops and (ops[0].get("params") or {}).get("source") == "dry_run_require_llm"
+
+
 def test_propose_writes_pending_plan_no_disk_clean(tmp_path: Path) -> None:
     out = run_prove_cycle(tmp_path, propose=True, quiet=True)
     assert out.get("ok") is True
@@ -366,4 +385,18 @@ def test_propose_sandbox_llm_extract_offline(tmp_path: Path, monkeypatch) -> Non
     assert out.get("ok") is True
     assert out.get("llm_extract_source") == "synthetic_offline"
     assert out.get("verify_success") is True
+
+
+def test_propose_refuses_when_pending_exists(tmp_path: Path) -> None:
+    first = run_prove_cycle(tmp_path, propose=True, quiet=True, drill="imports")
+    assert first.get("ok") is True
+    pending = tmp_path / ".eurika" / "pending_plan.json"
+    assert pending.is_file()
+    before = pending.read_text(encoding="utf-8")
+    second = run_prove_cycle(
+        tmp_path, propose=True, quiet=True, drill="extractable_block"
+    )
+    assert second.get("ok") is False
+    assert "pending_plan already exists" in str(second.get("error") or "")
+    assert pending.read_text(encoding="utf-8") == before
 

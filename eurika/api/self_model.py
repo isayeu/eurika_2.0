@@ -239,6 +239,40 @@ def _hitl_capability(root: Path) -> Dict[str, Any]:
         }
 
 
+def _self_improvement_scores(root: Path) -> Dict[str, Dict[str, Any]]:
+    """Stage 5 Capability scores beyond accept-rate."""
+    try:
+        from eurika.api.experiment_memory import compute_self_improvement_metrics
+
+        m = compute_self_improvement_metrics(root)
+    except Exception as exc:
+        empty = {
+            "level": 0.0,
+            "insufficient_data": True,
+            "evidence": f"metrics unavailable: {exc}",
+        }
+        return {
+            "apply_ok_rate": dict(empty),
+            "verify_by_kind": dict(empty),
+            "time_to_decide": dict(empty),
+            "hypotheses_supported": dict(empty),
+        }
+    out: Dict[str, Dict[str, Any]] = {}
+    for key in (
+        "apply_ok_rate",
+        "verify_by_kind",
+        "time_to_decide",
+        "hypotheses_supported",
+    ):
+        row = m.get(key) if isinstance(m.get(key), dict) else {}
+        out[key] = row if isinstance(row, dict) else {
+            "level": 0.0,
+            "insufficient_data": True,
+            "evidence": "missing",
+        }
+    return out
+
+
 def _goal_block(root: Path) -> Dict[str, Any]:
     from eurika.api.chat_context import load_dialog_state
 
@@ -332,8 +366,15 @@ def _experiments(root: Path) -> Dict[str, Any]:
             "reject": rate.get("reject"),
             "apply_ok": rate.get("apply_ok"),
             "apply_fail": rate.get("apply_fail"),
+            "apply_ok_rate": rate.get("apply_ok_rate"),
             "insufficient_data": rate.get("insufficient_data"),
         }
+        try:
+            from eurika.api.experiment_memory import compute_self_improvement_metrics
+
+            out["self_improvement"] = compute_self_improvement_metrics(root)
+        except Exception as exc:
+            out["self_improvement"] = {"error": str(exc), "insufficient_data": True}
         out["experiment_records"] = {
             "n": len(recs),
             "recent": [
@@ -368,6 +409,7 @@ def _self_block(root: Path) -> Dict[str, Any]:
             "bug-hunt",
             "idle-self-dev",
             "self-model",
+            "hypotheses",
             "learn-github",
         ],
         "constraints": [
@@ -383,6 +425,9 @@ def _self_block(root: Path) -> Dict[str, Any]:
             "bug_hunt": (eurika_dir / "bug_hunt.json").is_file(),
             "pending_plan": (eurika_dir / "pending_plan.json").is_file(),
             "pattern_library": (eurika_dir / "pattern_library.json").is_file(),
+            "hypotheses": (eurika_dir / "hypotheses.json").is_file(),
+            "hitl_journal": (eurika_dir / "hitl_journal.json").is_file(),
+            "experiments": (eurika_dir / "experiments.json").is_file(),
         },
     }
 
@@ -390,6 +435,7 @@ def _self_block(root: Path) -> Dict[str, Any]:
 def build_self_model(project_root: str | Path) -> Dict[str, Any]:
     """Rebuild snapshot from current facts (always fresh)."""
     root = Path(project_root).resolve()
+    extra_scores = _self_improvement_scores(root)
     return {
         "version": SNAPSHOT_VERSION,
         "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -403,10 +449,20 @@ def build_self_model(project_root: str | Path) -> Dict[str, Any]:
                 "hitl_accept_rate": _hitl_capability(root),
                 "bug_hunt_proposes": _bug_hunt_capability(root),
                 "verify_events": _verify_capability(root),
+                **extra_scores,
             },
         },
         "goal": _goal_block(root),
         "experiments": _experiments(root),
+        "self_improvement": {
+            k: extra_scores.get(k)
+            for k in (
+                "apply_ok_rate",
+                "verify_by_kind",
+                "time_to_decide",
+                "hypotheses_supported",
+            )
+        },
     }
 
 
@@ -490,9 +546,23 @@ def format_self_model_text(
 
     lines.append("")
     lines.append("Capabilities (measured):")
-    for key in ("c14_idle_drills", "hitl_accept_rate", "bug_hunt_proposes", "verify_events"):
+    score_keys = (
+        "c14_idle_drills",
+        "hitl_accept_rate",
+        "bug_hunt_proposes",
+        "verify_events",
+        "apply_ok_rate",
+        "verify_by_kind",
+        "time_to_decide",
+        "hypotheses_supported",
+    )
+    for key in score_keys:
         row = scores.get(key) if isinstance(scores.get(key), dict) else {}
         level = row.get("level", 0.0)
+        try:
+            level = round(float(level), 3)
+        except (TypeError, ValueError):
+            pass
         insuff = bool(row.get("insufficient_data"))
         tag = "insufficient_data" if insuff else f"level={level}"
         lines.append(f"- {key}: {tag}")
@@ -500,6 +570,22 @@ def format_self_model_text(
             lines.append(f"  evidence: {row.get('evidence')}")
         if mode == "full" and row.get("note"):
             lines.append(f"  note: {row.get('note')}")
+        if mode == "full" and key == "verify_by_kind":
+            by_kind = row.get("by_kind") if isinstance(row.get("by_kind"), dict) else {}
+            for kind, st in list(by_kind.items())[:5]:
+                if not isinstance(st, dict):
+                    continue
+                vs = int(st.get("verify_success") or 0)
+                vf = int(st.get("verify_fail") or 0)
+                lines.append(f"  · {kind}: verify={vs}/{vs + vf} rate={st.get('rate')}")
+        if mode == "full" and key == "time_to_decide" and row.get("median_ms") is not None:
+            lines.append(f"  median_ms={row.get('median_ms')} samples={row.get('samples')}")
+        if mode == "full" and key == "apply_ok_rate" and row.get("rate") is not None:
+            lines.append(f"  rate={row.get('rate')} ({row.get('apply_ok')}/{row.get('n')})")
+        if mode == "full" and key == "hypotheses_supported" and row.get("share") is not None:
+            lines.append(
+                f"  share={row.get('share')} supported={row.get('supported')}/{row.get('n')}"
+            )
 
     intents = caps.get("chat_intents") if isinstance(caps.get("chat_intents"), list) else []
     if intents and mode == "full":
@@ -556,8 +642,27 @@ def format_self_model_text(
                 lines.append(
                     f"- hitl: accept_rate={hitl.get('accept_rate')} "
                     f"(A={hitl.get('approve')} R={hitl.get('reject')}; "
-                    f"apply_ok={hitl.get('apply_ok')})"
+                    f"apply_ok={hitl.get('apply_ok')}"
+                    f", apply_ok_rate={hitl.get('apply_ok_rate')})"
                 )
+        si = (
+            experiments.get("self_improvement")
+            if isinstance(experiments.get("self_improvement"), dict)
+            else {}
+        )
+        if si and mode == "full":
+            aok = si.get("apply_ok_rate") if isinstance(si.get("apply_ok_rate"), dict) else {}
+            ttd = si.get("time_to_decide") if isinstance(si.get("time_to_decide"), dict) else {}
+            hs = (
+                si.get("hypotheses_supported")
+                if isinstance(si.get("hypotheses_supported"), dict)
+                else {}
+            )
+            lines.append(
+                f"- self_improvement: apply_ok_rate={aok.get('rate')}, "
+                f"time_to_decide_median_ms={ttd.get('median_ms')}, "
+                f"hyp_supported_share={hs.get('share')}"
+            )
         exp = (
             experiments.get("experiment_records")
             if isinstance(experiments.get("experiment_records"), dict)
@@ -571,14 +676,26 @@ def format_self_model_text(
                         f"  · {row.get('conclusion') or row.get('status')}: "
                         f"{row.get('change') or '?'}"
                     )
+        try:
+            from eurika.api.hypothesis_engine import load_hypotheses
+
+            root_s = str(snapshot.get("project_root") or "").strip()
+            hyps = load_hypotheses(root_s) if root_s else []
+            open_n = sum(
+                1 for h in hyps if str(h.get("status")) in {"open", "insufficient"}
+            )
+            if hyps:
+                lines.append(f"- open hypotheses: {open_n}/{len(hyps)}")
+        except Exception:
+            pass
 
     if mode == "brief":
         return "\n".join(lines)
 
     lines.append("")
     lines.append(
-        "Chat: «какая цель?» · «что получилось?» · «модель себя». "
-        "CLI: `eurika self-model .`"
+        "Chat: «какая цель?» · «что получилось?» · «модель себя» · «гипотезы». "
+        "CLI: `eurika self-model .` / `eurika hypotheses .`"
     )
     return "\n".join(lines)
 
@@ -589,11 +706,6 @@ def format_self_model_brief(project_root: str | Path) -> List[str]:
         snap = build_self_model(project_root)
     except Exception:
         return []
-    text = format_self_model_text(snap, mode="brief")
-    body = [ln for ln in text.splitlines() if ln.strip()]
-    if not body:
-        return []
-    # Keep panel short: header + self one-liner + 3 scores + goal status
     out: List[str] = ["", "Self / Capability / Goal:"]
     self_b = snap.get("self") if isinstance(snap.get("self"), dict) else {}
     out.append(
@@ -606,12 +718,37 @@ def format_self_model_brief(project_root: str | Path) -> List[str]:
         else {}
     )
     if isinstance(scores, dict):
-        for key in ("c14_idle_drills", "hitl_accept_rate", "bug_hunt_proposes", "verify_events"):
+        for key in (
+            "c14_idle_drills",
+            "hitl_accept_rate",
+            "bug_hunt_proposes",
+            "verify_events",
+            "apply_ok_rate",
+            "verify_by_kind",
+            "time_to_decide",
+            "hypotheses_supported",
+        ):
             row = scores.get(key) if isinstance(scores.get(key), dict) else {}
+            if not row:
+                continue
             if row.get("insufficient_data"):
                 out.append(f"- {key}: insufficient_data")
             else:
-                out.append(f"- {key}: level={row.get('level', 0.0)}")
+                level = row.get("level", 0.0)
+                try:
+                    level = round(float(level), 3)
+                except (TypeError, ValueError):
+                    pass
+                extra = ""
+                if key == "apply_ok_rate" and row.get("rate") is not None:
+                    extra = f" rate={row.get('rate')}"
+                elif key == "time_to_decide" and row.get("median_ms") is not None:
+                    extra = f" median_ms={row.get('median_ms')}"
+                elif key == "hypotheses_supported" and row.get("share") is not None:
+                    extra = f" share={row.get('share')}"
+                elif key == "verify_by_kind" and row.get("overall_rate") is not None:
+                    extra = f" overall={row.get('overall_rate')}"
+                out.append(f"- {key}: level={level}{extra}")
     goal = snap.get("goal") if isinstance(snap.get("goal"), dict) else {}
     out.append(f"- goal.status={goal.get('status') or 'empty'}")
     experiments = (
@@ -623,9 +760,12 @@ def format_self_model_brief(project_root: str | Path) -> List[str]:
     if hitl:
         rate = hitl.get("accept_rate")
         if rate is not None:
+            aok = hitl.get("apply_ok_rate")
+            aok_s = f", apply_ok_rate={aok}" if aok is not None else ""
             out.append(
                 f"- hitl: accept_rate={rate} "
-                f"(A={hitl.get('approve')} R={hitl.get('reject')})"
+                f"(A={hitl.get('approve')} R={hitl.get('reject')}"
+                f"{aok_s})"
             )
         elif hitl.get("insufficient_data"):
             out.append("- hitl: insufficient_data (<3 decisions)")

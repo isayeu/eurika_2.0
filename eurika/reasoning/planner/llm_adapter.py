@@ -446,6 +446,7 @@ def ask_llm_extract_patch(
     try:
         text, _reason = _call_planner_llm(prompt, max_tokens=4096, local_timeout_override=0)
         if not text or not text.strip():
+            _trace_planner(f"extract patch rejected: empty LLM response ({function_name})")
             _HINT_CACHE[cache_key] = []
             return None
         # Extract code block or use raw
@@ -454,23 +455,33 @@ def ask_llm_extract_patch(
         try:
             import ast
             ast.parse(raw)
-        except SyntaxError:
+        except SyntaxError as exc:
+            _trace_planner(f"extract patch rejected: SyntaxError ({function_name}): {exc}")
             _HINT_CACHE[cache_key] = []
             return None
         if not _validate_llm_extract_preserves_names(content, raw):
+            _trace_planner(
+                f"extract patch rejected: dropped public names ({function_name})"
+            )
             _HINT_CACHE[cache_key] = []
             return None
         if not _validate_llm_extract_no_placeholders(raw):
+            _trace_planner(
+                f"extract patch rejected: placeholder text ({function_name})"
+            )
             _HINT_CACHE[cache_key] = []
             return None
         if "polygon/refactor_code_smell" in path_str:
             if not _validate_llm_extract_function_length(raw, function_name, min_lines=50):
+                _trace_planner(
+                    f"extract patch rejected: function shortened below 50 lines ({function_name})"
+                )
                 _HINT_CACHE[cache_key] = []
                 return None
         _HINT_CACHE[cache_key] = [raw]
         return raw
-    except Exception:
-        pass
+    except Exception as exc:
+        _trace_planner(f"extract patch failed ({function_name}): {type(exc).__name__}: {exc}")
     _HINT_CACHE[cache_key] = []
     return None
 

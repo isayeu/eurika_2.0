@@ -527,6 +527,47 @@ def run_direct_handlers(trained):
     assert suggest_extract_block(path, "run_direct_handlers", min_lines=5) is None
 
 
+def test_suggest_extract_block_skips_presentation_for_append_loop(tmp_path: Path) -> None:
+    """for-row append(f-string) is still presentation, not worth extracting."""
+    code = '''
+def format_self_model_text(exp, lines):
+    if exp.get("n"):
+        lines.append(f"- experiment_records: n={exp.get('n')}")
+        for row in (exp.get("recent") or [])[:3]:
+            if isinstance(row, dict):
+                lines.append(
+                    f"  · {row.get('conclusion') or row.get('status')}: "
+                    f"{row.get('change') or '?'}"
+                )
+    return "\\n".join(lines)
+'''
+    path = tmp_path / "mod.py"
+    path.write_text(code)
+    assert suggest_extract_block(path, "format_self_model_text", min_lines=5) is None
+
+
+def test_suggest_extract_block_skips_guard_validation_wrapper(tmp_path: Path) -> None:
+    """Do not extract if-raise validation + session fetch into a helper."""
+    code = """
+class RpcError(Exception):
+    pass
+
+def run_chat(runtime, session_id, tool_results, message):
+    if tool_results is not None:
+        if not session_id:
+            raise RpcError("sessionId is required with toolResults")
+        if not isinstance(tool_results, list):
+            raise RpcError("toolResults must be an array")
+        session = runtime._session(session_id)
+    else:
+        session = runtime._session(session_id or "new")
+    return session
+"""
+    path = tmp_path / "mod.py"
+    path.write_text(code)
+    assert suggest_extract_block(path, "run_chat", min_lines=5) is None
+
+
 def test_extract_block_to_helper_refuses_multi_outer_assigns(tmp_path: Path) -> None:
     """Refuse extract when block writes multiple parent locals (unsafe single return)."""
     code = """

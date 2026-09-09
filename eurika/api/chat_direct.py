@@ -67,12 +67,12 @@ def is_apply_confirmation(message: str) -> bool:
     # Commit/push intents win over HITL apply (message may contain the word Apply).
     if is_git_commit_request(raw) or is_git_push_request(raw):
         return False
-    if any(m in msg for m in ("применяй", "выполняй", "это подтверждение")):
+    if any(m in msg for m in ("применяй", "выполняй", "это подтверждение", "одобрить", "одобряю")):
         return True
     # English: leading confirm verb, or confirm + token — not mid-sentence nouns.
-    if re.match(r"^(apply|go ahead|execute)\b", msg):
+    if re.match(r"^(apply|approve|go ahead|execute)\b", msg):
         return True
-    if re.search(r"\b(apply|execute)\b.{0,48}\btoken\b", msg):
+    if re.search(r"\b(apply|approve|execute)\b.{0,48}\btoken\b", msg):
         return True
     return False
 
@@ -1175,7 +1175,8 @@ def is_host_health_request(message: str) -> bool:
         r"\bжелезо\b|\bhardware\b|"
         r"(?:проверь|проверить)\s+(?:мою\s+|нашу\s+)?(?:ос\b|os\b|хост|сервер)|"
         r"хорошо\s+ли\s+(?:настроен|работает)\s+(?:операцион|систем|хост|машин)|"
-        r"host\s+health|os\s+health|system\s+health)",
+        r"host\s+health|os\s+health|system\s+health|"
+        r"хост\s+health|health\s+хоста)",
         msg,
         re.I,
     ):
@@ -1282,6 +1283,7 @@ def is_polygon_propose_request(message: str) -> bool:
         return True
     if "prove-cycle" in msg and "propose" in msg:
         return True
+    # Russian "полигон" + action words (filenames rarely contain Cyrillic полигон).
     if "полигон" in msg and any(
         w in msg
         for w in (
@@ -1296,6 +1298,24 @@ def is_polygon_propose_request(message: str) -> bool:
             "deep",
             "nesting",
         )
+    ):
+        return True
+    # English "polygon" is common in paths (eurika/polygon/…); require propose-ish cues only.
+    if "polygon" in msg and any(
+        w in msg
+        for w in (
+            "предложи",
+            "propose",
+            "hitl",
+            "approvals",
+            "require-llm",
+            "sandbox",
+            "worktree",
+        )
+    ):
+        return True
+    if "polygon" in msg and "llm" in msg and any(
+        w in msg for w in ("предложи", "propose", "drill")
     ):
         return True
     return False
