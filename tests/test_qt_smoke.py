@@ -13,7 +13,7 @@ if str(ROOT) not in sys.path:
 pytest.importorskip("PySide6")
 
 from qt_app.ui.main_window import MainWindow
-from qt_app.ui.handlers import ollama_handlers, chat_handlers, command_handlers
+from qt_app.ui.handlers import chat_pending_handlers, command_handlers, ollama_handlers
 
 
 def test_qt_main_window_smoke() -> None:
@@ -35,6 +35,9 @@ def test_qt_main_window_smoke() -> None:
         assert window.chat_send_btn is not None
         assert window.chat_cancel_btn is not None
         assert window.chat_typing_label is not None
+        assert window.chat_thinking_btn is not None
+        assert window.chat_thinking_detail is not None
+        assert window.chat_thinking_panel is not None
         assert window.chat_apply_btn is not None
         assert window.chat_reject_btn is not None
         assert window.chat_pending_label is not None
@@ -174,13 +177,13 @@ def test_resolve_ollama_model_to_install_prefers_custom() -> None:
 
 def test_response_requests_confirmation_detects_confirm_markers() -> None:
     text = "Подтвердите выполнение: `применяй token:b02d6842ee544f85` (или просто `применяй`)."
-    assert chat_handlers.response_requests_confirmation(text) is True
-    assert chat_handlers.extract_pending_token_from_text(text) == "b02d6842ee544f85"
+    assert chat_pending_handlers.response_requests_confirmation(text) is True
+    assert chat_pending_handlers.extract_pending_token_from_text(text) == "b02d6842ee544f85"
 
 
 def test_response_requests_confirmation_ignores_no_token_text() -> None:
     text = "Подтвердите выполнение: `применяй`."
-    assert chat_handlers.response_requests_confirmation(text) is False
+    assert chat_pending_handlers.response_requests_confirmation(text) is False
 
 
 def test_pending_diff_gate_requires_preview_then_resets() -> None:
@@ -195,26 +198,26 @@ def test_pending_diff_gate_requires_preview_then_resets() -> None:
             self._pending_diff_seen_fp = ""
 
     host = cast(MainWindow, _GateHost())
-    fp = chat_handlers._pending_preview_fingerprint({"token": "deadbeef"}, None)
+    fp = chat_pending_handlers._pending_preview_fingerprint({"token": "deadbeef"}, None)
     assert fp == "plan:deadbeef"
-    chat_handlers._sync_pending_diff_gate(host, fp)
+    chat_pending_handlers._sync_pending_diff_gate(host, fp)
     assert (
-        chat_handlers._apply_allowed_for_pending(
+        chat_pending_handlers._apply_allowed_for_pending(
             host, has_effective_pending=True, previewable=True, fingerprint=fp
         )
         is False
     )
-    chat_handlers._mark_pending_diff_seen(host, fp)
+    chat_pending_handlers._mark_pending_diff_seen(host, fp)
     assert (
-        chat_handlers._apply_allowed_for_pending(
+        chat_pending_handlers._apply_allowed_for_pending(
             host, has_effective_pending=True, previewable=True, fingerprint=fp
         )
         is True
     )
-    chat_handlers._sync_pending_diff_gate(host, "plan:other")
-    assert chat_handlers._pending_diff_was_seen(host, "plan:other") is False
+    chat_pending_handlers._sync_pending_diff_gate(host, "plan:other")
+    assert chat_pending_handlers._pending_diff_was_seen(host, "plan:other") is False
     assert (
-        chat_handlers._apply_allowed_for_pending(
+        chat_pending_handlers._apply_allowed_for_pending(
             host,
             has_effective_pending=True,
             previewable=False,

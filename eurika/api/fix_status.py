@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from eurika.utils.json_io import as_dict
+
 
 def format_last_fix_status(project_root: Path) -> str:
     """Short factual summary of the latest ``eurika_fix_report.json``."""
@@ -70,7 +72,7 @@ def announce_apply_approved(
         if path.is_file():
             data = json.loads(path.read_text(encoding="utf-8"))
             if isinstance(data, dict):
-                verify = data.get("verify") if isinstance(data.get("verify"), dict) else {}
+                verify = as_dict(data.get("verify"))
                 if "success" in verify:
                     ok = bool(verify.get("success"))
                 elif "verify_success" in data:

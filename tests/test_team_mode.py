@@ -13,6 +13,7 @@ from eurika.orchestration.team_mode import (
     load_approved_operations,
     load_pending_plan,
     record_team_rejections,
+    reset_approvals_after_rollback,
     save_pending_plan,
     update_team_decisions,
 )
@@ -134,6 +135,58 @@ def test_record_team_rejections_creates_deduplicated_learning_outcome(tmp_path: 
     assert rejects[0].input["operations"][0]["decision_source"] == "team"
     proposal_hash = rejects[0].input["operations"][0]["proposal_hash"]
     assert proposal_hash in get_recent_human_rejected_proposal_hashes(tmp_path)
+
+
+def test_reset_approvals_after_rollback_syncs_patch_plan(tmp_path: Path) -> None:
+    """Verify-fail rollback must clear approve in operations and nested patch_plan."""
+    plan = {"project_root": str(tmp_path), "operations": []}
+    ops = [
+        {"target_file": "a.py", "kind": "agent_edit"},
+        {"target_file": "b.py", "kind": "agent_edit"},
+    ]
+    decs = [{"index": 1, "decision": "allow"}, {"index": 2, "decision": "allow"}]
+    save_pending_plan(tmp_path, plan, ops, decs)
+    ok, _ = update_team_decisions(
+        tmp_path,
+        [
+            {"team_decision": "approve", "approved_by": "ui"},
+            {"team_decision": "reject"},
+        ],
+    )
+    assert ok
+    assert reset_approvals_after_rollback(tmp_path) is True
+    data = load_pending_plan(tmp_path)
+    assert data is not None
+    assert data["operations"][0]["team_decision"] == "pending"
+    assert data["operations"][0]["approval_state"] == "pending"
+    assert data["operations"][0]["approved_by"] is None
+    assert data["operations"][1]["team_decision"] == "reject"
+    assert data["patch_plan"]["operations"][0]["team_decision"] == "pending"
+    assert data["patch_plan"]["operations"][1]["team_decision"] == "reject"
+    approved, _ = load_approved_operations(tmp_path)
+    assert approved == []
+
+
+def test_reset_approvals_resyncs_stale_patch_plan_copy(tmp_path: Path) -> None:
+    """After a partial reset, nested patch_plan must not stay approved."""
+    plan = {"project_root": str(tmp_path), "operations": []}
+    ops = [{"target_file": "a.py", "kind": "agent_edit"}]
+    save_pending_plan(tmp_path, plan, ops, [{"index": 1, "decision": "allow"}])
+    ok, _ = update_team_decisions(
+        tmp_path, [{"team_decision": "approve", "approved_by": "ui"}]
+    )
+    assert ok
+    path = tmp_path / ".eurika" / "pending_plan.json"
+    data = json.loads(path.read_text())
+    data["operations"][0]["team_decision"] = "pending"
+    data["operations"][0]["approval_state"] = "pending"
+    data["operations"][0]["approved_by"] = None
+    path.write_text(json.dumps(data, indent=2))
+    assert reset_approvals_after_rollback(tmp_path) is True
+    after = load_pending_plan(tmp_path)
+    assert after is not None
+    assert after["patch_plan"]["operations"][0]["team_decision"] == "pending"
+    assert after["operations"][0]["team_decision"] == "pending"
 
 
 def test_clear_pending_plan_after_apply_removes_approve_reject(tmp_path: Path) -> None:

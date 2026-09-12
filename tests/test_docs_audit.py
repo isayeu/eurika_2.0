@@ -78,7 +78,8 @@ def test_docs_audit_fallback_without_llm(tmp_path: Path, monkeypatch) -> None:
     assert "VISION" in text or "Аудит" in text
     assert "Chat-first" in text or "✅" in text
     assert "MetricVector" not in text
-    assert "chat UX" in text.lower() or "goals" in text.lower() or "plugin" in text.lower()
+    assert "DEVELOPMENT.md" in text or "VISION" in text
+    assert "journal" in text.lower() or "market" in text.lower()
 
 
 def test_docs_audit_prompt_deprioritizes_legacy_infra(tmp_path: Path) -> None:
@@ -88,6 +89,7 @@ def test_docs_audit_prompt_deprioritizes_legacy_infra(tmp_path: Path) -> None:
     (tmp_path / "docs" / "VISION.md").write_text("# V\n1. Chat ✅\n", encoding="utf-8")
     prompt = build_docs_audit_prompt(tmp_path)
     assert "VISION.md" in prompt
+    assert "DEVELOPMENT.md" in prompt
     assert "ROADMAP.md" not in prompt
     assert "MetricVector" in prompt  # as forbidden example
     assert "уже в коде" in prompt

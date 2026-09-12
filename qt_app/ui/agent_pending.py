@@ -10,9 +10,16 @@ _SIDE_EFFECT_TOOLS = frozenset({"git_commit", "git_push", "tests"})
 
 
 def wants_local_agent(message: str) -> bool:
-    """Route implement/fix requests to the Desktop coding-agent loop."""
-    from eurika.agent.local_runtime_chat import _wants_code_mutation
+    """True when the message asks to mutate code (agent nudge), not Chat routing.
 
+    CR-H2: Qt/Desktop Send uses ``dispatch_chat_turn``; this helper is not
+    the entry split.
+    """
+    from eurika.agent.local_runtime_chat import _wants_code_mutation
+    from eurika.api.chat_direct import is_read_terminal_request
+
+    if is_read_terminal_request(message):
+        return False
     return _wants_code_mutation([{"role": "user", "content": message}])
 
 

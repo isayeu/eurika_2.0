@@ -154,11 +154,44 @@ def dispatch(
             ),
         )
     if method == "chat/send":
-        return runtime._with_live_activity(
-            method,
-            params,
-            lambda: runtime.panels.product_chat(params if isinstance(params, dict) else {}),
-        )
+        def _product_or_agent() -> dict[str, Any]:
+            from eurika.api.chat_entry import dispatch_chat_turn
+
+            payload = params if isinstance(params, dict) else {}
+            message = payload.get("message")
+            if not isinstance(message, str) or not message.strip():
+                raise RpcError(ERR_INVALID_PARAMS, "message must be a non-empty string")
+            raw_ctx = payload.get("context")
+            ctx: dict[str, Any] = dict(raw_ctx) if isinstance(raw_ctx, dict) else {}
+            if str(ctx.get("client") or "").lower() == "desktop":
+                ctx.setdefault("reviewInApprovals", True)
+            terminal = ctx.get("terminalText") or payload.get("terminalText")
+
+            def _agent(msg: str, client_terminal_text: str | None = None) -> dict[str, Any]:
+                inner: dict[str, Any] = {"message": msg, "context": dict(ctx)}
+                if payload.get("sessionId"):
+                    inner["sessionId"] = payload["sessionId"]
+                if client_terminal_text:
+                    inner["context"]["terminalText"] = client_terminal_text
+                return runtime._chat(inner, cancel=cancel, emit=emit)
+
+            def _core(**kwargs: Any) -> dict[str, Any]:
+                return runtime.panels.product_chat(
+                    {
+                        "message": kwargs.get("message") or message,
+                        "terminalText": kwargs.get("client_terminal_text") or terminal,
+                    }
+                )
+
+            return dispatch_chat_turn(
+                runtime.workspace_root,
+                message.strip(),
+                client_terminal_text=str(terminal or "") or None,
+                agent_chat=_agent,
+                core_chat=_core,
+            )
+
+        return runtime._with_live_activity(method, params, _product_or_agent)
     if method == "mentions/suggest":
         return runtime.panels.mentions_suggest(params if isinstance(params, dict) else {})
     if method == "project/create":

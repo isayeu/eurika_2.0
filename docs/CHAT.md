@@ -4,11 +4,38 @@
 
 Чат работает с **текущим Project root** (воркспейс, как папка в Cursor) и выбранным **чатом** в левой рейке. **Новый чат** открывает диалог каталога; **+** у корня — новый тред в этом root; ПКМ по чату — переименовать/удалить; ПКМ по воркспейсу — убрать из списка (файлы на диске не удаляются).
 
-## Два режима ответа
+## Единый цикл (цель, CR-H)
+
+Cursor понимает вопрос, потому что **одна** модель в **одном** ходе видит нить, Terminal и git и сама берёт tools. Эврика уже ходит во внешний LLM; «тупит», когда роутер **до** модели выбирает один из трёх мозгов и отдаёт обрезок сцены.
+
+| Сейчас (router-first) | Цель (LLM-first, как Cursor) |
+|----------------------|------------------------------|
+| YAML / `is_*_request` / `wants_local_agent` крадут сообщение | Модель видит вопрос целиком |
+| Chat: 4 реплики + хвост Terminal 12k; агент — другой prompt и часто без pane | Один `observation`: Terminal + last_check (с флагом stale) + git + нить |
+| «проверь ошибки» → расследование / повторный pytest | Уже прогнанное в Terminal — только разбор; императив «прогони» — запуск |
+| Desktop: два режима Eurika / Agent | Один Send → `chat/send` / `dispatch_chat_turn`; HITL без смены «мозга» |
+
+**Pre-LLM остаётся:** HITL (`применяй` / отклонить, sudo/пароль), safety (host_shell не пишет в дерево проекта; apply только Approvals) и **run-now** ритуалы уже существующими детекторами (`прогони release check` / scan / ritual / self_check) — это исполнение команды, не новый phrase-book. Модель не должна «вспоминать» `skill`. Не закрывать кейсы новым `is_*_request`. Фазы и приёмка: [ROADMAP.md](ROADMAP.md) §5.4.1; фокус: [DEVELOPMENT.md](DEVELOPMENT.md) § Текущий фокус.
+
+**H1 (2026-09-12):** на LLM-ход Chat и `session/chat` получают один bundle: Terminal, last_check, `lastCheckStale`, lastUserCmd, git. Успешный mypy на диске не считается текущим релиз-чеком, если в Terminal другой прогон.
+
+**H2 (2026-09-12, dogfood-fix):** Qt Send и Desktop `chat/send` → `dispatch_chat_turn`. Развилки `wants_local_agent` нет. Pre-LLM — HITL, already-ran и **run-now** (существующие детекторы). Остальное — coding-agent. «прогони release check» **сразу** гоняет `./scripts/release_check.sh` (не лекция «одобри skill»). Приветствие — короткий ответ, без дампа last_check/H2. Telegram/CLI `chat_send` пока со старыми handlers.
+
+**H4 HTTP (2026-09-12):** `POST /api/chat` на живом gateway — тот же `dispatch_chat_turn`, что Qt/Desktop Send. Короткое «что дальше?» / «приступай» — core (DEVELOPMENT § фокус), не агент. Длинный вопрос про docs: агент; если финал пустой — тот же brief, не «From docs: paths» и не tool-loop limit.
+
+**H4 (2026-09-12):** Desktop больше не выбирает «мозг». Один Send = `chat/send` (тот же dispatch, что Qt). Радио Eurika/Agent снято. `session/chat` остаётся для продолжения HITL после Approve/Reject tool. Правки с Desktop паркуются в Approvals (`reviewInApprovals`).
+
+**H3 (2026-09-12):** last_check не задача, пока не сказали «исправь». «проверь документы / что дальше» — из DEVELOPMENT § Текущий фокус, без секции «Связь с last_check» и без ROADMAP §1 «Stage 6» как очереди. «какие планы по развитию маркета?» — freeze + VISION § B, не инвентарь `From docs:` и не H5 как план рынка. Длинный paste с «следующий шаг» идёт в агента. История агента — 16 реплик.
+
+**H5 Thinking (2026-09-12):** Qt и Desktop — в ленте под пузырём пользователя разворачиваемый **Thinking** (Read / Grepped / Running / Model). Шаги из `live_activity` (`publish_thinking`) и `tool/started`, не `[API]`-пузыри. После ответа лог остаётся в треде. Стрим токенов reasoning — ещё открыто.
+
+**Живой Terminal:** длинная команда из Chat (`release_check`, scan) пишет в вкладку Terminal **по строкам**, не одним дампом в конце. `EURIKA_LLM_ENV_LOCKED` из ChatWorker в дочерний pytest не утекает.
+
+## Режимы ответа (пока router-first)
 
 | Режим | Когда | Пример |
 |-------|--------|--------|
-| **Прямой обработчик** | Узкий ритуал / HITL (scan, ritual, коммит→применяй, …) | «проведи ритуал» |
+| **Прямой обработчик** | Узкий ритуал / HITL (scan, ritual, коммит→применяй, …). **Уже прогнал в Terminal + проверь ошибки** → `read_terminal`, не повторный прогон | «проведи ритуал»; «в терминале прогнал релиз чек, проверь есть ли ошибки» |
 | **Голая shell-строка** | Сообщение целиком — команда (`pwd`, `sudo whoami`, `ls -la`), без русского текста и без «покажи пример…» | `sudo whoami` → запуск + диалог sudo |
 | **Локальный coding-agent** | Правки кода / layout UI (вкладка Models, боковая панель воркспейсов, IMPLEMENT) | Qt: очередь в **Approvals** (автофокус при `approvalsQueued>0`). Без agent HTTP — явная ошибка, не fallback в обычный chat. |
 
@@ -36,7 +63,7 @@
 
 **Формат ответа в Qt:** транскрипт рендерит лёгкий markdown — **GFM-таблицы** (`| col |`) сеткой; fenced-блоки `` ``` `` в рамке с **Copy**; для `bash`/`sh`/`shell`/`console` (и пустого lang с CLI-эвристикой) — ещё **Run** (запуск во вкладке Terminal через `execute_command_from_chat`). Clear сбрасывает payload-ссылки блоков.
 
-**Terminal mirror:** любые shell-команды из Chat (`scan`, `self-check`, `ls`, ритуал, release check, smoke, git status/diff/commit) пишутся во вкладку **Terminal** как `[Chat] $ …` + полный вывод + `exit_code` (без скрытого второго запуска).
+**Terminal mirror:** любые shell-команды из Chat (`scan`, `self-check`, `ls`, ритуал, release check, smoke, git status/diff/commit, `ruff`/`lint`, `mypy`) пишутся во вкладку **Terminal** как `[Chat] $ …` + полный вывод + `exit_code` (без скрытого второго запуска). После упавшего mypy/ruff/pytest полный лог лежит в `.eurika/last_check.log`; «исправь ошибки» передаёт его coding-agent как предыдущий tool-result (не обрезку пузыря Chat). Если пользователь **уже прогнал** проверку в Terminal («в терминале прогнал … проверь есть ли ошибки») — Chat читает этот вывод и **не** запускает pytest/release_check заново.
 ---
 
 ## Команды без LLM (прямые интенты)
@@ -55,7 +82,7 @@
 |-------|----------|
 | `что за проект?`, `какой проект открыт?` | Обзор: README/PROMPT, точка входа, структура каталогов, scan |
 | `что дальше по развитию?`, `просмотри roadmap`, бэклог | Выжимка из `docs/VISION.md` (fallback ROADMAP) |
-| `приступай`, `продолжай` | Компактный следующий шаг VISION A1 + цель `continue_dev` |
+| `приступай`, `продолжай` | Компактный следующий шаг из `docs/DEVELOPMENT.md` + цель `continue_dev` |
 | `сколько файлов?`, `пересчитай файлы`, `сколько всего там файлов?` | Подсчёт файлов с диска |
 | `покажи дерево`, `структуру проекта`, `покажи структуру` | LLM tool-loop (`eurika-cmds`: find/tree) |
 | `какие документы по проекту?`, `покажи документацию` | README, docs/, notes/, .eurika/rules |
@@ -101,6 +128,7 @@
 | `сбрось цель`, `clear goal` | Очистить active_goal + pending_clarification + last_execution (не HITL Apply) |
 | `проведи ритуал` | scan → doctor → report-snapshot |
 | `прогони release check` | `./scripts/release_check.sh` |
+| `проведи проверку типов mypy` / `mypy` | `python -m mypy eurika cli` (как кнопка Mypy). Полный лог → `.eurika/last_check.log` |
 | `проведи smoke test`, `smoke` | Быстрый smoke: PyTorch + Qt pytest (без LLM) |
 | `проведи self-check` | `eurika self-check .` — **проект/env** (torch, Binance, LBOT, layers) |
 | `проверь операционку` / `здоровье ОС` / Arch | **Хост** (uptime/RAM/диск/journal/GPU) + краткий LLM; не путать с self-check проекта |

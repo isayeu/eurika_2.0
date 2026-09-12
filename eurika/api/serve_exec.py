@@ -10,17 +10,39 @@ from pathlib import Path
 _FLAG_TAKES_VALUE = 1
 _FLAG_IS_BOOL = 0
 
-EXEC_WHITELIST = {"scan", "doctor", "fix", "cycle", "explain", "report-snapshot", "learning-kpi"}
+EXEC_WHITELIST = {
+    "scan",
+    "doctor",
+    "fix",
+    "cycle",
+    "explain",
+    "report-snapshot",
+    "learning-kpi",
+    "self-model",
+    "hypotheses",
+    "ab-compare",
+    "init",
+}
 EXEC_TIMEOUT_MIN = 1
 EXEC_TIMEOUT_MAX = 3600
 EXEC_ALLOWED_FLAGS: dict[str, dict[str, int]] = {
     "scan": {"--format": _FLAG_TAKES_VALUE, "-f": _FLAG_TAKES_VALUE, "--color": _FLAG_IS_BOOL, "--no-color": _FLAG_IS_BOOL},
-    "doctor": {"--window": _FLAG_TAKES_VALUE, "--no-llm": _FLAG_IS_BOOL, "--online": _FLAG_IS_BOOL, "--runtime-mode": _FLAG_TAKES_VALUE},
+    "doctor": {
+        "--window": _FLAG_TAKES_VALUE,
+        "--no-llm": _FLAG_IS_BOOL,
+        "--online": _FLAG_IS_BOOL,
+        "--runtime-mode": _FLAG_TAKES_VALUE,
+        "--quiet": _FLAG_IS_BOOL,
+        "-q": _FLAG_IS_BOOL,
+        "--verbose": _FLAG_IS_BOOL,
+        "-v": _FLAG_IS_BOOL,
+    },
     "fix": {
         "--window": _FLAG_TAKES_VALUE,
         "--dry-run": _FLAG_IS_BOOL,
         "--quiet": _FLAG_IS_BOOL,
         "-q": _FLAG_IS_BOOL,
+        "--no-llm": _FLAG_IS_BOOL,
         "--no-clean-imports": _FLAG_IS_BOOL,
         "--no-code-smells": _FLAG_IS_BOOL,
         "--verify-cmd": _FLAG_TAKES_VALUE,
@@ -64,6 +86,19 @@ EXEC_ALLOWED_FLAGS: dict[str, dict[str, int]] = {
     "explain": {"--window": _FLAG_TAKES_VALUE},
     "report-snapshot": {},
     "learning-kpi": {"--json": _FLAG_IS_BOOL, "--top-n": _FLAG_TAKES_VALUE, "--polygon": _FLAG_IS_BOOL},
+    "self-model": {"--json": _FLAG_IS_BOOL, "-q": _FLAG_IS_BOOL, "--quiet": _FLAG_IS_BOOL},
+    "hypotheses": {"--json": _FLAG_IS_BOOL, "-q": _FLAG_IS_BOOL, "--quiet": _FLAG_IS_BOOL},
+    "ab-compare": {"--json": _FLAG_IS_BOOL, "-q": _FLAG_IS_BOOL, "--quiet": _FLAG_IS_BOOL},
+    "init": {
+        "--json": _FLAG_IS_BOOL,
+        "-q": _FLAG_IS_BOOL,
+        "--quiet": _FLAG_IS_BOOL,
+        "--force": _FLAG_IS_BOOL,
+        "--no-readme": _FLAG_IS_BOOL,
+        "--name": _FLAG_TAKES_VALUE,
+        "--scaffold": _FLAG_TAKES_VALUE,
+        "--template": _FLAG_TAKES_VALUE,
+    },
 }
 
 
@@ -105,10 +140,29 @@ def _normalize_exec_args_for_subcommand(
         module = positional[0]
         return [module, path_str] + flags, None
 
+    # The HTTP command endpoint is scoped to its selected project root. Creating
+    # another project is available through the direct CLI or the explicit Chat
+    # flow, where the user supplies the target path.
+    if subcmd == "init":
+        if len(positional) > 1:
+            return None, f"too many positional arguments for init: {positional}"
+        if positional:
+            supplied = Path(positional[0]).expanduser()
+            target = (
+                supplied.resolve()
+                if supplied.is_absolute()
+                else (project_root / supplied).resolve()
+            )
+            if target != project_root.resolve():
+                return None, (
+                    "init via API is limited to the selected project_root; "
+                    "use the CLI or Chat to create another project"
+                )
+        return [path_str] + flags, None
+
     if len(positional) > 1:
         return None, f"too many positional arguments for '{subcmd}': {positional}"
     return [path_str] + flags, None
-
 
 def exec_eurika_command(project_root: Path, command: str, timeout: int | None = 120) -> dict:
     """Execute a whitelisted eurika command in project_root."""
@@ -147,6 +201,7 @@ def exec_eurika_command(project_root: Path, command: str, timeout: int | None = 
             timeout=timeout,
         )
         return {
+            "ok": r.returncode == 0,
             "stdout": r.stdout or "",
             "stderr": r.stderr or "",
             "exit_code": r.returncode,

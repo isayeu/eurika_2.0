@@ -26,6 +26,12 @@ def test_wants_local_agent_for_implement_not_greeting() -> None:
     assert not wants_local_agent("привет")
     assert not wants_local_agent("применяй")
     assert not wants_local_agent("собери коммит")
+    assert not wants_local_agent("проведи проверку типов mypy")
+    assert not wants_local_agent("mypy")
+    assert wants_local_agent("mypy (32 ошибки) - исправь ошибки")
+    assert not wants_local_agent(
+        "в терминале прогнал релиз чек, проверь есть ли ошибки"
+    )
 
 
 def test_first_side_effect_call_prefers_git() -> None:
@@ -71,7 +77,7 @@ def test_chat_send_routes_models_layout_to_agent_chat(monkeypatch) -> None:
     api = EurikaApiAdapter(".")
     captured = {}
 
-    def _fake_agent(message, *, session_id=None):
+    def _fake_agent(message, *, session_id=None, client_terminal_text=None):
         captured["message"] = message
         return {
             "ok": True,
@@ -100,7 +106,7 @@ def test_chat_send_routes_implement_to_agent_chat(monkeypatch) -> None:
     api = EurikaApiAdapter(".")
     captured = {}
 
-    def _fake_agent(message, *, session_id=None):
+    def _fake_agent(message, *, session_id=None, client_terminal_text=None):
         captured["message"] = message
         return {
             "ok": True,
@@ -117,17 +123,45 @@ def test_chat_send_routes_implement_to_agent_chat(monkeypatch) -> None:
     assert out["pendingToolCalls"][0]["tool"] == "git_commit"
 
 
-def test_chat_send_greeting_stays_on_core_chat(monkeypatch) -> None:
+def test_chat_send_already_ran_check_stays_on_core_chat(monkeypatch) -> None:
     import qt_app.adapters.eurika_api_adapter as adapter_mod
 
     api = EurikaApiAdapter(".")
+    agent_calls: list[str] = []
     captured = {}
+
+    def _fake_agent(message, **_kwargs):
+        agent_calls.append(message)
+        return {"ok": True, "text": "should not run", "pendingToolCalls": []}
 
     def _fake_chat(_root, message, _history, **kwargs):
         captured["message"] = message
-        return {"text": "привет", "error": None}
+        captured["terminal"] = kwargs.get("client_terminal_text")
+        return {"text": "в выводе есть FAILED", "error": None}
 
+    monkeypatch.setattr(api, "agent_chat", _fake_agent)
     monkeypatch.setattr(adapter_mod, "_chat_send", _fake_chat)
+    msg = "в терминале прогнал релиз чек, проверь есть ли ошибки"
+    out = api.chat_send(
+        message=msg,
+        history=[],
+        client_terminal_text="FAILED tests/x.py::t\n",
+    )
+    assert agent_calls == []
+    assert captured["message"] == msg
+    assert "FAILED" in (captured["terminal"] or "")
+    assert "FAILED" in out["text"]
+
+
+def test_chat_send_greeting_uses_agent_runtime(monkeypatch) -> None:
+    api = EurikaApiAdapter(".")
+    captured = {}
+
+    def _fake_agent(message, *, session_id=None, client_terminal_text=None):
+        captured["message"] = message
+        return {"ok": True, "text": "привет", "pendingToolCalls": []}
+
+    monkeypatch.setattr(api, "agent_chat", _fake_agent)
     out = api.chat_send(message="привет", history=[])
     assert captured["message"] == "привет"
     assert out["text"] == "привет"
@@ -139,7 +173,7 @@ def test_chat_send_local_agent_missing_http_fails_loud(monkeypatch) -> None:
     api = EurikaApiAdapter(".")
     core_calls: list[str] = []
 
-    def _boom(_message, *, session_id=None):
+    def _boom(_message, *, session_id=None, client_terminal_text=None):
         raise FileNotFoundError(".eurika/agent_http.json")
 
     def _fake_chat(_root, message, _history, **kwargs):
@@ -346,10 +380,14 @@ def test_agent_chat_sends_review_in_approvals_context(monkeypatch) -> None:
 
     monkeypatch.setattr("eurika.agent.http_client.AgentHttpClient", _FakeClient)
     api = EurikaApiAdapter(".")
-    out = api.agent_chat("сделай вкладку эргономичнее")
+    out = api.agent_chat(
+        "сделай вкладку эргономичнее",
+        client_terminal_text="$ ./scripts/release_check.sh\nFAILED tests/x.py::t\n",
+    )
     assert captured["path"] == "/chat"
     assert captured["payload"]["context"]["reviewInApprovals"] is True
     assert captured["payload"]["context"]["client"] == "qt"
+    assert "FAILED tests/x.py" in captured["payload"]["context"]["terminalText"]
     assert out["approvalsQueued"] == 2
 
 

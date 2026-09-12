@@ -3,6 +3,7 @@ import ast
 from pathlib import Path
 
 from eurika.refactor.extract_function import (
+    _is_trivial_dict_snippet_body,
     extract_block_to_helper,
     extract_nested_function,
     suggest_extract_block,
@@ -505,6 +506,74 @@ def format_self_check_for_chat(raw, verdict_bits):
     path = tmp_path / "mod.py"
     path.write_text(code)
     assert suggest_extract_block(path, "format_self_check_for_chat", min_lines=5) is None
+
+
+def test_suggest_extract_block_skips_json_snippet_dict_stuffer(tmp_path: Path) -> None:
+    """Self-dev lesson: do not extract report-snippet key stuffing."""
+    code = '''
+def handle_prove_cycle(payload, propose, quiet):
+    snippet = {
+        "verify_success": payload.get("verify_success"),
+        "modified": payload.get("modified"),
+    }
+    if propose:
+        snippet["propose"] = True
+        snippet["pending_plan"] = payload.get("pending_plan")
+        snippet["target_file"] = payload.get("target_file")
+        snippet["drill"] = payload.get("drill")
+        snippet["drill_id"] = payload.get("drill_id")
+        if payload.get("llm_extract_source") is not None:
+            snippet["llm_extract_source"] = payload.get("llm_extract_source")
+        if payload.get("require_llm"):
+            snippet["require_llm"] = True
+        if payload.get("sandbox"):
+            snippet["sandbox"] = True
+        if payload.get("error"):
+            snippet["error"] = payload.get("error")
+    print(snippet)
+    return 0
+'''
+    tree = ast.parse(code)
+    func = next(n for n in tree.body if isinstance(n, ast.FunctionDef))
+    propose_if = next(n for n in func.body if isinstance(n, ast.If))
+    assert _is_trivial_dict_snippet_body(list(propose_if.body)) is True
+    path = tmp_path / "mod.py"
+    path.write_text(code)
+    assert suggest_extract_block(path, "handle_prove_cycle", min_lines=5) is None
+    assert extract_block_to_helper(
+        path, "handle_prove_cycle", propose_if.lineno, "_extracted_block_49"
+    ) is None
+
+
+def test_dict_snippet_detector_allows_computed_kwargs_config() -> None:
+    """``kwargs[k] = computed`` is real logic, not a report snippet."""
+    tree = ast.parse(
+        """
+def _call_litellm(model, base, api_key, kwargs):
+    if base:
+        kwargs["model"] = model if str(model).startswith("openai/") else f"openai/{model}"
+        kwargs["api_base"] = base
+        if api_key:
+            kwargs["api_key"] = api_key
+"""
+    )
+    func = next(n for n in tree.body if isinstance(n, ast.FunctionDef))
+    base_if = next(n for n in func.body if isinstance(n, ast.If))
+    assert _is_trivial_dict_snippet_body(list(base_if.body)) is False
+
+
+def test_idle_bug_hunt_prove_cycle_snippet_is_rejected() -> None:
+    """The 2026-09-12 idle park must not extract handle_prove_cycle JSON stuffing."""
+    repo = Path(__file__).resolve().parents[1]
+    path = repo / "cli" / "core_handlers_prove_cycle.py"
+    if not path.is_file():
+        return
+    assert (
+        extract_block_to_helper(
+            path, "handle_prove_cycle", 49, "_extracted_block_49", ["payload", "snippet"]
+        )
+        is None
+    )
 
 
 def test_suggest_extract_block_skips_presentation_message_builder(tmp_path: Path) -> None:

@@ -40,15 +40,15 @@
         </nav>
         <div id="product-panel" hidden></div>
         <div id="messages"></div>
+        <details id="chat-thinking" hidden>
+          <summary>Thinking</summary>
+          <pre id="chat-thinking-steps"></pre>
+        </details>
         <div id="proposal"></div>
         <label id="idle-self-dev-label" class="opt-in" title="Когда LLM свободен ≥3 мин — один C.14 propose+sandbox → Approvals. Без apply на main. Prefs общие с Qt.">
           <input type="checkbox" id="idle-self-dev" />
           Саморазвитие в простое LLM
         </label>
-        <div id="chat-mode" class="opt-in" title="Eurika = Qt Chat (chat_send). Agent = local coding loop (session/chat → Approvals).">
-          <label><input type="radio" name="chat-mode" value="eurika" checked /> Eurika</label>
-          <label><input type="radio" name="chat-mode" value="agent" /> Agent</label>
-        </div>
         <form id="chat-form">
           <div id="prompt-wrap">
             <textarea id="prompt" placeholder="Ask Eurika…  (@module / @smell)"></textarea>

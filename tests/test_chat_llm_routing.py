@@ -14,7 +14,7 @@ from eurika.utils.env import (
 
 
 def test_chat_source_label_maps_providers() -> None:
-    from qt_app.ui.handlers.chat_handlers import _chat_source_label
+    from qt_app.ui.handlers.chat_provider_handlers import _chat_source_label
 
     assert _chat_source_label("cursor") == "LLM: Cursor"
     assert _chat_source_label("openai") == "LLM: облако"
@@ -25,7 +25,7 @@ def test_chat_source_tooltip_includes_cursor_model() -> None:
     from types import SimpleNamespace
     from typing import cast
 
-    from qt_app.ui.handlers.chat_handlers import _chat_source_tooltip
+    from qt_app.ui.handlers.chat_provider_handlers import _chat_source_tooltip
     from qt_app.ui.main_window import MainWindow
 
     main = cast(
@@ -126,7 +126,12 @@ def test_chat_send_dotenv_does_not_clobber_adapter_cursor(tmp_path, monkeypatch)
         return {"text": "ok", "error": None}
 
     monkeypatch.setattr(adapter_mod, "_chat_send", _probe)
+
+    def _probe_agent(message, *, session_id=None, client_terminal_text=None):
+        return _probe(tmp_path, message, None)
+
     api = EurikaApiAdapter(str(tmp_path))
+    monkeypatch.setattr(api, "agent_chat", _probe_agent)
     out = api.chat_send(
         message="hello",
         history=[],

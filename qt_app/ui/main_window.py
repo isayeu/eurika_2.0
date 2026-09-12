@@ -585,7 +585,7 @@ class MainWindow(
             mod = self.module_edit.text().strip() or '<module>'
             parts.append(mod)
         parts.append(root)
-        if cmd in {'report-snapshot', 'learning-kpi'}:
+        if cmd in {'report-snapshot', 'learning-kpi', 'self-model', 'hypotheses', 'ab-compare'}:
             self.preview_label.setText(' '.join(parts))
             self.module_edit.setEnabled(False)
             return

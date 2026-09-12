@@ -206,42 +206,56 @@ class EurikaApiAdapter(AgentGatewayMixin):
         privilege_prompt: PrivilegePrompt | None = None,
         client_terminal_text: str | None = None,
     ) -> dict[str, Any]:
-        from qt_app.ui.agent_pending import wants_local_agent
+        from eurika.api.chat_entry import dispatch_chat_turn
 
-        if wants_local_agent(message):
-            try:
-                return self.agent_chat(message)
-            except FileNotFoundError as exc:
-                return {
-                    "ok": False,
-                    "text": "",
-                    "error": (
-                        "Local agent HTTP недоступен "
-                        f"({exc}). Запустите Qt/Desktop с gateway "
-                        "или поднимите agent HTTP; coding-запрос не "
-                        "уходит в обычный chat втихую."
+        def _core(**kwargs: Any) -> dict[str, Any]:
+            with self._temporary_llm_env(
+                provider=provider,
+                openai_model=openai_model,
+                ollama_model=ollama_model,
+                timeout_sec=timeout_sec,
+                openai_base_url=openai_base_url,
+                cursor_model=cursor_model,
+                cursor_optimize=cursor_optimize,
+            ):
+                return _chat_send(
+                    self._root(),
+                    kwargs.get("message") or message,
+                    kwargs.get("history") if "history" in kwargs else history,
+                    on_system_action=on_system_action,
+                    run_command_with_result=kwargs.get(
+                        "run_command_with_result", run_command_with_result
                     ),
-                    "pendingToolCalls": [],
-                    "approvalsQueued": 0,
-                }
-        with self._temporary_llm_env(
-            provider=provider,
-            openai_model=openai_model,
-            ollama_model=ollama_model,
-            timeout_sec=timeout_sec,
-            openai_base_url=openai_base_url,
-            cursor_model=cursor_model,
-            cursor_optimize=cursor_optimize,
-        ):
-            return _chat_send(
-                self._root(),
-                message,
-                history,
-                on_system_action=on_system_action,
-                run_command_with_result=run_command_with_result,
-                privilege_prompt=privilege_prompt,
-                client_terminal_text=client_terminal_text,
-            )
+                    privilege_prompt=kwargs.get("privilege_prompt", privilege_prompt),
+                    client_terminal_text=kwargs.get(
+                        "client_terminal_text", client_terminal_text
+                    ),
+                )
+
+        def _agent(msg: str, client_terminal_text=None) -> dict[str, Any]:
+            with self._temporary_llm_env(
+                provider=provider,
+                openai_model=openai_model,
+                ollama_model=ollama_model,
+                timeout_sec=timeout_sec,
+                openai_base_url=openai_base_url,
+                cursor_model=cursor_model,
+                cursor_optimize=cursor_optimize,
+            ):
+                return self.agent_chat(
+                    msg, client_terminal_text=client_terminal_text
+                )
+
+        return dispatch_chat_turn(
+            self._root(),
+            message,
+            history=history,
+            client_terminal_text=client_terminal_text,
+            run_command_with_result=run_command_with_result,
+            privilege_prompt=privilege_prompt,
+            agent_chat=_agent,
+            core_chat=_core,
+        )
 
     def save_chat_feedback(
         self,

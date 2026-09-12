@@ -1,6 +1,13 @@
 """DRILL_EXTRACTABLE_BLOCK: extract_block_to_helper — блок if с 5+ строками без return."""
 
 
+def _extracted_block_13(x):
+    a = x + 1
+    b = a * 2
+    c = b + x
+    d = c * 2
+    return d
+
 def polygon_extractable_block(x: int) -> int:
     """Внутренний блок if (5+ строк) без return — подходит для suggest_extract_block.
 
@@ -11,9 +18,5 @@ def polygon_extractable_block(x: int) -> int:
         if x < 10:
             if x > 1:
                 if x < 9:
-                    a = x + 1
-                    b = a * 2
-                    c = b + x
-                    d = c * 2
-                    result = d
+                    result = _extracted_block_13(x)
     return result

@@ -1,5 +1,7 @@
 """Tests for structured chat task interpretation."""
 
+import pytest
+
 from eurika.api.chat_intent import interpret_task, parse_mentions
 
 
@@ -91,6 +93,9 @@ def test_interpret_workspace_order_and_mypy_followup() -> None:
     assert out.needs_clarification is False
     assert looks_like_independent_followup("mypy (32 ошибки) - исправь ошибки")
     assert looks_like_independent_followup("прочти терминал")
+    assert looks_like_independent_followup(
+        "в терминале прогнал релиз чек, проверь есть ли ошибки"
+    )
 
 
 def test_interpret_sudo_dobavte_is_not_clarification() -> None:
@@ -181,6 +186,41 @@ def test_interpret_task_detects_run_lint_intent() -> None:
     out = interpret_task("запусти линтер")
     assert out.intent == "run_lint"
     assert out.requires_confirmation is False
+
+
+@pytest.mark.parametrize(
+    "msg",
+    (
+        "проведи ruff check",
+        "проведи ruff chek",
+        "ruff check",
+        "выполни ruff check eurika cli",
+    ),
+)
+def test_interpret_task_detects_ruff_as_run_lint(msg: str) -> None:
+    out = interpret_task(msg)
+    assert out.intent == "run_lint"
+    assert out.requires_confirmation is False
+
+
+@pytest.mark.parametrize(
+    "msg",
+    (
+        "проведи проверку типов mypy",
+        "mypy",
+        "запусти mypy",
+        "type check",
+    ),
+)
+def test_interpret_task_detects_mypy_as_run_mypy(msg: str) -> None:
+    out = interpret_task(msg)
+    assert out.intent == "run_mypy"
+    assert out.requires_confirmation is False
+
+
+def test_interpret_task_mypy_fix_is_not_run_mypy() -> None:
+    out = interpret_task("mypy (32 ошибки) - исправь ошибки")
+    assert out.intent != "run_mypy"
 
 
 def test_interpret_task_detects_run_command_intent() -> None:

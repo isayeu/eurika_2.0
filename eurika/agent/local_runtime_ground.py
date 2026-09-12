@@ -57,12 +57,47 @@ def non_implementation_citations(text: str) -> list[str]:
     if not cited:
         return []
     impl = [path for path in cited if _search_source_kind(path) == "implementation"]
-    other = [path for path in cited if _search_source_kind(path) != "implementation"]
-    return other if other and not impl else []
+    # H3: a docs/plan answer may cite only docs/*.md. tests/ still cannot stand in for code.
+    tests = [path for path in cited if _search_source_kind(path) == "test"]
+    return tests if tests and not impl else []
 
 
-def grounded_fallback(observations: list[dict[str, Any]]) -> str:
+def _has_last_check(observations: list[dict[str, Any]]) -> bool:
+    return any(
+        isinstance(item, dict) and item.get("tool") == "last_check"
+        for item in observations
+    )
+
+
+def _has_real_edit(observations: list[dict[str, Any]]) -> bool:
+    for item in observations:
+        if not isinstance(item, dict) or item.get("tool") != "edit":
+            continue
+        if item.get("error"):
+            continue
+        return True
+    return False
+
+
+def grounded_fallback(observations: list[dict[str, Any]], user_message: str = "") -> str:
+    if _has_last_check(observations) and not _has_real_edit(observations):
+        try:
+            from eurika.api.last_check import last_check_is_the_task
+
+            fix = last_check_is_the_task(user_message)
+        except Exception:
+            fix = False
+        if fix:
+            return (
+                "Last check failed (see .eurika/last_check.log). "
+                "No surgical edit was emitted this turn — say «исправь ошибки» again "
+                "or Load Approvals if a plan is already parked."
+            )
     observed = sorted(observed_paths(observations))
+    docs = [path for path in observed if _search_source_kind(path) == "docs"]
+    if docs:
+        # Path inventory is not an answer. Caller fills DEVELOPMENT / VISION brief.
+        return ""
     impl = [path for path in observed if _search_source_kind(path) == "implementation"]
     if impl:
         return "From tool observations: " + ", ".join(impl[:8]) + "."

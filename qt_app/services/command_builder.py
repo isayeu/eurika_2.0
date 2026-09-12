@@ -9,6 +9,7 @@ SUPPORTED_COMMANDS = {
     "scan", "doctor", "fix", "cycle", "explain", "report-snapshot", "learning-kpi",
     "learn-github", "bug-hunt", "clean-imports", "self-check", "suggest-plan",
     "whitelist-draft", "campaign-undo",
+    "self-model", "hypotheses", "ab-compare",
 }
 
 
@@ -73,7 +74,15 @@ def build_cli_args(
             args.append("--web")
         return args
 
-    if command in ("clean-imports", "self-check", "whitelist-draft", "campaign-undo"):
+    if command in (
+        "clean-imports",
+        "self-check",
+        "whitelist-draft",
+        "campaign-undo",
+        "self-model",
+        "hypotheses",
+        "ab-compare",
+    ):
         args.append(root)
         return args
 

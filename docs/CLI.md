@@ -324,7 +324,7 @@ eurika bug-hunt . --propose --no-sandbox
 
 Chat: «найди баг» / «предложи улучшение кода» / «bug hunt».
 
-Desktop / Qt Commands: `bug-hunt` (defaults `--propose --sandbox`), `learn-github` (defaults `--light --limit-repos 2 --scan --build-patterns`), **`self-model` / `hypotheses` / `ab-compare`** (read-only, без extra approval). Desktop также: **`project/create`** (sibling name + `--scaffold`, HITL), панель **Models** (`models/prefs`, HITL) и Chat-режим Eurika (`chat/send`).
+Desktop / Qt Commands: `bug-hunt` (defaults `--propose --sandbox`), `learn-github` (defaults `--light --limit-repos 2 --scan --build-patterns`), **`self-model` / `hypotheses` / `ab-compare`** (read-only, без extra approval). Desktop также: **`project/create`** (sibling name + `--scaffold`, HITL), панель **Models** (`models/prefs`, HITL) и один Chat Send (`chat/send`, без режима Eurika/Agent).
 
 Chat: «обнови паттерны» / «learn-github» — тот же light rebuild `pattern_library` (OSS hints для bug-hunt / extract).
 
@@ -741,6 +741,8 @@ eurika agent feedback-summary .
 | `.eurika/config/chat_intents.yaml` | Интенты Chat (CR-G1, CR-G2). Fallback: docs/chat_intents.example.yaml |
 
 ### Chat intents (CR-G2)
+
+Понимание вопросов — не этот YAML, а единый цикл **CR-H** ([ROADMAP.md](ROADMAP.md) §5.4.1, [CHAT.md](CHAT.md)). Новые фразы в yaml не чинят «не поняла». Императив «прогони release check» — run-now тем же детектором, не новый ключ.
 
 - **Путь:** `.eurika/config/chat_intents.yaml` или `docs/chat_intents.example.yaml`
 - **EURIKA_USE_VECTOR_INTENT=1** — включить fuzzy match через Ollama embeddings

@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextvars
 import json
 import os
+import re
 import shlex
 import threading
 from collections import deque
@@ -202,6 +203,17 @@ def _chat_send_impl(project_root: Path, message: str, history: Optional[List[Dic
     msg = (message or '').strip()
     if not msg:
         return {'text': '', 'error': 'message is empty'}
+    try:
+        from eurika.api.last_check import try_park_last_check_import_fixes
+
+        if re.search(r"исправ.{0,32}ошиб|поправ.{0,32}ошиб|fix.{0,32}error", msg, re.I):
+            parked = try_park_last_check_import_fixes(root)
+            if parked:
+                _append_chat_history_safe(root, "user", msg, None)
+                _append_chat_history_safe(root, "assistant", str(parked.get("text") or ""), None)
+                return parked
+    except Exception:
+        pass
     # Same LLM routing as the Qt / CLI entrypoints: without this the API path
     # ignores OPENAI_* from the project .env and falls back to local Ollama.
     _load_project_env_once(root)
@@ -245,17 +257,32 @@ def _chat_send_impl(project_root: Path, message: str, history: Optional[List[Dic
     if _is_reject_confirmation(msg):
         pending_plan = state.get('pending_plan') if isinstance(state, dict) else {}
         pending_git = state.get('pending_git_commit') if isinstance(state, dict) else None
+        had_dialog_pending = bool(isinstance(pending_plan, dict) and pending_plan)
+        had_git_pending = bool(isinstance(pending_git, dict) and pending_git.get('message'))
         cleared = False
-        if isinstance(pending_plan, dict) and pending_plan:
+        cleared_host_admin = False
+        if had_dialog_pending:
             state['pending_plan'] = {}
             cleared = True
-        if isinstance(pending_git, dict) and pending_git.get('message'):
+        if had_git_pending:
             state['pending_git_commit'] = {}
             cleared = True
+        try:
+            from eurika.api.host_admin import clear_pending_host_admin, load_pending_host_admin
+
+            if load_pending_host_admin(root):
+                clear_pending_host_admin(root)
+                cleared = True
+                cleared_host_admin = True
+        except Exception:
+            pass
         if cleared:
             _release_active_goal_keep_execution(state)
             _save_dialog_state(root, state)
-            text = 'Отклонил pending-план. Ничего не применял.'
+            if cleared_host_admin and not had_dialog_pending and not had_git_pending:
+                text = 'Отклонил очередь host admin. Ничего не применял.'
+            else:
+                text = 'Отклонил pending-план. Ничего не применял.'
         else:
             text = 'Нет активного pending-плана для отклонения.'
         _append_chat_history_safe(root, 'user', msg, None)
@@ -379,10 +406,41 @@ def _chat_send_impl(project_root: Path, message: str, history: Optional[List[Dic
                 return {'text': text, 'error': None}
             spec = build_task_spec(intent=str(pending_plan.get('intent') or ''), target=str(pending_plan.get('target') or ''), message=msg, plan_steps=list(pending_plan.get('steps') or []), entities=dict(pending_plan.get('entities') or {}))
         else:
+            try:
+                from eurika.api.host_admin import apply_pending_host_admin, load_pending_host_admin
+
+                if load_pending_host_admin(root):
+                    result = apply_pending_host_admin(
+                        root, privilege_prompt=privilege_prompt
+                    )
+                    text = str(result.get("text") or "")
+                    ok = bool(result.get("ok"))
+                    _append_chat_history_safe(root, "user", msg, None)
+                    _append_chat_history_safe(root, "assistant", text, None)
+                    return {
+                        "text": text,
+                        "error": None if ok else (result.get("error") or "host admin failed"),
+                        "terminal_cmd": result.get("terminal_cmd") or "",
+                        "terminal_output": result.get("terminal_output") or "",
+                        "terminal_exit_code": int(result.get("terminal_exit_code") or 0),
+                    }
+            except Exception:
+                pass
             if isinstance(state, dict) and isinstance(pending_plan, dict) and pending_plan:
                 state['pending_plan'] = {}
                 _save_dialog_state(root, state)
             text = 'Не могу выполнить: нет активного плана на подтверждение. Сначала сформулируй задачу, затем подтвердить: `применяй`.'
+            try:
+                from eurika.api.team_api import has_pending_plan
+
+                if has_pending_plan(root):
+                    text = (
+                        "Нет диалогового pending на `применяй`/`одобрить`, но в Approvals "
+                        "есть `.eurika/pending_plan.json`. Открой вкладку Approvals "
+                        "(team_decision=approve) или: `eurika fix . --apply-approved`."
+                    )
+            except Exception:
+                pass
             _append_chat_history_safe(root, 'user', msg, None)
             _append_chat_history_safe(root, 'assistant', text, None)
             return {'text': text, 'error': None}
@@ -623,14 +681,37 @@ def _chat_send_impl(project_root: Path, message: str, history: Optional[List[Dic
         pass
     ui_task_snippet = ''
     terminal_snippet = ''
+    observation_snippet = ''
     try:
         from eurika.api.chat_prompt import ui_layout_task_snippet
 
         ui_task_snippet = ui_layout_task_snippet(msg) or ''
     except Exception:
         pass
-    if (client_terminal_text or '').strip():
-        terminal_snippet = (client_terminal_text or '').strip()[-12000:]
+    try:
+        from eurika.api.chat_observation import (
+            build_workspace_observation,
+            maybe_refresh_last_check_from_terminal,
+            observation_prompt_block,
+        )
+
+        observation = build_workspace_observation(
+            root, terminal_text=client_terminal_text
+        )
+        maybe_refresh_last_check_from_terminal(root, observation)
+        observation_snippet = observation_prompt_block(observation)
+        terminal_snippet = str(observation.get("terminal") or "")
+    except Exception:
+        if (client_terminal_text or "").strip():
+            terminal_snippet = (client_terminal_text or "").strip()[-12000:]
+        try:
+            from eurika.api.last_check import last_check_prompt_block
+
+            check_block = last_check_prompt_block(root)
+            if check_block:
+                observation_snippet = check_block
+        except Exception:
+            pass
     prompt = _build_chat_prompt(
         msg,
         context,
@@ -644,6 +725,7 @@ def _chat_send_impl(project_root: Path, message: str, history: Optional[List[Dic
         tool_experience=tool_experience or None,
         ui_task_snippet=ui_task_snippet or None,
         terminal_snippet=terminal_snippet or None,
+        observation_snippet=observation_snippet or None,
     )
     tool_loop = None
     if save_target:
@@ -661,6 +743,7 @@ def _chat_send_impl(project_root: Path, message: str, history: Optional[List[Dic
             privilege_prompt=privilege_prompt,
             cwd=str(root),
             user_message=msg,
+            project_root=root,
         )
         text = tool_loop.text
         for cmd in tool_loop.commands:

@@ -29,8 +29,25 @@ def handle_ml_market(args: Any) -> int:
         return _cmd_train(args, root)
     if sub == "status":
         return _cmd_status(args, root)
-    print("eurika ml-market: need subcommand sync|paper|train|status")
+    if sub == "mcp":
+        return _cmd_mcp(args, root)
+    print("eurika ml-market: need subcommand sync|paper|train|status|mcp")
     return 1
+
+
+def _cmd_mcp(args: Any, root: Any) -> int:
+    """Read-only probe of the Binance MCP tool surface (no orders)."""
+    import json as _json
+
+    from eurika.integrations.binance_mcp import format_binance_mcp_text, probe_binance_mcp
+
+    timeout = float(getattr(args, "timeout", 15.0) or 15.0)
+    result = probe_binance_mcp(timeout=timeout)
+    if bool(getattr(args, "json", False)):
+        print(_json.dumps(result, ensure_ascii=False, indent=2, default=str))
+    else:
+        print(format_binance_mcp_text(result))
+    return 0 if result.get("ok") else 1
 
 
 def _cmd_sync(args: Any, root: Any) -> int:

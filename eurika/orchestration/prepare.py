@@ -538,12 +538,22 @@ def prepare_fix_cycle_operations(
         operations = _apply_context_priority(operations, context_sources)
     except Exception:
         context_sources = {}
+    # Planner-core coupling v0: soft A/B + verify_by_kind + hypotheses (beyond bug-hunt).
+    planner_coupling_meta: dict[str, Any] = {}
+    try:
+        from eurika.api.planning_coupling import apply_planner_core_coupling
+
+        operations, planner_coupling_meta = apply_planner_core_coupling(path, list(operations))
+    except Exception:
+        planner_coupling_meta = {}
     operations, critic_decisions = _run_critic_pass(
         operations, runtime_mode=runtime_mode, project_root=path
     )
     patch_plan = dict(patch_plan, operations=operations)  # type: ignore[arg-type]
     if context_sources:
         patch_plan["context_sources"] = context_sources  # type: ignore[assignment]
+    if planner_coupling_meta:
+        patch_plan["planner_core_coupling"] = planner_coupling_meta  # type: ignore[assignment]
     from eurika.plugins import dispatch_project_hooks
 
     plan_hooks = dispatch_project_hooks(
@@ -554,6 +564,7 @@ def prepare_fix_cycle_operations(
             "operations_count": len(operations),
             "policy_decisions": policy_decisions,
             "critic_decisions": critic_decisions,
+            "planner_core_coupling": planner_coupling_meta,
         },
         metadata={"runtime_mode": runtime_mode, "session_id": session_id},
     )
@@ -567,6 +578,7 @@ def prepare_fix_cycle_operations(
                 "policy_decisions": policy_decisions,
                 "critic_decisions": critic_decisions,
                 "context_sources": context_sources,
+                "planner_core_coupling": planner_coupling_meta,
                 "campaign_skipped": len(campaign_skipped),
                 "session_skipped": len(session_skipped),
                 "llm_hint_runtime": result.output.get("llm_hint_runtime"),
@@ -585,6 +597,8 @@ def prepare_fix_cycle_operations(
     result.output["policy_decisions"] = policy_decisions
     result.output["critic_decisions"] = critic_decisions
     result.output["context_sources"] = context_sources
+    if planner_coupling_meta:
+        result.output["planner_core_coupling"] = planner_coupling_meta
     if ctx is not None:
         result.output["execution_context"] = ctx
     return None, result, patch_plan, operations

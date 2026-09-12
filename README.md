@@ -4,7 +4,7 @@
 
 *Требования: Python 3.10+.* Для проверки после `eurika fix` нужен pytest: `pip install pytest` или `pip install -e ".[test]"`. Рекомендуется Python 3.12/3.13 для Qt.
 
-**Продуктовая цель:** Cursor-подобная оболочка (chat-first) + самообучение агента + paper Market ML. См. **[docs/VISION.md](docs/VISION.md)** и план в **[docs/ROADMAP.md](docs/ROADMAP.md)**.
+**Продуктовая цель:** Cursor-подобная оболочка (chat-first) + самообучение агента + paper Market ML. См. **[docs/VISION.md](docs/VISION.md)**; текущий порядок разработки — в **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**.
 
 ## Быстрый старт
 
@@ -155,12 +155,15 @@ Fallback-модель для локального OpenAI-compatible endpoint Oll
 
 ## Документация
 
-Все документы — в каталоге **docs/** ([docs/README.md](docs/README.md) — навигация).
+Все документы — в каталоге **docs/**. Для разработки начните с
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md), затем используйте
+[docs/README.md](docs/README.md) как навигацию.
 
+- **docs/DEVELOPMENT.md** — единственный текущий план и порядок работы с документацией
 - **docs/VISION.md** — продуктовая цель (Cursor-shell + Learn + Market paper)
 - **docs/ONBOARDING.md** — быстрый старт Qt / CLI
 - **docs/UI.md** / **docs/CHAT.md** / **docs/MEMORY.md** — интерфейс, чат, память и Market ML
-- **docs/ROADMAP.md** — план задач
+- **docs/ROADMAP.md** — подробная история и расширенный backlog
 - **docs/Architecture.md** — слои, fix-cycle, Execution Model
 - **docs/CLI.md** — справочник команд
 - **docs/TROUBLESHOOTING.md** / **docs/DOGFOODING.md** / **docs/HARDWARE.md** — ops
@@ -191,4 +194,3 @@ Eurika должна быть эталоном архитектурной чис�
   - тренды сложности / централизации / smells;
   - регрессии (включая рост god_module, bottleneck, hub по отдельности);
   - `Maturity (dynamic)` — ощущение траектории: улучшается архитектура или деградирует.
-

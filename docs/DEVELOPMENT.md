@@ -17,35 +17,19 @@
 
 ## Текущий фокус
 
-1. **Стабильность и ясность.** Architecture Freeze остаётся активным: не
-   добавлять silent apply, бесконечные автономные циклы и новые продуктовые
-   домены. Любое изменение кода проходит proposal → verify → явное одобрение.
-2. **RV11: кодовая наблюдаемость.** Статические call graph и conservative
-   data flow — `GET /api/graph?include_calls=1`. **Замер v0 (2026-09-12):**
-   `call_graph.diagnostics` = labeled accuracy (recall / false resolutions)
-   + cost этого дерева (`elapsed_ms`, nodes/edges). Только read-only.
-   В planner/policy **не** подключать.
-3. **Multi-project v0 + scaffolds.** `eurika init --scaffold python|python-cli`
-   и Chat «создай проект my_app как python» пишут src/tests/pyproject поверх
-   `.eurika/` + `self_map`. Не расширять HTTP `init` за пределы выбранного
-   project_root.
-4. **Host admin read-only v0.** Observe через Chat tools; mutate — HITL
-   (`.eurika/pending_host_admin.json` + «одобрить»). Не наращивать phrase-book
-   «покажи диск / сколько RAM».
-4b. **Reasoner/Experimenter v1 (сделано 2026-09-11).** Multi-role critic
-   (не LLM-агенты), A/B suite + layer_violations, Self Model
-   deps/versions/problems.
-4c. **Паритет Qt ↔ Desktop v2 (2026-09-11).** Desktop Chat: режим **Eurika**
-   (`chat/send` = Qt `chat_send`) и **Agent** (`session/chat` +
-   `reviewInApprovals`). `@`-mentions через `mentions/suggest`. Scaffolds:
-   `project/create` (sibling name + HITL). Commands observer-ритуалы и
-   host-admin Context — с v1.
-4d. **Models-tab parity v0 (2026-09-12).** Desktop панель Models =
-   `panel/state models` + `models/prefs` (HITL). Routing (provider / preset /
-   model / timeout / torch device) в `qt_settings.json` + `.env`. Ключи не
-   пишутся и не возвращаются. Ollama start/stop и trading-ML — вне среза.
-5. **Market.** Paper Market заморожен: не менять торговые правила, пока
-   метрики журнала не требуют отдельного решения.
+1. **CR-H H5 Thinking (активно, 2026-09-12).** Qt и Desktop рисуют ход в ленте
+   под пузырём пользователя: `live_activity` + `tool/started`, раунд модели
+   («Model»). Не один молчаливый пузырь 600s. Стрим токенов reasoning —
+   следующий срез, не этот. **Не** новый `is_*_request`. **Не** Market.
+   После правок — перезапуск клиента (Qt / Desktop).
+2. **Стабильность.** Architecture Freeze: proposal → verify → HITL. Не silent
+   apply, не бесконечный автономный цикл, не новые продуктовые домены.
+3. **Market.** Paper заморожен: не менять торговые правила без разбора journal.
+   Не live-ордера, не explore on, не HTF / новый entry.
+
+Сделано в окне (не предлагать как next): H0–H4 + H5 UI/model-round;
+4b critic/A/B; 4c Desktop parity v2; 4d Models-tab v0; RV11 diagnostics
+read-only; scaffolds `python` / `python-cli`; host admin read-only v0.
 
 ## Порядок работы над задачей
 
@@ -58,6 +42,8 @@
 
 ## Входящие в backlog, но не активные
 
+- Полный CR-H H5: стрим токенов reasoning модели (не только раунд «Model») —
+  [ROADMAP.md](ROADMAP.md) §5.4.1.
 - Более глубокий data-flow (контейнеры, callbacks, dynamic dispatch).
 - Test coverage graph и enrichment архитектурных рекомендаций доказанными
   графовыми данными.

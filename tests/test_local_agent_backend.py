@@ -52,7 +52,7 @@ def test_handshake_advertises_versioned_structured_capabilities(tmp_path: Path) 
     assert result["methodContracts"]["proposal/apply"]["requiresApproval"] is True
     assert result["methodContracts"]["models/prefs"]["requiresApproval"] is True
     assert set(result["tools"]) == {
-        "search", "read", "market_status", "edit", "terminal", "diagnostics", "tests",
+        "search", "read", "skill", "market_status", "edit", "terminal", "diagnostics", "tests",
         "git_diff", "git_status", "git_commit", "git_push",
     }
     assert TOOL_CONTRACTS["edit"]["requiresApproval"] is True
@@ -255,6 +255,10 @@ def test_session_chat_streams_model_response_and_creates_session(
     assert result["pendingToolCalls"] == []
     assert result["metrics"]["toolCallErrors"] == 0
     assert result["metrics"]["contextBytes"] > 0
+    from eurika.agent.live_activity import recent
+
+    titles = " ".join(str(item.get("title") or "") for item in recent(tmp_path)["events"])
+    assert "модель" in titles
     assert [event[0] for event in events] == [
         "message_start",
         "response/chunk",
@@ -1088,12 +1092,41 @@ def test_context_host_admin_hitl_apply_and_reject(
 
 
 def test_product_chat_send_self_model(tmp_path: Path) -> None:
+    from eurika.api.chat import chat_send
+
     (tmp_path / ".eurika").mkdir()
-    runtime = LocalAgentRuntime(tmp_path)
-    result = _runtime_call(runtime, "chat/send", {"message": "модель себя"}, [])
-    assert result.get("ok") is True
-    assert "Self Model" in str(result.get("text") or "")
+    out = chat_send(tmp_path, "модель себя", persist_history=False)
+    assert out.get("error") in (None, "")
+    assert "Self Model" in str(out.get("text") or "")
     assert (tmp_path / ".eurika" / "self_model.json").is_file()
+
+
+def test_chat_send_rpc_already_ran_stays_on_core_chat(tmp_path: Path, monkeypatch) -> None:
+    runtime = LocalAgentRuntime(tmp_path)
+    seen: list[str] = []
+
+    def _call(prompt: str):
+        seen.append(prompt)
+        return ('{"type":"final","text":"agent should not run"}', None)
+
+    monkeypatch.setattr(runtime, "_call_model", _call)
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_a, **_k: ("", None),
+    )
+    result = _runtime_call(
+        runtime,
+        "chat/send",
+        {
+            "message": "в терминале прогнал релиз чек, проверь есть ли ошибки",
+            "terminalText": "FAILED tests/x.py::t\n[done] exit_code=1\n",
+        },
+        [],
+    )
+    assert seen == []
+    assert result.get("ok") is True
+    text = str(result.get("text") or "")
+    assert "x.py" in text or "не прошёл" in text or "FAILED" in text
 
 
 def test_mentions_suggest_from_self_map(tmp_path: Path) -> None:
@@ -1187,6 +1220,52 @@ def test_command_run_self_model_without_approval(tmp_path: Path) -> None:
     )
     assert result.get("exitCode") == 0
     assert (tmp_path / ".eurika" / "self_model.json").is_file()
+
+
+def test_chat_send_desktop_uses_same_approvals_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CR-H4: Desktop Send is chat/send + reviewInApprovals, same as Qt."""
+    target = tmp_path / "sample.txt"
+    target.write_text("one\ntwo\n", encoding="utf-8")
+    runtime = LocalAgentRuntime(tmp_path)
+    replies = iter(
+        [
+            json.dumps(
+                {
+                    "type": "tool_calls",
+                    "toolCalls": [
+                        {
+                            "tool": "edit",
+                            "arguments": {
+                                "path": "sample.txt",
+                                "oldText": "two",
+                                "newText": "TWO",
+                            },
+                        }
+                    ],
+                }
+            ),
+            '{"type":"final","text":"Queued sample.txt for Approvals."}',
+        ]
+    )
+    monkeypatch.setattr(runtime, "_call_model", lambda prompt: (next(replies), None))
+    result = _runtime_call(
+        runtime,
+        "chat/send",
+        {
+            "message": "Update sample.txt",
+            "context": {"client": "desktop"},
+        },
+        [],
+    )
+    assert target.read_text(encoding="utf-8") == "one\ntwo\n"
+    assert result["pendingToolCalls"] == []
+    assert result["approvalsQueued"] == 1
+    ops = json.loads((tmp_path / ".eurika" / "pending_plan.json").read_text(encoding="utf-8"))[
+        "operations"
+    ]
+    assert ops[0]["kind"] == "agent_edit"
 
 
 def test_session_chat_desktop_review_in_approvals(

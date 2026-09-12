@@ -276,6 +276,25 @@ def on_command_finished(main: MainWindow, exit_code: int) -> None:
             _chat_handlers.focus_approvals_mode(main)
         except Exception:
             pass
+    try:
+        from eurika.api.last_check import maybe_seal_terminal_quality_check
+
+        root = Path(main.root_edit.text().strip() or ".").resolve()
+        view = getattr(main, "terminal_emulator_output", None)
+        pane = ""
+        if view is not None:
+            try:
+                pane = view.toPlainText() or ""
+            except Exception:
+                pane = ""
+        maybe_seal_terminal_quality_check(
+            root,
+            command=cmd,
+            output=pane[-400000:],
+            exit_code=int(exit_code),
+        )
+    except Exception:
+        pass
     from .dashboard_handlers import refresh_dashboard
 
     refresh_dashboard(main)

@@ -1,6 +1,7 @@
-"""Planning coupling v0 (VISION Stage 5).
+"""Planning coupling v0+ (VISION Stage 5).
 
-Soft signals from Formal A/B + verify_by_kind into bug-hunt ranking.
+Soft signals from Formal A/B + verify_by_kind (+ hypotheses) into ranking.
+Used by bug-hunt and by fix/prepare planner-core path.
 Never autoapplies; never hard-denies — mirrors hypothesis caution.
 """
 from __future__ import annotations
@@ -17,6 +18,14 @@ VERIFY_MIN_N = 3
 AB_MIN_DECISIVE = 2  # ignore noise from single trial
 AB_RECENT_LIMIT = 20
 
+# Safe kinds for prefer_safe boost (shared intent with bug-hunt; keep local to avoid cycle).
+PLANNER_SAFE_KINDS = frozenset(
+    {
+        "extract_nested_function",
+        "extract_block_to_helper",
+        "remove_unused_import",
+    }
+)
 
 def _ab_kind_bias(trials: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     """Aggregate recent decisive A/B trials by action kind."""
@@ -176,3 +185,107 @@ def stamp_planning_on_ops(
         row.update(stamp)
         out.append(row)
     return out
+
+
+def _hypothesis_bundle(project_root: Path) -> Dict[str, Any]:
+    try:
+        from eurika.api.hypothesis_engine import hypothesis_ranking_signals
+
+        raw = hypothesis_ranking_signals(project_root)
+        return raw if isinstance(raw, dict) else {}
+    except Exception:
+        return {}
+
+
+def planner_core_score(
+    op: Dict[str, Any],
+    *,
+    planning_signals: Optional[Dict[str, Any]],
+    caution_weights: Optional[Dict[str, int]] = None,
+    prefer_safe_delta: int = 0,
+) -> int:
+    """Soft ranking score for fix/prepare (not deny / not apply)."""
+    kind = str(op.get("kind") or "")
+    score = 0
+    if kind in PLANNER_SAFE_KINDS:
+        score += 10
+        if prefer_safe_delta:
+            score += int(prefer_safe_delta)
+    if caution_weights and kind in caution_weights:
+        try:
+            score += int(caution_weights[kind])
+        except (TypeError, ValueError):
+            score -= 25
+    if planning_signals:
+        delta, _stamp = score_delta_for_kind(kind, planning_signals)
+        score += int(delta)
+    return score
+
+
+def apply_planner_core_coupling(
+    project_root: str | Path,
+    ops: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Reorder + stamp ops for fix/cycle using A/B, verify_by_kind, hypotheses.
+
+    Stable soft sort only — never drops ops, never autoapplies.
+    """
+    root = Path(project_root).resolve()
+    if not ops:
+        return ops, {"version": 1, "applied": False, "ops_n": 0}
+    planning = load_planning_signals(root)
+    hyp = _hypothesis_bundle(root)
+    caution_raw = hyp.get("caution_weights") if isinstance(hyp, dict) else {}
+    caution_weights: Dict[str, int] = {}
+    if isinstance(caution_raw, dict):
+        for k, v in caution_raw.items():
+            try:
+                caution_weights[str(k)] = int(v)
+            except (TypeError, ValueError):
+                continue
+    try:
+        prefer_safe = int(hyp.get("prefer_safe_delta") or 0) if isinstance(hyp, dict) else 0
+    except (TypeError, ValueError):
+        prefer_safe = 0
+
+    scored: List[Tuple[int, int, Dict[str, Any]]] = []
+    for idx, op in enumerate(ops):
+        if not isinstance(op, dict):
+            continue
+        kind = str(op.get("kind") or "")
+        base = planner_core_score(
+            op,
+            planning_signals=planning,
+            caution_weights=caution_weights,
+            prefer_safe_delta=prefer_safe,
+        )
+        row = dict(op)
+        _delta, plan_stamp = score_delta_for_kind(kind, planning)
+        if plan_stamp:
+            row.update(plan_stamp)
+        if kind in caution_weights:
+            row["hypothesis_caution_delta"] = caution_weights[kind]
+            row["hypothesis_ranking_v0"] = True
+        if prefer_safe and kind in PLANNER_SAFE_KINDS:
+            row["hypothesis_prefer_safe_delta"] = prefer_safe
+            row["hypothesis_ranking_v0"] = True
+        if plan_stamp or kind in caution_weights or (prefer_safe and kind in PLANNER_SAFE_KINDS):
+            row["planner_core_coupling_v0"] = True
+            row["planner_core_score"] = base
+        scored.append((-base, idx, row))
+
+    scored.sort()
+    ordered = [item[2] for item in scored]
+    touched = sum(1 for op in ordered if isinstance(op, dict) and op.get("planner_core_coupling_v0"))
+    meta: Dict[str, Any] = {
+        "version": 1,
+        "applied": True,
+        "ops_n": len(ordered),
+        "stamped_n": touched,
+        "prefer_safe_delta": prefer_safe,
+        "caution_kinds": sorted(caution_weights.keys()),
+        "ab_kinds": sorted((planning.get("ab_by_kind") or {}).keys()),
+        "verify_low_kinds": sorted((planning.get("verify_low_by_kind") or {}).keys()),
+        "note": "soft reorder for fix/prepare — not deny / not autoapply",
+    }
+    return ordered, meta

@@ -6,6 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
+from .last_check import seal_check_verification
 from .task_executor_helpers import run_pytest, safe_create_empty_file, safe_delete_file, safe_write_file, task_backup_before_write, within_root
 from .task_executor_types import ExecutionReport, TaskSpec
 
@@ -123,21 +124,40 @@ def _execute_run_tests(root: Path, spec: TaskSpec) -> ExecutionReport:
     args = ['-q']
     if target:
         args.append(target)
-    verify = run_pytest(root, args, timeout=300 if target else 900)
+    verify = seal_check_verification(root, run_pytest(root, args, timeout=300 if target else 900))
     timed_out = verify.get('error') == 'timeout'
     summary = 'tests passed' if verify.get('ok') else ('tests timed out' if timed_out else 'tests failed')
     error = None if verify.get('ok') else ('pytest timed out' if timed_out else 'pytest returned non-zero')
     return ExecutionReport(ok=bool(verify.get('ok')), summary=summary, applied_steps=['run pytest'], verification=verify, artifacts_changed=[], error=error)
 
 def _execute_run_lint(root: Path, _spec: TaskSpec) -> ExecutionReport:
-    """Run best-effort lint command from known toolchain."""
-    candidates = [[sys.executable, '-m', 'ruff', 'check', '.'], [sys.executable, '-m', 'flake8', '.'], [sys.executable, '-m', 'pylint', 'eurika', 'qt_app']]
+    """Run best-effort lint. Same scope as Qt Ruff / release_check when present."""
+    ruff_args = ["check", "eurika", "cli"] if (root / "eurika").is_dir() else ["check", "."]
+    candidates = [
+        [sys.executable, "-m", "ruff", *ruff_args],
+        [sys.executable, "-m", "flake8", "."],
+        [sys.executable, "-m", "pylint", "eurika", "qt_app"],
+    ]
     last_error = ''
     for cmd in candidates:
         try:
             res = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True, timeout=180)
         except subprocess.TimeoutExpired:
-            return ExecutionReport(ok=False, summary='lint timeout', error='timeout')
+            return ExecutionReport(
+                ok=False,
+                summary='lint timeout',
+                error='timeout',
+                verification=seal_check_verification(
+                    root,
+                    {
+                        'runner': 'lint',
+                        'command': cmd,
+                        'ok': False,
+                        'exit_code': 124,
+                        'output': 'lint timed out after 180s',
+                    },
+                ),
+            )
         except Exception as exc:
             last_error = str(exc)
             continue
@@ -145,8 +165,69 @@ def _execute_run_lint(root: Path, _spec: TaskSpec) -> ExecutionReport:
         if 'No module named' in out and res.returncode != 0:
             last_error = out[:300]
             continue
-        return ExecutionReport(ok=res.returncode == 0, summary='lint passed' if res.returncode == 0 else 'lint failed', applied_steps=['run lint'], verification={'runner': 'lint', 'ok': res.returncode == 0, 'exit_code': res.returncode, 'output': out[:4000]}, artifacts_changed=[], error=None if res.returncode == 0 else 'lint returned non-zero')
+        return ExecutionReport(
+            ok=res.returncode == 0,
+            summary='lint passed' if res.returncode == 0 else 'lint failed',
+            applied_steps=['run lint'],
+            verification=seal_check_verification(
+                root,
+                {
+                    'runner': 'lint',
+                    'command': cmd,
+                    'ok': res.returncode == 0,
+                    'exit_code': res.returncode,
+                    'output': out,
+                },
+            ),
+            artifacts_changed=[],
+            error=None if res.returncode == 0 else 'lint returned non-zero',
+        )
     return ExecutionReport(ok=False, summary='lint unavailable', error=last_error or 'no lint tool available')
+
+def _execute_run_mypy(root: Path, _spec: TaskSpec) -> ExecutionReport:
+    """Run mypy on the same scope as the Qt Mypy button / release_check."""
+    scope = ["eurika", "cli"] if (root / "eurika").is_dir() else ["."]
+    cmd = [sys.executable, "-m", "mypy", *scope]
+    try:
+        res = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True, timeout=300)
+    except subprocess.TimeoutExpired:
+        return ExecutionReport(
+            ok=False,
+            summary='type check timeout',
+            error='timeout',
+            verification=seal_check_verification(
+                root,
+                {
+                    'runner': 'mypy',
+                    'command': cmd,
+                    'ok': False,
+                    'exit_code': 124,
+                    'output': 'mypy timed out after 300s',
+                },
+            ),
+        )
+    except Exception as exc:
+        return ExecutionReport(ok=False, summary='type check unavailable', error=str(exc))
+    out = ((res.stdout or '') + (res.stderr or '')).strip()
+    if 'No module named' in out and res.returncode != 0:
+        return ExecutionReport(ok=False, summary='type check unavailable', error=out[:300])
+    return ExecutionReport(
+        ok=res.returncode == 0,
+        summary='type check passed' if res.returncode == 0 else 'type check failed',
+        applied_steps=['run mypy'],
+        verification=seal_check_verification(
+            root,
+            {
+                'runner': 'mypy',
+                'command': cmd,
+                'ok': res.returncode == 0,
+                'exit_code': res.returncode,
+                'output': out,
+            },
+        ),
+        artifacts_changed=[],
+        error=None if res.returncode == 0 else 'mypy returned non-zero',
+    )
 
 def _is_allowed_command(parts: List[str]) -> tuple[bool, str]:
     if not parts:

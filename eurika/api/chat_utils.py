@@ -106,6 +106,11 @@ def format_execution_report(report: Dict[str, Any]) -> str:
         out = str(verification.get('output') or '').strip()
         if out:
             lines.append(out[:1200])
+        if verification.get('output_truncated') or verification.get('log_path'):
+            n = verification.get('error_count')
+            log_path = verification.get('log_path') or '.eurika/last_check.log'
+            extra = f' ({n} diagnostics)' if n else ''
+            lines.append(f'Полный лог: {log_path}{extra}. Следующее «исправь ошибки» читает этот лог, не обрезку Chat.')
     if error:
         lines.append(f'Error: {error}')
     return '\n'.join(lines)
@@ -910,6 +915,35 @@ def format_self_check_for_chat(output: str, *, ok: bool, os_focus: bool = False)
     )
 
 
+def looks_like_quality_check_output(output: str) -> bool:
+    """True when the text is a pytest/mypy/ruff/release_check log, not a listing."""
+    text = output or ""
+    if re.search(r"FAILED\s+tests/", text):
+        return True
+    if re.search(r"(?i)(?:short test summary|release check|self-guard)", text):
+        return True
+    if re.search(r": error:", text) and re.search(r"Found \d+ errors?", text):
+        return True
+    low = text.lower()
+    return "would reformat" in low or "==> release check" in low
+
+
+def quality_check_succeeded(output: str) -> bool:
+    """Infer pass/fail from a quality-check log (Terminal or script)."""
+    text = output or ""
+    if re.search(r"FAILED\s+tests/", text):
+        return False
+    if re.search(r"(?i)release check PASSED", text):
+        return True
+    if re.search(r": error:", text) and re.search(r"Found \d+ errors?", text):
+        return False
+    if re.search(r"\[done\]\s+exit_code=(?!0\b)\d+", text):
+        return False
+    if re.search(r"\[done\]\s+exit_code=0\b", text):
+        return True
+    return False
+
+
 def brief_release_check_analysis(output: str, ok: bool) -> str:
 
     """Extract brief analysis from release check output for chat."""
@@ -985,34 +1019,50 @@ def _collect_open_roadmap_items(content: str, *, limit: int = 8) -> List[str]:
     return items
 
 
+def _development_focus(root: Path, *, max_chars: int = 1800) -> str:
+    """Current planning slice from DEVELOPMENT.md, if the file exists."""
+    path = Path(root).resolve() / "docs" / "DEVELOPMENT.md"
+    if not path.is_file():
+        return ""
+    try:
+        content = path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    return _slice_markdown_section(content, "Текущий фокус", max_chars=max_chars)
+
+
 def format_roadmap_next_steps(root: Path) -> str:
-    """Summarize next steps — prefer docs/VISION.md backlog, else ROADMAP.md."""
+    """Summarize next steps — DEVELOPMENT current focus, then VISION compass."""
     root = root.resolve()
+    focus = _development_focus(root)
     vision = root / "docs" / "VISION.md"
-    if vision.is_file():
-        try:
-            content = vision.read_text(encoding="utf-8")
-        except OSError as exc:
-            return f"Не удалось прочитать docs/VISION.md: {exc}"
-        backlog = _slice_markdown_section(content, "Backlog после окна", max_chars=3500)
-        now = _slice_markdown_section(content, "Сейчас (прибыль", max_chars=1200)
+    if focus or vision.is_file():
         lines: List[str] = [
-            "## Дальше по бэклогу (из `docs/VISION.md`)",
+            "## Дальше по разработке",
             "",
-            "Ответ по документу на диске, без LLM. Market — только наблюдение journal.",
+            "Ответ по документам на диске, без LLM. Market — только наблюдение journal.",
             "",
         ]
-        if now:
-            lines.append(now)
+        if focus:
+            lines.append("Источник приоритета: `docs/DEVELOPMENT.md` § Текущий фокус.")
             lines.append("")
-        if backlog:
-            lines.append(backlog)
+            lines.append(focus)
             lines.append("")
+        if vision.is_file():
+            try:
+                content = vision.read_text(encoding="utf-8")
+            except OSError as exc:
+                return f"Не удалось прочитать docs/VISION.md: {exc}"
+            backlog = _slice_markdown_section(content, "Продуктовый горизонт после окна", max_chars=1800)
+            if backlog:
+                lines.append("Компас продукта (`docs/VISION.md`):")
+                lines.append("")
+                lines.append(backlog)
+                lines.append("")
         lines.append(
-            "Практический следующий шаг: мелкий chat UX / goals polish (A1); "
-            "Market entry/HTF/explore не трогать без разбора journal."
+            "Market entry/HTF/explore / live-ордера не трогать без разбора journal. "
+            "Аудит: «аудит документации»."
         )
-        lines.append("Полный файл: `docs/VISION.md`. Аудит: «аудит документации».")
         return "\n".join(lines).strip()
 
     path = _find_roadmap_path(root)
@@ -1060,27 +1110,93 @@ def format_roadmap_next_steps(root: Path) -> str:
     return "\n".join(lines).strip()
 
 
-def format_continue_dev_brief(root: Path) -> str:
-    """Compact «приступай» reply: next VISION step, not a full doc dump."""
-    root = root.resolve()
+def format_market_dev_brief(root: Path) -> str:
+    """Market development plans: freeze now, VISION § B as horizon — not H5."""
+    root = Path(root).resolve()
     vision = root / "docs" / "VISION.md"
-    has_vision = vision.is_file()
+    section = ""
+    if vision.is_file():
+        try:
+            content = vision.read_text(encoding="utf-8")
+        except OSError:
+            content = ""
+        if content:
+            section = _slice_markdown_section(content, "B. Market paper", max_chars=2200)
+            if not section:
+                section = _slice_markdown_section(content, "Market paper", max_chars=2200)
     lines: List[str] = [
-        "**Приступаю** к следующему шагу бэклога (VISION A1).",
+        "## Планы Market (paper)",
         "",
-        "**Сейчас (non-Market):** мелкий chat UX / goals polish.",
-        "- intents: «приступай» / «продолжай» → этот план (не toggle ML/vector)",
-        "- soft ML/vector не трогает env-флаги и `ls`",
-        "- `verification_ok=n/a` для skills без verify-патча",
+        "Окно наблюдения с 2026-08-01: **freeze**. Не live-ордера, не explore on, "
+        "не HTF / новый entry без разбора `.eurika/ml/market_journal.jsonl` и "
+        "`paper_trades.jsonl`.",
         "",
-        "**Не трогаем:** Market entry / HTF / explore / live-ордера — только journal.",
+        "Очередь кода сейчас — `docs/DEVELOPMENT.md` (CR-H Chat), не торговый контур. "
+        "Market в фокусе разработки только как наблюдение journal.",
         "",
-        "Дальше по желанию: «аудит документации», «что дальше по бэклогу?», "
-        "«какая цель?» / конкретная правка в Chat.",
     ]
-    if has_vision:
-        lines.append("")
-        lines.append("Источник: `docs/VISION.md` § Backlog после окна.")
+    if section:
+        lines.extend(
+            [
+                "Горизонт продукта (`docs/VISION.md` § B) — не текущий спринт:",
+                "",
+                section,
+                "",
+            ]
+        )
+    lines.append(
+        "Открытое в § B не снимает freeze: HTF 4h / ablation / walk-forward — "
+        "после статистики, не «следующий коммит»."
+    )
+    return "\n".join(lines).strip()
+
+
+def format_docs_plan_fallback(root: Path, message: str = "") -> str:
+    """Fill an emptied docs/plan turn. Never a «From docs: paths» inventory."""
+    text = message or ""
+    try:
+        from eurika.api.chat_host_ops import message_asks_market_learning
+
+        if message_asks_market_learning(text):
+            return format_market_dev_brief(root)
+    except Exception:
+        if re.search(r"(?is)маркет|market", text):
+            return format_market_dev_brief(root)
+    return format_roadmap_next_steps(root)
+
+
+def format_continue_dev_brief(root: Path) -> str:
+    """Compact «приступай» reply from DEVELOPMENT.md, not a frozen A1 slogan."""
+    root = root.resolve()
+    focus = _development_focus(root, max_chars=1600)
+    lines: List[str] = [
+        "**Приступаю** к текущему фокусу разработки.",
+        "",
+    ]
+    if focus:
+        lines.extend(
+            [
+                "Источник: `docs/DEVELOPMENT.md` § Текущий фокус.",
+                "",
+                focus,
+                "",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "**Сейчас:** открой `docs/DEVELOPMENT.md` (нет файла — смотри VISION A→B→C).",
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "**Не трогаем:** Market entry / HTF / explore / live-ордера — только journal.",
+            "",
+            "Дальше по желанию: «аудит документации», «что дальше по развитию?», "
+            "«какая цель?» / конкретная правка в Chat.",
+        ]
+    )
     return "\n".join(lines)
 
 

@@ -47,6 +47,14 @@ def test_decide_ab_winner_tie_and_sandbox() -> None:
     assert w3 == "baseline"
 
 
+def test_decide_ab_winner_layer_regression() -> None:
+    b = _snap(layer_violations=0)
+    worse = _snap(energy=8.0, total_smells=3, cycles=0, risk_score=0.9, layer_violations=2)
+    w, rule, _ = decide_ab_winner(b, worse, smoke_ok=True)
+    assert w == "baseline"
+    assert "layer_violations" in rule
+
+
 def test_decide_ab_winner_insufficient() -> None:
     bad = {"ok": False, "insufficient_data": True, "energy": None}
     w, _, insuff = decide_ab_winner(bad, bad, smoke_ok=True)
@@ -66,6 +74,8 @@ def test_persist_and_format(tmp_path: Path) -> None:
         proposal_hash="abc123",
     )
     assert trial["winner"] == "sandbox"
+    assert trial["version"] == 2
+    assert "layer_violations" in trial["delta"]
     persist_ab_trial(tmp_path, trial)
     assert ab_trials_path(tmp_path).is_file()
     loaded = load_ab_trials(tmp_path)

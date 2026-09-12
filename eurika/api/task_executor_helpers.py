@@ -127,7 +127,7 @@ def run_pytest(root: Path, args: List[str], timeout: int = 180) -> Dict[str, Any
             "runner": "pytest",
             "command": cmd,
             "exit_code": 124,
-            "output": output[:4000],
+            "output": output[:400_000],
             "error": "timeout",
         }
     except Exception as exc:  # pragma: no cover
@@ -150,7 +150,7 @@ def run_pytest(root: Path, args: List[str], timeout: int = 180) -> Dict[str, Any
         "runner": "pytest",
         "command": cmd,
         "exit_code": result.returncode,
-        "output": out[:4000],
+        "output": out[:400_000],
         "warning": (
             "pytest reported passed tests but process ended with bus error"
             if passed_with_post_crash

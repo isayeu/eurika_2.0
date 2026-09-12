@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import pytest
 
 from eurika.reasoning.planner.models import (
     ArchitectureModel,
     RefactorAction,
-    RiskProfile,
     RiskReport,
     SimulationResult,
     SmellReport,

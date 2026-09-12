@@ -1,5 +1,9 @@
 # Bounded Evolution — дисциплина роста
 
+> **Роль документа:** обязательные safety-ограничения для изменений и
+> саморазвития, а не backlog. Текущий порядок работ находится в
+> [DEVELOPMENT.md](DEVELOPMENT.md).
+
 **Не технический шаг. Управленческий.** Спасает проект от расползания.
 
 Eurika склонна к усложнению — это сила и риск. Bounded evolution — контролируемые пределы.
@@ -64,6 +68,8 @@ Eurika склонна к усложнению — это сила и риск. B
 - критерий отката
 
 **Агент:** при запросе на крупную фичу — напомнить про отчёт, не начинать без явного одобрения.
+
+**Chat one-loop (CR-H):** план и лимиты — в [ROADMAP.md](ROADMAP.md) §5.4.1 (не отдельный `FEATURE_*.md`). Запрещено «чинить понимание» доменным phrase-book (`is_*_request`). Run-now ритуалы — уже существующие детекторы, не новые списки фраз. Крупный merge `eurika/api/chat*.py` + `eurika/agent/local_runtime*` — только по фазам H1→H2, не один PR на всё ядро. HITL и запрет silent apply не ослаблять. Thinking UX (H5) — рисовать `live_activity`, не новый канал.
 
 ---
 
@@ -173,11 +179,19 @@ Architecture Freeze **не** означает «Eurika не трогает св�
 
 **Formal A/B v0 (2026-09-08):** после propose+sandbox smoke — baseline (main `self_map`) vs treatment (sandbox) по фиксированным метрикам `energy`, `risk_score`, `total_smells`, `cycles`, `smoke_ok` → `.eurika/ab_trials.json` + `metrics.ab_v0` на experiment. Winner: sandbox|baseline|tie|insufficient. **Не** autoapply. CLI `eurika ab-compare .` / Chat «a/b» / «сравни sandbox». Worktree без gitignored `self_map.json` → seed с main (`self_map_seeded`).
 
+**Formal A/B v2 (2026-09-11):** suite metrics `modules` / `dependency_density` / `max_blast_radius` / `layer_violations`. Рост `layer_violations` — hard regression (winner=baseline). Остальные suite — deltas only. **Не** autoapply.
+
 **A/B rescan-when-stable (2026-09-08):** `EURIKA_AB_RESCAN=auto` (default) | `on` | `off`. Auto: rescan sandbox только если architecture history stable (малый swing smells/modules, cycles unchanged) **и** self_map был seeded в worktree — иначе treatment всегда tie. Trial пишет `rescanned`, `metrics_stable`, `rescan_skip_reason`.
 
 **Planning coupling v0 (2026-09-08):** bug-hunt ranking читает Formal A/B (decisive sandbox/baseline по kind) и low `verify_by_kind` → soft score deltas; stamps `planning_*` на ops. **Не** hard-deny, **не** autoapply (как hypothesis caution).
 
-См. ROADMAP §4.6 (уточнение), Architecture.md §2, VISION.md C.14.
+**Planner-core coupling v0 (2026-09-09):** те же soft signals (+ hypothesis caution / prefer_safe) применяются в `prepare_fix_cycle_operations` после context priority — soft reorder ops в `fix`/cycle dry-run и apply path; `planner_core_coupling` в patch_plan / agent result. **Не** hard-deny, **не** autoapply, ops не отбрасываются.
+
+**Critic/decision coupling v0 (2026-09-09):** `run_critic_pass` после hard-правил читает A/B + low `verify_by_kind` + hypothesis caution → soft escalate `allow`→`review` (stamps `critic_coupling_*`, `decision_source=critic_coupling`). Whitelist-auto не эскалируется. **Не** hard-deny от coupling, **не** autoapply.
+
+**Multi-role critic v0 (2026-09-11):** именованные роли `evidence` / `verify` / `hypothesis` / `self` голосуют caution|support|silent (алгоритм, не лишние LLM-агенты). Caution → soft escalate allow→review. Роль `self` читает cheap problems (нет `self_map`, low apply_ok). Hard deny остаётся в `prepare_critic`. **Не** autoapply.
+
+См. ROADMAP §4.6 (уточнение), Architecture.md §2, VISION.md C.14, ROADMAP §5.4.1 (Chat one-loop).
 
 ---
 

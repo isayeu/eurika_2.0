@@ -12,7 +12,7 @@
 
 ## 1. Принцип и текущая задача
 
-**Основная задача / главная цель:** саморазвивающаяся инженерная система — измеримое самонаблюдение и самоулучшение (observe→…→learn), не иллюзия сознания. Канон и этапы: [VISION.md](VISION.md) § Master. Сейчас на ядре: scan/doctor/fix + C.14 + Self/Capability/Goal + HITL/experiment + Hypothesis Engine + Formal A/B v2 + **multi-role critic v0** + **Qt↔Desktop parity v2** + **Models-tab parity v0**. Следующее: Stage 6 earn / leftover Desktop UX (sudo dialog, open sibling). Market — freeze.
+**Основная задача / главная цель:** саморазвивающаяся инженерная система — измеримое самонаблюдение и самоулучшение (observe→…→learn), не иллюзия сознания. Канон и этапы: [VISION.md](VISION.md) § Master. Сейчас на ядре: scan/doctor/fix + C.14 + Self/Capability/Goal + HITL/experiment + Hypothesis Engine + Formal A/B v2 + **multi-role critic v0** + **Qt↔Desktop parity v2** + **Models-tab parity v0** + Chat one-loop CR-H (H0–H4, H5 UI/model-round). **Следующее (очередь кода):** [DEVELOPMENT.md](DEVELOPMENT.md) § Текущий фокус — полный H5 (стрим reasoning). Stage 6 earn / leftover Desktop UX (sudo dialog, open sibling) — горизонт, не текущая очередь. Market — freeze.
 
 **Продуктовая оболочка:** Cursor-подобный chat-first shell + learning loop + paper Market ML ([VISION.md](VISION.md)). Сейчас (ops): окно наблюдения Market — explore off, без правок trading-ML; детали в MEMORY / VISION.
 
@@ -219,6 +219,45 @@ UI.md ✓; README ✓; критерии **B.7–B.14** выполнены. Оц�
 | CR-G1 | chat_intents.yaml      | Паттерны, emit, intent_hints; match_direct_intent | ✅     |
 | CR-G2 | Векторная память       | Embeddings для fuzzy match (опционально)          | ✅ EURIKA_USE_VECTOR_INTENT=1 |
 | CR-G3 | PyTorch-классификатор  | Scaffold ✅ + paper market ✅ + **chat intent router** (`EURIKA_USE_ML_INTENT`, `intent_router`). **ML + LLM в связке**. Опыт `.eurika/ml/`. Пороги — [HARDWARE.md](HARDWARE.md) §4 | router scaffold ✅ |
+
+CR-G закрыл *конфиг* интентов. Побочный эффект: Chat остался **router-first** (YAML / `is_*` / `wants_local_agent` раньше модели). Понимание вопросов — CR-H, не ещё один список фраз.
+
+### 5.4.1 Chat one-loop (CR-H, 2026-09-12)
+
+**Зачем.** Внешний LLM у Эврики полный; цепочки рвутся, потому что одно сообщение до модели становится «ритуал» / «короткий Chat» / «coding-agent» с разным контекстом. Cursor не развивает так: один цикл, сцена целиком, tools у модели.
+
+**Цель.** Один ход: `observation` (Chat + Terminal + last_check + git) → LLM → tools → LLM. Pre-LLM код — HITL (`применяй` / reject, sudo), safety (нет silent apply / нет записи в дерево из host_shell) и **run-now** уже существующими детекторами (императив «прогони release check» — сразу скрипт, не рулетка `skill`). VISION A.3, политика хардкода. Текущий срез: [DEVELOPMENT.md](DEVELOPMENT.md) § Текущий фокус. Контракт UX: [CHAT.md](CHAT.md).
+
+**Не делать:** новый `is_*_request` «под кейс»; live-ордера / explore on; silent merge `chat.py`+`local_runtime` одним PR (Architecture Freeze); multi-agent «ради агентов».
+
+| # | Фаза | Что сделать | Статус |
+|---|------|-------------|--------|
+| CR-H0 | Evidence / already-ran | «Уже прогнал в Terminal, проверь ошибки» → читать pane, не pytest/release_check. Seal last_check с Terminal/Commands. `terminalText` в agent. Запрет цитировать вывод только после своего tool. | частично ✅ (2026-09-12) |
+| CR-H1 | Один observation bundle | На каждый Send собирать `{terminal, lastCheck, lastCheckStale, lastUserCmd, gitHint}` и отдавать **и** `chat_send`, **и** `session/chat`. Не подмешивать успешный mypy last_check, если pane новее и про другое. | частично ✅ (2026-09-12) |
+| CR-H2 | Один entry | Qt/Desktop Send → один runtime. Снять `wants_local_agent` как развилку. HITL / already-ran — pre-LLM. **Run-now** (`прогони release check` / scan / ritual / self_check) — сразу core handler, не «модель вызовет skill». Dogfood: skill-only → лекция + timeout 600s `/chat`. | частично ✅ (2026-09-12, run-now) |
+| CR-H3 | Длина цепочки | История не 4 реплики; вопрос про docs/план не ворует last_check; длинная вставка с «следующий шаг» не уходит в no-LLM дамп. | частично ✅ (2026-09-12) |
+| CR-H4 | Один Chat в UI | Снять смысл переключателя Desktop «Eurika» vs «Agent» как двух путей. Паритет: тот же observation + тот же runtime. Eval: [LOCAL_CODING_AGENT_RELEASE.md](LOCAL_CODING_AGENT_RELEASE.md). | ✅ (2026-09-12) |
+| CR-H5 | Thinking / live steps | Как в Cursor: во время хода разворачиваемая строка Thinking — модель, `skill`/`read`/`edit`, хвост Terminal. События уже есть (`live_activity`, `tool/started`); Qt и Desktop **рисуют**, не прячут `session/chat`. Не ждать один пузырь 600s. | частично ✅ UI + раунд модели (2026-09-12); стрим токенов открыт |
+
+**Приёмка (dogfood через живой Chat/HTTP, не скрытый shell):**
+
+1. «в терминале прогнал релиз чек, проверь есть ли ошибки» — в ответе имена FAILED из **pane**; процесс pytest/release_check **не** стартует; не просит «прогони ещё раз».
+2. Следом «исправь» — правит по **этому** last_check, не по старому успешному mypy.
+3. «почему упал apply-approved?» — читает `eurika_fix_report` / last_execution, не запускает новый cycle.
+4. Одинаковый Send в Qt Chat и Desktop Chat попадает в один класс runtime (после H2/H4).
+5. Регресс: «прогони release check» по-прежнему **запускает** скрипт (императив ≠ already-ran).
+
+**P0 на диске (H0):** `is_read_terminal_request` (скелет already+locus+review), early route до YAML/`detect_run`; `maybe_seal_terminal_quality_check`; agent `terminalText`; refuse `tests`/`terminal` на already-ran; промпт не требует своего tool, чтобы цитировать pane.
+
+**H1 на диске:** `eurika/api/chat_observation.py` — один bundle; stale mypy vs свежий release-check в pane → `lastCheck.source=terminal` + reseal; Chat `[Workspace observation]` отдельно от `[Terminal output]`; `session/chat` через `attach_workspace_observation`. Qt по-прежнему шлёт только хвост Terminal — сервер достраивает остальное.
+
+**H2 на диске:** `eurika/api/chat_entry.py` — Qt `chat_send` и Desktop `chat/send` через `dispatch_chat_turn`. Pre-LLM: HITL, already-ran, run-now (существующие `is_release_check_request` / scan / ritual / self_check). Иначе agent (`session/chat`); без HTTP — громкая ошибка. Tool `skill` остаётся для хода модели, но императив не ждёт её. Приветствие — короткий prompt, без last_check. `wants_local_agent` не развилка Send.
+
+**H3 на диске:** last_check seed / IMPLEMENT только на «исправь»; ход про docs/план снимает `lastCheck` из контекста (как greeting); промпт: DEVELOPMENT § фокус, не ROADMAP §1 Stage 6 и не «Связь с last_check»; `grounded_fallback` не подменяет ответ лекцией; цитата `docs/*.md` не отвергается; CONVERSATION 16 реплик; YAML `roadmap_next` только короткие фразы.
+
+**H4 на диске:** Desktop Send всегда `chat/send` + `dispatch_chat_turn` (как Qt); нет радио Eurika/Agent. `session/chat` — продолжение HITL (`toolResults`). Desktop `client` → `reviewInApprovals` по умолчанию. `POST /api/chat` на gateway — тот же dispatch (in-process `session/chat`, не сырой `chat_send`).
+
+**H5 на диске (срез):** Qt и Desktop — в ленте **Thinking** (под пузырём пользователя). Шаги из `live_activity` / `tool/started`; перед каждым `_call_model` — `publish_thinking(…, "модель")`. Стрим токенов reasoning — ещё нет.
 
 ---
 
@@ -583,6 +622,7 @@ while True:
 ### 6.2 Qt и UI
 
 - **3.6.8 Chat Phase 5:** question_prefix в chat_intents; «что делает», «чем отличается», «где хранится» → LLM, не ritual/run_command ✅
+- **CR-H Chat one-loop:** единый цикл понимания (VISION A.3) — §5.4.1; H0–H4 ✅; H5 Thinking UI/model-round ✅; стрим токенов открыто
 - CR-A2: Commands tab — scan/doctor/fix/suggest-plan в GUI (QProcess) ✅
 - CR-A4: qt_app.mdc с правилами для агента ✅
 - Live output + Stop/Cancel ✅

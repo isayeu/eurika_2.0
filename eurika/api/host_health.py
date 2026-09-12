@@ -364,6 +364,36 @@ def format_host_health_for_chat(result: HostHealthResult) -> str:
     return "\n".join(lines)
 
 
+def _llm_host_health_narrative_usable(narrative: str) -> bool:
+    """Reject prompt-echo / English CoT that some models dump instead of the answer."""
+    text = (narrative or "").strip()
+    if len(text) < 40:
+        return False
+    low = text.lower()
+    bad_markers = (
+        "the user asks",
+        "write 2-4",
+        "sentence 1:",
+        "sentence 2:",
+        "make sure to",
+        "need 2-4 sentences",
+        "probably 3 sentences",
+        "priorities:",
+        "don't invent",
+        "do not invent",
+        "below are the facts",
+        "ниже факты и советы",  # regurgitated prompt lead-in alone is not enough
+        "ты помощник eurika",
+    )
+    if any(m in low for m in bad_markers):
+        return False
+    # Prefer Russian conclusion for this surface.
+    cyr = sum(1 for ch in text if "а" <= ch.lower() <= "я" or ch in "ёЁ")
+    if cyr < 20:
+        return False
+    return True
+
+
 def enrich_host_health_with_llm(facts_text: str, *, use_llm: bool = True) -> str:
     """Optional Groq/Ollama 2–4 sentence interpretation; falls back to facts_text."""
     if not use_llm:
@@ -371,8 +401,10 @@ def enrich_host_health_with_llm(facts_text: str, *, use_llm: bool = True) -> str
     prompt = (
         "Ты помощник Eurika — эксперт по Linux/Arch для разработчика. "
         "Ниже факты и советы health-check хоста. "
-        "Напиши по-русски 2–4 спокойных предложения (с пробелами после точек): "
-        "1) пригоден ли хост для Qt/Ollama/paper; "
+        "Ответь ТОЛЬКО готовым текстом на русском: 2–4 спокойных предложения "
+        "(с пробелами после точек). Без английского, без пересказа инструкций, "
+        "без нумерации Sentence 1/2, без анализа промпта.\n"
+        "Содержание: 1) пригоден ли хост для Qt/Ollama/paper; "
         "2) главный риск (если есть storage I/O/NTFS — начни с него); "
         "3) что шум (coredump eurika-qt при quit — не ОС). "
         "Приоритет: storage I/O/NTFS > диск % full > swap > pacman > coredump. "
@@ -386,7 +418,7 @@ def enrich_host_health_with_llm(facts_text: str, *, use_llm: bool = True) -> str
 
         text, err = call_llm_with_prompt(prompt, max_tokens=280)
         narrative = (text or "").strip()
-        if err or not narrative:
+        if err or not narrative or not _llm_host_health_narrative_usable(narrative):
             return facts_text
         # Soft-fix "word.Word" glue from some LLM outputs.
         narrative = re.sub(r"\.([A-ZА-ЯЁ])", r". \1", narrative)

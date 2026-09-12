@@ -117,7 +117,11 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         return None
     if handler_id == 'host_shell':
         from eurika.api.chat_direct import is_bare_shell_request, shell_command_from_run_phrase
-        from eurika.api.chat_host_ops import run_host_command_with_privilege
+        from eurika.api.chat_host_ops import (
+            host_command_mutates_workspace,
+            run_host_command_with_privilege,
+        )
+        from eurika.api.host_admin import refuse_mutating_host_command
 
         if not is_bare_shell_request(msg):
             return None
@@ -132,6 +136,23 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         worst = 0
         for cmd in lines[:5]:
             emit(f"$ {cmd}")
+            if host_command_mutates_workspace(cmd):
+                result_text = (
+                    f"$ {cmd}\n(exit 126)\n"
+                    "отказ: команда меняет файлы проекта. Правка кода — Approvals."
+                )
+                log_parts.append(result_text)
+                if worst == 0:
+                    worst = 126
+                continue
+            blocked = refuse_mutating_host_command(
+                cmd, project_root=root, source="host_shell"
+            )
+            if blocked is not None:
+                log_parts.append(blocked.output)
+                if worst == 0:
+                    worst = 126
+                continue
             result = run_host_command_with_privilege(
                 cmd,
                 privilege_prompt=privilege_prompt,
@@ -230,13 +251,13 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             state,
             {
                 'ok': True,
-                'summary': 'continue_dev: VISION A1 chat UX / goals polish',
+                'summary': 'continue_dev: DEVELOPMENT current focus',
             },
         )
         state['active_goal'] = {
             'intent': 'continue_dev',
             'source': 'chat_direct',
-            'target': 'VISION A1 chat UX / goals polish',
+            'target': 'docs/DEVELOPMENT.md current focus',
         }
         text = append_goal_nudge(text, state)
         release_active_goal_keep_execution(state)
@@ -312,18 +333,36 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             append_safe(root, 'user', msg, None)
             append_safe(root, 'assistant', text, None)
             return {'text': text, 'error': None}
+        skeleton = ""
+        try:
+            from eurika.api.chat_utils import (
+                looks_like_quality_check_output,
+                quality_check_succeeded,
+            )
+
+            if looks_like_quality_check_output(combined):
+                skeleton = brief_release_check_analysis(
+                    combined, quality_check_succeeded(combined)
+                )
+        except Exception:
+            skeleton = ""
         prompt = (
-            "Ты Eurika. Пользователь просит прочитать вкладку Terminal как есть.\n"
+            "Ты Eurika. Пользователь УЖЕ прогнал команду во вкладке Terminal.\n"
             "Описывай только текст из [Terminal output]. "
             "Не упоминай темы из истории чата, если их нет в этом выводе. "
-            "Не предлагай команды, которых нет в выводе.\n\n"
-            f"[Terminal output]\n{combined[-12000:]}\n"
+            "Не предлагай прогон заново (pytest, mypy, ruff, release_check). "
+            "Не ссылайся на last_check.log, если его нет в этом выводе.\n"
         )
+        if skeleton:
+            prompt += f"\nКаркас ответа:\n{skeleton}\n"
+        prompt += f"\n[Terminal output]\n{combined[-12000:]}\n"
         raw, err = call_llm_with_prompt(prompt, max_tokens=900)
-        text = (raw or "").strip() or (
-            "Не удалось разобрать вывод терминала."
-            + (f" ({err})" if err else "")
-        )
+        text = (raw or "").strip()
+        if not text:
+            text = skeleton or (
+                "Не удалось разобрать вывод терминала."
+                + (f" ({err})" if err else "")
+            )
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': err}
@@ -379,6 +418,17 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             code if run_command_with_result is not None else 0,
         )
     if handler_id == 'scan':
+        try:
+            from eurika.agent.live_activity import publish_thinking
+
+            publish_thinking(
+                root,
+                "scan eurika scan .",
+                method="POST /api/chat",
+                client="chat",
+            )
+        except Exception:
+            pass
         from eurika.api.chat_tools import run_eurika_command
         term_cmd, output, code, ok = _shell_for_chat(
             shell_cmd='eurika scan .',
@@ -421,7 +471,9 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
     if handler_id == 'goal_status':
-        text = format_dialog_goal_block(load_dialog_state(root))
+        text = format_dialog_goal_block(
+            load_dialog_state(root), project_root=root
+        )
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
@@ -433,6 +485,58 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         append_safe(root, 'user', msg, None)
         append_safe(root, 'assistant', text, None)
         return {'text': text, 'error': None}
+    if handler_id == 'binance_mcp':
+        from eurika.integrations.binance_mcp import format_binance_mcp_text, probe_binance_mcp
+
+        probe = probe_binance_mcp()
+        text = format_binance_mcp_text(probe)
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        return {'text': text, 'error': None}
+    if handler_id == 'create_project':
+        from eurika.api.chat_intent_detectors import detect_create_project
+        from eurika.api.project_bootstrap import (
+            create_project,
+            format_create_project_text,
+            resolve_create_project_path,
+        )
+        from eurika.api.project_scaffolds import parse_path_and_scaffold
+
+        detected = detect_create_project(msg)
+        raw_path = detected[1] if detected else None
+        if not raw_path:
+            text = (
+                "Укажи имя или путь: «создай проект my_app» "
+                "(рядом с текущим корнем) или «создай проект ~/code/my_app».\n"
+                "Шаблон (необязательно): «создай проект my_app как python» "
+                "или `eurika init <path> --scaffold python|python-cli`."
+            )
+            append_safe(root, 'user', msg, None)
+            append_safe(root, 'assistant', text, None)
+            return {'text': text, 'error': None}
+        path_part, scaffold = parse_path_and_scaffold(raw_path)
+        if not path_part:
+            text = (
+                "Нужен путь или имя каталога. Пример: «создай проект my_app как python»."
+            )
+            append_safe(root, 'user', msg, None)
+            append_safe(root, 'assistant', text, None)
+            return {'text': text, 'error': None}
+        try:
+            project_path = resolve_create_project_path(root, path_part)
+        except ValueError as exc:
+            text = f"Некорректный путь: {exc}"
+            append_safe(root, 'user', msg, None)
+            append_safe(root, 'assistant', text, None)
+            return {'text': text, 'error': None}
+        created = create_project(project_path, scaffold=scaffold)
+        text = format_create_project_text(created)
+        append_safe(root, 'user', msg, None)
+        append_safe(root, 'assistant', text, None)
+        out: Dict[str, Any] = {'text': text, 'error': created.get('error')}
+        if created.get('ok') and created.get('path'):
+            out['open_project'] = str(created['path'])
+        return out
     if handler_id == 'hypotheses':
         from eurika.api.hypothesis_engine import format_hypotheses_text, refresh_hypotheses
 
@@ -731,11 +835,11 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             "deep_nesting": "eurika/polygon/deep_nesting.py",
             "llm_extract": "eurika/polygon/refactor_code_smell_drill.py",
         }
-        target = target_by_drill.get(drill, "eurika/polygon/imports_ok.py")
+        goal_target = target_by_drill.get(drill, "eurika/polygon/imports_ok.py")
         state['active_goal'] = {
             'intent': 'polygon_propose',
             'source': 'chat_direct',
-            'target': target,
+            'target': goal_target,
         }
         store_last_execution(
             state,
@@ -815,20 +919,20 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             emit_cmd=emit_cmd or f"$ {propose_shell}",
         )
         queued = 1 if ok and bug_hunt_pending_plan_ready(root) else 0
-        target = ""
+        goal_target = ""
         try:
-            from eurika.orchestration.team_mode import load_pending_plan
+            from eurika.api.team_api import load_pending_plan
 
             plan = load_pending_plan(root) or {}
             ops = plan.get("operations") if isinstance(plan, dict) else None
             if isinstance(ops, list) and ops and isinstance(ops[0], dict):
-                target = str(ops[0].get("target_file") or "")
+                goal_target = str(ops[0].get("target_file") or "")
         except Exception:
-            target = ""
+            goal_target = ""
         state['active_goal'] = {
             'intent': 'bug_hunt',
             'source': 'chat_direct',
-            'target': target or 'pending_plan',
+            'target': goal_target or 'pending_plan',
         }
         store_last_execution(
             state,
@@ -839,7 +943,7 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
                     if ok
                     else 'bug-hunt propose failed'
                 ),
-                'artifacts_changed': [target] if target else [],
+                'artifacts_changed': [goal_target] if goal_target else [],
             },
         )
         save_dialog_state(root, state)
@@ -961,6 +1065,17 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
         publish_done(root, started, ok=ok, result=learn_result)
         return learn_result
     if handler_id == 'release_check':
+        try:
+            from eurika.agent.live_activity import publish_thinking
+
+            publish_thinking(
+                root,
+                "release_check ./scripts/release_check.sh",
+                method="POST /api/chat",
+                client="chat",
+            )
+        except Exception:
+            pass
         exit_code = -1
         term_cmd = None
         if run_command_with_result is not None:
@@ -978,6 +1093,21 @@ def run_direct_handlers(handler_id: Optional[str], root: Path, msg: str, state: 
             exit_code = 0 if ok else 1
         state['last_release_check_output'] = output
         state['last_release_check_ok'] = ok
+        try:
+            from eurika.api.last_check import seal_check_verification
+
+            seal_check_verification(
+                root,
+                {
+                    "ok": ok,
+                    "runner": "release_check",
+                    "command": ["./scripts/release_check.sh"],
+                    "exit_code": exit_code,
+                    "output": output,
+                },
+            )
+        except Exception:
+            pass
         state['active_goal'] = {'intent': 'release_check', 'source': 'chat_direct', 'target': 'release_check'}
         store_last_execution(state, {'ok': ok, 'summary': 'release_check passed' if ok else 'release_check failed'})
         save_dialog_state(root, state)

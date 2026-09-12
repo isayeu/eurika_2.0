@@ -19,6 +19,7 @@ from eurika.utils.env import (
     load_project_dotenv,
     upsert_project_env_var,
 )
+from eurika.utils.json_io import as_dict
 from eurika.utils.llm_presets import (
     apply_llm_api_preset_env,
     detect_llm_api_preset,
@@ -97,12 +98,12 @@ def _market_brief(root: Path) -> Dict[str, Any]:
         return {"error": f"{type(exc).__name__}: {exc}"[:160]}
     if not isinstance(raw, dict):
         return {}
-    paper = raw.get("paper") if isinstance(raw.get("paper"), dict) else {}
-    live = raw.get("live") if isinstance(raw.get("live"), dict) else {}
-    model = raw.get("model") if isinstance(raw.get("model"), dict) else {}
-    portfolio = raw.get("portfolio") if isinstance(raw.get("portfolio"), dict) else {}
-    opens = raw.get("opens") if isinstance(raw.get("opens"), dict) else {}
-    heads = model.get("heads") if isinstance(model.get("heads"), dict) else {}
+    paper = as_dict(raw.get("paper"))
+    live = as_dict(raw.get("live"))
+    model = as_dict(raw.get("model"))
+    portfolio = as_dict(raw.get("portfolio"))
+    opens = as_dict(raw.get("opens"))
+    heads = as_dict(model.get("heads"))
     return {
         "trades": paper.get("count"),
         "accuracy": paper.get("accuracy"),
@@ -236,8 +237,11 @@ def apply_models_prefs(
             env_updates["CURSOR_OPTIMIZE_FOR"] = router
 
     if "timeout_sec" in prefs:
+        raw_timeout = prefs.get("timeout_sec")
+        if raw_timeout is None:
+            raise ValueError("timeout_sec must be an integer")
         try:
-            timeout = int(prefs.get("timeout_sec"))
+            timeout = int(raw_timeout)
         except (TypeError, ValueError) as exc:
             raise ValueError("timeout_sec must be an integer") from exc
         settings["chat_timeout_sec"] = max(10, min(timeout, 600))

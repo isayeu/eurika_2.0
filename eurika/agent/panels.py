@@ -200,7 +200,13 @@ class PanelService:
             raise RpcError(ERR_INVALID_PARAMS, "message must be a non-empty string")
         from eurika.api.chat import chat_send
 
-        result = chat_send(self.tools.root, message.strip(), persist_history=True)
+        terminal = params.get("terminalText") or params.get("client_terminal_text")
+        result = chat_send(
+            self.tools.root,
+            message.strip(),
+            persist_history=True,
+            client_terminal_text=str(terminal) if terminal not in (None, "") else None,
+        )
         if not isinstance(result, dict):
             return {"ok": False, "text": "", "error": "empty chat result"}
         text = str(result.get("text") or "")

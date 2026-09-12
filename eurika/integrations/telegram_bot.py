@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from eurika.api.fix_status import format_last_fix_status, is_apply_result_question
+from eurika.utils.json_io import as_list
 
 ChatSendFn = Callable[..., dict[str, Any]]
 
@@ -374,7 +375,7 @@ def format_approvals_status(project_root: Path) -> str:
     plan = load_pending_plan(root)
     if not plan:
         return "Approvals: пусто (нет `.eurika/pending_plan.json`)."
-    ops = plan.get("operations") if isinstance(plan.get("operations"), list) else []
+    ops = as_list(plan.get("operations"))
     pending = n_appr = n_rej = 0
     lines = ["Approvals (pending_plan):"]
     for op in ops:
@@ -597,8 +598,9 @@ def notify_approvals_pending(
             plan = load_pending_plan(root) or {}
             raw_ops = plan.get("operations")
             ops = [o for o in raw_ops if isinstance(o, dict)] if isinstance(raw_ops, list) else []
-            if patch_plan is None and isinstance(plan.get("patch_plan"), dict):
-                patch_plan = plan.get("patch_plan")  # type: ignore[assignment]
+            loaded_plan = plan.get("patch_plan")
+            if patch_plan is None and isinstance(loaded_plan, dict):
+                patch_plan = loaded_plan
             if not created_at:
                 created_at = str(plan.get("created_at") or "")
         pending = [
@@ -819,16 +821,21 @@ def extract_callback_update(
     cq_id = str(cq.get("id") or "").strip()
     msg = cq.get("message")
     chat: dict[str, Any] | None = None
-    if isinstance(msg, dict) and isinstance(msg.get("chat"), dict):
-        chat = msg.get("chat")  # type: ignore[assignment]
-    else:
+    if isinstance(msg, dict):
+        raw_chat = msg.get("chat")
+        if isinstance(raw_chat, dict):
+            chat = raw_chat
+    if chat is None:
         frm = cq.get("from")
         if isinstance(frm, dict) and frm.get("id") is not None:
             chat = {"id": frm.get("id")}
     if not isinstance(chat, dict):
         return None
+    raw_chat_id = chat.get("id")
+    if raw_chat_id is None:
+        return None
     try:
-        chat_id = int(chat.get("id"))
+        chat_id = int(raw_chat_id)
         update_id = int(update.get("update_id") or 0)
     except (TypeError, ValueError):
         return None

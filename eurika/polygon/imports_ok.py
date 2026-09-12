@@ -1,5 +1,4 @@
 """DRILL_UNUSED_IMPORTS: remove_unused_import — неиспользуемые импорты, fix удалит."""
-import os
 from pathlib import Path
 
 

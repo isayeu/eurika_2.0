@@ -98,12 +98,15 @@ def run_release_check(project_root: Path, timeout: int | None = None) -> Tuple[b
     if not script.exists():
         return (False, f"Скрипт не найден: {script}")
     try:
+        from eurika.utils.env import child_process_environ
+
         r = subprocess.run(
             ["bash", str(script)],
             cwd=str(root),
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=child_process_environ(),
         )
         out = ((r.stdout or "") + "\n" + (r.stderr or "")).strip()
         if r.returncode != 0 and not out:

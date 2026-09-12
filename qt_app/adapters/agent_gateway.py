@@ -21,14 +21,23 @@ class AgentGatewayMixin:
     def _root(self) -> Path:
         raise NotImplementedError
 
-    def agent_chat(self, message: str, *, session_id: str | None = None) -> dict[str, Any]:
+    def agent_chat(
+        self,
+        message: str,
+        *,
+        session_id: str | None = None,
+        client_terminal_text: str | None = None,
+    ) -> dict[str, Any]:
         """Local coding-agent loop (same /chat surface as Desktop)."""
         from eurika.agent.http_client import AgentHttpClient
 
         client = AgentHttpClient.discover(self._root())
+        context: dict[str, Any] = {"reviewInApprovals": True, "client": "qt"}
+        if (client_terminal_text or "").strip():
+            context["terminalText"] = str(client_terminal_text).strip()[-12000:]
         payload: dict[str, Any] = {
             "message": message,
-            "context": {"reviewInApprovals": True, "client": "qt"},
+            "context": context,
         }
         sid = session_id or self._agent_session_id
         if sid:

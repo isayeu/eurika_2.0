@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-import pytest
 
 from eurika.storage import ProjectMemory, get_recent_failures
 

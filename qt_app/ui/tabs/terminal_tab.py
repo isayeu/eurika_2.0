@@ -323,6 +323,23 @@ def _run_command_in_terminal(main: MainWindow, cmd: str, result_holder: list | N
         main.terminal_emulator_stop_btn.setEnabled(cmd_running)
         if result_holder is not None:
             result_holder[:] = [("".join(output_buffer), code)]
+        try:
+            from eurika.api.last_check import maybe_seal_terminal_quality_check
+
+            root = Path(
+                str(
+                    getattr(main, "_terminal_cwd", None)
+                    or (main.root_edit.text() or ".")
+                )
+            ).resolve()
+            maybe_seal_terminal_quality_check(
+                root,
+                command=cmd,
+                output="".join(output_buffer),
+                exit_code=int(code),
+            )
+        except Exception:
+            pass
 
     main._terminal_process = process
     process.readyReadStandardOutput.connect(lambda: _on_stdout(main, output_buffer, process))

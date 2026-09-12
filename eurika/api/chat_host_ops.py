@@ -3,8 +3,9 @@
 Protocol fence is only ``eurika-cmds`` (ordinary ``bash``/``python`` blocks are
 left for the UI Copy/Run chips). Commands run via ``bash -c`` in the project
 cwd with no binary allowlist. Project-tree writes (rm/tee/redirect/git write)
-are refused — code edits go through Approvals. OS package managers / services
-are allowed; sudo still goes through ``privilege_prompt``.
+are refused — code edits go through Approvals. Host admin is read-only by
+default: observe (status/journal/query) runs; mutate (install/start/reboot)
+is queued for HITL. Sudo still goes through ``privilege_prompt`` after approve.
 """
 
 from __future__ import annotations
@@ -224,6 +225,10 @@ _LISTING_NUDGE = (
     "Не гоняй pytest/ruff/mypy/pacman/release_check. Выведи только "
     "```eurika-cmds``` с `ls -la` (и при необходимости `find . -maxdepth 2` "
     "или `tree -L 2`), по одной в строке."
+)
+_RERUN_QUALITY_NUDGE = (
+    "ОШИБКА: пользователь уже прогнал проверку. Ответь только по "
+    "[Terminal output (Qt)]. Не выводи eurika-cmds с pytest/mypy/ruff/release_check."
 )
 # Model lists shell names instead of eurika-cmds / real facts.
 _HOST_ECHO_TOKENS = (
@@ -869,10 +874,10 @@ def tool_protocol_instructions(experience_snippet: str | None = None) -> str:
         "своими словами строго по этому выводу. "
         "Диагностика: определи дистрибутив из [Host identity]/usr/os-release, "
         "смотри journalctl/systemctl/dmesg/логи сервиса, состояние устройства "
-        "(lpstat/lsusb/…), затем предложи конкретный fix. Установка пакетов "
-        "(pacman/apt/dnf/…) — через eurika-cmds; UI спросит sudo/пароль. "
-        "Сначала диагностика и предложение, деструктивное (remove -R, format) — "
-        "спроси подтверждение. "
+        "(lpstat/lsusb/…). Host admin — read-only: status/journal/query "
+        "выполняются; install/start/stop/enable/reboot/radio off — очередь HITL "
+        "(«одобрить» / «применяй»), не автозапуск. sudo — отдельный диалог "
+        "после approve. Сначала диагностика и предложение. "
         "Не пиши «вы можете использовать netstat/ifconfig» и не упоминай Activity Monitor "
         "или macOS — хост Linux (см. [Host identity]). "
         "Успехи/статус обучения market ML — НЕ через `eurika scan` (это запахи кода). "
@@ -891,7 +896,9 @@ def tool_protocol_instructions(experience_snippet: str | None = None) -> str:
         "Не пиши в файлы *проекта* из eurika-cmds (нет `>`, `tee`, `rm` внутри repo, "
         "`sed -i`, Path.write_text): такие команды будут отказаны. Правки кода — "
         "через предложение diff / «применяй» / Cursor agent, не через shell. "
-        "Пакеты и сервисы ОС (pacman/apt/systemctl) — не «файлы проекта», их можно. "
+        "Наблюдение ОС (systemctl status, journalctl, pacman -Q/-Ss, nmcli show) "
+        "— можно. Мутации ОС (pacman -S, systemctl restart, reboot) — HITL, "
+        "не «файлы проекта» и не автозапуск. "
         "Обычные примеры кода показывай в ```bash``` / ```python``` — их увидит "
         "пользователь (Copy/Run), они НЕ запускаются автоматически. "
         "Сравнение файлов/ролей — таблицей GitHub (`| колонка |`), Qt рисует сетку; "
@@ -926,9 +933,9 @@ def tool_protocol_instructions(experience_snippet: str | None = None) -> str:
         "`cat /etc/os-release`, `journalctl -u … -n 50 --no-pager`, "
         "`systemctl status …`, `dmesg -T | tail`, профильные утилиты "
         "(lpstat/lpinfo, lsusb, bluetoothctl, nmcli) — не лекция «как проверить»\n"
-        "- не хватает пакета/драйвера → предложи команду дистрибутива "
-        "(`pacman -S …` / `apt install …` / …) в eurika-cmds; sudo спросит UI; "
-        "не ставь -R/--noconfirm на удаление без явного «да»\n"
+        "- не хватает пакета/драйвера → назови команду дистрибутива "
+        "(`pacman -S …` / `apt install …`); eurika-cmds поставит её в HITL "
+        "(«одобрить»), не выполнит сразу; sudo — после approve\n"
         "- вопрос про успехи/статус обучения market ML → "
         f"`{_MARKET_LEARNING_CMD}` "
         "(не `eurika scan`); если [Market facts] уже в промпте — не повторяй команду\n"
@@ -1180,11 +1187,19 @@ def _trim_out(out: str) -> str:
     return text
 
 
+_NO_SUDO_HOST_RE = re.compile(
+    r"^(?:ruff|mypy|pytest|python(?:3)?\s+-m\s+(?:ruff|mypy|pytest))\b",
+    re.IGNORECASE,
+)
+
+
 def _looks_like_privilege_error(exit_code: int, output: str) -> bool:
     if _PERM_HINT.search(output or ""):
         return True
+    # Do not treat a bare "root" (project_root, root.py) as a sudo failure —
+    # ruff/mypy findings often quote those identifiers and exit 1.
     return exit_code in (1, 13, 126) and bool(
-        re.search(r"denied|not permitted|root", output or "", re.I)
+        re.search(r"permission denied|not permitted|must be root", output or "", re.I)
     )
 
 
@@ -1261,6 +1276,8 @@ def run_host_command_with_privilege(
     wants_sudo, body = _strip_sudo_prefix(cmd)
     if not body:
         return HostCommandResult(126, "(empty command)")
+    if _NO_SUDO_HOST_RE.match(body):
+        return run_host_command(body, use_sudo=False, timeout=timeout, cwd=cwd)
 
     if wants_sudo:
         action, password = ask(
@@ -1356,6 +1373,7 @@ def run_llm_tool_loop(
     privilege_prompt: Optional[PrivilegePrompt] = None,
     cwd: str | None = None,
     user_message: str | None = None,
+    project_root: Path | None = None,
 ) -> Tuple[ToolLoopResult, Optional[str]]:
     """Run LLM ↔ host_shell until the model answers without asking for tools."""
     ask = call or _llm_call
@@ -1366,6 +1384,9 @@ def run_llm_tool_loop(
     worst = 0
     text = ""
     workdir = str(cwd) if cwd else None
+    admin_root = Path(project_root).resolve() if project_root is not None else (
+        Path(workdir).resolve() if workdir else None
+    )
     allowlist_nudge = (
         "ОШИБКА: бинарного allowlist больше нет. Не пиши отказы «вне allowlist» и не "
         "перечисляй amixer/bluetoothctl/wpctl. Нужен факт о машине — выведи блок "
@@ -1383,12 +1404,25 @@ def run_llm_tool_loop(
                 msg = (
                     f"$ {cmd}\n(exit 126)\n"
                     "отказ: команда меняет файлы проекта. Чтение — sed/grep/python -c print; "
-                    "пакеты/сервисы ОС (pacman/apt/systemctl) — разрешены (sudo через UI); "
+                    "наблюдение ОС (systemctl status, journalctl, pacman -Q) — можно; "
+                    "install/restart/reboot — HITL «одобрить»; "
                     "правка кода — diff / «применяй», не redirect и не write_text."
                 )
                 executed.append(cmd)
                 log_parts.append(msg)
                 obs.append(msg)
+                if worst == 0:
+                    worst = 126
+                continue
+            from eurika.api.host_admin import refuse_mutating_host_command
+
+            blocked = refuse_mutating_host_command(
+                cmd, project_root=admin_root, source="tool_loop"
+            )
+            if blocked is not None:
+                executed.append(cmd)
+                log_parts.append(blocked.output)
+                obs.append(blocked.output)
                 if worst == 0:
                     worst = 126
                 continue
@@ -1427,6 +1461,22 @@ def run_llm_tool_loop(
                 return _finalize(_fallback_answer_from_observations(observations)), None
             return _finalize(text), err
         cmds = extract_eurika_cmds(text)
+        if (
+            cmds
+            and not final_step
+            and _RERUN_QUALITY_NUDGE not in observations
+        ):
+            try:
+                from eurika.api.chat_direct import is_read_terminal_request
+
+                asks_review = is_read_terminal_request(user_message or "")
+            except Exception:
+                asks_review = False
+            if asks_review and any(
+                _LISTING_OFFTOPIC_CMD_RE.match(c.strip()) for c in cmds
+            ):
+                observations.append(_RERUN_QUALITY_NUDGE)
+                continue
         if not cmds and not has_tool_call(text):
             if (
                 not executed

@@ -21,8 +21,54 @@ def detect_remember_recall(msg_raw: str, msg: str) -> Optional[Tuple[str, str]]:
     return None
 
 
+def detect_create_project(msg: str) -> Optional[Tuple[str, Optional[str]]]:
+    """Detect Project Creation pipeline intent. Returns (handler_id, path_or_None).
+
+    Must run before ``detect_create`` so «создай проект foo.py» is not a file create.
+    """
+    low = (msg or "").strip().lower()
+    if not low:
+        return None
+    # Bare / help forms — no path yet
+    bare = (
+        "создай проект",
+        "создай новый проект",
+        "create project",
+        "new project",
+        "init project",
+        "eurika init",
+        "инициализируй проект",
+    )
+    if low.rstrip("?.!") in bare:
+        return ("create_project", None)
+    patterns = [
+        r"(?:создай|создать)\s+(?:новый\s+)?проект\s+(?:в\s+)?([^\s].+)$",
+        r"(?:create|new)\s+project\s+(?:at\s+|in\s+)?([^\s].+)$",
+        r"(?:init(?:ialize)?\s+project|eurika\s+init)\s+([^\s].+)$",
+        r"(?:инициализируй|инициализировать)\s+проект\s+(?:в\s+)?([^\s].+)$",
+    ]
+    for pat in patterns:
+        m = re.search(pat, msg.strip(), re.IGNORECASE)
+        if m:
+            target = m.group(1).strip().rstrip("?.!")
+            # Drop trailing fluff
+            target = re.sub(
+                r"\s+(?:пожалуйста|please|и\s+открой.*)$",
+                "",
+                target,
+                flags=re.IGNORECASE,
+            ).strip()
+            if target and target.lower() not in {"пожалуйста", "please"}:
+                return ("create_project", target)
+            return ("create_project", None)
+    return None
+
+
 def detect_create(msg: str) -> Optional[Tuple[str, str]]:
     """Detect create (empty file) intent."""
+    # Project creation wins over empty-file create.
+    if detect_create_project(msg) is not None:
+        return None
     create_patterns = [
         r'(?:создай|create)\s+(?:пустой\s+)?(?:файл\s+)?([a-zA-Z0-9_/.\\-]+\.[a-zA-Z0-9]+)',
         r'(?:создай|create)\s+(?:файл\s+)?([a-zA-Z0-9_/.\\-]+\.[a-zA-Z0-9]+)',
@@ -123,7 +169,7 @@ def detect_refactor(msg_raw: str, msg: str) -> Optional[Tuple[str, str]]:
 
 
 def detect_run(msg_raw: str, msg: str) -> Optional[Tuple[str, str]]:
-    """Detect run_tests, run_lint, run_command intents."""
+    """Detect run_tests, run_lint, run_mypy, run_command intents."""
     test_run = re.search(
         r"(?:запусти|прогони|проверь|run)\s+(?:тест(?:ы)?|tests?)\s*([a-zA-Z0-9_./\\:-]+)?",
         msg_raw, re.IGNORECASE,
@@ -135,6 +181,17 @@ def detect_run(msg_raw: str, msg: str) -> Optional[Tuple[str, str]]:
         return ("run_tests", (m.group(1).strip() if m else ""))
     if re.search(r"(?:запусти|run)\s+(?:линтер|lint)\b", msg, re.IGNORECASE):
         return ("run_lint", "")
+    if re.search(r"\b(?:ruff|линтер|linter)\b", msg, re.IGNORECASE) or re.search(
+        r"(?:проведи|прогони|проверь|запусти|run)\s+lint\b", msg, re.IGNORECASE
+    ):
+        return ("run_lint", "")
+    # Type-check only. "mypy … исправь ошибки" stays with the coding-agent / follow-up.
+    if not re.search(r"исправ|поправ|\bfix\b|implement|реализуй", msg, re.IGNORECASE) and (
+        re.search(r"\bmypy\b", msg, re.IGNORECASE)
+        or re.search(r"проверк\w*\s+тип", msg, re.IGNORECASE)
+        or re.search(r"\btype[\s-]?check\b", msg, re.IGNORECASE)
+    ):
+        return ("run_mypy", "")
     cmd_run = re.search(r"(?:запусти|выполни|run|execute)\s+(?:команд[ау]\s+)?(.+)$", msg_raw, re.IGNORECASE)
     if cmd_run:
         cmd = cmd_run.group(1).strip()

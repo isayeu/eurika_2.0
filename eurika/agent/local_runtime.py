@@ -208,7 +208,7 @@ class LocalAgentRuntime:
             if tests_only:
                 observations.append(
                     {
-                        "error": "tests/ and docs/ are not the implementation",
+                        "error": "tests/ are not the implementation",
                         "paths": tests_only,
                         "hint": "Cite a production file from TOOL_OBSERVATIONS (eurika/). Search initialize/capabilities if needed.",
                     }
@@ -321,6 +321,26 @@ class LocalAgentRuntime:
         if not isinstance(arguments, dict):
             raise RpcError(ERR_INVALID_PARAMS, "tool arguments must be an object")
         emit("tool/started", session.id, {"callId": call_id, "tool": name, "arguments": arguments})
+        try:
+            from .live_activity import publish_thinking
+
+            detail = ""
+            if isinstance(arguments, dict):
+                detail = str(
+                    arguments.get("path")
+                    or arguments.get("name")
+                    or arguments.get("query")
+                    or ""
+                )
+            publish_thinking(
+                self.workspace_root,
+                f"{name} {detail}".strip(),
+                method="session/chat",
+                client="agent",
+                message=detail,
+            )
+        except Exception:
+            pass
 
         def tool_emit(event: str, data: dict[str, Any]) -> None:
             emit(event, session.id, {"callId": call_id, "tool": name, **data})

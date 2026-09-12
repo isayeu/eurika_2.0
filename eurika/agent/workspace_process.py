@@ -31,6 +31,10 @@ class WorkspaceProcessMixin:
     def _approved(self, args: dict[str, Any], operation: str) -> None:
         raise NotImplementedError
 
+    def _check_cancel(self, cancel: threading.Event) -> None:
+        if cancel.is_set():
+            raise RpcError(ERR_CANCELLED, "Request cancelled")
+
     def _run_process(
         self,
         argv: list[str],
@@ -42,6 +46,8 @@ class WorkspaceProcessMixin:
     ) -> dict[str, Any]:
         started = time.monotonic()
         try:
+            from eurika.utils.env import child_process_environ
+
             process = subprocess.Popen(
                 argv,
                 cwd=cwd,
@@ -50,6 +56,7 @@ class WorkspaceProcessMixin:
                 stderr=subprocess.PIPE,
                 text=True,
                 shell=False,
+                env=child_process_environ(),
             )
         except OSError as exc:
             raise RpcError(ERR_TOOL_FAILED, f"Could not start command: {exc}") from exc
@@ -107,3 +114,48 @@ class WorkspaceProcessMixin:
         argv = [sys.executable, "-m", "pytest", *targets, *extra]
         timeout_ms = max(1, min(int(args.get("timeoutMs", 300_000)), 3_600_000))
         return self._run_process(argv, cwd=self.root, timeout_ms=timeout_ms, cancel=cancel, emit=emit)
+
+    def skill(self, args: dict[str, Any], *, cancel: threading.Event, emit: EventSink) -> dict[str, Any]:
+        """Named product rituals — same implementations as Chat handlers, as a tool."""
+        self._check_cancel(cancel)
+        name = str(args.get("name") or "").strip()
+        allowed = {"release_check", "scan", "ritual", "self_check", "self_model"}
+        if name not in allowed:
+            raise RpcError(ERR_INVALID_PARAMS, f"Unknown skill: {name}")
+        emit("skill/started", {"name": name})
+        if name == "release_check":
+            from eurika.api.chat_tools import run_release_check
+            from eurika.api.last_check import seal_check_verification
+
+            ok, output = run_release_check(self.root)
+            seal_check_verification(
+                self.root,
+                {
+                    "ok": ok,
+                    "runner": "release_check",
+                    "command": ["./scripts/release_check.sh"],
+                    "exit_code": 0 if ok else 1,
+                    "output": output,
+                },
+            )
+            return {"ok": ok, "name": name, "output": (output or "")[-8000:]}
+        if name == "scan":
+            from eurika.api.chat_tools import run_eurika_command
+
+            ok, output = run_eurika_command(self.root, "scan")
+            return {"ok": ok, "name": name, "output": (output or "")[-8000:]}
+        if name == "ritual":
+            from eurika.api.chat_tools import run_eurika_ritual
+
+            ok, output = run_eurika_ritual(self.root)
+            return {"ok": ok, "name": name, "output": (output or "")[-8000:]}
+        if name == "self_check":
+            from eurika.api.chat_tools import run_eurika_command
+
+            ok, output = run_eurika_command(self.root, "self-check")
+            return {"ok": ok, "name": name, "output": (output or "")[-8000:]}
+        from eurika.api.self_model import format_self_model_text, load_self_model
+
+        snap = load_self_model(self.root, refresh=True, persist=True)
+        text = format_self_model_text(snap, mode="full")
+        return {"ok": True, "name": name, "output": text}

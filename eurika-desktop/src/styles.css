@@ -243,7 +243,20 @@ main {
   color: #8b949e;
 }
 .models-keys span.ok { color: #7ee787; }
+#chat-thinking {
+  flex: 0 0 auto;
+  margin: 0 10px 8px;
+  color: #94a3b8;
+  font-size: 13px;
+}
+#chat-thinking pre {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+}
 #messages .message { margin: 8px 0; padding: 8px; border-radius: 6px; background: #1b1f27; }
+.message.thinking { color: #94a3b8; font-size: 13px; }
 .message.user { background: #202b3a; }
 .message p {
   white-space: pre-wrap;
@@ -295,20 +308,6 @@ main {
 }
 #idle-self-dev-label input {
   margin: 0;
-}
-#chat-mode {
-  display: flex;
-  gap: 12px;
-  padding: 2px 8px 0;
-  flex: 0 0 auto;
-  font-size: 12px;
-  color: #a8b0bd;
-}
-#chat-mode label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  user-select: none;
 }
 #prompt-wrap {
   grid-column: 1 / -1;

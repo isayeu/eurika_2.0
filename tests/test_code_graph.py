@@ -1,6 +1,6 @@
 """Tests for eurika.knowledge.code_graph (R10, KNOWLEDGE_GRAPH_DESIGN)."""
 
-from eurika.knowledge import CodeGraph, build_code_graph
+from eurika.knowledge import build_code_graph
 
 
 def test_build_code_graph_empty() -> None:

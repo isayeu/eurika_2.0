@@ -52,4 +52,7 @@ def handle_bug_hunt(args: Any) -> int:
             snippet["web"] = True
         print()
         print(json.dumps(snippet, ensure_ascii=False, indent=2))
-    return int(payload.get("return_code") if payload.get("return_code") is not None else (0 if payload.get("ok") else 1))
+    raw_rc = payload.get("return_code")
+    if raw_rc is None:
+        return 0 if payload.get("ok") else 1
+    return int(raw_rc)

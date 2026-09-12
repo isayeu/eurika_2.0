@@ -443,9 +443,9 @@ def _is_trivial_call_wrapper_body(body: List[ast.stmt]) -> bool:
             and _is_forwarding_call(stmt.value)
         ):
             return True
-        if isinstance(stmt, ast.AnnAssign) and _is_forwarding_call(stmt.value):
+        if isinstance(stmt, ast.AnnAssign) and stmt.value is not None and _is_forwarding_call(stmt.value):
             return True
-        if isinstance(stmt, ast.Return) and _is_forwarding_call(stmt.value):
+        if isinstance(stmt, ast.Return) and stmt.value is not None and _is_forwarding_call(stmt.value):
             return True
         return False
 
@@ -628,11 +628,59 @@ def _is_trivial_guard_body(body: List[ast.stmt]) -> bool:
     return has_raise
 
 
+def _is_copyish_expr(node: ast.expr) -> bool:
+    """True for constants, names, and ``obj.get(...)`` — not computed config."""
+    if isinstance(node, (ast.Constant, ast.Name)):
+        return True
+    if isinstance(node, ast.Attribute):
+        return _is_copyish_expr(node.value)
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        return _is_copyish_expr(node.operand)
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        return node.func.attr == "get"
+    return False
+
+
+def _is_trivial_dict_snippet_body(body: List[ast.stmt]) -> bool:
+    """True when body only copies constants/.get into one dict (JSON snippet).
+
+    Idle bug-hunt parked ``handle_prove_cycle`` ``if propose: snippet[k]=…``.
+    Must NOT match real config like ``kwargs["model"] = … if str(model)…``.
+    """
+    if not body:
+        return False
+    dict_names: Set[str] = set()
+
+    def _walk(stmts: List[ast.stmt]) -> bool:
+        for stmt in stmts:
+            if isinstance(stmt, ast.If):
+                if not _walk(list(stmt.body)):
+                    return False
+                orelse = list(getattr(stmt, "orelse", None) or [])
+                if orelse and not _walk(orelse):
+                    return False
+                continue
+            if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1:
+                target = stmt.targets[0]
+                if (
+                    isinstance(target, ast.Subscript)
+                    and isinstance(target.value, ast.Name)
+                    and _is_copyish_expr(stmt.value)
+                ):
+                    dict_names.add(target.value.id)
+                    continue
+            return False
+        return True
+
+    return _walk(body) and len(dict_names) == 1
+
+
 def _is_low_value_extract_body(body: List[ast.stmt]) -> bool:
     return (
         _is_trivial_call_wrapper_body(body)
         or _is_trivial_presentation_body(body)
         or _is_trivial_guard_body(body)
+        or _is_trivial_dict_snippet_body(body)
     )
 
 def _line_indent(line: str) -> str:

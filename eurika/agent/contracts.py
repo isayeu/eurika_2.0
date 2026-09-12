@@ -232,6 +232,31 @@ TOOL_CONTRACTS: dict[str, dict[str, Any]] = {
             },
         },
     },
+    "skill": {
+        "description": (
+            "Run a named Eurika project ritual: release_check, scan, ritual, "
+            "self_check, or self_model. Use this instead of guessing output. "
+            "Do not call skill=release_check if the user already ran it in Terminal."
+        ),
+        "mutatesWorkspace": False,
+        "requiresApproval": False,
+        "inputSchema": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "enum": [
+                        "release_check",
+                        "scan",
+                        "ritual",
+                        "self_check",
+                        "self_model",
+                    ],
+                }
+            },
+        },
+    },
     "market_status": {
         "description": (
             "Read the current Eurika paper-Market, portfolio, open-position, "

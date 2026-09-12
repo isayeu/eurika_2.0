@@ -139,7 +139,8 @@ def _drill_ok_counts(
         blob = stamp if isinstance(stamp, dict) else None
         if blob is None and project_root is not None:
             blob = load_stamp(project_root)
-        raw = blob.get("drill_ok") if isinstance(blob, dict) else {}
+        raw_ok = blob.get("drill_ok") if isinstance(blob, dict) else None
+        raw = raw_ok if isinstance(raw_ok, dict) else {}
     out: dict[str, int] = {}
     if not isinstance(raw, dict):
         return out
@@ -418,12 +419,13 @@ def maybe_run(
         }
 
     propose_fn = run_propose or run_prove_propose
-    publish_done = None
+    notify_done: Any = None
     started: dict[str, Any] | None = None
     try:
         try:
             from eurika.agent.live_activity import publish_done, publish_start
 
+            notify_done = publish_done
             started = publish_start(
                 root,
                 method="idle_self_dev",
@@ -437,7 +439,7 @@ def maybe_run(
             )
         except Exception:
             started = None
-            publish_done = None  # type: ignore[assignment]
+            notify_done = None
 
         _announce_progress(
             root,
@@ -504,9 +506,9 @@ def maybe_run(
                 )
             except Exception:
                 pass
-            if started is not None and publish_done is not None:
+            if started is not None and notify_done is not None:
                 try:
-                    publish_done(
+                    notify_done(
                         root,
                         started,
                         ok=False,
@@ -587,9 +589,9 @@ def maybe_run(
             )
         except Exception:
             pass
-        if started is not None and publish_done is not None:
+        if started is not None and notify_done is not None:
             try:
-                publish_done(
+                notify_done(
                     root,
                     started,
                     ok=ok,

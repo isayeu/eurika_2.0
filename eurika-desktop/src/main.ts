@@ -19,9 +19,13 @@ type PendingCall = {
   proposal?: Proposal;
 };
 type ChatResult = {
-  text: string;
+  text?: string;
+  error?: string;
   pendingToolCalls?: PendingCall[];
   approvalsQueued?: number;
+  terminal_cmd?: string;
+  terminal_output?: string;
+  open_project?: string;
 };
 
 const filesElement = required("files");
@@ -58,6 +62,7 @@ let currentPendingCall: PendingCall | undefined;
 let currentProposalSelection = new Set<string>();
 let chatRequestId: string | undefined;
 let streamMessage: HTMLElement | undefined;
+let thinkingSteps: string[] = [];
 let fileTree: FileTreeNode[] = [];
 const activeToolCalls = new Map<string, { tool: string; arguments?: Record<string, unknown> }>();
 const expandedFolders = new Set<string>();
@@ -208,18 +213,22 @@ async function pollLiveActivity(): Promise<void> {
       const key = `${event.id ?? ""}:${event.phase ?? ""}`;
       if (seenActivityKeys.has(key)) continue;
       seenActivityKeys.add(key);
-      if (event.client === "agent" && event.kind !== "http") continue;
       const isSelfDev =
         event.client === "idle_self_dev" || event.method === "idle_self_dev";
       const title = event.title || event.method || "API";
+      if (event.client === "agent" && event.kind !== "http") {
+        if (event.phase === "progress" || event.phase === "start") {
+          appendThinking(title);
+        }
+        continue;
+      }
       if (event.phase === "start" || event.phase === "progress" || event.kind === "http") {
-        const line = isSelfDev
-          ? title.startsWith("саморазвитие")
-            ? title
-            : `[саморазвитие] ${title}`
-          : `[API] ${title}`;
-        terminal.writeln(line);
-        appendMessage("assistant", line);
+        if (isSelfDev) {
+          const line = title.startsWith("саморазвитие") ? title : `[саморазвитие] ${title}`;
+          terminal.writeln(line);
+        } else {
+          appendThinking(title);
+        }
       }
       if (event.phase === "done" && isSelfDev) {
         const doneText = (event.text || title || "").trim();
@@ -451,13 +460,77 @@ function appendMessage(role: string, text: string): HTMLElement {
   const item = document.createElement("div");
   item.className = `message ${role}`;
   const label = document.createElement("strong");
-  label.textContent = role === "user" ? "You" : "Eurika";
+  label.textContent = role === "user" ? "You" : role === "thinking" ? "Thinking" : "Eurika";
   const body = document.createElement("p");
   body.textContent = text;
   item.append(label, body);
   messagesElement.append(item);
   messagesElement.scrollTop = messagesElement.scrollHeight;
   return item;
+}
+
+function thinkingPanel(): HTMLDetailsElement {
+  return required("chat-thinking") as HTMLDetailsElement;
+}
+
+function formatThinkingStep(raw: string): string {
+  let text = raw.replace(/^Thinking(?:\s*·\s*|\s+)/, "").trim();
+  if (/^модель\b/i.test(text)) {
+    return text.replace(/^модель\s*/i, "Model").trim() || "Model";
+  }
+  const mapping: Array<[RegExp, string]> = [
+    [/^read /i, "Read "],
+    [/^search /i, "Grepped "],
+    [/^edit /i, "Edited "],
+    [/^skill /i, "Running "],
+    [/^tests /i, "Tests "],
+    [/^terminal /i, "Terminal "],
+  ];
+  for (const [re, label] of mapping) {
+    if (re.test(text)) return text.replace(re, label);
+  }
+  return text;
+}
+
+function beginThinking(): void {
+  thinkingSteps = [];
+  const panel = thinkingPanel();
+  required("chat-thinking-steps").textContent = "";
+  panel.hidden = false;
+  panel.open = true;
+  if (streamMessage) streamMessage.before(panel);
+  else messagesElement.append(panel);
+}
+
+function appendThinking(raw: string): void {
+  const text = formatThinkingStep(raw);
+  if (!text || thinkingSteps[thinkingSteps.length - 1] === text) return;
+  thinkingSteps.push(text);
+  const panel = thinkingPanel();
+  required("chat-thinking-steps").textContent = thinkingSteps.join("\n");
+  panel.hidden = false;
+  panel.open = true;
+  if (streamMessage && panel.parentElement !== messagesElement) {
+    streamMessage.before(panel);
+  }
+}
+
+function finishThinking(): void {
+  const panel = thinkingPanel();
+  if (thinkingSteps.length) {
+    const parked = panel.cloneNode(true) as HTMLDetailsElement;
+    parked.removeAttribute("id");
+    parked.querySelector("#chat-thinking-steps")?.removeAttribute("id");
+    parked.open = false;
+    parked.hidden = false;
+    parked.classList.add("message", "thinking");
+    panel.before(parked);
+  }
+  thinkingSteps = [];
+  required("chat-thinking-steps").textContent = "";
+  panel.hidden = true;
+  panel.open = false;
+  proposalElement.before(panel);
 }
 
 function setChatBusy(busy: boolean, cancellable = true): void {
@@ -469,11 +542,6 @@ function updateStream(text: string): void {
   const body = streamMessage?.querySelector("p");
   if (body) body.textContent = text;
   messagesElement.scrollTop = messagesElement.scrollHeight;
-}
-
-function chatMode(): "eurika" | "agent" {
-  const selected = document.querySelector<HTMLInputElement>('input[name="chat-mode"]:checked');
-  return selected?.value === "agent" ? "agent" : "eurika";
 }
 
 function extractAtToken(text: string, cursor: number): { at: number; prefix: string } | null {
@@ -590,21 +658,25 @@ async function sendChat(message: string): Promise<void> {
   if (chatRequestId) {
     throw new Error("A chat request is already running");
   }
-  if (chatMode() === "eurika") {
-    await sendProductChat(message);
-    return;
-  }
   appendMessage("user", message);
   streamMessage = appendMessage("assistant", "…");
+  beginThinking();
+  appendThinking("печатает…");
   const requestId = `chat-${Date.now()}`;
   chatRequestId = requestId;
   setChatBusy(true);
   try {
-    const result = await window.eurika.request<ChatResult>("session/chat", {
+    const result = await window.eurika.request<ChatResult>("chat/send", {
       message,
       context: chatAgentContext(),
     }, requestId);
-    updateStream(result.text);
+    const text = String(result.text ?? result.error ?? "");
+    updateStream(text);
+    if (result.terminal_cmd) terminal.writeln(String(result.terminal_cmd));
+    if (result.terminal_output) terminal.writeln(String(result.terminal_output));
+    if (result.open_project) {
+      terminal.writeln(`[open_project] ${result.open_project} — Open workspace to switch`);
+    }
     await renderChatResult(result, { skipText: true });
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error);
@@ -613,41 +685,7 @@ async function sendChat(message: string): Promise<void> {
   } finally {
     if (chatRequestId === requestId) chatRequestId = undefined;
     streamMessage = undefined;
-    setChatBusy(false);
-  }
-}
-
-async function sendProductChat(message: string): Promise<void> {
-  appendMessage("user", message);
-  streamMessage = appendMessage("assistant", "…");
-  setChatBusy(true, false);
-  try {
-    const result = await window.eurika.request<{
-      ok?: boolean;
-      text?: string;
-      error?: string;
-      terminal_cmd?: string;
-      terminal_output?: string;
-      open_project?: string;
-    }>("chat/send", { message });
-    const text = String(result.text ?? result.error ?? "");
-    updateStream(text);
-    if (result.terminal_cmd) terminal.writeln(String(result.terminal_cmd));
-    if (result.terminal_output) terminal.writeln(String(result.terminal_output));
-    const approvals = await window.eurika.request<{
-      data?: { operations?: unknown[] };
-    }>("panel/state", { panel: "approvals" });
-    const queued = Array.isArray(approvals.data?.operations) ? approvals.data.operations.length : 0;
-    if (queued > 0) {
-      await showPanel("approvals");
-    } else {
-      await showPanel("context");
-    }
-    if (result.open_project) {
-      terminal.writeln(`[open_project] ${result.open_project} — Open workspace to switch`);
-    }
-  } finally {
-    streamMessage = undefined;
+    finishThinking();
     setChatBusy(false);
   }
 }
@@ -658,7 +696,7 @@ async function cancelChat(): Promise<void> {
 }
 
 async function renderChatResult(result: ChatResult, options: { skipText?: boolean } = {}): Promise<void> {
-  if (!options.skipText) appendMessage("assistant", result.text);
+  if (!options.skipText) appendMessage("assistant", String(result.text ?? result.error ?? ""));
   const edit = result.pendingToolCalls?.find((call) => call.proposal);
   if (edit?.proposal) renderProposal(await hydrateProposal(edit.proposal), edit);
   for (const call of result.pendingToolCalls ?? []) {
@@ -1502,6 +1540,10 @@ window.eurika.onEvent((raw) => {
     updateStream(text);
   } else if (event === "tool/started" && data?.callId && data?.tool) {
     activeToolCalls.set(data.callId, { tool: data.tool, arguments: data.arguments });
+    const detail = String(
+      data.arguments?.path ?? data.arguments?.name ?? data.arguments?.query ?? "",
+    );
+    appendThinking(`${data.tool} ${detail}`.trim());
   } else if (event === "tool/completed" && data?.callId && data?.tool) {
     const started = activeToolCalls.get(data.callId);
     activeToolCalls.delete(data.callId);

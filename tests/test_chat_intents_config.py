@@ -30,6 +30,16 @@ def test_defaults_apply_for_arbitrary_project(tmp_path: Path) -> None:
     assert match_direct_intent(tmp_path, "сколько всего там файлов?") == ("file_recount", None)
     assert match_direct_intent(tmp_path, "ты пересчитала файлы?") == ("file_recount", None)
     assert match_direct_intent(tmp_path, "что у нас дальше по развитию проекта?") == ("roadmap_next", None)
+    from eurika.api.chat_direct import is_short_backlog_request, resolve_direct_handler
+
+    assert is_short_backlog_request("что у нас дальше по развитию проекта?")
+    long_h3 = (
+        "Следующий шаг — H3. Длинная нить: модель держит вопрос и docs, "
+        "не обрывается на 4 репликах и не уезжает в last_check.\n"
+        "что будешь делать?"
+    )
+    assert is_short_backlog_request(long_h3) is False
+    assert resolve_direct_handler(tmp_path, long_h3)[0] != "roadmap_next"
 
 
 def test_neskolko_failov_is_not_file_recount(tmp_path: Path) -> None:
@@ -319,6 +329,8 @@ def test_git_status_not_commit_handler(tmp_path: Path) -> None:
     assert resolve_direct_handler(tmp_path, "git diff")[0] == "host_shell"
     assert resolve_direct_handler(tmp_path, "покажи diff")[0] is None
     assert resolve_direct_handler(tmp_path, "собери коммит")[0] == "git_commit"
+    assert resolve_direct_handler(tmp_path, "собери полный коммит и запуш")[0] == "git_commit"
+    assert is_git_commit_request("собери полный коммит и запуш") is True
     assert resolve_direct_handler(tmp_path, "закоммить и запушь")[0] == "git_commit"
     assert resolve_direct_handler(tmp_path, "запушь")[0] == "git_push"
 
@@ -329,7 +341,6 @@ def test_long_eval_brief_does_not_hijack_git_or_reject(tmp_path: Path) -> None:
         is_git_commit_request,
         is_git_push_request,
         is_reject_confirmation,
-        is_roadmap_verify_request,
         resolve_direct_handler,
     )
 

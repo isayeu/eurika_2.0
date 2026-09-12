@@ -87,17 +87,26 @@ def dispatch_api_post(handler, project_root: Path, path: str, body: dict | None)
                 if content is not None and not isinstance(content, str):
                     _json_response(handler, {'error': 'invalid history payload', 'hint': 'history item content must be string'}, status=400)
                     return True
-        from eurika.api.chat import chat_send
+        from eurika.api.chat_entry import handle_http_chat
         from eurika.agent.live_activity import publish_done, publish_start
 
         client = "http"
         if isinstance(body.get("client"), str) and body["client"].strip():
             client = body["client"].strip()[:40]
+        terminal = body.get("client_terminal_text") or body.get("terminalText")
+        if not isinstance(terminal, str):
+            terminal = None
         started = publish_start(
             project_root, "POST /api/chat", {"message": message}, client=client
         )
         try:
-            result = chat_send(project_root, message, history=history)
+            result = handle_http_chat(
+                project_root,
+                message,
+                history=history,
+                client_terminal_text=terminal,
+                agent_runtime=getattr(handler, "eurika_runtime", None),
+            )
         except Exception as exc:
             publish_done(project_root, started, ok=False, error=str(exc))
             raise

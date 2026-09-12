@@ -14,8 +14,21 @@ def run_critic_pass(
     runtime_mode: str,
     project_root: Path | None = None,
 ) -> tuple[list[OperationRecord], list[dict[str, Any]]]:
-    """Attach critic verdict to each operation before apply."""
+    """Attach critic verdict to each operation before apply.
+
+    Hard rules first; then soft critic/decision coupling (A/B + hypotheses)
+    may escalate allow→review — never hard-deny from coupling alone.
+    """
     from eurika.agent import is_whitelisted_for_auto
+
+    coupling_signals: dict[str, Any] | None = None
+    if project_root is not None:
+        try:
+            from eurika.api.critic_coupling import load_critic_coupling_signals
+
+            coupling_signals = load_critic_coupling_signals(project_root)
+        except Exception:
+            coupling_signals = None
 
     updated: list[OperationRecord] = []
     decisions: list[dict[str, Any]] = []
@@ -57,6 +70,25 @@ def run_critic_pass(
                 verdict = "review"
                 reason = "structural refactor requires review"
 
+        # Soft decision coupling (beyond hard rules).
+        if coupling_signals is not None and verdict != "deny":
+            try:
+                from eurika.api.critic_coupling import couple_critic_verdict
+
+                verdict, reason, stamp = couple_critic_verdict(
+                    op2,
+                    verdict=verdict,
+                    reason=reason,
+                    signals=coupling_signals,
+                    whitelisted_auto=whitelisted_auto,
+                )
+                if stamp:
+                    op2.update(stamp)
+                if stamp.get("critic_coupling_v0"):
+                    op2["decision_source"] = "critic_coupling"
+            except Exception:
+                pass
+
         op2["critic_verdict"] = verdict
         op2["critic_reason"] = reason
         op2["decision_source"] = op2.get("decision_source", "policy")
@@ -74,6 +106,8 @@ def run_critic_pass(
                 "verdict": verdict,
                 "reason": reason,
                 "risk": risk,
+                "critic_coupling_v0": bool(op2.get("critic_coupling_v0")),
+                "critic_coupling_triggers": op2.get("critic_coupling_triggers"),
             }
         )
     return updated, decisions

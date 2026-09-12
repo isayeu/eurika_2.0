@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-import pytest
 
 from eurika.reasoning.priority_decay import apply_decay
 

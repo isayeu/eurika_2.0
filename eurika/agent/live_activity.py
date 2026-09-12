@@ -194,6 +194,30 @@ def publish_progress(
     )
 
 
+def publish_thinking(
+    workspace: Path,
+    title: str,
+    *,
+    method: str = "session/chat",
+    client: str = "agent",
+    message: str = "",
+) -> dict[str, Any]:
+    """One expandable Thinking step (CR-H5). Never raises into the request path."""
+    label = (title or "").strip() or "working"
+    if not label.startswith("Thinking"):
+        label = f"Thinking · {label}"
+    try:
+        return publish_progress(
+            workspace,
+            method=method,
+            title=label,
+            client=client,
+            message=message,
+        )
+    except Exception:
+        return {}
+
+
 def publish_done(
     workspace: Path,
     started: dict[str, Any] | None,

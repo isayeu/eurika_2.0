@@ -7,7 +7,7 @@ import shutil
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from eurika.api.chat_host_ops import PrivilegeAction, PrivilegePrompt
 from PySide6.QtCore import QMimeData, QObject, QPoint, Qt, QThread, Signal, Slot
@@ -878,6 +878,7 @@ class ChatWorker(QThread):
     failed = Signal(str)
     cancelled = Signal()
     system_action_occurred = Signal(str)
+    terminal_chunk = Signal(str)
 
     def __init__(
         self,

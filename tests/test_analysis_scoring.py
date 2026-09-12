@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from eurika.analysis.graph import ProjectGraph
 from eurika.analysis.scoring import compute_architecture_scores

@@ -6,6 +6,20 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 
+def has_pending_plan(project_root: Path) -> bool:
+    """R4 facade: chat/api callers must not reach into eurika.orchestration."""
+    from eurika.orchestration.team_mode import has_pending_plan as _has_pending_plan
+
+    return _has_pending_plan(Path(project_root))
+
+
+def load_pending_plan(project_root: Path) -> Dict[str, Any] | None:
+    """R4 facade: raw pending plan for chat/context panels (None when unreadable)."""
+    from eurika.orchestration.team_mode import load_pending_plan as _load_pending_plan
+
+    return _load_pending_plan(Path(project_root))
+
+
 def get_pending_plan(project_root: Path) -> Dict[str, Any]:
     """Load pending plan from .eurika/pending_plan.json for approve UI (ROADMAP 3.5.6)."""
     from eurika.orchestration.team_mode import has_pending_plan, load_pending_plan

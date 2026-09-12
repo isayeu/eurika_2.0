@@ -65,6 +65,16 @@ def store_last_execution(state: Dict[str, Any], report: Dict[str, Any]) -> None:
     for key in ("host_log", "host_cmds", "host_reply", "host_topic"):
         if key in report and report.get(key) is not None:
             state["last_execution"][key] = report.get(key)
+    if isinstance(report.get("verification"), dict):
+        ver = report["verification"]
+        if ver.get("log_path") or ver.get("runner"):
+            state["last_execution"]["verify"] = {
+                "runner": ver.get("runner"),
+                "ok": ver.get("ok"),
+                "exit_code": ver.get("exit_code"),
+                "log_path": ver.get("log_path") or ".eurika/last_check.log",
+                "error_count": ver.get("error_count"),
+            }
 
 
 def _fmt_verification_ok(value: object) -> str:
@@ -76,7 +86,7 @@ def _fmt_verification_ok(value: object) -> str:
 _TRIVIAL_EXEC_NOTES: dict[str, str] = {
     "root listing fetched": (
         "Это был просто `ls` корня проекта — не шаг разработки. "
-        "Дальше: «приступай» (VISION A1) или новая задача."
+        "Дальше: «приступай» (DEVELOPMENT.md) или новая задача."
     ),
     "project tree fetched": (
         "Это был просмотр дерева проекта — код не менялся. "
@@ -224,9 +234,25 @@ def append_goal_nudge(text: str, state: Optional[Dict[str, Any]]) -> str:
     return f"{base}\n\n_{nudge}_"
 
 
-def format_dialog_goal_block(state: Optional[Dict[str, Any]]) -> str:
+def format_dialog_goal_block(
+    state: Optional[Dict[str, Any]],
+    *,
+    project_root: Path | None = None,
+) -> str:
     """Human-readable active goal / pending / last run for chat and LLM context."""
+    host_admin_lines: List[str] = []
+    if project_root is not None:
+        try:
+            from eurika.api.host_admin import format_host_admin_brief
+
+            host_admin_lines = format_host_admin_brief(Path(project_root))
+        except Exception:
+            host_admin_lines = []
     if not isinstance(state, dict) or not state:
+        if host_admin_lines:
+            return "\n".join(
+                ["Нет активной цели в контексте агента.", *host_admin_lines]
+            ).strip()
         return "Нет активной цели в контексте агента."
     lines: List[str] = []
     goal = state.get("active_goal")
@@ -268,12 +294,15 @@ def format_dialog_goal_block(state: Optional[Dict[str, Any]]) -> str:
     if isinstance(pending_git, dict) and pending_git.get("message"):
         msg = str(pending_git.get("message") or "")[:80]
         lines.append(f"Pending git commit: {msg}")
+    if host_admin_lines:
+        lines.extend(host_admin_lines)
     goal_present = isinstance(goal, dict) and bool(goal)
     has_open_work = bool(
         goal_present
         or (isinstance(pending, dict) and pending)
         or (isinstance(pending_plan, dict) and pending_plan)
         or (isinstance(pending_git, dict) and pending_git.get("message"))
+        or bool(host_admin_lines)
     )
     last = state.get("last_execution")
     if isinstance(last, dict) and last:
@@ -369,7 +398,7 @@ def format_approvals_queue_lines(project_root: Path | None) -> List[str]:
     if project_root is None:
         return []
     try:
-        from eurika.orchestration.team_mode import load_pending_plan
+        from eurika.api.team_api import load_pending_plan
 
         plan = load_pending_plan(Path(project_root).resolve())
     except Exception:
@@ -500,6 +529,16 @@ def format_agent_context_panel(
     if approvals_lines:
         lines.extend(approvals_lines)
 
+    if project_root is not None:
+        try:
+            from eurika.api.host_admin import format_host_admin_brief
+
+            host_admin_lines = format_host_admin_brief(Path(project_root))
+            if host_admin_lines:
+                lines.extend(host_admin_lines)
+        except Exception:
+            pass
+
     self_lines: List[str] = []
     if project_root is not None:
         try:
@@ -623,8 +662,15 @@ def build_chat_context(root: Path, scope: Optional[Dict[str, Any]]=None) -> str:
     try:
         state = load_dialog_state(root)
         if isinstance(state, dict):
-            goal_block = format_dialog_goal_block(state)
-            if goal_block and not goal_block.startswith("Нет активной цели"):
+            goal_block = format_dialog_goal_block(state, project_root=root)
+            # Include when there is open work (goal / HITL / host admin), even if
+            # the first line is the empty-goal notice.
+            if goal_block and (
+                not goal_block.startswith("Нет активной цели")
+                or "Host admin HITL" in goal_block
+                or "Pending plan:" in goal_block
+                or "Pending git" in goal_block
+            ):
                 # Compact one-liner for LLM prompt (keep chat answers multi-line via handler).
                 compact = " | ".join(
                     ln.strip() for ln in goal_block.splitlines() if ln.strip()

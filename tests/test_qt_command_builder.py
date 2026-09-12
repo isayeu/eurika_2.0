@@ -54,6 +54,13 @@ def test_build_cli_args_clean_imports() -> None:
     assert args[1] == str(Path(".").resolve())
 
 
+def test_build_cli_args_observer_rituals() -> None:
+    for command in ("self-model", "hypotheses", "ab-compare"):
+        args = build_cli_args(command=command, project_root="/proj")
+        assert args[0] == command
+        assert "/proj" in args[1]
+
+
 def test_build_cli_args_self_check() -> None:
     args = build_cli_args(command="self-check", project_root="/proj")
     assert args[0] == "self-check"

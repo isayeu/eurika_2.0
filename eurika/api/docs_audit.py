@@ -75,7 +75,7 @@ def _self_map_blurb(root: Path) -> str:
     return f"self_map: modules={n_mods}, deps={n_deps}, cycles={cycles}, smells≈{n_smells}"
 
 
-def _vision_fallback(vision_text: str) -> str:
+def _vision_fallback(vision_text: str, root: Path | None = None) -> str:
     """No-LLM: extract backlog lines with ✅ / partial / open from VISION."""
     lines_out = [
         "**Аудит по docs/VISION.md (без LLM — шаблон):**",
@@ -111,8 +111,12 @@ def _vision_fallback(vision_text: str) -> str:
             lines_out.append(f"- {item}")
     lines_out.append("")
     lines_out.append("### Следующие 1–2 шага (non-Market)")
-    lines_out.append("- Мелкий chat UX / goals polish (VISION A1), без рефактора вкладок.")
-    lines_out.append("- C11/C12 (plugin hooks / Telegram) — позже; Market только наблюдать journal.")
+    dev = (Path(root) / "docs" / "DEVELOPMENT.md") if root is not None else None
+    if dev is not None and dev.is_file():
+        lines_out.append("- См. `docs/DEVELOPMENT.md` § Текущий фокус (не застывший VISION A1).")
+    else:
+        lines_out.append("- VISION backlog A→B→C; не выдумывать следующий шаг.")
+    lines_out.append("- Market только наблюдать journal; без нового entry / explore / HTF / live.")
     lines_out.append("")
     lines_out.append(
         "Для живого разбора с Groq/Ollama повтори запрос при доступном LLM "
@@ -123,26 +127,29 @@ def _vision_fallback(vision_text: str) -> str:
 
 def build_docs_audit_prompt(root: Path) -> str:
     vision = _read_capped(root / "docs" / "VISION.md", max_chars=9000)
+    development = _read_capped(root / "docs" / "DEVELOPMENT.md", max_chars=4000)
     memory = _read_capped(root / "docs" / "MEMORY.md", max_chars=4000)
     chat = _read_capped(root / "docs" / "CHAT.md", max_chars=2500)
     blurb = _self_map_blurb(root)
     return (
         "Ты Eurika — локальный архитектурный ассистент. Сверь docs с реальностью и "
         "дай краткий статус бэклога.\n"
-        "Источник истины по приоритетам: **docs/VISION.md** (✅ / частично / Не трогать / Не сейчас). "
+        "Текущий фокус разработки: **docs/DEVELOPMENT.md**. "
+        "Компас продукта: **docs/VISION.md** (✅ / частично / Не трогать / Не сейчас). "
         "MEMORY/CHAT — только уточнения; не предлагай инфраструктуру из старых планов "
-        "(MetricVector, EnergyModel, ExperienceStore, «упростить ядро»), если VISION этого "
-        "не ставит следующим шагом — это уже в коде.\n"
+        "(MetricVector, EnergyModel, ExperienceStore, «упростить ядро»), если DEVELOPMENT/VISION "
+        "этого не ставят следующим шагом — это уже в коде.\n"
         "Правила:\n"
         "- **Сделано** = пункты VISION с ✅ или явно реализованный слой (shell/agent/learning).\n"
         "- **Частично** = только то, где VISION пишет «частично».\n"
-        "- **Не сделано / не сейчас** = HTF (не трогать), plugin hooks, Telegram, walk-forward, "
+        "- **Не сделано / не сейчас** = HTF (не трогать), walk-forward, "
         "live-ордера, explore on, новый entry, большой рефактор вкладок.\n"
         "- Market: не предлагай новый entry/HTF/explore/live; market сейчас = наблюдение journal.\n"
-        "- **Следующие 1–2 шага**: строго из незакрытого non-Market бэклога VISION "
-        "(мелкий chat UX / goals polish / plugin hooks позже) — максимум два пункта.\n"
+        "- **Следующие 1–2 шага**: из `docs/DEVELOPMENT.md` § Текущий фокус "
+        "(сейчас CR-H H4), не RV11 и не застывший A1 — максимум два пункта.\n"
         "- Ответ на русском; без воды; ≤20 коротких пунктов суммарно; не выдумывай фичи.\n\n"
         f"## Live\n{blurb}\n\n"
+        f"## docs/DEVELOPMENT.md\n{development or '(нет файла)'}\n\n"
         f"## docs/VISION.md\n{vision or '(нет файла)'}\n\n"
         f"## docs/MEMORY.md (фрагмент)\n{memory or '(нет)'}\n\n"
         f"## docs/CHAT.md (фрагмент)\n{chat or '(нет)'}\n"
@@ -172,7 +179,7 @@ def run_docs_audit(root: Path, *, use_llm: bool = True) -> tuple[str, dict[str, 
             meta["llm_error"] = err or "empty"
         except Exception as exc:  # noqa: BLE001 — best-effort chat skill
             meta["llm_error"] = str(exc)
-    fallback = _vision_fallback(vision_text) if vision_text else (
+    fallback = _vision_fallback(vision_text, root) if vision_text else (
         "Нет docs/VISION.md — не могу сверить бэклог. Сначала открой корень Eurika."
     )
     meta["ok"] = bool(vision_text)

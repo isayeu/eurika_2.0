@@ -9,6 +9,15 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QInputDialog, QMessageBox
 
 from ..chat_markdown import format_chat_line_html, parse_chat_action_url, shell_command_from_block
+from ..chat_thinking import (
+    append_chat_thinking,
+    begin_chat_thinking,
+    finish_chat_thinking,
+    format_thinking_html,
+    take_chat_thinking_steps,
+    thinking_step_from_event,
+    thinking_step_from_terminal_line,
+)
 from ..main_window_helpers import ChatWorker, HostPrivilegeBridge, privilege_prompt_from_bridge
 from ..tabs import terminal_tab
 
@@ -16,38 +25,16 @@ if TYPE_CHECKING:
     from ..main_window import MainWindow
 
 from .chat_pending_handlers import (
-    _apply_allowed_for_pending,
-    _mark_pending_diff_seen,
-    _pending_diff_was_seen,
-    _pending_preview_fingerprint,
-    _sync_pending_diff_gate,
     activate_pending_controls_from_response,
-    apply_pending_chat_plan,
-    extract_pending_token_from_text,
-    preview_pending_chat_plan,
     refresh_chat_goal_view,
-    reject_pending_chat_plan,
-    response_requests_confirmation,
 )
 from .chat_provider_handlers import (
-    _chat_source_label,
-    _chat_source_tooltip,
-    _fill_cursor_model_combo,
     _load_cursor_model_prefs,
-    _sync_chat_llm_badge,
-    current_chat_api_preset_id,
     current_chat_openai_base_url,
     current_chat_provider,
-    on_chat_api_preset_changed,
-    on_chat_provider_changed,
-    on_cursor_model_changed,
-    on_cursor_router_changed,
-    refresh_cursor_api_status,
-    refresh_cursor_models,
     save_chat_preferences,
     set_chat_provider,
     sync_chat_provider_panels,
-    sync_cursor_router_enabled,
 )
 
 
@@ -308,6 +295,13 @@ def _apply_live_activity_event(main: "MainWindow", event: dict[str, Any]) -> Non
             line = f"[API {client}] {title}{suffix}"
         if hasattr(main, "status_label"):
             main.status_label.setText(line[:120])
+        worker = getattr(main, "_chat_worker", None)
+        if getattr(main, "_chat_thinking_busy", False) or (
+            worker is not None and getattr(worker, "isRunning", lambda: False)()
+        ):
+            step = thinking_step_from_event(event)
+            if step:
+                append_chat_thinking(main, step)
         if echo_chat:
             if hasattr(main, "terminal_emulator_output") and main.terminal_emulator_output:
                 main.terminal_emulator_output.append(line)
@@ -599,6 +593,9 @@ def redraw_chat_transcript(main: "MainWindow") -> None:
     for item in list(getattr(main, "_chat_history", []) or []):
         role = str(item.get("role") or "")
         content = str(item.get("content") or "")
+        if role == "thinking":
+            _append_transcript(main, format_thinking_html(content.splitlines()))
+            continue
         if role not in {"user", "assistant"} or not content:
             continue
         _append_transcript(main, _format_chat_line(main, role, content))
@@ -665,17 +662,31 @@ def _scroll_transcript_to_bottom(main: "MainWindow") -> None:
 
 
 def _show_chat_typing(main: MainWindow) -> None:
-    label = getattr(main, "chat_typing_label", None)
-    if label is not None:
-        label.setText("Eurika печатает…")
-        label.setVisible(True)
+    begin_chat_thinking(main)
+    append_chat_thinking(main, "печатает…")
+
+
+def _commit_thinking_to_transcript(main: MainWindow) -> None:
+    """Park the live Thinking log in the thread under the user bubble (Cursor)."""
+    if getattr(main, "_chat_thinking_committed", False):
+        finish_chat_thinking(main)
+        return
+    main._chat_thinking_committed = True
+    steps = take_chat_thinking_steps(main)
+    if steps:
+        main._chat_history.append({"role": "thinking", "content": "\n".join(steps)})
+        _append_transcript(main, format_thinking_html(steps))
+        _scroll_transcript_to_bottom(main)
+    finish_chat_thinking(main)
 
 
 def _hide_chat_typing(main: MainWindow) -> None:
-    label = getattr(main, "chat_typing_label", None)
-    if label is not None:
-        label.clear()
-        label.setVisible(False)
+    if getattr(main, "_chat_thinking_busy", False) and not getattr(
+        main, "_chat_thinking_committed", False
+    ):
+        _commit_thinking_to_transcript(main)
+        return
+    finish_chat_thinking(main)
 
 
 def _set_chat_busy(main: MainWindow, *, busy: bool) -> None:
@@ -728,6 +739,7 @@ def dispatch_chat_message(main: MainWindow, message: str) -> None:
     main.chat_input.clear()
     main._chat_cancelled = False
     _set_chat_busy(main, busy=True)
+    main._chat_terminal_streaming = False
     main.status_label.setText("State: chat-running")
     bridge = getattr(main, "_host_privilege_bridge", None)
     if bridge is None:
@@ -745,16 +757,28 @@ def dispatch_chat_message(main: MainWindow, message: str) -> None:
         openai_base_url=openai_base_url,
         cursor_model=cursor_model,
         cursor_optimize=cursor_optimize,
-        run_command_with_result=lambda cmd: _run_command_subprocess(cmd, str(main._api._root())),
+        run_command_with_result=None,
         privilege_prompt=privilege_prompt_from_bridge(bridge),
         client_terminal_text=_terminal_context_for_chat(main),
     )
+
+    def _run_streamed(cmd: str) -> tuple[str, int]:
+        return _run_command_subprocess(
+            cmd,
+            str(main._api._root()),
+            on_start=lambda started: worker.system_action_occurred.emit(f"$ {started}"),
+            on_chunk=lambda chunk: worker.terminal_chunk.emit(chunk),
+            should_stop=lambda: bool(getattr(main, "_chat_cancelled", False)),
+        )
+
+    worker._run_command_with_result = _run_streamed
     main._chat_worker = worker
     worker.finished_payload.connect(lambda p: on_chat_result(main, p))
     worker.failed.connect(lambda e: on_chat_error(main, e))
     worker.cancelled.connect(lambda: on_chat_cancelled(main))
     worker.finished.connect(lambda: on_chat_finished(main))
     worker.system_action_occurred.connect(lambda cmd: on_system_action(main, cmd))
+    worker.terminal_chunk.connect(lambda text: on_terminal_chunk(main, text))
     worker.start()
 
 
@@ -772,43 +796,58 @@ def cancel_chat_request(main: MainWindow) -> None:
         return
     main._chat_cancelled = True
     worker.cancel()
-    label = getattr(main, "chat_typing_label", None)
-    if label is not None:
-        label.setText("Отмена…")
-        label.setVisible(True)
+    append_chat_thinking(main, "отмена…")
     main.chat_cancel_btn.setEnabled(False)
 
 
-def _run_command_subprocess(cmd: str, project_root: str) -> tuple[str, int]:
-    """Run command in worker thread (avoids blocking GUI). Returns (output, exit_code)."""
-    import subprocess
+def _run_command_subprocess(
+    cmd: str,
+    project_root: str,
+    *,
+    on_start=None,
+    on_chunk=None,
+    should_stop=None,
+) -> tuple[str, int]:
+    """Run command in worker thread; stream lines to Terminal. Returns (output, exit_code)."""
+    from eurika.utils.process_stream import run_streamed_command
 
     from ..main_window_helpers import strip_ansi
 
-    try:
-        r = subprocess.run(
-            ["bash", "-c", cmd],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            timeout=None,
-        )
-        out = ((r.stdout or "") + "\n" + (r.stderr or "")).strip()
-        return (strip_ansi(out), r.returncode)
-    except subprocess.TimeoutExpired:
-        return ("timeout", -1)
-    except Exception as e:
-        return (str(e), -1)
+    if on_start is not None:
+        on_start(cmd)
+
+    def _emit(line: str) -> None:
+        visible = strip_ansi(line)
+        if on_chunk is not None and visible:
+            on_chunk(visible)
+
+    out, code = run_streamed_command(
+        cmd,
+        cwd=project_root,
+        on_chunk=_emit,
+        should_stop=should_stop,
+    )
+    return (strip_ansi(out), code)
+
+
+def on_terminal_chunk(main: MainWindow, text: str) -> None:
+    """Live Chat command output — do not wait for the finished payload."""
+    if not text:
+        return
+    main._chat_terminal_streaming = True
+    if hasattr(main, "terminal_emulator_output") and main.terminal_emulator_output:
+        if hasattr(main, "terminal_tab_index"):
+            main.tabs.setCurrentIndex(main.terminal_tab_index)
+        terminal_tab._append_stream(main, text)
+    step = thinking_step_from_terminal_line(text)
+    if step:
+        append_chat_thinking(main, step)
 
 
 def on_system_action(main: MainWindow, cmd: str) -> None:
-    """Emit Chat action to Terminal tab.
-
-    Shell lines (``$ …``) are logged only — handlers execute via
-    ``run_command_with_result`` and mirror output through ``on_chat_result``
-    to avoid double-run. Comment / note emits (``# …``) stay log-only.
-    """
+    """Show the Chat command in Terminal as soon as it starts."""
     if hasattr(main, "terminal_emulator_output") and main.terminal_emulator_output:
+        main._chat_terminal_streaming = True
         main.terminal_emulator_output.append(f"[Chat] {cmd}")
         if hasattr(main, "terminal_tab_index"):
             main.tabs.setCurrentIndex(main.terminal_tab_index)
@@ -817,17 +856,23 @@ def on_system_action(main: MainWindow, cmd: str) -> None:
 def on_chat_result(main: MainWindow, payload: dict[str, Any]) -> None:
     if getattr(main, "_chat_cancelled", False):
         return
+    _commit_thinking_to_transcript(main)
+    streamed = bool(getattr(main, "_chat_terminal_streaming", False))
+    main._chat_terminal_streaming = False
     if "terminal_output" in payload and hasattr(main, "terminal_emulator_output"):
         cmd = payload.get("terminal_cmd", "")
         out = payload.get("terminal_output", "")
         code = payload.get("terminal_exit_code", -1)
         if hasattr(main, "terminal_tab_index"):
             main.tabs.setCurrentIndex(main.terminal_tab_index)
-        if cmd:
-            main.terminal_emulator_output.append(f"[Chat] {cmd}")
-        if out:
-            terminal_tab._append_stream(main, out)
-        main.terminal_emulator_output.append(f"[done] exit_code={code}\n")
+        if streamed:
+            main.terminal_emulator_output.append(f"[done] exit_code={code}\n")
+        else:
+            if cmd:
+                main.terminal_emulator_output.append(f"[Chat] {cmd}")
+            if out:
+                terminal_tab._append_stream(main, out)
+            main.terminal_emulator_output.append(f"[done] exit_code={code}\n")
     text = str(payload.get("text", "")).strip()
     err = payload.get("error")
     # Prefer structured chat text over dumping raw tool output as [error].
@@ -859,14 +904,27 @@ def on_chat_result(main: MainWindow, payload: dict[str, Any]) -> None:
 
     agent_hitl_handlers.bind_from_payload(main, payload)
     maybe_focus_approvals_after_agent(main, payload)
+    maybe_open_project_after_create(main, payload)
     refresh_chat_goal_view(main)
     activate_pending_controls_from_response(main, text)
     QTimer.singleShot(100, lambda: refresh_chat_goal_view(main))
 
 
+def maybe_open_project_after_create(main: MainWindow, payload: dict[str, Any]) -> None:
+    """After Project Creation v0, switch workspace root to the new path."""
+    raw = (payload or {}).get("open_project")
+    if not raw:
+        return
+    path = str(raw).strip()
+    if not path:
+        return
+    QTimer.singleShot(0, lambda: main._set_project_root(path))
+
+
 def on_chat_error(main: MainWindow, error: str) -> None:
     if getattr(main, "_chat_cancelled", False):
         return
+    _commit_thinking_to_transcript(main)
     _append_transcript(main, _format_chat_line(main, "assistant", f"[exception]: {error}", is_error=True))
     refresh_chat_goal_view(main)
 
@@ -912,6 +970,10 @@ def clear_chat_session(main: MainWindow) -> None:
         pass
     main.chat_feedback_helpful_btn.setEnabled(False)
     main.chat_feedback_not_btn.setEnabled(False)
+    main._chat_thinking_steps = []
+    main._chat_thinking_busy = False
+    main._chat_thinking_committed = False
+    finish_chat_thinking(main)
     refresh_chat_goal_view(main)
 
 

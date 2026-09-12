@@ -4,7 +4,9 @@ Compare baseline (main) vs treatment (sandbox) on fixed metrics after C.14
 propose+sandbox. Does not auto-apply or invent success.
 
 Metrics (from self_map / graph when present):
-  energy, risk_score, total_smells, cycles, smoke_ok
+  core — energy, risk_score, total_smells, cycles, smoke_ok
+  suite — modules, dependency_density, max_blast_radius, layer_violations
+  (layer_violations increase is a hard regression; others are recorded deltas)
 
 Sandbox rescan (``EURIKA_AB_RESCAN``):
   off/0 — never; on/1/force — always; auto (default) — only when
@@ -21,11 +23,18 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from eurika.utils.json_io import load_json_safe
+from eurika.utils.json_io import as_dict, load_json_safe
 
 AB_TRIALS_NAME = "ab_trials.json"
-AB_VERSION = 1
+AB_VERSION = 2
 MAX_TRIALS = 40
+CORE_METRIC_KEYS = ("energy", "score", "risk_score", "total_smells", "cycles")
+SUITE_METRIC_KEYS = (
+    "modules",
+    "dependency_density",
+    "max_blast_radius",
+    "layer_violations",
+)
 STABILITY_WINDOW = 5
 STABILITY_MAX_SMELL_SWING = 3
 STABILITY_MAX_MODULE_SWING = 8
@@ -78,8 +87,13 @@ def snapshot_ab_metrics(project_root: str | Path) -> Dict[str, Any]:
             "risk_score": None,
             "total_smells": None,
             "cycles": None,
+            "modules": None,
+            "dependency_density": None,
+            "max_blast_radius": None,
+            "layer_violations": None,
         }
     try:
+        from eurika.analysis.metrics import dependency_density, top_blast_radius
         from eurika.analysis.self_map import build_graph_from_self_map
         from eurika.reasoning.graph_ops import metrics_from_graph
         from eurika.smells.detector import detect_architecture_smells
@@ -89,6 +103,15 @@ def snapshot_ab_metrics(project_root: str | Path) -> Dict[str, Any]:
         metrics = metrics_from_graph(graph, smells, {})
         cycles = graph.find_cycles()
         smell_n = len(smells) if isinstance(smells, list) else 0
+        blast = top_blast_radius(graph, n=1)
+        max_br = int(blast[0][1]) if blast else 0
+        layer_n = None
+        try:
+            from eurika.checks.dependency_firewall import collect_layer_violations
+
+            layer_n = len(collect_layer_violations(root))
+        except Exception:
+            layer_n = None
         return {
             "ok": True,
             "insufficient_data": False,
@@ -97,6 +120,10 @@ def snapshot_ab_metrics(project_root: str | Path) -> Dict[str, Any]:
             "risk_score": metrics.get("risk_score"),
             "total_smells": smell_n,
             "cycles": len(cycles) if isinstance(cycles, list) else 0,
+            "modules": len(getattr(graph, "nodes", []) or []),
+            "dependency_density": dependency_density(graph),
+            "max_blast_radius": max_br,
+            "layer_violations": layer_n,
         }
     except Exception as exc:
         return {
@@ -108,6 +135,10 @@ def snapshot_ab_metrics(project_root: str | Path) -> Dict[str, Any]:
             "risk_score": None,
             "total_smells": None,
             "cycles": None,
+            "modules": None,
+            "dependency_density": None,
+            "max_blast_radius": None,
+            "layer_violations": None,
         }
 
 
@@ -240,9 +271,9 @@ def decide_ab_rescan(
 def _run_sandbox_rescan(sandbox_root: Path) -> bool:
     """Invoke run_scan on sandbox. Returns True if call completed without raise."""
     try:
-        from eurika.orchestration.deps import get_fix_cycle_deps
+        from eurika.orchestration.deps import load_fix_cycle_deps
 
-        deps = get_fix_cycle_deps()
+        deps = load_fix_cycle_deps()
         run_scan = deps.get("run_scan")
         if not callable(run_scan):
             return False
@@ -321,11 +352,18 @@ def decide_ab_winner(
     except (TypeError, ValueError):
         return ("insufficient", "metric compare failed", True)
 
+    lv_b, lv_t = baseline.get("layer_violations"), treatment.get("layer_violations")
+    try:
+        layers_ok = lv_t is None or lv_b is None or int(lv_t) <= int(lv_b)
+    except (TypeError, ValueError):
+        layers_ok = True
+
     rule = (
         "smoke_ok && energy_t<=energy_b && risk_t>=risk_b "
         "&& smells_t<=smells_b && cycles_t<=cycles_b"
+        " && layer_violations_t<=layer_violations_b"
     )
-    if not (energy_ok and risk_ok and smells_ok and cycles_ok):
+    if not (energy_ok and risk_ok and smells_ok and cycles_ok and layers_ok):
         return ("baseline", rule + " → regression", False)
 
     equal = (
@@ -333,6 +371,7 @@ def decide_ab_winner(
         and (r_t is None or r_b is None or float(r_t) == float(r_b))
         and (s_t is None or s_b is None or int(s_t) == int(s_b))
         and (c_t is None or c_b is None or int(c_t) == int(c_b))
+        and (lv_t is None or lv_b is None or int(lv_t) == int(lv_b))
     )
     if equal:
         return (
@@ -359,7 +398,7 @@ def compare_ab(
     rescan_meta: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     winner, rule, insuff = decide_ab_winner(baseline, treatment, smoke_ok=smoke_ok)
-    keys = ("energy", "score", "risk_score", "total_smells", "cycles")
+    keys = CORE_METRIC_KEYS + SUITE_METRIC_KEYS
     delta = {k: _delta_num(baseline.get(k), treatment.get(k)) for k in keys}
     graph_unchanged = (
         baseline.get("ok")
@@ -495,6 +534,10 @@ def run_ab_compare(
         "risk_score": None,
         "total_smells": None,
         "cycles": None,
+        "modules": None,
+        "dependency_density": None,
+        "max_blast_radius": None,
+        "layer_violations": None,
     }
     trial = compare_ab(
         baseline,
@@ -527,8 +570,9 @@ def format_ab_text(
     rows = [trial] if isinstance(trial, dict) else load_ab_trials(root)[-limit:]
     stab = assess_metrics_stability(root)
     lines = [
-        "Formal A/B v0 (baseline vs sandbox)",
-        "(fixed metrics: energy, risk_score, smells, cycles, smoke_ok)",
+        "Formal A/B v2 (baseline vs sandbox)",
+        "(core: energy, risk_score, smells, cycles, smoke_ok; "
+        "suite: modules, density, max_blast, layer_violations)",
         (
             f"(rescan mode={_rescan_mode_from_env()}; metrics_stable="
             f"{stab.get('stable')} reason={stab.get('reason')})"
@@ -551,11 +595,16 @@ def format_ab_text(
             f"[{t.get('winner')}] {t.get('kind')} → {t.get('target')} "
             f"(smoke_ok={t.get('smoke_ok')}, mode={t.get('sandbox_mode')})"
         )
-        d = t.get("delta") if isinstance(t.get("delta"), dict) else {}
+        d = as_dict(t.get("delta"))
         lines.append(
             f"  Δ energy={d.get('energy')} risk={d.get('risk_score')} "
             f"smells={d.get('total_smells')} cycles={d.get('cycles')}"
         )
+        if any(d.get(k) not in (None, 0, 0.0) for k in SUITE_METRIC_KEYS):
+            lines.append(
+                f"  suite Δ modules={d.get('modules')} density={d.get('dependency_density')} "
+                f"blast={d.get('max_blast_radius')} layers={d.get('layer_violations')}"
+            )
         lines.append(
             f"  rescanned={t.get('rescanned')} rescan_mode={t.get('rescan_mode')} "
             f"metrics_stable={t.get('metrics_stable')}"

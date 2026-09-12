@@ -8,6 +8,13 @@ from typing import Any
 from .contracts import TOOL_CONTRACTS
 
 
+def _last_user_text(messages: list[dict[str, str]]) -> str:
+    for item in reversed(messages or []):
+        if isinstance(item, dict) and item.get("role") == "user":
+            return str(item.get("content") or "")
+    return ""
+
+
 def _bounded(value: Any, limit: int) -> str:
     encoded = json.dumps(value, ensure_ascii=False, default=str)
     if len(encoded) <= limit:
@@ -33,6 +40,28 @@ def chat_prompt(
         }
         for name, contract in TOOL_CONTRACTS.items()
     }
+    last_user = _last_user_text(messages)
+    greeting_only = False
+    docs_plan_only = False
+    if last_user:
+        try:
+            from eurika.api.chat_direct import is_greeting
+            from eurika.api.last_check import docs_plan_is_the_task
+
+            greeting_only = is_greeting(last_user)
+            docs_plan_only = (not greeting_only) and docs_plan_is_the_task(last_user)
+        except Exception:
+            greeting_only = False
+            docs_plan_only = False
+    if greeting_only:
+        return (
+            "You are Eurika, a local coding agent. "
+            "The user only greeted. Reply with JSON only: "
+            '{"type":"final","text":"short greeting"}. '
+            "One or two sentences. Do not mention last_check, ROADMAP, H2, "
+            "release_check, or unfinished plans. Do not call tools.\n"
+            f"CONVERSATION={_bounded((messages or [])[-2:], 2_000)}\n"
+        )
     closing = (
         (
             "The user asked to change code or Qt UI. You MUST emit tool_calls with "
@@ -101,12 +130,42 @@ def chat_prompt(
         "For claims about the current paper Market, PnL, positions, or learning, "
         "call market_status first and assess profitability from the verdict / net "
         "PnL / mean edge, not accuracy alone. Never call a losing paper book "
-        "'неплохо' or 'good' just because accuracy > 0.5. Never cite command "
-        "output unless a terminal tool observation is present. "
-        "Use read-only tools to gather evidence. Side-effecting tools are never "
+        "'неплохо' or 'good' just because accuracy > 0.5. Never invent command "
+        "output. Cite a check only from EDITOR_CONTEXT.terminalText, "
+        "tool=last_check, or a terminal/tests observation. "
+        "If the user already ran a check (past tense / «в терминале прогнал») "
+        "and terminalText is present, summarize that output only — do not call "
+        "tests, terminal, skill, or release_check to recreate it. "
+        "To run a project ritual the user asked for now, call tool=skill "
+        "(name=release_check|scan|ritual|self_check|self_model). "
+        + (
+            "The user asked about docs / the plan / what is next. "
+            "docs/DEVELOPMENT.md § Текущий фокус is the current *coding* queue, "
+            "not every domain. If they asked about Market / paper, answer "
+            "docs/VISION.md § B (Market paper): what is done vs open, and the "
+            "observation-window freeze (no live orders, no explore on, no HTF / "
+            "new entry without journal). Do not replace a Market question with "
+            "only H5 Thinking. ROADMAP.md §1 is history (Stage 6), not the next "
+            "coding step. Do not mention last_check, last_check.log, "
+            "release_check WARN, QThread, or add a «Связь с last_check» section. "
+            if docs_plan_only
+            else (
+                "If EDITOR_CONTEXT.lastCheckStale is true, last_check on disk is the "
+                "wrong run — prefer terminalText / lastCheck.source=terminal. "
+                "If TOOL_OBSERVATIONS include tool=last_check AND the user asked to fix "
+                "(«исправь» / пофикси), that failed check is the task: read logPath, then "
+                "surgical edit (oldText/newText) for those diagnostics only. Do not rewrite "
+                "whole files. Cover every file in the log or list what is left. "
+                "If the user asked what is next, to check docs, or about the plan "
+                "(VISION / ROADMAP / DEVELOPMENT), answer that question. last_check on "
+                "disk is not the task unless they asked to fix it. "
+                "Do not reply with the last_check lecture or «say исправь». "
+            )
+        )
+        + "Use read-only tools to gather evidence. Side-effecting tools are never "
         "executed automatically; git/terminal still need Chat approval, while Qt "
         "edit parks in Approvals when reviewInApprovals is set.\n"
-        f"CONVERSATION={_bounded((messages or [])[-8:], 12_000)}\n"
+        f"CONVERSATION={_bounded((messages or [])[-16:], 24_000)}\n"
         f"EDITOR_CONTEXT={_bounded(context, 40_000)}\n"
         f"TOOL_OBSERVATIONS={_bounded(observations, 40_000)}\n"
         f"TOOLS={_bounded(tools, 8_000)}"

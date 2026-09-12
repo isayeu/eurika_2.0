@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from eurika.orchestration.team_mode import PENDING_PLAN_FILE, has_pending_plan, save_pending_plan
+from eurika.utils.json_io import as_dict, as_list
 
 BUG_HUNT_DRILL = "bug_hunt"
 STAMP_NAME = "bug_hunt.json"
@@ -157,7 +158,7 @@ def smoke_bug_hunt_change(
                 ),
             }
     elif kind == "extract_nested_function":
-        params = operation.get("params") if isinstance(operation.get("params"), dict) else {}
+        params = as_dict(operation.get("params"))
         nested = str(params.get("nested_function_name") or "").strip()
         if nested:
             needle = f"def {nested}"
@@ -531,7 +532,7 @@ def filter_bug_hunt_candidates(
 def _is_trivial_extract_block_op(op: dict[str, Any]) -> bool:
     """Skip micro-extracts (e.g. 3 dict assignments → `_extracted_block_*`)."""
     kind = str(op.get("kind") or "")
-    params = op.get("params") if isinstance(op.get("params"), dict) else {}
+    params = as_dict(op.get("params"))
     line_count = params.get("line_count")
     try:
         if line_count is not None and int(line_count) < 5:
@@ -667,7 +668,7 @@ def _preflight_bug_hunt_op(project_root: Path, operation: dict[str, Any]) -> str
     path = Path(project_root).resolve() / rel
     if not path.is_file():
         return f"missing target on main: {rel}"
-    params = operation.get("params") if isinstance(operation.get("params"), dict) else {}
+    params = as_dict(operation.get("params"))
     if kind == "extract_block_to_helper":
         parent = str(params.get("location") or "").strip()
         helper = str(params.get("helper_name") or "").strip()
@@ -686,9 +687,7 @@ def _preflight_bug_hunt_op(project_root: Path, operation: dict[str, Any]) -> str
                 parent,
                 line,
                 helper,
-                list(params.get("extra_params") or [])
-                if isinstance(params.get("extra_params"), list)
-                else None,
+                as_list(params.get("extra_params")) or None,
             )
         except Exception as exc:
             return f"extract preflight error: {exc}"
@@ -732,9 +731,7 @@ def _preflight_bug_hunt_op(project_root: Path, operation: dict[str, Any]) -> str
                 path,
                 parent,
                 nested,
-                list(params.get("extra_params") or [])
-                if isinstance(params.get("extra_params"), list)
-                else None,
+                as_list(params.get("extra_params")) or None,
             )
         except Exception as exc:
             return f"extract_nested preflight error: {exc}"
@@ -916,7 +913,7 @@ def format_bug_hunt_summary(payload: dict[str, Any]) -> str:
             )
     if payload.get("sandbox"):
         lines.append(
-            f"- sandbox: ok"
+            "- sandbox: ok"
             + (f" ({payload.get('sandbox_mode')})" if payload.get("sandbox_mode") else "")
         )
     ab = payload.get("ab_v0")

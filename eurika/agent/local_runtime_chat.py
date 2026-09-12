@@ -23,8 +23,7 @@ _IMPLEMENT_REQUEST = re.compile(
     r"(?is)\b("
     r"implement|create|write|replace|patch|refactor|"
     r"реализуй|исправ(?:ь|ить)|поправ(?:ь|ить)|внеси правк|напиши код|"
-    r"добавь тест|"
-    r"mypy"
+    r"добавь тест"
     r")\b"
 )
 # Layout/ergonomics asks often say «сделай удобнее» without IMPLEMENT/исправь.
@@ -93,6 +92,18 @@ def _should_reject_plan_only_final(
     pending_calls: list[dict[str, Any]],
     session: Any,
 ) -> bool:
+    last = ""
+    for item in reversed(messages or []):
+        if isinstance(item, dict) and item.get("role") == "user":
+            last = str(item.get("content") or "")
+            break
+    try:
+        from eurika.api.last_check import docs_plan_is_the_task
+
+        if docs_plan_is_the_task(last):
+            return False
+    except Exception:
+        pass
     return bool(
         _wants_code_mutation(messages)
         and not pending_calls
@@ -180,6 +191,28 @@ def _dispatch_tool_calls(
         if name not in TOOL_CONTRACTS or not isinstance(arguments, dict):
             observations.append({"tool": name, "error": "invalid tool call"})
             continue
+        if name in {"tests", "terminal", "skill"}:
+            try:
+                from eurika.api.chat_direct import is_read_terminal_request
+
+                last_user = ""
+                for item in reversed(getattr(session, "messages", None) or []):
+                    if item.get("role") == "user":
+                        last_user = str(item.get("content") or "")
+                        break
+                if last_user and is_read_terminal_request(last_user):
+                    observations.append(
+                        {
+                            "tool": name,
+                            "error": (
+                                "User already ran this check. Summarize "
+                                "EDITOR_CONTEXT.terminalText; do not re-run."
+                            ),
+                        }
+                    )
+                    continue
+            except Exception:
+                pass
         if name == "edit":
             arguments = _fill_missing_edit_path(arguments, observations)
         call_id = str(call.get("callId") or uuid.uuid4())
@@ -291,6 +324,44 @@ def run_chat(
     context = params.get("context", {})
     if not isinstance(context, dict):
         raise RpcError(ERR_INVALID_PARAMS, "context must be an object")
+    greeting_turn = False
+    docs_plan_turn = False
+    last_check_followup = False
+    if tool_results is None and isinstance(message, str):
+        try:
+            from eurika.api.chat_direct import is_greeting
+            from eurika.api.last_check import docs_plan_is_the_task, last_check_is_the_task
+
+            greeting_turn = is_greeting(message)
+            docs_plan_turn = docs_plan_is_the_task(message)
+            last_check_followup = last_check_is_the_task(message)
+        except Exception:
+            greeting_turn = False
+            docs_plan_turn = False
+            last_check_followup = False
+    last_check_observation = None
+    try:
+        from eurika.api.chat_observation import attach_workspace_observation
+        from eurika.api.last_check import last_check_observation as _last_check_observation
+
+        context = attach_workspace_observation(runtime.workspace_root, context)
+        if greeting_turn or docs_plan_turn:
+            context = dict(context)
+            context.pop("lastCheck", None)
+            context["lastCheckStale"] = False
+            extra = dict(context.get("observation") or {})
+            extra["lastCheckStale"] = False
+            extra["lastCheckStaleReason"] = ""
+            extra["source"] = None
+            context["observation"] = extra
+        params["context"] = context
+        last_check_observation = (
+            None
+            if greeting_turn or docs_plan_turn or not last_check_followup
+            else _last_check_observation
+        )
+    except Exception:
+        last_check_observation = None
     if tool_results is None:
         assert isinstance(message, str)
         user_message = message.strip()
@@ -302,16 +373,42 @@ def run_chat(
     calls_before = session.tool_calls
     tool_errors = 0
     observations: list[dict[str, Any]] = list(tool_results or [])
+    if callable(last_check_observation):
+        seed = last_check_observation(context)
+        if seed and not any(
+            isinstance(item, dict) and item.get("tool") == "last_check" for item in observations
+        ):
+            observations.insert(0, seed)
+            if _wants_code_mutation(session.messages) and not _already_nudged_edit(
+                observations
+            ):
+                observations.append(_nudge_implement())
     pending_calls: list[dict[str, Any]] = []
     text = ""
     notice = ""
-    review_in_approvals = bool(context.get("reviewInApprovals"))
-    max_tool_rounds = 8 if review_in_approvals else 5
-    if _wants_code_mutation(session.messages):
+    review_in_approvals = bool(context.get("reviewInApprovals")) and not docs_plan_turn
+    max_tool_rounds = 1 if greeting_turn else (8 if review_in_approvals else 5)
+    if docs_plan_turn:
+        max_tool_rounds = 3
+    if not greeting_turn and not docs_plan_turn and _wants_code_mutation(session.messages):
         max_tool_rounds += 3
-    for _ in range(max_tool_rounds):
+    for round_i in range(max_tool_rounds):
         runtime.tools._check_cancel(cancel)
-        prompt = runtime._chat_prompt(session, context, observations)
+        force_final = greeting_turn or (docs_plan_turn and round_i == max_tool_rounds - 1)
+        prompt = runtime._chat_prompt(
+            session, context, observations, force_final=force_final
+        )
+        try:
+            from .live_activity import publish_thinking
+
+            publish_thinking(
+                runtime.workspace_root,
+                "модель",
+                method="session/chat",
+                client="agent",
+            )
+        except Exception:
+            pass
         raw, error = runtime._call_model(prompt)
         if error:
             text = runtime._format_model_failure(error)
@@ -365,6 +462,8 @@ def run_chat(
         if pending_calls:
             text = "Prepared tool action(s) for your review."
             break
+    if not text and not pending_calls and greeting_turn:
+        text = "Привет."
     if not text and not pending_calls:
         runtime.tools._check_cancel(cancel)
         must_edit = _should_reject_plan_only_final(
@@ -406,7 +505,31 @@ def run_chat(
                     candidate = str(parsed.get("text") or body or "").strip()
                 text = runtime._accept_grounded_final(candidate, observations)
                 if not text:
-                    text = grounded_fallback(observations)
+                    last_user = ""
+                    for item in reversed(session.messages or []):
+                        if isinstance(item, dict) and item.get("role") == "user":
+                            last_user = str(item.get("content") or "")
+                            break
+                    text = grounded_fallback(observations, last_user)
+    if text.startswith("From docs:") or (
+        docs_plan_turn
+        and (not text or text.startswith("I could not complete"))
+    ):
+        try:
+            from pathlib import Path as _Path
+
+            from eurika.api.chat_utils import format_docs_plan_fallback
+
+            last_user = ""
+            for item in reversed(session.messages or []):
+                if isinstance(item, dict) and item.get("role") == "user":
+                    last_user = str(item.get("content") or "")
+                    break
+            filled = format_docs_plan_fallback(_Path(runtime.workspace_root), last_user)
+            if filled:
+                text = filled
+        except Exception:
+            pass
     if not text:
         text = "I could not complete the request within the local tool-loop limit."
     text = runtime._with_notice(text, notice)

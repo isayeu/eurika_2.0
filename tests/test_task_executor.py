@@ -112,6 +112,45 @@ def test_execute_run_tests_uses_pytest_and_returns_status(tmp_path: Path) -> Non
     assert report.verification.get("runner") == "pytest"
 
 
+def test_execute_run_lint_includes_command_for_terminal_mirror(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "eurika").mkdir()
+    (tmp_path / "cli").mkdir()
+
+    def fake_run(cmd, **_kwargs):
+        return subprocess.CompletedProcess(cmd, 0, stdout="All checks passed!\n", stderr="")
+
+    monkeypatch.setattr("eurika.api.task_executor_executors.subprocess.run", fake_run)
+    spec = build_task_spec(intent="run_lint")
+    report = execute_spec(tmp_path, spec)
+    assert report.ok is True
+    cmd = report.verification.get("command")
+    assert isinstance(cmd, list)
+    assert "ruff" in cmd
+    assert "eurika" in cmd
+    assert "cli" in cmd
+    assert report.verification.get("output", "").startswith("All checks passed!")
+
+
+def test_execute_run_mypy_includes_command_for_terminal_mirror(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "eurika").mkdir()
+    (tmp_path / "cli").mkdir()
+
+    def fake_run(cmd, **_kwargs):
+        return subprocess.CompletedProcess(cmd, 0, stdout="Success: no issues found in 1 source file\n", stderr="")
+
+    monkeypatch.setattr("eurika.api.task_executor_executors.subprocess.run", fake_run)
+    spec = build_task_spec(intent="run_mypy")
+    report = execute_spec(tmp_path, spec)
+    assert report.ok is True
+    cmd = report.verification.get("command")
+    assert isinstance(cmd, list)
+    assert "mypy" in cmd
+    assert "eurika" in cmd
+    assert "cli" in cmd
+    assert "Success" in (report.verification.get("output") or "")
+    assert (tmp_path / ".eurika" / "last_check.log").is_file()
+
+
 def test_execute_run_command_rejects_disallowed_binary(tmp_path: Path) -> None:
     spec = build_task_spec(intent="run_command", target="rm -rf /")
     report = execute_spec(tmp_path, spec)

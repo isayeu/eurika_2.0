@@ -35,6 +35,70 @@ def test_chat_specific_pytest_returns_terminal_mirror(tmp_path: Path, monkeypatc
     assert out.get("terminal_exit_code") == 0
 
 
+def test_chat_ruff_lint_returns_terminal_mirror(tmp_path: Path, monkeypatch) -> None:
+    import eurika.api.chat as chat_mod
+    from eurika.api.task_executor_types import ExecutionReport
+
+    monkeypatch.setattr(
+        chat_mod,
+        "execute_spec",
+        lambda _root, _spec: ExecutionReport(
+            ok=True,
+            summary="lint passed",
+            applied_steps=["run lint"],
+            verification={
+                "ok": True,
+                "runner": "lint",
+                "command": ["python", "-m", "ruff", "check", "eurika", "cli"],
+                "exit_code": 0,
+                "output": "All checks passed!",
+            },
+        ),
+    )
+
+    out = chat_mod.chat_send(tmp_path, "проведи ruff chek")
+    assert out.get("error") is None
+    cmd = out.get("terminal_cmd") or ""
+    assert cmd.startswith("$ ")
+    assert "ruff" in cmd
+    assert "eurika" in cmd
+    assert "cli" in cmd
+    assert out.get("terminal_output") == "All checks passed!"
+    assert out.get("terminal_exit_code") == 0
+
+
+def test_chat_mypy_returns_terminal_mirror(tmp_path: Path, monkeypatch) -> None:
+    import eurika.api.chat as chat_mod
+    from eurika.api.task_executor_types import ExecutionReport
+
+    monkeypatch.setattr(
+        chat_mod,
+        "execute_spec",
+        lambda _root, _spec: ExecutionReport(
+            ok=True,
+            summary="type check passed",
+            applied_steps=["run mypy"],
+            verification={
+                "ok": True,
+                "runner": "mypy",
+                "command": ["python", "-m", "mypy", "eurika", "cli"],
+                "exit_code": 0,
+                "output": "Success: no issues found in 80 source files",
+            },
+        ),
+    )
+
+    out = chat_mod.chat_send(tmp_path, "проведи проверку типов mypy")
+    assert out.get("error") is None
+    cmd = out.get("terminal_cmd") or ""
+    assert cmd.startswith("$ ")
+    assert "mypy" in cmd
+    assert "eurika" in cmd
+    assert "cli" in cmd
+    assert "Success" in (out.get("terminal_output") or "")
+    assert out.get("terminal_exit_code") == 0
+
+
 def test_chat_scan_returns_terminal_mirror(tmp_path: Path, monkeypatch) -> None:
     import eurika.api.chat as chat_mod
 
@@ -183,7 +247,11 @@ def test_chat_ls_mirrors_terminal(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_chat_ls_phrase_uses_tool_loop(tmp_path: Path, monkeypatch) -> None:
-    """Russian ls phrase → LLM tool-loop, not project_ls template."""
+    """Russian prose about files → LLM tool-loop, not project_ls template.
+
+    A pasted command («выполни ls») is a bare shell request and stays on the
+    deterministic host_shell path; see ``is_bare_shell_request``.
+    """
     import eurika.api.chat as chat_mod
     from eurika.api.chat_host_ops import HostCommandResult
 
@@ -205,7 +273,7 @@ def test_chat_ls_phrase_uses_tool_loop(tmp_path: Path, monkeypatch) -> None:
         "eurika.api.chat_host_ops.run_host_command_with_privilege",
         _fake_run,
     )
-    out = chat_mod.chat_send(tmp_path, "выполни ls")
+    out = chat_mod.chat_send(tmp_path, "посмотри, что лежит в корне проекта")
     assert out.get("error") is None
     assert "a.py" in (out.get("text") or "")
     assert calls["n"] >= 2
@@ -254,6 +322,38 @@ def test_read_terminal_idle_prompt_ignores_chat_history(tmp_path: Path, monkeypa
     text = (out.get("text") or "").lower()
     assert "mypy" not in text
     assert "пуст" in text or "приглашен" in text or "$" in (out.get("text") or "")
+
+
+def test_already_ran_release_check_reads_terminal_does_not_rerun(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import eurika.api.chat as chat_mod
+
+    called: list[str] = []
+
+    def _run(cmd: str) -> tuple[str, int]:
+        called.append(cmd)
+        return ("should not run", 1)
+
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        lambda *_a, **_k: ("", None),
+    )
+    term = (
+        "$ ./scripts/release_check.sh\n"
+        "FAILED tests/test_entry_cost.py::test_calibration_keeps_flow_when_everything_pays\n"
+        "[done] exit_code=1\n"
+    )
+    out = chat_mod.chat_send(
+        tmp_path,
+        "в терминале прогнал релиз чек, проверь есть ли ошибки",
+        client_terminal_text=term,
+        run_command_with_result=_run,
+    )
+    assert called == []
+    text = out.get("text") or ""
+    assert "test_entry_cost" in text
+    assert "не прошёл" in text
 
 
 def test_read_terminal_empty_qt_pane_does_not_use_host_log(tmp_path: Path, monkeypatch) -> None:

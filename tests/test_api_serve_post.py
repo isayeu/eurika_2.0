@@ -262,7 +262,7 @@ def test_run_post_handler_chat_passes_normalized_payload_to_chat_send(tmp_path: 
         captured["status"] = status
         captured["data"] = data
 
-    def _fake_chat_send(project_root, message, history=None):
+    def _fake_chat_send(project_root, message, history=None, **_kwargs):
         called["project_root"] = project_root
         called["message"] = message
         called["history"] = history
@@ -392,6 +392,40 @@ def test_run_post_handler_exec_ignores_extra_payload_fields(tmp_path: Path, monk
     assert called.get("timeout") == 10
 
 
+def test_run_post_handler_chat_with_runtime_skips_core_chat_send(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """CR-H4: gateway POST /api/chat uses in-process agent, not raw chat_send."""
+    captured: dict[str, object] = {}
+
+    class _Runtime:
+        def dispatch(self, method, params, cancel=None, emit=None):
+            assert method == "session/chat"
+            return {"ok": True, "text": "H4-agent", "pendingToolCalls": []}
+
+    class _Handler:
+        eurika_runtime = _Runtime()
+
+    def _fake_json_response(_handler, data: dict, status: int = 200) -> None:
+        captured["status"] = status
+        captured["data"] = data
+
+    monkeypatch.setattr(serve_routes_post, "_json_response", _fake_json_response)
+    monkeypatch.setattr(
+        "eurika.api.chat.chat_send",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("chat_send")),
+    )
+    handled = serve_routes_post.dispatch_api_post(
+        _Handler(),
+        tmp_path,
+        "/api/chat",
+        {"message": "проверь документы, что далее по плану?"},
+    )
+    assert handled is True
+    assert captured.get("status") == 200
+    assert (captured.get("data") or {}).get("text") == "H4-agent"
+
+
 def test_run_post_handler_chat_allows_empty_message_passthrough(tmp_path: Path, monkeypatch) -> None:
     """POST /api/chat should pass empty message to chat layer without transport 400."""
     captured: dict[str, object] = {}
@@ -401,7 +435,7 @@ def test_run_post_handler_chat_allows_empty_message_passthrough(tmp_path: Path, 
         captured["status"] = status
         captured["data"] = data
 
-    def _fake_chat_send(_project_root, message, history=None):
+    def _fake_chat_send(_project_root, message, history=None, **_kwargs):
         called["message"] = message
         called["history"] = history
         return {"text": "", "error": "message is empty"}
@@ -416,7 +450,7 @@ def test_run_post_handler_chat_allows_empty_message_passthrough(tmp_path: Path, 
     )
     assert handled is True
     assert captured.get("status") == 200
-    assert called.get("message") == ""
+    assert called == {}
     assert (captured.get("data") or {}).get("error") == "message is empty"
 
 

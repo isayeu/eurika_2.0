@@ -260,7 +260,7 @@ def test_full_cycle_doctor_error_propagates_state(tmp_path: Path) -> None:
     """Full cycle when doctor returns error propagates state=error."""
     from unittest.mock import patch
 
-    from eurika.orchestration.entry import run_doctor_cycle, run_fix_cycle
+    from eurika.orchestration.entry import run_fix_cycle
     from eurika.orchestration.full_cycle import run_full_cycle
 
     def _doctor_error(path, **kwargs):

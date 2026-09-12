@@ -9,12 +9,10 @@ Decay dynamics — калибровка (Review III шаги 1–4).
 
 from pathlib import Path
 
-import pytest
 
 from eurika.polygon.decay_polygon import (
     inject_failures,
     inject_success,
-    run_decay_observation,
     scenario_controlled_failures,
 )
 from eurika.reasoning.priority_decay import apply_decay

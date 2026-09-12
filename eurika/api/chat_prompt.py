@@ -281,6 +281,7 @@ def build_chat_prompt(
     tool_experience: Optional[str] = None,
     ui_task_snippet: Optional[str] = None,
     terminal_snippet: Optional[str] = None,
+    observation_snippet: Optional[str] = None,
 ) -> str:
     """Build system + user prompt for chat."""
     if save_target:
@@ -336,8 +337,16 @@ def build_chat_prompt(
         context_block += f"\n[Reference (from documentation)]:\n{knowledge_snippet}\n\n"
     if ui_task_snippet:
         context_block += f"\n{ui_task_snippet}\n"
+    if observation_snippet:
+        context_block += f"\n{observation_snippet}\n\n"
     if terminal_snippet:
-        context_block += f"\n[Terminal output (Qt)]:\n{terminal_snippet[:12000]}\n\n"
+        context_block += (
+            "\n[Terminal output (Qt)]:\n"
+            f"{terminal_snippet[:12000]}\n\n"
+            "If the user already ran a check and asks whether there are errors, "
+            "answer from this output only. Do not emit eurika-cmds for "
+            "pytest/mypy/ruff/release_check.\n\n"
+        )
     if save_target:
         context_block += (
             f"\n[CRITICAL] User requested code to be saved to {save_target}. "

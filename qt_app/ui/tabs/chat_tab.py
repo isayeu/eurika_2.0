@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QPlainTextEdit,
     QPushButton,
     QSizePolicy,
     QSpinBox,
@@ -25,6 +26,7 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QTextBrowser,
     QTextEdit,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -163,8 +165,52 @@ def _build_dialog_page(main: MainWindow) -> QWidget:
     secondary.addStretch(1)
     compose_layout.addLayout(secondary)
 
+    main._chat_thinking_steps = []
+    main._chat_thinking_busy = False
+    main._chat_thinking_committed = False
+    main.chat_thinking_panel = QWidget()
+    thinking_layout = QVBoxLayout(main.chat_thinking_panel)
+    thinking_layout.setContentsMargins(8, 4, 16, 8)
+    thinking_layout.setSpacing(2)
+    main.chat_thinking_btn = QToolButton()
+    main.chat_thinking_btn.setCheckable(True)
+    main.chat_thinking_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+    main.chat_thinking_btn.setArrowType(Qt.ArrowType.RightArrow)
+    main.chat_thinking_btn.setText("Thinking")
+    main.chat_thinking_btn.setStyleSheet(
+        "QToolButton { color: #94a3b8; border: none; font-style: italic; font-size: 13px; }"
+    )
+    main.chat_thinking_btn.setToolTip("Ход работы — разверни, как Thinking в Cursor")
+    main.chat_thinking_detail = QPlainTextEdit()
+    main.chat_thinking_detail.setReadOnly(True)
+    main.chat_thinking_detail.setMaximumHeight(280)
+    main.chat_thinking_detail.setMinimumHeight(72)
+    main.chat_thinking_detail.setFrameStyle(0)
+    main.chat_thinking_detail.setStyleSheet(
+        "QPlainTextEdit { color: #94a3b8; background: transparent; border: none; "
+        "font-size: 13px; padding: 0 0 0 18px; }"
+    )
+
+    def _toggle_thinking(checked: bool) -> None:
+        main.chat_thinking_btn.setArrowType(
+            Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow
+        )
+        main.chat_thinking_detail.setVisible(checked)
+
+    main.chat_thinking_btn.toggled.connect(_toggle_thinking)
+    thinking_layout.addWidget(main.chat_thinking_btn)
+    thinking_layout.addWidget(main.chat_thinking_detail)
+    main.chat_thinking_panel.setVisible(False)
+
+    thread = QWidget()
+    thread_layout = QVBoxLayout(thread)
+    thread_layout.setContentsMargins(0, 0, 0, 0)
+    thread_layout.setSpacing(0)
+    thread_layout.addWidget(main.chat_transcript, 1)
+    thread_layout.addWidget(main.chat_thinking_panel, 0)
+
     chat_split = QSplitter(Qt.Orientation.Vertical)
-    chat_split.addWidget(main.chat_transcript)
+    chat_split.addWidget(thread)
     chat_split.addWidget(compose)
     chat_split.setChildrenCollapsible(False)
     chat_split.setStretchFactor(0, 4)

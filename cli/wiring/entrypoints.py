@@ -14,7 +14,7 @@ import click
 
 # Public façade of the Eurika CLI implementation.
 # Importing from ``eurika_cli`` (layer L6) is allowed.
-from eurika_cli.main import cli as eurika_cli
+from eurika_cli.main import cli as eurika_cli  # type: ignore[import-not-found]
 
 # Optional: import other top‑level commands from the wiring package.
 # These modules must also respect the layer contracts.

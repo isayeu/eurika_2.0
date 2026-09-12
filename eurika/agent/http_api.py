@@ -223,6 +223,7 @@ class AgentHttpService:
                     if path.startswith("/api"):
                         from eurika.api.serve_routes_post import dispatch_api_post
 
+                        self.eurika_runtime = service.runtime
                         if dispatch_api_post(
                             self,
                             service.runtime.workspace_root,

@@ -11,6 +11,7 @@ import pytest
 from eurika.api.chat_git import (
     apply_pending_git,
     assert_safe_git_argv,
+    collect_commit_preview,
     commit_selected,
     looks_like_secret_path,
     parse_status_porcelain,
@@ -220,6 +221,15 @@ def test_combined_request_routes_to_commit_not_bare_push(tmp_path: Path) -> None
     assert is_git_commit_and_push_request("commit and push") is True
     assert resolve_direct_handler(tmp_path, "закоммить и запушь")[0] == "git_commit"
     assert resolve_direct_handler(tmp_path, "запушь")[0] == "git_push"
+
+
+def test_collect_preview_keeps_leading_space_on_unstaged_file(tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    (tmp_path / "README").write_text("dirty\n", encoding="utf-8")
+    preview = collect_commit_preview(tmp_path)
+    assert "README" in preview["include"]
+    assert "EADME" not in preview["include"]
+    assert all(not p.startswith("EADME") for p in preview["include"])
 
 
 def test_parse_porcelain_renames() -> None:

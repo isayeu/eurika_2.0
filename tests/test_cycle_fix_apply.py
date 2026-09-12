@@ -56,7 +56,7 @@ def test_cycle_full_apply_then_rollback(tmp_path: Path) -> None:
     proj.mkdir()
     (proj / 'center.py').write_text('def value():\n    return 42\n', encoding='utf-8')
     for name in ('a', 'b', 'c', 'd', 'e'):
-        (proj / f'{name}.py').write_text(f'from center import value\nx = value()\n', encoding='utf-8')
+        (proj / f'{name}.py').write_text('from center import value\nx = value()\n', encoding='utf-8')
     (proj / 'tests').mkdir(parents=True)
     (proj / 'tests' / '__init__.py').write_text('', encoding='utf-8')
     (proj / 'tests' / 'test_center.py').write_text('from center import value\ndef test_value(): assert value() == 42\n', encoding='utf-8')
@@ -178,7 +178,7 @@ def test_learning_not_appended_when_all_skipped(tmp_path: Path) -> None:
     proj.mkdir()
     (proj / "center.py").write_text("def value(): return 42\n", encoding="utf-8")
     for name in ("a", "b", "c", "d", "e"):
-        (proj / f"{name}.py").write_text(f"from center import value\nx = value()\n", encoding="utf-8")
+        (proj / f"{name}.py").write_text("from center import value\nx = value()\n", encoding="utf-8")
     (proj / "tests").mkdir()
     (proj / "tests" / "__init__.py").write_text("", encoding="utf-8")
     (proj / "tests" / "test_center.py").write_text("from center import value\ndef test_value(): assert value() == 42\n", encoding="utf-8")

@@ -33,8 +33,11 @@ def test_build_self_model_from_facts(tmp_path: Path) -> None:
     )
 
     snap = build_self_model(tmp_path)
-    assert snap["version"] == 1
+    assert snap["version"] == 2
     assert "self" in snap and "capabilities" in snap and "goal" in snap
+    assert "versions" in snap and "deps" in snap and "problems" in snap
+    assert snap["versions"]["python"]
+    assert any(p.get("id") == "missing_self_map" for p in snap["problems"])
     assert snap["goal"]["status"] == "active"
     assert snap["goal"]["active"]["intent"] == "scan"
     idle = snap["capabilities"]["scores"]["c14_idle_drills"]
@@ -48,6 +51,8 @@ def test_build_self_model_from_facts(tmp_path: Path) -> None:
     assert "c14_idle_drills" in text
     assert "apply_ok_rate" in text
     assert "intent=scan" in text
+    assert "problems (first-class)" in text
+    assert "deps (first-class)" in text
 
 
 def test_persist_and_load_self_model(tmp_path: Path) -> None:
@@ -58,7 +63,7 @@ def test_persist_and_load_self_model(tmp_path: Path) -> None:
     loaded = json.loads(path.read_text(encoding="utf-8"))
     assert loaded["version"] == snap["version"]
     again = load_self_model(tmp_path, refresh=False, persist=False)
-    assert again["version"] == 1
+    assert again["version"] == 2
 
 
 def test_format_agent_context_panel_includes_self_model(tmp_path: Path) -> None:
@@ -100,6 +105,26 @@ def test_self_model_chat_intent(tmp_path: Path, monkeypatch) -> None:
     assert out.get("error") is None
     assert "Self Model" in (out.get("text") or "")
     assert snapshot_path(tmp_path).is_file()
+
+
+def test_self_model_reads_pyproject_deps(tmp_path: Path) -> None:
+    (tmp_path / ".eurika").mkdir()
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\n"
+        'name = "demo"\n'
+        'requires-python = ">=3.11"\n'
+        'dependencies = ["httpx>=0.27", "ruff"]\n'
+        "[project.optional-dependencies]\n"
+        'qt = ["PySide6>=6.6"]\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "self_map.json").write_text('{"modules": []}\n', encoding="utf-8")
+    snap = build_self_model(tmp_path)
+    names = {d.get("name") for d in snap["deps"]}
+    assert "httpx" in names and "ruff" in names and "PySide6" in names
+    assert any(d.get("source") == "pyproject:optional:qt" for d in snap["deps"])
+    assert snap["versions"]["requires_python"] == ">=3.11"
+    assert not any(p.get("id") == "missing_self_map" for p in snap["problems"])
 
 
 def test_cli_self_model(tmp_path: Path) -> None:

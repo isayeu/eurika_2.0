@@ -13,10 +13,10 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from eurika.utils.json_io import load_json_safe
+from eurika.utils.json_io import as_dict, as_list, load_json_safe
 
 SNAPSHOT_NAME = "self_model.json"
-SNAPSHOT_VERSION = 1
+SNAPSHOT_VERSION = 2
 
 
 def snapshot_path(project_root: str | Path) -> Path:
@@ -394,6 +394,149 @@ def _experiments(root: Path) -> Dict[str, Any]:
     return out
 
 
+def _parse_pyproject(root: Path) -> Dict[str, Any]:
+    path = root / "pyproject.toml"
+    if not path.is_file():
+        return {}
+    try:
+        import tomllib  # type: ignore[import-not-found]
+    except ImportError:
+        return {}
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _dep_entry(spec: str, source: str) -> Dict[str, Any]:
+    raw = spec.strip()
+    name = raw.split(";", 1)[0].strip()
+    for sep in ("==", ">=", "<=", "~=", "!=", ">", "<"):
+        if sep in name:
+            name = name.split(sep, 1)[0].strip()
+            break
+    return {"name": name or raw, "spec": raw, "source": source}
+
+
+def _collect_deps(root: Path, *, limit: int = 40) -> List[Dict[str, Any]]:
+    """First-class dependency list from pyproject (not a dumped snapshot)."""
+    data = _parse_pyproject(root)
+    project = data.get("project") if isinstance(data.get("project"), dict) else {}
+    out: List[Dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def _add(spec: str, source: str) -> None:
+        if len(out) >= limit:
+            return
+        item = str(spec).strip()
+        if not item:
+            return
+        entry = _dep_entry(item, source)
+        key = (str(entry["name"]), str(entry["spec"]))
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(entry)
+
+    raw = project.get("dependencies") if isinstance(project, dict) else None
+    if isinstance(raw, list):
+        for item in raw:
+            _add(str(item), "pyproject")
+    extras = project.get("optional-dependencies") if isinstance(project, dict) else None
+    if isinstance(extras, dict):
+        for extra_name, items in extras.items():
+            if not isinstance(items, list):
+                continue
+            src = f"pyproject:optional:{extra_name}"
+            for item in items:
+                _add(str(item), src)
+                if len(out) >= limit:
+                    break
+    return out
+
+
+def _collect_versions(root: Path) -> Dict[str, Any]:
+    data = _parse_pyproject(root)
+    project = data.get("project") if isinstance(data.get("project"), dict) else {}
+    requires = ""
+    if isinstance(project, dict):
+        requires = str(project.get("requires-python") or "").strip()
+    return {
+        "package": _package_version(),
+        "python": sys.version.split()[0],
+        "requires_python": requires or None,
+        "platform": platform.platform(),
+    }
+
+
+def _collect_problems(
+    root: Path,
+    *,
+    artifacts: Dict[str, Any],
+    scores: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """First-class problems: missing facts, weak verify, HITL backlog."""
+    problems: List[Dict[str, Any]] = []
+    for key in ("self_map", "events"):
+        if not artifacts.get(key):
+            problems.append(
+                {
+                    "id": f"missing_{key}",
+                    "kind": "missing_artifact",
+                    "severity": "attention",
+                    "detail": f"{key} absent — Observer incomplete",
+                }
+            )
+    if artifacts.get("pending_plan"):
+        problems.append(
+            {
+                "id": "pending_approvals",
+                "kind": "hitl_backlog",
+                "severity": "info",
+                "detail": "Approvals queue (.eurika/pending_plan.json)",
+            }
+        )
+    if (root / ".eurika" / "pending_host_admin.json").is_file():
+        problems.append(
+            {
+                "id": "pending_host_admin",
+                "kind": "host_admin_hitl",
+                "severity": "info",
+                "detail": "host admin mutate queued for HITL",
+            }
+        )
+    apply_row = as_dict(scores.get("apply_ok_rate"))
+    if apply_row and not apply_row.get("insufficient_data"):
+        try:
+            rate_raw = apply_row.get("rate")
+            if rate_raw is None:
+                rate_raw = apply_row.get("level")
+            rate = float(rate_raw if rate_raw is not None else 1)
+        except (TypeError, ValueError):
+            rate = 1.0
+        if rate < 0.35:
+            problems.append(
+                {
+                    "id": "apply_ok_low",
+                    "kind": "verify",
+                    "severity": "attention",
+                    "detail": f"apply_ok_rate={rate}",
+                }
+            )
+    verify_row = as_dict(scores.get("verify_events"))
+    if verify_row.get("insufficient_data"):
+        problems.append(
+            {
+                "id": "verify_insufficient",
+                "kind": "verify",
+                "severity": "info",
+                "detail": "too few patch/verify events for a score",
+            }
+        )
+    return problems
+
+
 def _self_block(root: Path) -> Dict[str, Any]:
     eurika_dir = root / ".eurika"
     return {
@@ -436,21 +579,30 @@ def build_self_model(project_root: str | Path) -> Dict[str, Any]:
     """Rebuild snapshot from current facts (always fresh)."""
     root = Path(project_root).resolve()
     extra_scores = _self_improvement_scores(root)
+    self_b = _self_block(root)
+    scores = {
+        "c14_idle_drills": _idle_capability(root),
+        "hitl_accept_rate": _hitl_capability(root),
+        "bug_hunt_proposes": _bug_hunt_capability(root),
+        "verify_events": _verify_capability(root),
+        **extra_scores,
+    }
+    arts = as_dict(self_b.get("artifacts"))
+    versions = _collect_versions(root)
+    deps = _collect_deps(root)
+    problems = _collect_problems(root, artifacts=arts, scores=scores)
     return {
         "version": SNAPSHOT_VERSION,
         "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "updated_ms": int(time.time() * 1000),
         "project_root": str(root),
-        "self": _self_block(root),
+        "self": self_b,
+        "versions": versions,
+        "deps": deps,
+        "problems": problems,
         "capabilities": {
             "chat_intents": _chat_capabilities(),
-            "scores": {
-                "c14_idle_drills": _idle_capability(root),
-                "hitl_accept_rate": _hitl_capability(root),
-                "bug_hunt_proposes": _bug_hunt_capability(root),
-                "verify_events": _verify_capability(root),
-                **extra_scores,
-            },
+            "scores": scores,
         },
         "goal": _goal_block(root),
         "experiments": _experiments(root),
@@ -510,15 +662,11 @@ def format_self_model_text(
             "Self Model: недостаточно данных. "
             "Запусти `eurika self-model .` или scan / idle-self-dev."
         )
-    self_b = snapshot.get("self") if isinstance(snapshot.get("self"), dict) else {}
-    caps = snapshot.get("capabilities") if isinstance(snapshot.get("capabilities"), dict) else {}
-    scores = caps.get("scores") if isinstance(caps.get("scores"), dict) else {}
-    goal = snapshot.get("goal") if isinstance(snapshot.get("goal"), dict) else {}
-    experiments = (
-        snapshot.get("experiments")
-        if isinstance(snapshot.get("experiments"), dict)
-        else {}
-    )
+    self_b = as_dict(snapshot.get("self"))
+    caps = as_dict(snapshot.get("capabilities"))
+    scores = as_dict(caps.get("scores"))
+    goal = as_dict(snapshot.get("goal"))
+    experiments = as_dict(snapshot.get("experiments"))
 
     lines: List[str] = [
         f"Self Model v{snapshot.get('version', '?')} "
@@ -528,7 +676,25 @@ def format_self_model_text(
         f"- version={self_b.get('package_version') or '?'}, "
         f"python={self_b.get('python') or '?'}",
     ]
-    arts = self_b.get("artifacts") if isinstance(self_b.get("artifacts"), dict) else {}
+    versions = as_dict(snapshot.get("versions"))
+    if versions and mode == "full":
+        req = versions.get("requires_python") or "—"
+        lines.append(f"- requires-python={req}, platform={versions.get('platform') or '?'}")
+    deps = as_list(snapshot.get("deps"))
+    if mode == "full":
+        lines.append(f"- deps (first-class): {len(deps)}")
+        for dep in deps[:8]:
+            if isinstance(dep, dict):
+                lines.append(f"  · {dep.get('name')}: {dep.get('spec')}")
+    problems = as_list(snapshot.get("problems"))
+    if problems:
+        lines.append(f"- problems (first-class): {len(problems)}")
+        for prob in problems[:6]:
+            if isinstance(prob, dict):
+                lines.append(
+                    f"  · [{prob.get('severity')}] {prob.get('id')}: {prob.get('detail')}"
+                )
+    arts = as_dict(self_b.get("artifacts"))
     if arts:
         present = [k for k, v in arts.items() if v]
         missing = [k for k, v in arts.items() if not v]
@@ -557,7 +723,7 @@ def format_self_model_text(
         "hypotheses_supported",
     )
     for key in score_keys:
-        row = scores.get(key) if isinstance(scores.get(key), dict) else {}
+        row = as_dict(scores.get(key))
         level = row.get("level", 0.0)
         try:
             level = round(float(level), 3)
@@ -571,7 +737,7 @@ def format_self_model_text(
         if mode == "full" and row.get("note"):
             lines.append(f"  note: {row.get('note')}")
         if mode == "full" and key == "verify_by_kind":
-            by_kind = row.get("by_kind") if isinstance(row.get("by_kind"), dict) else {}
+            by_kind = as_dict(row.get("by_kind"))
             for kind, st in list(by_kind.items())[:5]:
                 if not isinstance(st, dict):
                     continue
@@ -587,15 +753,15 @@ def format_self_model_text(
                 f"  share={row.get('share')} supported={row.get('supported')}/{row.get('n')}"
             )
 
-    intents = caps.get("chat_intents") if isinstance(caps.get("chat_intents"), list) else []
+    intents = as_list(caps.get("chat_intents"))
     if intents and mode == "full":
         lines.append(f"- chat executor intents: {len(intents)} registered")
 
     lines.append("")
     lines.append("Goal:")
     status = goal.get("status") or "empty"
-    active = goal.get("active") if isinstance(goal.get("active"), dict) else None
-    last = goal.get("last_execution") if isinstance(goal.get("last_execution"), dict) else None
+    active = as_dict(goal.get("active"))
+    last = as_dict(goal.get("last_execution"))
     if active:
         intent = active.get("intent") or "-"
         target = str(active.get("target") or "").strip()
@@ -631,7 +797,7 @@ def format_self_model_text(
         ap = experiments.get("approvals_pending")
         if ap is not None:
             lines.append(f"- approvals_pending={ap}")
-        hitl = experiments.get("hitl") if isinstance(experiments.get("hitl"), dict) else {}
+        hitl = as_dict(experiments.get("hitl"))
         if hitl:
             if hitl.get("insufficient_data"):
                 lines.append(
@@ -645,29 +811,17 @@ def format_self_model_text(
                     f"apply_ok={hitl.get('apply_ok')}"
                     f", apply_ok_rate={hitl.get('apply_ok_rate')})"
                 )
-        si = (
-            experiments.get("self_improvement")
-            if isinstance(experiments.get("self_improvement"), dict)
-            else {}
-        )
+        si = as_dict(experiments.get("self_improvement"))
         if si and mode == "full":
-            aok = si.get("apply_ok_rate") if isinstance(si.get("apply_ok_rate"), dict) else {}
-            ttd = si.get("time_to_decide") if isinstance(si.get("time_to_decide"), dict) else {}
-            hs = (
-                si.get("hypotheses_supported")
-                if isinstance(si.get("hypotheses_supported"), dict)
-                else {}
-            )
+            aok = as_dict(si.get("apply_ok_rate"))
+            ttd = as_dict(si.get("time_to_decide"))
+            hs = as_dict(si.get("hypotheses_supported"))
             lines.append(
                 f"- self_improvement: apply_ok_rate={aok.get('rate')}, "
                 f"time_to_decide_median_ms={ttd.get('median_ms')}, "
                 f"hyp_supported_share={hs.get('share')}"
             )
-        exp = (
-            experiments.get("experiment_records")
-            if isinstance(experiments.get("experiment_records"), dict)
-            else {}
-        )
+        exp = as_dict(experiments.get("experiment_records"))
         if exp.get("n"):
             lines.append(f"- experiment_records: n={exp.get('n')}")
             for row in (exp.get("recent") or [])[:3]:
@@ -707,56 +861,54 @@ def format_self_model_brief(project_root: str | Path) -> List[str]:
     except Exception:
         return []
     out: List[str] = ["", "Self / Capability / Goal:"]
-    self_b = snap.get("self") if isinstance(snap.get("self"), dict) else {}
+    self_b = as_dict(snap.get("self"))
+    versions = as_dict(snap.get("versions"))
     out.append(
-        f"- self: v={self_b.get('package_version') or '?'}, "
-        f"py={self_b.get('python') or '?'}"
+        f"- self: v={self_b.get('package_version') or versions.get('package') or '?'}, "
+        f"py={self_b.get('python') or versions.get('python') or '?'}"
     )
-    scores = (
-        (snap.get("capabilities") or {}).get("scores")
-        if isinstance(snap.get("capabilities"), dict)
-        else {}
-    )
-    if isinstance(scores, dict):
-        for key in (
-            "c14_idle_drills",
-            "hitl_accept_rate",
-            "bug_hunt_proposes",
-            "verify_events",
-            "apply_ok_rate",
-            "verify_by_kind",
-            "time_to_decide",
-            "hypotheses_supported",
-        ):
-            row = scores.get(key) if isinstance(scores.get(key), dict) else {}
-            if not row:
-                continue
-            if row.get("insufficient_data"):
-                out.append(f"- {key}: insufficient_data")
-            else:
-                level = row.get("level", 0.0)
-                try:
-                    level = round(float(level), 3)
-                except (TypeError, ValueError):
-                    pass
-                extra = ""
-                if key == "apply_ok_rate" and row.get("rate") is not None:
-                    extra = f" rate={row.get('rate')}"
-                elif key == "time_to_decide" and row.get("median_ms") is not None:
-                    extra = f" median_ms={row.get('median_ms')}"
-                elif key == "hypotheses_supported" and row.get("share") is not None:
-                    extra = f" share={row.get('share')}"
-                elif key == "verify_by_kind" and row.get("overall_rate") is not None:
-                    extra = f" overall={row.get('overall_rate')}"
-                out.append(f"- {key}: level={level}{extra}")
-    goal = snap.get("goal") if isinstance(snap.get("goal"), dict) else {}
+    deps = as_list(snap.get("deps"))
+    problems = as_list(snap.get("problems"))
+    if deps:
+        out.append(f"- deps: {len(deps)}")
+    if problems:
+        out.append(f"- problems: {len(problems)}")
+    scores = as_dict(as_dict(snap.get("capabilities")).get("scores"))
+    for key in (
+        "c14_idle_drills",
+        "hitl_accept_rate",
+        "bug_hunt_proposes",
+        "verify_events",
+        "apply_ok_rate",
+        "verify_by_kind",
+        "time_to_decide",
+        "hypotheses_supported",
+    ):
+        row = as_dict(scores.get(key))
+        if not row:
+            continue
+        if row.get("insufficient_data"):
+            out.append(f"- {key}: insufficient_data")
+            continue
+        level = row.get("level", 0.0)
+        try:
+            level = round(float(level), 3)
+        except (TypeError, ValueError):
+            pass
+        extra = ""
+        if key == "apply_ok_rate" and row.get("rate") is not None:
+            extra = f" rate={row.get('rate')}"
+        elif key == "time_to_decide" and row.get("median_ms") is not None:
+            extra = f" median_ms={row.get('median_ms')}"
+        elif key == "hypotheses_supported" and row.get("share") is not None:
+            extra = f" share={row.get('share')}"
+        elif key == "verify_by_kind" and row.get("overall_rate") is not None:
+            extra = f" overall={row.get('overall_rate')}"
+        out.append(f"- {key}: level={level}{extra}")
+    goal = as_dict(snap.get("goal"))
     out.append(f"- goal.status={goal.get('status') or 'empty'}")
-    experiments = (
-        snap.get("experiments")
-        if isinstance(snap.get("experiments"), dict)
-        else {}
-    )
-    hitl = experiments.get("hitl") if isinstance(experiments.get("hitl"), dict) else {}
+    experiments = as_dict(snap.get("experiments"))
+    hitl = as_dict(experiments.get("hitl"))
     if hitl:
         rate = hitl.get("accept_rate")
         if rate is not None:
@@ -769,11 +921,7 @@ def format_self_model_brief(project_root: str | Path) -> List[str]:
             )
         elif hitl.get("insufficient_data"):
             out.append("- hitl: insufficient_data (<3 decisions)")
-    exp = (
-        experiments.get("experiment_records")
-        if isinstance(experiments.get("experiment_records"), dict)
-        else {}
-    )
+    exp = as_dict(experiments.get("experiment_records"))
     if exp.get("n"):
         out.append(f"- experiments: n={exp.get('n')}")
     return out

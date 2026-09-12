@@ -96,7 +96,7 @@ def detect_intent(message: str) -> Tuple[Optional[str], Optional[str]]:
     """
     Detect intent and extract target from user message.
 
-    Returns (intent, target). intent: "save" | "refactor" | "delete" | "create" | "remember" | "recall" | "run_tests" | "run_lint" | "run_command" | None.
+    Returns (intent, target). intent: "save" | "refactor" | "delete" | "create" | "remember" | "recall" | "run_tests" | "run_lint" | "run_mypy" | "run_command" | None.
     target: file path for save/delete/create; "name:Value" for remember; "name" for recall.
     """
     msg_raw = (message or '').strip()
@@ -240,7 +240,9 @@ def looks_like_independent_followup(msg: str) -> bool:
         return True
     if re.search(r"\b(mypy|ruff|pytest)\b", low):
         return True
-    if "прочти терминал" in low or "прочитай терминал" in low:
+    from eurika.api.chat_direct import is_read_terminal_request
+
+    if is_read_terminal_request(msg):
         return True
     if re.search(r"исправ.{0,24}ошиб", low):
         return True
@@ -497,6 +499,8 @@ def _plan_for_intent(intent: str, target: Optional[str]) -> List[str]:
         return [f"run pytest for `{tgt or 'tests'}`", "collect exit code", "return verification output"]
     if intent == "run_lint":
         return ["run linter", "collect diagnostics", "return lint summary"]
+    if intent == "run_mypy":
+        return ["run mypy", "collect type errors", "return type-check summary"]
     if intent == "run_command":
         return [f"validate command `{tgt}`", "execute command in project root", "return structured output"]
     if intent in {"remember", "recall"}:
@@ -505,7 +509,7 @@ def _plan_for_intent(intent: str, target: Optional[str]) -> List[str]:
 
 
 def _risk_for_intent(intent: str) -> str:
-    if intent in {"ui_tabs", "project_ls", "project_tree", "recall", "run_tests", "run_lint"}:
+    if intent in {"ui_tabs", "project_ls", "project_tree", "recall", "run_tests", "run_lint", "run_mypy"}:
         return "low"
     if intent in {"remember", "create"}:
         return "medium"

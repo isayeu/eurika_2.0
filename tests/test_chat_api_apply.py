@@ -386,6 +386,36 @@ def test_chat_send_run_lint_executes_without_confirmation(tmp_path: Path, monkey
     out = chat_mod.chat_send(tmp_path, "запусти линтер")
     assert out.get("error") is None
     assert "Готово: lint passed." in (out.get("text") or "")
+    out_ruff = chat_mod.chat_send(tmp_path, "проведи ruff chek")
+    assert out_ruff.get("error") is None
+    assert "Готово: lint passed." in (out_ruff.get("text") or "")
+
+
+def test_chat_send_run_mypy_executes_without_confirmation(tmp_path: Path, monkeypatch) -> None:
+    import eurika.api.chat as chat_mod
+
+    monkeypatch.setattr(
+        chat_mod,
+        "execute_spec",
+        lambda *_args, **_kwargs: type(
+            "ExecReport",
+            (),
+            {
+                "ok": True,
+                "summary": "type check passed",
+                "applied_steps": ["run mypy"],
+                "skipped_steps": [],
+                "verification": {"ok": True, "output": "Success"},
+                "artifacts_changed": [],
+                "error": None,
+            },
+        )(),
+    )
+    out = chat_mod.chat_send(tmp_path, "проведи проверку типов mypy")
+    assert out.get("error") is None
+    assert "Готово: type check passed." in (out.get("text") or "")
+    assert "Подтверди выполнение" not in (out.get("text") or "")
+    assert "Prepared tool action" not in (out.get("text") or "")
 
 
 def test_chat_send_run_command_requires_confirmation(tmp_path: Path) -> None:

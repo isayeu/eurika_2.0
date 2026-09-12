@@ -141,3 +141,67 @@ def test_stamp_planning_on_ops() -> None:
     stamped = stamp_planning_on_ops(ops, signals)
     assert stamped[0].get("planning_ab_bias") == "sandbox"
     assert "planning_coupling_v0" not in stamped[1]
+
+
+def test_planner_core_coupling_reorders_and_stamps(tmp_path: Path, monkeypatch) -> None:
+    from eurika.api.planning_coupling import apply_planner_core_coupling
+
+    (tmp_path / ".eurika").mkdir()
+    (tmp_path / ".eurika" / "ab_trials.json").write_text(
+        json.dumps(
+            {
+                "trials": [
+                    {
+                        "kind": "extract_block_to_helper",
+                        "winner": "baseline",
+                        "smoke_ok": True,
+                        "graph_unchanged": False,
+                    },
+                    {
+                        "kind": "extract_block_to_helper",
+                        "winner": "baseline",
+                        "smoke_ok": True,
+                        "graph_unchanged": False,
+                    },
+                    {
+                        "kind": "remove_unused_import",
+                        "winner": "sandbox",
+                        "smoke_ok": True,
+                        "graph_unchanged": False,
+                    },
+                    {
+                        "kind": "remove_unused_import",
+                        "winner": "sandbox",
+                        "smoke_ok": True,
+                        "graph_unchanged": False,
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def _fake_hyp(_root):
+        return {
+            "caution_weights": {"extract_block_to_helper": -40},
+            "prefer_safe_delta": 12,
+            "ranked": [],
+        }
+
+    monkeypatch.setattr(
+        "eurika.api.hypothesis_engine.hypothesis_ranking_signals",
+        _fake_hyp,
+    )
+    ops = [
+        _op("eurika/a.py", "extract_block_to_helper"),
+        _op("eurika/b.py", "remove_unused_import"),
+        _op("eurika/c.py", "split_module"),
+    ]
+    ordered, meta = apply_planner_core_coupling(tmp_path, ops)
+    assert meta.get("applied") is True
+    assert ordered[0]["kind"] == "remove_unused_import"
+    assert ordered[0].get("planner_core_coupling_v0") is True
+    assert ordered[0].get("planning_ab_bias") == "sandbox"
+    assert any(o.get("kind") == "extract_block_to_helper" and o.get("hypothesis_caution_delta") == -40 for o in ordered)
+    # Never drops ops
+    assert {o["kind"] for o in ordered} == {o["kind"] for o in ops}

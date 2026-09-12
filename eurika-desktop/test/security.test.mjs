@@ -117,15 +117,32 @@ test("desktop can cancel an in-flight chat request", () => {
   assert.match(renderer, /agent\/event/);
 });
 
+test("desktop parks Thinking in the chat thread, not as API bubbles", () => {
+  assert.match(html, /id="chat-thinking"/);
+  assert.match(html, /id="chat-thinking-steps"/);
+  assert.match(renderer, /function beginThinking/);
+  assert.match(renderer, /function appendThinking/);
+  assert.match(renderer, /function finishThinking/);
+  assert.match(renderer, /function formatThinkingStep/);
+  assert.match(renderer, /streamMessage\.before\(panel\)/);
+  assert.match(renderer, /appendThinking\(title\)/);
+  assert.doesNotMatch(renderer, /\[API\] \$\{title\}/);
+  assert.doesNotMatch(renderer, /appendMessage\("assistant", `\[API\]/);
+});
+
 test("desktop product chat, mentions, and scaffolds share Qt RPC", () => {
   assert.match(main, /"chat\/send"/);
   assert.match(main, /"mentions\/suggest"/);
   assert.match(main, /"project\/create"/);
   assert.match(main, /"models\/prefs"/);
-  assert.match(html, /name="chat-mode"/);
+  assert.doesNotMatch(html, /name="chat-mode"/);
+  assert.doesNotMatch(renderer, /function chatMode/);
+  assert.doesNotMatch(renderer, /function sendProductChat/);
   assert.match(html, /id="mention-popup"/);
   assert.match(html, /data-panel="models"/);
-  assert.match(renderer, /function sendProductChat/);
+  assert.match(renderer, /function sendChat/);
+  assert.match(renderer, /"chat\/send"/);
+  assert.match(renderer, /reviewInApprovals: true/);
   assert.match(renderer, /function bindMentionInput/);
   assert.match(renderer, /"project\/create"/);
   assert.match(renderer, /function renderModels/);

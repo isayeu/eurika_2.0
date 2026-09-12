@@ -463,15 +463,22 @@ def test_get_code_smell_operations_skips_extract_nested_on_failed_learning(tmp_p
     assert not any(o.get("kind") == "refactor_code_smell" and o.get("target_file") == "big.py" for o in ops)
 
 
-def test_get_code_smell_operations_does_not_block_on_not_applied_outcome(tmp_path: Path) -> None:
+def test_get_code_smell_operations_does_not_block_on_not_applied_outcome(
+    tmp_path: Path, monkeypatch
+) -> None:
     """not_applied history should not block extract_nested attempts."""
+    # Merged cross-project stats would otherwise decide this from ~/.eurika.
+    monkeypatch.setenv("EURIKA_DISABLE_GLOBAL_MEMORY", "1")
     lines = "\n".join(("    x = 1" for _ in range(48)))
+    # Helper body must reach MIN_EXTRACT_LINES; smaller helpers are dropped as noise.
     content = (
         "def long_foo():\n"
         "    y = 2\n"
         "    def helper():\n"
         "        total = x + y\n"
-        "        result = total + 1\n"
+        "        doubled = total * 2\n"
+        "        shifted = doubled - 1\n"
+        "        result = shifted + 1\n"
         "        return result\n"
         f"{lines}\n"
         "    return helper()\n"

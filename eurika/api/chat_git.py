@@ -120,7 +120,9 @@ def git_run(
         timeout=timeout,
         check=False,
     )
-    out = ((r.stdout or "") + ("\n" + r.stderr if r.stderr else "")).strip()
+    # rstrip only: leading space is porcelain (`` M file``). strip() ate
+    # the first dirty path (`` M README.md`` → ``EADME.md``).
+    out = ((r.stdout or "") + ("\n" + r.stderr if r.stderr else "")).rstrip("\n")
     return (r.returncode, out, argv)
 
 

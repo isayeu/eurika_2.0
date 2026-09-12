@@ -11,12 +11,14 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QPlainTextEdit,
     QPushButton,
     QSplitter,
     QSpinBox,
     QTabWidget,
     QTextBrowser,
     QTextEdit,
+    QToolButton,
     QTreeWidget,
     QWidget,
 )
@@ -60,6 +62,12 @@ class ChatTabAttrs:
     chat_input: ChatInputEdit
     chat_pending_label: QLabel
     chat_typing_label: QLabel
+    chat_thinking_panel: QWidget
+    chat_thinking_btn: QToolButton
+    chat_thinking_detail: QPlainTextEdit
+    _chat_thinking_steps: list[str]
+    _chat_thinking_busy: bool
+    _chat_thinking_committed: bool
     chat_send_btn: QPushButton
     chat_cancel_btn: QPushButton
     chat_clear_btn: QPushButton

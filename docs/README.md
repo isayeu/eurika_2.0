@@ -1,15 +1,26 @@
 # Документация Eurika
 
-Навигация. Главная цель — саморазвивающаяся инженерная система (master-цикл в [VISION.md](VISION.md)); продукт сейчас — Cursor-подобная оболочка + самообучение + paper Market.
+Навигация. Для разработки начинайте с [DEVELOPMENT.md](DEVELOPMENT.md): он
+разделяет текущий приоритет, продуктовый канон, кодовые контракты и историю.
+Главная цель продукта остаётся в [VISION.md](VISION.md).
+
+## Сначала выберите контекст
+
+| Если вы… | Читайте |
+|---|---|
+| Планируете следующую работу | [DEVELOPMENT.md](DEVELOPMENT.md) |
+| Меняете код или зависимости | [Architecture.md](Architecture.md) и [DEPENDENCY_FIREWALL.md](DEPENDENCY_FIREWALL.md) |
+| Проверяете или выпускаете изменение | [DOGFOODING.md](DOGFOODING.md) и [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) |
+| Ищете прошлое решение или причину | [CYCLE_REPORT.md](CYCLE_REPORT.md), затем [archive/](archive/) |
 
 ## 1. Продукт
 
 | Документ | Описание |
 |----------|----------|
-| [VISION.md](VISION.md) | Цель продукта, окно наблюдения, чеклист journal |
+| [VISION.md](VISION.md) | Цель продукта и границы; не список текущих задач |
 | [ONBOARDING.md](ONBOARDING.md) | ≤ 10 мин: clone → Qt / scan → doctor → fix |
 | [UI.md](UI.md) | Qt UI: вкладки, тема, Chat/Market |
-| [CHAT.md](CHAT.md) | Chat: интенты, LLM/Ollama, `.env` |
+| [CHAT.md](CHAT.md) | Chat: интенты, LLM/Ollama, `.env`; целевой единый цикл (CR-H) |
 | [MEMORY.md](MEMORY.md) | EventLog, LearningStore, Market ML на диске |
 
 ## 2. Архитектура
@@ -35,7 +46,8 @@
 
 | Документ | Описание |
 |----------|----------|
-| [ROADMAP.md](ROADMAP.md) | Единый план задач |
+| [DEVELOPMENT.md](DEVELOPMENT.md) | Текущий план разработки и правило выбора документов |
+| [ROADMAP.md](ROADMAP.md) | Подробный исторический tracker и расширенный backlog |
 | [CLI.md](CLI.md) | Справочник команд |
 | [DOGFOODING.md](DOGFOODING.md) | Ритуал self-check |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Типовые ошибки |

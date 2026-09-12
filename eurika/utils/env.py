@@ -23,6 +23,8 @@ _PROJECT_ENV_KEYS = (
     "BINANCE_API_SECRET",
     "BINANCE_TESTNET",
     "BINANCE_BASE_URL",
+    "BINANCE_MCP_URL",
+    "BINANCE_MCP_TOKEN",
     "EURIKA_LBOT_SSH_HOST",
     "EURIKA_LBOT_REMOTE_DIR",
     "EURIKA_LBOT_SSH_TIMEOUT",
@@ -197,6 +199,21 @@ def default_qt_settings_path() -> Path:
 
 def llm_env_is_locked() -> bool:
     return (os.environ.get(LLM_ENV_LOCK_KEY) or "").strip() == "1"
+
+
+def child_process_environ(
+    base: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Env for pytest / release_check children.
+
+    ChatWorker sets ``EURIKA_LLM_ENV_LOCKED`` so one Send cannot be clobbered
+    by ``.env``. That lock must not leak into the child: otherwise dotenv
+    tests see shell-model and fail inside Chat-run release_check.
+    """
+    env = dict(os.environ if base is None else base)
+    env.pop(LLM_ENV_LOCK_KEY, None)
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    return env
 
 
 def apply_qt_chat_routing(

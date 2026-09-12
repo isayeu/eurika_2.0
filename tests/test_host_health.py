@@ -5,7 +5,9 @@ from __future__ import annotations
 from eurika.api.host_health import (
     HostHealthResult,
     _disk_line_relevant,
+    _llm_host_health_narrative_usable,
     advice_from_facts,
+    enrich_host_health_with_llm,
     format_host_health_for_chat,
     run_host_health_probe,
     summarize_journal,
@@ -81,3 +83,27 @@ def test_ntfs_fact_does_not_trigger_disk_fullness_tip() -> None:
     assert "почти заполнен" not in joined
     assert "до >90%" not in joined
     assert tips[0].lower().startswith("главный риск") or "ntfs" in tips[0].lower()
+
+
+def test_llm_host_health_rejects_prompt_echo() -> None:
+    assert _llm_host_health_narrative_usable(
+        "Хост в целом пригоден для Qt и paper. Главный риск — занятый swap. Coredump eurika-qt при выходе — шум приложения."
+    )
+    assert not _llm_host_health_narrative_usable(
+        "The user asks in Russian: write 2-4 calm sentences. Sentence 1: Host is ok."
+    )
+
+
+def test_enrich_host_health_falls_back_on_bad_llm(monkeypatch) -> None:
+    facts = "**Здоровье ОС (хост):** внимание\n\nФакты:\n- swap used: 1Gi\n"
+
+    def _bad(_prompt, max_tokens=280):
+        return ("The user asks in Russian: write 2-4 sentences...", None)
+
+    monkeypatch.setattr(
+        "eurika.reasoning.architect.call_llm_with_prompt",
+        _bad,
+    )
+    out = enrich_host_health_with_llm(facts, use_llm=True)
+    assert out == facts
+    assert "Заключение (LLM)" not in out

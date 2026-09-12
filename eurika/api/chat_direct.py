@@ -454,23 +454,73 @@ def looks_like_web_page_question(message: str) -> bool:
         return False
 
 
+_READ_TERMINAL_CUES = (
+    "прочти терминал",
+    "посмотри терминал",
+    "посмотри вывод терминал",
+    "прочитай терминал",
+    "проверь терминал",
+    "что в терминале",
+    "что показал терминал",
+    "read terminal",
+    "read the terminal",
+    "terminal output",
+)
+_ALREADY_RAN_RE = re.compile(
+    r"(?is)("
+    r"прогнал[аи]?|прогнала|прогнали|"
+    r"запустил[аи]?|запустила|"
+    r"уже\s+(?:прогн|запуст|сделал|прошел)|"
+    r"already\s+(?:ran|run)|\bran\b"
+    r")"
+)
+_TERMINAL_LOCUS_RE = re.compile(
+    r"(?is)("
+    r"в\s+терминал|терминал|вывод\s+терминал|"
+    r"terminal|last_check"
+    r")"
+)
+_REVIEW_EXISTING_RE = re.compile(
+    r"(?is)("
+    r"провер(?:ь|ите|ить)|"
+    r"есть\s+ли\s+ошиб|"
+    r"какие\s+ошиб|"
+    r"ошибк|"
+    r"failed|"
+    r"any\s+errors?|"
+    r"что\s+(?:там|вышл|показал)"
+    r")"
+)
+_RUN_NOW_RE = re.compile(
+    r"(?is)("
+    r"^\s*(?:прогони|запусти|выполни|run)\b|"
+    r"(?:прогони|запусти|выполни)\s+"
+    r"(?:release|релиз|pytest|mypy|ruff)"
+    r")"
+)
+_MUTATE_CHECK_RE = re.compile(r"(?is)исправ|поправ|пофикси|fix\s+the")
+
+
 def is_read_terminal_request(message: str) -> bool:
-    """User asks to interpret Terminal tab output (follow-up after host tools)."""
+    """Interpret already-visible Terminal output — do not re-run the check.
+
+    Skeleton: locus (terminal) + review (errors?) + already-ran / «в терминале»,
+    and not an imperative «прогони / запусти».
+    """
     msg = _norm_msg(message)
     if not msg:
         return False
-    cues = (
-        "прочти терминал",
-        "посмотри терминал",
-        "посмотри вывод терминал",
-        "прочитай терминал",
-        "что в терминале",
-        "что показал терминал",
-        "read terminal",
-        "read the terminal",
-        "terminal output",
-    )
-    return any(c in msg for c in cues)
+    if _MUTATE_CHECK_RE.search(msg):
+        return False
+    if any(cue in msg for cue in _READ_TERMINAL_CUES):
+        return True
+    if _RUN_NOW_RE.search(msg):
+        return False
+    if not _TERMINAL_LOCUS_RE.search(msg):
+        return False
+    if not _REVIEW_EXISTING_RE.search(msg):
+        return False
+    return bool(_ALREADY_RAN_RE.search(msg) or "в терминале" in msg)
 
 
 def looks_like_market_ml_scope_request(message: str) -> bool:
@@ -635,6 +685,11 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
     # Never fuzzy-route HITL confirmations (vector may map «отклонить» → show_report).
     if is_reject_confirmation(msg) or is_apply_confirmation(msg):
         return (None, None)
+    # Project Creation pipeline v0 — before file-create / soft YAML match.
+    from eurika.api.chat_intent_detectors import detect_create_project
+
+    if detect_create_project(msg) is not None:
+        return ("create_project", None)
     # Last apply/verify status (C.12 parity) — before YAML goal_reflection.
     from eurika.api.fix_status import is_apply_result_question
 
@@ -654,10 +709,13 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
         return ("git_commit", None)
     if is_git_push_request(msg):
         return ("git_push", None)
+    # Already-ran + «проверь ошибки» beats YAML release_check and detect_run.
+    if is_read_terminal_request(msg):
+        return ("read_terminal", None)
     # A concrete test request belongs to the run_tests executor. Without this
     # guard the vector matcher may turn an arbitrary test path into qt smoke.
     detected_run = detect_run(msg, msg.lower())
-    if detected_run is not None and detected_run[0] == "run_tests":
+    if detected_run is not None and detected_run[0] in {"run_tests", "run_lint", "run_mypy"}:
         return (None, None)
     matched = match_direct_intent(root, msg)
     if matched:
@@ -668,6 +726,8 @@ def resolve_direct_handler(root: Path, msg: str) -> tuple[Optional[str], Optiona
         elif hid == "git_commit" and not is_git_commit_request(msg) and not is_git_commit_and_push_request(msg):
             pass
         elif hid == "roadmap_verify" and not is_roadmap_verify_request(msg):
+            pass
+        elif hid in {"roadmap_next", "continue_dev"} and not is_short_backlog_request(msg):
             pass
         elif hid == "file_recount" and not is_file_recount_request(msg):
             pass
@@ -945,9 +1005,9 @@ def extract_file_path_from_show_request(message: str) -> str | None:
         cand = m.group(1).strip().rstrip(".,;:)")
         if cand and ("/" in cand or cand.startswith(".")):
             return cand
-    m = re.search(r"(?:^|\s)([./\w][\w./\-]*(?:\.\w+)?)\s*$", msg)
-    if m:
-        cand = m.group(1).strip()
+    tail = re.search(r"(?:^|\s)([./\w][\w./\-]*(?:\.\w+)?)\s*$", msg)
+    if tail:
+        cand = tail.group(1).strip()
         if cand and ("/" in cand or cand.startswith(".") or ".py" in cand or ".md" in cand):
             return cand
     for prefix in (
@@ -1110,6 +1170,8 @@ def test_module_imports():
 
 def is_release_check_request(message: str) -> bool:
     """Detect request to run release check (CR-B2)."""
+    if is_read_terminal_request(message):
+        return False
     msg = _norm_msg(message)
     if not msg:
         return False
@@ -1127,6 +1189,18 @@ def is_release_check_request(message: str) -> bool:
         "прогони releasecheck",
     )
     return any(k in msg for k in keywords)
+
+
+def is_short_backlog_request(message: str) -> bool:
+    """YAML roadmap_next / continue_dev are short commands, not a pasted brief.
+
+    A long paste that mentions «следующий шаг» must reach the agent (CR-H3).
+    """
+    raw = (message or "").strip()
+    if not raw:
+        return False
+    # Two sentences + «что будешь делать?» is already a brief, not «что дальше?».
+    return len(raw) <= 100 and raw.count("\n") < 2
 
 
 def is_roadmap_verify_request(message: str) -> bool:
@@ -1662,6 +1736,8 @@ def is_git_commit_request(message: str) -> bool:
         "git commit",
     )
     if any(k in msg for k in keywords):
+        return True
+    if re.search(r"(?:собери|сделай|создай).{0,24}(?:коммит|commit)", msg):
         return True
     if re.match(r"^\s*commit\s*$", msg) or re.match(r"^\s*коммит\s*$", msg):
         return True

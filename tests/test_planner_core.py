@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from eurika.analysis.graph import ProjectGraph
 from eurika.reasoning.planner import analyze, detect_smells, propose_actions

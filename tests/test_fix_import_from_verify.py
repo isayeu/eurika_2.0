@@ -92,6 +92,61 @@ def test_suggest_fix_name_error_adds_constant(tmp_path: Path) -> None:
     assert "from pathlib import Path" in ops[0]["diff"]
 
 
+def test_redirect_private_symbol_after_extract(tmp_path: Path) -> None:
+    """Extract leftovers: ``from old import _helper`` must retarget the new module."""
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("", encoding="utf-8")
+    (pkg / "old_mod.py").write_text("def leftover():\n    return 1\n", encoding="utf-8")
+    (pkg / "new_mod.py").write_text("def _helper():\n    return 2\n", encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+    failing = tmp_path / "tests" / "test_helper.py"
+    failing.write_text("from pkg.old_mod import _helper\n", encoding="utf-8")
+    log = (
+        "tests/test_helper.py:1: in <module>\n"
+        "    from pkg.old_mod import _helper\n"
+        "E   ImportError: cannot import name '_helper' from 'pkg.old_mod'\n"
+    )
+    from eurika.refactor.fix_import_from_verify import (
+        parse_all_verify_import_errors,
+        suggest_fixes_from_verify_log,
+    )
+
+    parsed = parse_all_verify_import_errors(log)
+    assert parsed and parsed[0]["requested_symbols"] == ["_helper"]
+    ops = suggest_fixes_from_verify_log(tmp_path, log)
+    assert len(ops) == 1
+    assert "from pkg.new_mod import _helper" in ops[0]["params"]["new_content"]
+    assert failing.read_text(encoding="utf-8") == "from pkg.old_mod import _helper\n"
+
+
+def test_redirect_attribute_error_after_extract(tmp_path: Path) -> None:
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("", encoding="utf-8")
+    (pkg / "handlers.py").write_text("def other():\n    return 0\n", encoding="utf-8")
+    (pkg / "pending.py").write_text("def confirm():\n    return True\n", encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+    failing = tmp_path / "tests" / "test_attr.py"
+    failing.write_text(
+        "from pkg import handlers\n\nassert handlers.confirm() is True\n",
+        encoding="utf-8",
+    )
+    log = (
+        "tests/test_attr.py:3: in test_x\n"
+        "    assert handlers.confirm() is True\n"
+        "E   AttributeError: module 'pkg.handlers' has no attribute 'confirm'\n"
+    )
+    from eurika.refactor.fix_import_from_verify import suggest_fixes_from_verify_log
+
+    ops = suggest_fixes_from_verify_log(tmp_path, log)
+    assert ops
+    text = ops[0]["params"]["new_content"]
+    assert "from pkg import pending" in text
+    assert "pending.confirm" in text
+    assert "handlers.confirm" not in text
+
+
 def test_apply_stub_fixes_verify(tmp_path: Path):
     """Create stub + verify passes."""
     (tmp_path / "test_internal_goals.py").write_text(

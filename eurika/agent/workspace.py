@@ -110,6 +110,7 @@ class WorkspaceTools(WorkspaceGitMixin, WorkspaceProcessMixin):
         handlers = {
             "search": self.search,
             "read": self.read,
+            "skill": self.skill,
             "market_status": self.market_status,
             "edit": self.edit,
             "terminal": self.terminal,

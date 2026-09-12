@@ -341,7 +341,7 @@ def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
     self_model_parser = subparsers.add_parser(
         "self-model",
         help=(
-            "Self + Capability + Goal snapshot (VISION § Master); "
+            "Self + Capability + Goal (deps/versions/problems first-class); "
             "rebuilds from facts → .eurika/self_model.json"
         ),
     )
@@ -354,6 +354,55 @@ def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Print full JSON snapshot",
     )
     self_model_parser.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="Alias for --json",
+    )
+
+    init_parser = subparsers.add_parser(
+        "init",
+        help=(
+            "Project Creation pipeline v0 (VISION Stage 6): "
+            "mkdir + .eurika/ + optional scaffold (minimal|python|python-cli)"
+        ),
+    )
+    init_parser.add_argument(
+        "path",
+        nargs="?",
+        default=".",
+        type=Path,
+        help="New or existing project root (default: .)",
+    )
+    init_parser.add_argument(
+        "--name",
+        type=str,
+        default=None,
+        help="Display name for README / bootstrap stamp",
+    )
+    init_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Rewrite stub self_map / bootstrap marker if already present",
+    )
+    init_parser.add_argument(
+        "--no-readme",
+        action="store_true",
+        help="Do not write README.md",
+    )
+    init_parser.add_argument(
+        "--scaffold",
+        "--template",
+        dest="scaffold",
+        default="minimal",
+        help="Template: minimal (default), python, python-cli",
+    )
+    init_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print JSON result",
+    )
+    init_parser.add_argument(
         "--quiet",
         "-q",
         action="store_true",
@@ -385,8 +434,8 @@ def _add_other_commands(subparsers: argparse._SubParsersAction) -> None:
     ab_parser = subparsers.add_parser(
         "ab-compare",
         help=(
-            "Formal A/B v0 (VISION Stage 4): "
-            "baseline vs sandbox trials → .eurika/ab_trials.json"
+            "Formal A/B v2 (VISION Stage 4): "
+            "baseline vs sandbox (core + suite) → .eurika/ab_trials.json"
         ),
     )
     ab_parser.add_argument(
@@ -502,6 +551,14 @@ def _add_ml_market_commands(subparsers: argparse._SubParsersAction) -> None:
 
     status_p = ml_sub.add_parser("status", help="Show market / paper / weights status")
     status_p.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
+
+    mcp_p = ml_sub.add_parser(
+        "mcp",
+        help="Probe Binance MCP tool surface read-only (market data/balances; orders blocked)",
+    )
+    mcp_p.add_argument("path", nargs="?", default=".", type=Path, help="Project root (default: .)")
+    mcp_p.add_argument("--json", action="store_true", help="Print JSON probe result")
+    mcp_p.add_argument("--timeout", type=float, default=15.0, help="HTTP timeout sec (default: 15)")
 
 
 def _add_agent_commands(subparsers: argparse._SubParsersAction) -> None:

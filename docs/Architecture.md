@@ -1,5 +1,10 @@
 # Eurika Architecture v0.6
 
+> **Роль документа:** текущие технические контракты, слои и разрешённые
+> зависимости. За приоритетом работы обращайтесь к
+> [DEVELOPMENT.md](DEVELOPMENT.md), за историей решений — к
+> [ROADMAP.md](ROADMAP.md) и [archive/](archive/).
+
 ---
 
 ## 0. Layer Map (ROADMAP 2.8.1, 3.1-arch.1)
@@ -345,6 +350,7 @@ eurika/
 * **Isolation first** — modules are dumb, explicit, testable
 * **No silent self-modifying code** — эксперименты в sandbox/polygon допустимы; в основное дерево только **proposals**, apply после явного HITL (не онлайн-патчинг ядра «само собой»)
 * **Human-in-the-loop** by design — в т.ч. саморазвитие: удачный полигон → предложение человеку → разрешить или нет
+* **Chat one-loop (CR-H)** — понимание вопроса делает LLM в одном ходе, не коммутатор handler/Chat/agent. Pre-LLM: HITL, safety и run-now уже существующими детекторами (императив «прогони release check» исполняется сразу). Observation bundle общий для `eurika.api.chat` и `eurika.agent` session/chat. Qt и Desktop рисуют разворачиваемый Thinking из `live_activity` (H5). Запрещено закрывать «не поняла» новым доменным `is_*_request`. Фазы: ROADMAP §5.4.1. Не сливать `chat.py` и `local_runtime` одним PR (Architecture Freeze).
 
 ### Цель продукта 1.0 (по archive/review.md)
 

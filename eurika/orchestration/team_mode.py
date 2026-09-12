@@ -68,12 +68,11 @@ def save_pending_plan(
     try:
         from eurika.api.experiment_memory import record_proposals
 
+        plan = payload.get("patch_plan")
         record_proposals(
             project_root,
             ops_with_team,
-            patch_plan=payload.get("patch_plan")
-            if isinstance(payload.get("patch_plan"), dict)
-            else {},
+            patch_plan=plan if isinstance(plan, dict) else {},
         )
     except Exception:
         pass
@@ -81,12 +80,11 @@ def save_pending_plan(
         try:
             from eurika.integrations.telegram_bot import notify_approvals_pending
 
+            notify_plan = payload.get("patch_plan")
             notify_approvals_pending(
                 project_root,
                 operations=ops_with_team,
-                patch_plan=payload.get("patch_plan")
-                if isinstance(payload.get("patch_plan"), dict)
-                else {},
+                patch_plan=notify_plan if isinstance(notify_plan, dict) else {},
                 created_at=str(payload.get("created_at") or ""),
             )
         except Exception:
@@ -267,11 +265,19 @@ def reset_approvals_after_rollback(project_root: Path) -> bool:
             return False
         changed = False
         for op in ops:
-            if isinstance(op, dict) and str(op.get("team_decision", "")).lower() == "approve":
+            if not isinstance(op, dict):
+                continue
+            team = str(op.get("team_decision", "")).lower()
+            state = str(op.get("approval_state", "")).lower()
+            if team == "approve" or state == "approved":
                 op["team_decision"] = "pending"
                 op["approval_state"] = "pending"
                 op["approved_by"] = None
                 changed = True
+        patch_plan = data.get("patch_plan")
+        if isinstance(patch_plan, dict) and patch_plan.get("operations") != ops:
+            data["patch_plan"] = dict(patch_plan, operations=ops)
+            changed = True
         if changed:
             data["operations"] = ops
             path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")

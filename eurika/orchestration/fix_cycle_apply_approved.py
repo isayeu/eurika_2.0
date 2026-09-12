@@ -83,7 +83,8 @@ def run_apply_approved_path(path: Path, *, session_id: str | None, quiet: bool, 
     attach_pipeline_trace(report, [PipelineStage.VALIDATE.value, PipelineStage.APPLY.value, PipelineStage.VERIFY.value])
     out = build_fix_cycle_result(report, approved, modified, verify_success, result)
     try:
-        code = int(out.get("return_code") if isinstance(out, dict) else (0 if verify_success else 1))
+        raw_code = out.get("return_code") if isinstance(out, dict) else None
+        code = int(raw_code) if raw_code is not None else (0 if verify_success else 1)
     except (TypeError, ValueError):
         code = 0 if verify_success else 1
     try:

@@ -1,6 +1,5 @@
 """Tests for eurika.polygon.long_function."""
 
-import pytest
 
 
 def test_module_imports():

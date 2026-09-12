@@ -86,7 +86,7 @@ def dispatch_api_get(
                 "POST /api/approve — save approve/reject decisions to pending_plan.json",
                 "POST /api/exec — run whitelisted eurika command (scan, doctor, fix, cycle, ...)",
                 "POST /api/ask_architect — architect interpretation (returns architect_text from doctor)",
-                "POST /api/chat — chat with Eurika (message → LLM via Eurika layer; logs to .eurika/chat_history/)",
+                "POST /api/chat — same dispatch as Qt/Desktop Send (gateway → agent; else core chat_send)",
             ],
         })
         return True

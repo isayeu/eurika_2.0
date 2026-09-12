@@ -8,7 +8,6 @@ from pathlib import Path
 from eurika.api.chat_direct import resolve_direct_handler
 from eurika.api.chat_host_ops import (
     extract_eurika_cmds,
-    has_tool_call,
     is_safe_host_command,
     run_host_command,
     run_llm_tool_loop,
@@ -381,6 +380,45 @@ def test_empty_tool_block_asks_for_real_commands() -> None:
     assert "echo ok" in result.commands
 
 
+def test_ruff_findings_do_not_prompt_for_sudo(monkeypatch) -> None:
+    from eurika.api import chat_host_ops as hop
+
+    def _fake_run(cmd, *, password=None, use_sudo=False, timeout=60.0, cwd=None):
+        return hop.HostCommandResult(
+            1,
+            "eurika/ml/root.py:3:8: F401 unused import project_root\nFound 1 error.",
+            used_sudo=False,
+        )
+
+    monkeypatch.setattr(hop, "run_host_command", _fake_run)
+
+    def _ask(_cmd: str, _hint: str):
+        raise AssertionError("ruff findings must not open the sudo dialog")
+
+    result = hop.run_host_command_with_privilege("ruff check .", privilege_prompt=_ask)
+    assert result.exit_code == 1
+    assert result.used_sudo is False
+
+
+def test_sudo_prefix_on_ruff_is_stripped_without_prompt(monkeypatch) -> None:
+    from eurika.api import chat_host_ops as hop
+
+    seen: list[tuple[str, bool]] = []
+
+    def _fake_run(cmd, *, password=None, use_sudo=False, timeout=60.0, cwd=None):
+        seen.append((cmd, use_sudo))
+        return hop.HostCommandResult(0, "All checks passed!", used_sudo=False)
+
+    monkeypatch.setattr(hop, "run_host_command", _fake_run)
+
+    def _ask(_cmd: str, _hint: str):
+        raise AssertionError("sudo ruff must not ask for a password")
+
+    result = hop.run_host_command_with_privilege("sudo ruff check .", privilege_prompt=_ask)
+    assert result.exit_code == 0
+    assert seen == [("ruff check .", False)]
+
+
 def test_privilege_prompt_password_path(monkeypatch) -> None:
     from eurika.api import chat_host_ops as hop
 
@@ -533,10 +571,22 @@ def test_cursor_pricing_url_goes_to_llm_not_list_docs() -> None:
 
 
 def test_read_terminal_hard_routed() -> None:
-    from eurika.api.chat_direct import resolve_direct_handler
+    from eurika.api.chat_direct import (
+        is_read_terminal_request,
+        is_release_check_request,
+        resolve_direct_handler,
+    )
     from pathlib import Path
 
     assert resolve_direct_handler(Path("."), "прочти терминал")[0] == "read_terminal"
+    already = "в терминале прогнал релиз чек, проверь есть ли ошибки"
+    assert is_read_terminal_request(already) is True
+    assert is_release_check_request(already) is False
+    assert resolve_direct_handler(Path("."), already)[0] == "read_terminal"
+    assert is_release_check_request("прогони release check") is True
+    assert resolve_direct_handler(Path("."), "прогони release check")[0] == "release_check"
+    assert is_read_terminal_request("прогони в терминале release check") is False
+    assert is_read_terminal_request("mypy (32 ошибки) - исправь ошибки") is False
 
 
 def test_record_and_load_tool_turn_experience(tmp_path: Path) -> None:

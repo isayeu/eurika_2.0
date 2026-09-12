@@ -544,6 +544,7 @@ def test_desktop_commands_include_bug_hunt_and_learn_github() -> None:
 
     assert "bug-hunt" in COMMANDS
     assert "learn-github" in COMMANDS
+    assert {"self-model", "hypotheses", "ab-compare"} <= set(COMMANDS)
 
 
 def test_format_summary_oss_missing_nudge() -> None:

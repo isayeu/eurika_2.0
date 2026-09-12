@@ -9,22 +9,39 @@ from qt_app.adapters import eurika_api_adapter as adapter_mod
 from qt_app.adapters.eurika_api_adapter import EurikaApiAdapter
 
 
-def test_chat_send_uses_ollama_provider(monkeypatch) -> None:
-    captured = {}
-
-    def _fake_chat_send(_root, _message, _history, **kwargs):
+def _patch_chat_probes(monkeypatch, api, captured, extra=None):
+    def _snap() -> dict:
         import os
 
         captured["openai_api_key"] = os.environ.get("OPENAI_API_KEY")
         captured["openai_model"] = os.environ.get("OPENAI_MODEL")
         captured["ollama_model"] = os.environ.get("OLLAMA_OPENAI_MODEL")
+        captured["provider"] = os.environ.get("EURIKA_CHAT_PROVIDER")
+        captured["cursor_model"] = os.environ.get("CURSOR_MODEL")
+        captured["cursor_opt"] = os.environ.get("CURSOR_OPTIMIZE_FOR")
+        captured["cursor_cwd"] = os.environ.get("EURIKA_CURSOR_CWD")
+        captured["locked"] = os.environ.get("EURIKA_LLM_ENV_LOCKED")
+        if extra:
+            extra(captured)
         return {"text": "ok", "error": None}
 
+    def _fake_chat_send(_root, _message, _history, **kwargs):
+        return _snap()
+
+    def _fake_agent(message, *, session_id=None, client_terminal_text=None):
+        return _snap()
+
     monkeypatch.setattr(adapter_mod, "_chat_send", _fake_chat_send)
+    monkeypatch.setattr(api, "agent_chat", _fake_agent)
+
+
+def test_chat_send_uses_ollama_provider(monkeypatch) -> None:
+    captured = {}
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setenv("OPENAI_MODEL", "should-be-removed")
 
     api = EurikaApiAdapter(".")
+    _patch_chat_probes(monkeypatch, api, captured)
     out = api.chat_send(
         message="hello",
         history=[],
@@ -42,19 +59,10 @@ def test_chat_send_uses_ollama_provider(monkeypatch) -> None:
 
 def test_chat_send_uses_codex_provider(monkeypatch) -> None:
     captured = {}
-
-    def _fake_chat_send(_root, _message, _history, **kwargs):
-        import os
-
-        captured["provider"] = os.environ.get("EURIKA_CHAT_PROVIDER")
-        captured["openai_model"] = os.environ.get("OPENAI_MODEL")
-        captured["ollama_model"] = os.environ.get("OLLAMA_OPENAI_MODEL")
-        return {"text": "ok", "error": None}
-
-    monkeypatch.setattr(adapter_mod, "_chat_send", _fake_chat_send)
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
     api = EurikaApiAdapter(".")
+    _patch_chat_probes(monkeypatch, api, captured)
     out = api.chat_send(
         message="hello",
         history=[],
@@ -72,19 +80,8 @@ def test_chat_send_uses_codex_provider(monkeypatch) -> None:
 
 def test_chat_send_uses_cursor_provider(monkeypatch) -> None:
     captured = {}
-
-    def _fake_chat_send(_root, _message, _history, **kwargs):
-        import os
-
-        captured["provider"] = os.environ.get("EURIKA_CHAT_PROVIDER")
-        captured["cursor_model"] = os.environ.get("CURSOR_MODEL")
-        captured["cursor_opt"] = os.environ.get("CURSOR_OPTIMIZE_FOR")
-        captured["cursor_cwd"] = os.environ.get("EURIKA_CURSOR_CWD")
-        captured["locked"] = os.environ.get("EURIKA_LLM_ENV_LOCKED")
-        return {"text": "ok", "error": None}
-
-    monkeypatch.setattr(adapter_mod, "_chat_send", _fake_chat_send)
     api = EurikaApiAdapter(".")
+    _patch_chat_probes(monkeypatch, api, captured)
     out = api.chat_send(
         message="hello",
         history=[],

@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from eurika.utils.json_io import load_json_safe
+from eurika.utils.json_io import as_dict, load_json_safe
 
 HYPOTHESES_NAME = "hypotheses.json"
 HYPOTHESES_VERSION = 1
@@ -262,7 +262,6 @@ def generate_hypotheses(project_root: str | Path) -> List[Dict[str, Any]]:
     n = int(hitl.get("n") or (approve + reject))
     apply_ok = int(hitl.get("apply_ok") or 0)
     apply_fail = int(hitl.get("apply_fail") or 0)
-    insufficient = bool(hitl.get("insufficient_data"))
 
     # 1) HITL volume meta-hypothesis
     if n < 3:
@@ -482,7 +481,7 @@ def evaluate_hypotheses(
         if not isinstance(rec, dict):
             continue
         row = dict(rec)
-        expected = row.get("expected") if isinstance(row.get("expected"), dict) else {}
+        expected = as_dict(row.get("expected"))
         metric = str(expected.get("metric") or "")
         op = str(expected.get("op") or "")
         want = expected.get("value")

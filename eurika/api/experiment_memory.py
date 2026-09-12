@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from eurika.utils.json_io import load_json_safe
+from eurika.utils.json_io import as_dict, load_json_safe
 
 JOURNAL_NAME = "hitl_journal.json"
 EXPERIMENTS_NAME = "experiments.json"
@@ -168,7 +168,7 @@ def _save_experiments(
 def hitl_accept_rate(project_root: str | Path) -> Dict[str, Any]:
     """Measured human approve/(approve+reject). Does not invent success."""
     journal = load_hitl_journal(project_root)
-    ag = journal.get("aggregates") if isinstance(journal.get("aggregates"), dict) else {}
+    ag = as_dict(journal.get("aggregates"))
     approve = int(ag.get("approve") or 0)
     reject = int(ag.get("reject") or 0)
     # Prefer aggregates; fall back to counting recent decisions if aggregates empty.
@@ -503,7 +503,7 @@ def _update_experiment_for_hash(
         if conclusion:
             rec["conclusion"] = conclusion
         if metrics_update:
-            m = rec.get("metrics") if isinstance(rec.get("metrics"), dict) else {}
+            m = as_dict(rec.get("metrics"))
             m.update(metrics_update)
             rec["metrics"] = m
         rec["updated_at"] = _now_iso()
