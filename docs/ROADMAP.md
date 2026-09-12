@@ -1,14 +1,34 @@
-# Eurika 2.0 — ROADMAP
+# Eurika 2.0 — исторический roadmap и расширенный backlog
 
-Единый план задач. Продуктовая цель — [VISION.md](VISION.md); архитектура — [Architecture.md](Architecture.md).
+> **Статус:** этот документ сохраняет подробную историю решений, ревью и
+> расширенный backlog. Текущий приоритет разработки находится в
+> [DEVELOPMENT.md](DEVELOPMENT.md). Не добавляйте сюда краткосрочные задачи,
+> пока они не стали устойчивым решением или историческим фактом.
+
+Продуктовая цель — [VISION.md](VISION.md); архитектурные контракты —
+[Architecture.md](Architecture.md).
 
 ---
 
 ## 1. Принцип и текущая задача
 
-**Основная задача / главная цель:** саморазвивающаяся инженерная система — измеримое самонаблюдение и самоулучшение (observe→…→learn), не иллюзия сознания. Канон и этапы: [VISION.md](VISION.md) § Master. Сейчас на ядре: scan/doctor/fix + C.14 + Self/Capability/Goal + HITL/experiment + Hypothesis Engine + Formal A/B + planning coupling + A/B rescan-when-stable + **multi-hypothesis ranking v0**. Следующее: planner-core coupling beyond bug-hunt. Использование на других проектах — вторично, но входит в Stage 6.
+**Основная задача / главная цель:** саморазвивающаяся инженерная система — измеримое самонаблюдение и самоулучшение (observe→…→learn), не иллюзия сознания. Канон и этапы: [VISION.md](VISION.md) § Master. Сейчас на ядре: scan/doctor/fix + C.14 + Self/Capability/Goal + HITL/experiment + Hypothesis Engine + Formal A/B v2 + **multi-role critic v0** + **Qt↔Desktop parity v2** + **Models-tab parity v0**. Следующее: Stage 6 earn / leftover Desktop UX (sudo dialog, open sibling). Market — freeze.
 
 **Продуктовая оболочка:** Cursor-подобный chat-first shell + learning loop + paper Market ML ([VISION.md](VISION.md)). Сейчас (ops): окно наблюдения Market — explore off, без правок trading-ML; детали в MEMORY / VISION.
+
+**Binance MCP как внешний tool (2026-09-11):** `eurika/integrations/binance_mcp.py` — read-only probe/вызов инструментов Binance Agent OS (`ml-market mcp`, Chat «binance mcp»); order/transfer/withdraw блокируются политикой. Market-ИИ остаётся своим (paper journal → головы). Live-исполнение — отдельный gate: снятие freeze + HITL proposal→approve, Spot-only, sub-account без withdraw, сначала testnet.
+
+**Host admin read-only v0 (2026-09-11):** `eurika/api/host_admin.py` — классификация команды (не phrase-book): observe (`systemctl status`, `journalctl`, `pacman -Q/-Ss`) выполняется; mutate (`pacman -S`, `systemctl restart`, `reboot`, `nmcli radio off`) → `.eurika/pending_host_admin.json`. Подтверждение существующими «одобрить» / «применяй»; sudo — отдельный диалог. Workspace writes по-прежнему Approvals.
+
+**Project scaffolds (2026-09-11):** поверх Project Creation v0 — `eurika init <path> --scaffold python|python-cli` и Chat «создай проект my_app как python». `minimal` = прежний stub; python пишет `src/`, `tests/`, `pyproject.toml`, `.gitignore` (без overwrite существующих файлов).
+
+**Reasoner/Experimenter v1 (2026-09-11):** multi-role critic (`evidence` / `verify` / `hypothesis` / `self` — алгоритмические голоса, не лишние LLM-агенты; soft escalate allow→review). Formal A/B v2: suite `modules` / `dependency_density` / `max_blast_radius` / `layer_violations` (рост слоёв — hard regression). Self Model v2: top-level `deps` / `versions` / `problems`. **Не** autoapply / **не** hard-deny от critic votes.
+
+**Qt ↔ Desktop parity v1 (2026-09-11):** Desktop Commands = те же observer-ритуалы (`self-model` / `hypotheses` / `ab-compare`, без HITL-approval). Desktop `session/chat` шлёт `reviewInApprovals` как Qt IMPLEMENT → `.eurika/pending_plan.json` + автофокус Approvals. Context `canApply`/`canReject` покрывает `.eurika/pending_host_admin.json` (тот же `применяй`/`отклонить`).
+
+**Qt ↔ Desktop parity v2 (2026-09-11):** RPC `chat/send` (продуктовый Qt Chat), `mentions/suggest` (`@module`/`@smell`), `project/create` (bare sibling + scaffold, не re-init открытого root). Desktop: переключатель Eurika / Agent, popup `@`, кнопка Commands «init / scaffold».
+
+**Models-tab parity v0 (2026-09-12):** Desktop панель **Models** = тот же routing, что Qt Models (`EURIKA_CHAT_PROVIDER`, preset → `OPENAI_BASE_URL`/`OPENAI_MODEL`, Ollama/Cursor/timeout, torch device). RPC `panel/state models` (read) + `models/prefs` (HITL write). Секреты не сериализуются. Market learning — compact read-only. Нет start/stop Ollama и нет правок trading-ML.
 
 **Долгосрочное видение:** Stage 6 (general engineering + earn); до этого — дожать Observer→Experimenter на существующем контуре HITL.
 
@@ -122,7 +142,7 @@ UI.md ✓; README ✓; критерии **B.7–B.14** выполнены. Оц�
 
 **Dashboard (март 2026):** ARCHITECTURE METRICS (blast radius top N, dependency_density RV1/RV2, fragility heatmap RV10 🟢🟡🔴); Suggest plan sub-tab (ROADMAP §7). Refresh заполняет из get_summary, get_suggest_plan_data.
 
-### 4.5 Текущий фокус (март 2026)
+### 4.5 Снимок фокуса (март 2026, исторический)
 
 **Принцип:** доказать, что текущий интеллект работает — не добавлять новый.
 
@@ -140,7 +160,7 @@ UI.md ✓; README ✓; критерии **B.7–B.14** выполнены. Оц�
 
 **Отложено:** refactor_code_smell 0% — честная метрика; EnergyModel — контракт есть, реализация позже; production 4/10.
 
-### 4.6 Следующие шаги
+### 4.6 Зафиксированные следующие шаги (исторический контекст)
 
 **P1–P9 выполнены.** Ритуалы: dogfooding после сессии (§4.3), очистка .eurika_backups перед release.
 
@@ -531,7 +551,7 @@ while True:
 
 ---
 
-## 6. Открытый бэклог (следующие шаги)
+## 6. Расширенный backlog (справочный)
 
 ### 6.0 Продуктовая готовность 7/10 (B.11–B.14 выполнены)
 
@@ -611,7 +631,7 @@ while True:
 - [x] **RV8** Weights freeze — `weights_snapshot = weight_store.freeze()` на время planner-цикла; EURIKA_WEIGHT_ADAPTATION только после цикла ✅
 - [x] **RV9** Multi-objective ranking — stability_penalty в energy_ranking (Martin's I per target); EURIKA_STABILITY_PENALTY_LAMBDA ✅
 - [x] **RV10** Fragility heatmap — green/yellow/red по модулям; blast_radius, propagation_depth ✅
-- [ ] **RV11** Call graph / data flow — расширить project_graph (сейчас только imports)
+- [~] **RV11** Call graph / data flow — static project-local call graph и conservative data flow (`param → return → assignment`) через AST доступны в `GET /api/graph?include_calls=1` (local/imported functions, read-only). **Diagnostics v0 (2026-09-12):** `call_graph.diagnostics.accuracy` (labeled fixture) + `diagnostics.cost` (elapsed_ms / size). Dynamic dispatch/data objects остаются вне scope. **Не** вход planner/policy.
 - [ ] **RV12** Architecture Time Machine — snapshots по времени, health trend, collapse prediction (long-term)
 - [ ] **RV13** Architecture Gravity — gravity_score, black holes (long-term, после 5 метрик)
 - [x] **RV14** Patch safety layer — patch_guard: syntax (ast.parse before verify), tests (pytest), rollback on syntax ✅

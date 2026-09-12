@@ -48,7 +48,9 @@ def test_handshake_advertises_versioned_structured_capabilities(tmp_path: Path) 
     assert result["features"]["streamingEvents"] is True
     assert result["features"]["editProposals"] is True
     assert "proposal/apply" in result["methods"]
+    assert {"chat/send", "mentions/suggest", "project/create", "models/prefs"} <= set(result["methods"])
     assert result["methodContracts"]["proposal/apply"]["requiresApproval"] is True
+    assert result["methodContracts"]["models/prefs"]["requiresApproval"] is True
     assert set(result["tools"]) == {
         "search", "read", "market_status", "edit", "terminal", "diagnostics", "tests",
         "git_diff", "git_status", "git_commit", "git_push",
@@ -63,7 +65,7 @@ def test_handshake_advertises_versioned_structured_capabilities(tmp_path: Path) 
 @pytest.mark.parametrize(
     ("adapter_id", "panels"),
     [
-        ("desktop", ["chat", "diff", "context", "approvals", "commands", "market"]),
+        ("desktop", ["chat", "diff", "context", "approvals", "commands", "market", "models"]),
         ("vscode", ["chat"]),
         ("qt", ["market", "approvals", "commands", "context"]),
     ],
@@ -889,6 +891,7 @@ def test_product_panels_are_serializable_without_qt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("EURIKA_MARKET_ROOT", str(tmp_path))
+    monkeypatch.setenv("EURIKA_QT_SETTINGS_PATH", str(tmp_path / "qt_settings.json"))
     ml = tmp_path / ".eurika" / "ml"
     ml.mkdir(parents=True)
     (ml / "paper_portfolio.json").write_text(
@@ -905,13 +908,26 @@ def test_product_panels_are_serializable_without_qt(
     commands = _runtime_call(runtime, "panel/state", {"panel": "commands"}, [])
     approvals = _runtime_call(runtime, "panel/state", {"panel": "approvals"}, [])
     context = _runtime_call(runtime, "panel/state", {"panel": "context"}, [])
+    models = _runtime_call(runtime, "panel/state", {"panel": "models"}, [])
 
     assert market["data"]["portfolio"]["equity_usdt"] == 1001.5
     assert market["data"]["events"][0]["message"] == "trained"
     assert "scan" in {item["id"] for item in commands["commands"]}
+    ids = {item["id"] for item in commands["commands"]}
+    assert {"self-model", "hypotheses", "ab-compare"} <= ids
+    by_id = {item["id"]: item for item in commands["commands"]}
+    assert by_id["self-model"]["requiresApproval"] is False
+    assert by_id["scan"]["requiresApproval"] is True
     assert approvals["data"]["error"] == "no pending plan"
     assert context["panel"] == "context"
-    assert "Нет активной цели" in context["text"]
+    # Context panel renders the compact goal block, not the chat goal-status text.
+    assert "Цель: нет" in context["text"]
+    assert models["panel"] == "models"
+    assert isinstance(models.get("llm"), dict)
+    assert isinstance(models.get("ml"), dict)
+    blob = json.dumps(models)
+    assert "OPENAI_API_KEY" in blob
+    assert all(isinstance(flag, bool) for flag in (models["llm"].get("keys_present") or {}).values())
 
 
 def test_context_panel_shows_goal_and_last_execution(tmp_path: Path) -> None:
@@ -1021,6 +1037,202 @@ def test_context_decide_reject_clears_pending(tmp_path: Path) -> None:
     state = json.loads(state_path.read_text(encoding="utf-8"))
     assert state.get("pending_plan") == {}
     assert not (tmp_path / "will_not_exist.txt").exists()
+
+
+def test_context_host_admin_hitl_apply_and_reject(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Desktop Context Apply/Reject acts on pending_host_admin.json (Qt Chat HITL)."""
+    from eurika.agent.protocol import ERR_APPROVAL_REQUIRED, RpcError
+    from eurika.api.chat_host_ops import HostCommandResult
+    from eurika.api.host_admin import load_pending_host_admin, queue_host_admin
+
+    (tmp_path / ".eurika").mkdir()
+    queue_host_admin(tmp_path, ["systemctl restart cups"], source="unit")
+    runtime = LocalAgentRuntime(tmp_path)
+    context = _runtime_call(runtime, "panel/state", {"panel": "context"}, [])
+    assert context["hasPendingHostAdmin"] is True
+    assert context["canApply"] is True
+    assert context["canReject"] is True
+    assert context["fingerprint"].startswith("host:")
+    assert "systemctl restart cups" in (context.get("preview") or {}).get("unified_diff", "")
+
+    with pytest.raises(RpcError) as err:
+        _runtime_call(runtime, "context/decide", {"decision": "apply"}, [])
+    assert err.value.code == ERR_APPROVAL_REQUIRED
+
+    ran: list[str] = []
+
+    def _fake(cmd, *, privilege_prompt=None, timeout=60.0, cwd=None):
+        ran.append(cmd)
+        return HostCommandResult(0, "restarted (fake)")
+
+    monkeypatch.setattr(
+        "eurika.api.chat_host_ops.run_host_command_with_privilege", _fake
+    )
+    applied = _runtime_call(
+        runtime,
+        "context/decide",
+        {"decision": "apply", "approval": True},
+        [],
+    )
+    assert applied["ok"] is True
+    assert ran == ["systemctl restart cups"]
+    assert applied["context"]["hasPendingHostAdmin"] is False
+    assert load_pending_host_admin(tmp_path) is None
+
+    queue_host_admin(tmp_path, ["reboot"], source="unit")
+    rejected = _runtime_call(runtime, "context/decide", {"decision": "reject"}, [])
+    assert rejected["ok"] is True
+    assert load_pending_host_admin(tmp_path) is None
+
+
+def test_product_chat_send_self_model(tmp_path: Path) -> None:
+    (tmp_path / ".eurika").mkdir()
+    runtime = LocalAgentRuntime(tmp_path)
+    result = _runtime_call(runtime, "chat/send", {"message": "модель себя"}, [])
+    assert result.get("ok") is True
+    assert "Self Model" in str(result.get("text") or "")
+    assert (tmp_path / ".eurika" / "self_model.json").is_file()
+
+
+def test_mentions_suggest_from_self_map(tmp_path: Path) -> None:
+    (tmp_path / "self_map.json").write_text(
+        json.dumps({"modules": [{"path": "eurika/api/chat.py"}, {"path": "patch_engine.py"}]}),
+        encoding="utf-8",
+    )
+    runtime = LocalAgentRuntime(tmp_path)
+    result = _runtime_call(runtime, "mentions/suggest", {"prefix": "chat"}, [])
+    assert "eurika/api/chat.py" in result["candidates"]
+
+
+def test_project_create_sibling_scaffold(tmp_path: Path) -> None:
+    from eurika.agent.protocol import ERR_APPROVAL_REQUIRED, RpcError
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    runtime = LocalAgentRuntime(workspace)
+    with pytest.raises(RpcError) as err:
+        _runtime_call(runtime, "project/create", {"name": "demo_app", "scaffold": "python"}, [])
+    assert err.value.code == ERR_APPROVAL_REQUIRED
+    with pytest.raises(RpcError):
+        _runtime_call(
+            runtime,
+            "project/create",
+            {"name": "../escape", "scaffold": "minimal", "approval": True},
+            [],
+        )
+    created = _runtime_call(
+        runtime,
+        "project/create",
+        {"name": "demo_app", "scaffold": "python", "approval": True},
+        [],
+    )
+    dest = tmp_path / "demo_app"
+    assert created["ok"] is True
+    assert Path(created["path"]) == dest.resolve()
+    assert (dest / ".eurika").is_dir()
+    assert (dest / "pyproject.toml").is_file()
+
+
+def test_models_prefs_require_approval_and_skip_secrets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from eurika.agent.protocol import ERR_APPROVAL_REQUIRED, ERR_INVALID_PARAMS, RpcError
+
+    monkeypatch.setenv("EURIKA_QT_SETTINGS_PATH", str(tmp_path / "qt_settings.json"))
+    (tmp_path / ".env").write_text("OPENAI_API_KEY=sk-test-secret-do-not-write\n", encoding="utf-8")
+    runtime = LocalAgentRuntime(tmp_path)
+    with pytest.raises(RpcError) as err:
+        _runtime_call(runtime, "models/prefs", {"prefs": {"provider": "ollama"}}, [])
+    assert err.value.code == ERR_APPROVAL_REQUIRED
+    with pytest.raises(RpcError) as bad:
+        _runtime_call(
+            runtime,
+            "models/prefs",
+            {"approval": True, "prefs": {"openai_api_key": "sk-leak"}},
+            [],
+        )
+    assert bad.value.code == ERR_INVALID_PARAMS
+    result = _runtime_call(
+        runtime,
+        "models/prefs",
+        {
+            "approval": True,
+            "prefs": {
+                "provider": "openai",
+                "api_preset": "groq",
+                "openai_model": "openai/gpt-oss-20b",
+            },
+        },
+        [],
+    )
+    assert result["panel"] == "models"
+    assert result["llm"]["provider"] == "openai"
+    env_text = (tmp_path / ".env").read_text(encoding="utf-8")
+    assert "api.groq.com" in env_text
+    assert "OPENAI_MODEL=openai/gpt-oss-20b" in env_text
+    assert "OPENAI_API_KEY=sk-test-secret-do-not-write" in env_text
+    assert "sk-leak" not in env_text
+    settings = json.loads((tmp_path / "qt_settings.json").read_text(encoding="utf-8"))
+    assert settings["chat_provider"] == "openai"
+    assert settings["chat_api_preset"] == "groq"
+
+
+def test_command_run_self_model_without_approval(tmp_path: Path) -> None:
+    (tmp_path / ".eurika").mkdir()
+    runtime = LocalAgentRuntime(tmp_path)
+    result = _runtime_call(
+        runtime, "command/run", {"command": "self-model"}, []
+    )
+    assert result.get("exitCode") == 0
+    assert (tmp_path / ".eurika" / "self_model.json").is_file()
+
+
+def test_session_chat_desktop_review_in_approvals(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Desktop Chat uses the same reviewInApprovals parking as Qt IMPLEMENT."""
+    target = tmp_path / "sample.txt"
+    target.write_text("one\ntwo\n", encoding="utf-8")
+    runtime = LocalAgentRuntime(tmp_path)
+    replies = iter(
+        [
+            json.dumps(
+                {
+                    "type": "tool_calls",
+                    "toolCalls": [
+                        {
+                            "tool": "edit",
+                            "arguments": {
+                                "path": "sample.txt",
+                                "oldText": "two",
+                                "newText": "TWO",
+                            },
+                        }
+                    ],
+                }
+            ),
+            '{"type":"final","text":"Queued sample.txt for Approvals."}',
+        ]
+    )
+    monkeypatch.setattr(runtime, "_call_model", lambda prompt: (next(replies), None))
+    result = _runtime_call(
+        runtime,
+        "session/chat",
+        {
+            "message": "Update sample.txt",
+            "context": {"reviewInApprovals": True, "client": "desktop"},
+        },
+        [],
+    )
+    assert target.read_text(encoding="utf-8") == "one\ntwo\n"
+    assert result["pendingToolCalls"] == []
+    assert result["approvalsQueued"] == 1
+    ops = json.loads((tmp_path / ".eurika" / "pending_plan.json").read_text(encoding="utf-8"))[
+        "operations"
+    ]
+    assert ops[0]["kind"] == "agent_edit"
 
 
 def test_approval_apply_persists_then_runs_apply_approved(

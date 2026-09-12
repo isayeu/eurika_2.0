@@ -6,10 +6,13 @@ from pathlib import Path
 from typing import Any, Dict
 
 
-def get_graph(project_root: Path) -> Dict[str, Any]:
+def get_graph(project_root: Path, *, include_calls: bool = False) -> Dict[str, Any]:
     """
     Build dependency graph for UI (ROADMAP 3.5.7).
-    Returns { nodes, edges } for vis-network format.
+    Returns { nodes, edges } for vis-network format. When ``include_calls`` is
+    set, adds a best-effort static project-local ``call_graph`` with its
+    conservative parameter/return/assignment data-flow edges and read-only
+    ``diagnostics`` (labeled accuracy + this-tree cost). Not a planner input.
     nodes: [{ id, label, title, fan_in, fan_out }]
     edges: [{ from, to }]
     """
@@ -32,7 +35,12 @@ def get_graph(project_root: Path) -> Dict[str, Any]:
     for src, dsts in graph.edges.items():
         for dst in dsts:
             edges.append({"from": src, "to": dst})
-    return {"nodes": nodes, "edges": edges}
+    result: Dict[str, Any] = {"nodes": nodes, "edges": edges}
+    if include_calls:
+        from eurika.analysis.call_graph_eval import attach_call_graph_diagnostics
+
+        result["call_graph"] = attach_call_graph_diagnostics(root)
+    return result
 
 
 def get_summary(

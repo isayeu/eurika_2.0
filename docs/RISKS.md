@@ -43,7 +43,7 @@
 
 | Статус | Митигация |
 |--------|-----------|
-| Открыто | project_graph — dependency only; call/data flow — вне текущего scope |
+| Частично | import-граф + optional `GET /api/graph?include_calls=1` (RV11 diagnostics, read-only). test coverage и вход в planner/policy — вне scope |
 
 ---
 

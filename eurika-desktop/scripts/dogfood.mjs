@@ -155,13 +155,31 @@ try {
   const commands = await backend.client.request("panel/state", { panel: "commands" });
   const approvals = await backend.client.request("panel/state", { panel: "approvals" });
   const context = await backend.client.request("panel/state", { panel: "context" });
+  const models = await backend.client.request("panel/state", { panel: "models" });
   if (market.panel !== "market" || !market.data) throw new Error("Market panel did not return shared state");
+  if (models.panel !== "models" || !models.llm || !models.ml) {
+    throw new Error("Models panel did not return LLM/ML state");
+  }
   if (!commands.commands?.some((item) => item.id === "scan")) {
     throw new Error("Commands panel is missing the shared command list");
+  }
+  for (const id of ["self-model", "hypotheses", "ab-compare"]) {
+    if (!commands.commands?.some((item) => item.id === id)) {
+      throw new Error(`Commands panel is missing ${id}`);
+    }
   }
   if (approvals.panel !== "approvals") throw new Error("Approvals panel did not return shared state");
   if (context.panel !== "context" || typeof context.text !== "string") {
     throw new Error("Context panel did not return shared dialog_state text");
+  }
+
+  const product = await backend.client.request("chat/send", { message: "модель себя" });
+  if (!String(product.text || "").includes("Self Model")) {
+    throw new Error("chat/send did not return Self Model text");
+  }
+  const mentions = await backend.client.request("mentions/suggest", { prefix: "god" });
+  if (!Array.isArray(mentions.candidates)) {
+    throw new Error("mentions/suggest did not return candidates");
   }
 
   // Qt/Desktop shared idle self-dev prefs (C.14) — no LLM run in dogfood.

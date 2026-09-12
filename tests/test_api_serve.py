@@ -309,6 +309,7 @@ def test_dispatch_api_get_history_returns_dict(tmp_path: Path, monkeypatch) -> N
 
 
 def test_dispatch_api_get_market_and_learning(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("EURIKA_QT_SETTINGS_PATH", str(tmp_path / "qt_settings.json"))
     captured: dict[str, object] = {}
 
     def _fake_json_response(_handler, data: dict, status: int = 200) -> None:
@@ -324,6 +325,11 @@ def test_dispatch_api_get_market_and_learning(tmp_path: Path, monkeypatch) -> No
     assert handled is True
     data = captured.get("data") or {}
     assert "paper" in data
+    handled = api_serve._dispatch_api_get(_DummyHandler(), tmp_path, "/api/models", {})
+    assert handled is True
+    data = captured.get("data") or {}
+    assert data.get("panel") == "models"
+    assert "llm" in data
 
 
 def test_read_json_body_returns_parsed_dict_on_valid_json() -> None:

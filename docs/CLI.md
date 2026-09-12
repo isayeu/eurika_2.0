@@ -22,13 +22,15 @@ Scan → Diagnose → Plan → Patch → Verify → Log
 | Propose (C.14 polygon HITL) | `eurika prove-cycle . --propose [--drill …] [--require-llm] [--sandbox]` | Seed polygon + pending plan **без** apply на main; `--sandbox` = apply+smoke-verify в worktree/copy; Approve → `--apply-approved` |
 | Bug-hunt (C.14 v1.5) | `eurika bug-hunt . --propose [--sandbox] [--web]` | Один реальный smell → sandbox → Approvals; `--web` = research note only |
 | Idle self-dev (C.14) | `eurika idle-self-dev . [--status\|--once\|--prune-sandboxes] [--force]` | Когда LLM lease quiet — один propose+sandbox (polygon + bug_hunt; без cron / без apply); `--prune-sandboxes` чистит stale worktree |
-| Self model (v0) | `eurika self-model . [--json]` | Self + Capability + Goal snapshot из фактов → `.eurika/self_model.json` (VISION § Master) |
+| Self model (v2) | `eurika self-model . [--json]` | Self + Capability + Goal; first-class **deps / versions / problems** → `.eurika/self_model.json` |
 | Hypotheses (v0) | `eurika hypotheses . [--json]` | Hypothesis Engine + ranking (`rank_score`) → `.eurika/hypotheses.json` (Stage 3) |
-| A/B compare (v0) | `eurika ab-compare . [--json]` | Formal A/B: baseline vs sandbox trials → `.eurika/ab_trials.json` (Stage 4; не autoapply) |
+| A/B compare (v2) | `eurika ab-compare . [--json]` | Formal A/B core + suite (`layer_violations` hard rule) → `.eurika/ab_trials.json` (не autoapply) |
+| Fix (dry-run) | `eurika fix . --dry-run` | После diagnose: soft **planner-core coupling** (A/B + verify_by_kind + hypotheses) переупорядочивает ops; **multi-role critic** может escalate allow→review; meta в report — не deny / не autoapply |
 | Telegram (C.12) | `eurika telegram-bot .` | Long-poll → `chat_send`; allowlist; push Approvals + `/approve`/`/reject`; apply только HITL |
 | Patch | `eurika fix .` или `eurika agent patch-apply . --apply` | Применить патчи (с бэкапами) |
 | Verify | встроено в `eurika fix` (pytest после apply) | pytest; при провале — подсказка rollback; при ухудшении метрик — автоматический откат |
 | Log | автоматически (events, history) | Исходы записываются в `.eurika/events.json`, architect получает recent_events |
+| Init + scaffold | `eurika init <path> [--scaffold minimal\|python\|python-cli]` | Project Creation: `.eurika/` + stub `self_map`; python — `src/`, tests, pyproject |
 
 **Продуктовые режимы (5):** **scan**, **doctor**, **fix**, **cycle**, **explain**. В `eurika help` выводятся первыми.
 
@@ -322,7 +324,7 @@ eurika bug-hunt . --propose --no-sandbox
 
 Chat: «найди баг» / «предложи улучшение кода» / «bug hunt».
 
-Desktop Commands: `bug-hunt` (defaults `--propose --sandbox`), `learn-github` (defaults `--light --limit-repos 2 --scan --build-patterns`).
+Desktop / Qt Commands: `bug-hunt` (defaults `--propose --sandbox`), `learn-github` (defaults `--light --limit-repos 2 --scan --build-patterns`), **`self-model` / `hypotheses` / `ab-compare`** (read-only, без extra approval). Desktop также: **`project/create`** (sibling name + `--scaffold`, HITL), панель **Models** (`models/prefs`, HITL) и Chat-режим Eurika (`chat/send`).
 
 Chat: «обнови паттерны» / «learn-github» — тот же light rebuild `pattern_library` (OSS hints для bug-hunt / extract).
 
@@ -345,7 +347,7 @@ Qt / Desktop: чекбокс Agent «Саморазвитие в простое 
 
 ### eurika self-model [path] [--json|-q]
 
-VISION § Master v0: пересобрать **Self + Capability + Goal** из фактов (dialog_state, idle/bug_hunt stamps, events, artifacts) → `.eurika/self_model.json`. Не ручной JSON. Capability scores помечают `insufficient_data`, когда мало наблюдений; bug-hunt level не путает propose с accept. Stage 5 metrics: `apply_ok_rate`, `verify_by_kind`, `time_to_decide`, `hypotheses_supported` (также в `.eurika/hitl_journal.json` / `experiments.json` → `self_improvement`).
+VISION § Master v2: пересобрать **Self + Capability + Goal** из фактов (dialog_state, idle/bug_hunt stamps, events, artifacts) → `.eurika/self_model.json`. First-class поля: `deps` (pyproject + optional extras), `versions` (package/python/requires-python/platform), `problems` (missing artifacts, HITL backlog, low apply_ok). Не ручной JSON. Capability scores помечают `insufficient_data`, когда мало наблюдений; bug-hunt level не путает propose с accept. Stage 5 metrics: `apply_ok_rate`, `verify_by_kind`, `time_to_decide`, `hypotheses_supported`.
 
 ```bash
 eurika self-model .
@@ -371,7 +373,7 @@ Chat: «гипотезы», «какие гипотезы?».
 
 ### eurika ab-compare [path] [--json|-q]
 
-VISION Stage 4 v0: **Formal A/B** — recent trials comparing baseline (main `self_map`) vs treatment (sandbox) on fixed metrics `energy`, `risk_score`, `total_smells`, `cycles`, `smoke_ok` → `.eurika/ab_trials.json`. Trials are written automatically after bug-hunt/prove-cycle `--sandbox` smoke ok. Winner does **not** auto-apply. `EURIKA_AB_RESCAN=auto` (default) rescans sandbox when architecture metrics are stable and self_map was seeded; `on` forces; `off` disables.
+VISION Stage 4 v2: **Formal A/B** — recent trials comparing baseline (main `self_map`) vs treatment (sandbox). Core: `energy`, `risk_score`, `total_smells`, `cycles`, `smoke_ok`. Suite: `modules`, `dependency_density`, `max_blast_radius`, `layer_violations` (рост слоёв — hard regression). → `.eurika/ab_trials.json`. Winner does **not** auto-apply. `EURIKA_AB_RESCAN=auto` (default) rescans sandbox when architecture metrics are stable and self_map was seeded; `on` forces; `off` disables.
 
 ```bash
 eurika ab-compare .
@@ -558,7 +560,7 @@ HTTP-сервер JSON API (`/api/*`) для интеграций и UI-клие
 - `GET /api/doctor?window=5&no_llm=0` — full report + architect
 - `GET /api/patch_plan?window=5` — planned operations
 - `GET /api/explain?module=...&window=5` — role and risks модуля
-- `GET /api/graph` — dependency graph (nodes=modules, edges=imports) for UI
+- `GET /api/graph` — dependency graph (nodes=modules, edges=imports) for UI; `?include_calls=1` adds read-only call-graph diagnostics (accuracy/cost), not a planner input
 - `GET /api/operational_metrics?window=10` — apply-rate, rollback-rate, median verify time (from patch events)
 - `GET /api/pending_plan` — pending plan for approve UI (team-mode)
 - `GET /api/market` — paper Market panel
@@ -765,6 +767,7 @@ eurika ml-market paper . --replace
 eurika ml-market paper . --market futures --replace
 eurika ml-market train .
 eurika ml-market status .
+eurika ml-market mcp .            # Binance MCP tool surface, read-only (orders blocked)
 ```
 
 - **Данные:** `.eurika/ml/market/spot|{futures}/{SYMBOL}_{interval}.json` (legacy flat `market/{SYMBOL}_{iv}.json` = spot)
@@ -778,6 +781,14 @@ eurika ml-market status .
 - **Env:** `BINANCE_API_KEY` / `BINANCE_API_SECRET` / `BINANCE_TESTNET` / optional `BINANCE_BASE_URL` / `BINANCE_FUTURES_BASE_URL`
 - **self-check:** блок `BINANCE (read-only)` — credentials + ping + ticker + nonzero balances
 - Live trading с Eurika — не подключено; рабочий бот на сервере (см. ниже)
+
+### Binance MCP (Agent OS) — read-only tool
+
+- **Модуль:** `eurika.integrations.binance_mcp` — `probe_binance_mcp`, `list_mcp_tools`, `call_read_only_tool`, `is_read_only_tool` (streamable HTTP JSON-RPC: `initialize` → `tools/list` → `tools/call`)
+- **Политика:** вызываются только read-only инструменты; `*order*`, `*cancel*`, `*transfer*`, `*convert*`, `*withdraw*`, `*leverage*` → `policy_blocked` (Market freeze, paper only). Binance — датчик/исполнительный контур, **не** мозг Market
+- **Env:** `BINANCE_MCP_URL` (default `https://agent.binance.com/mcp/agentic`), `BINANCE_MCP_TOKEN` (agentic sub-account, без withdraw; в выводе не печатается)
+- **CLI:** `eurika ml-market mcp . [--json] [--timeout 15]`; **Chat:** «binance mcp» / «бинанс mcp»
+- Live-ордера через MCP — только после снятия freeze + отдельный HITL (proposal → approve → order)
 
 ### Remote lbot (prodg)
 

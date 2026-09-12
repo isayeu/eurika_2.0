@@ -118,6 +118,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("health")
     sub.add_parser("market")
     sub.add_parser("learning")
+    sub.add_parser("models")
     get = sub.add_parser("get")
     get.add_argument("path", help="Gateway path, e.g. /api/summary")
     chat = sub.add_parser("chat", help="Core Eurika chat (same as Qt Chat)")
@@ -137,6 +138,8 @@ def main(argv: list[str] | None = None) -> int:
         payload = client.get("/api/market")
     elif args.cmd == "learning":
         payload = client.get("/api/learning")
+    elif args.cmd == "models":
+        payload = client.get("/api/models")
     elif args.cmd == "get":
         payload = client.get(args.path)
     elif args.cmd == "chat":

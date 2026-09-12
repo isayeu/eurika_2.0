@@ -35,7 +35,9 @@ during migration; it is not the primary coding-agent transport.
   terminal/command, git_commit, and git_push refused without explicit
   approval, shared Approvals (apply-approved)/Commands/Context (Diff/Apply for dialog_state)/Market panel state, structured
   diagnostics after apply, cancellation of an in-flight terminal tool, and
-  idle-self-dev prefs/status (Qt↔Desktop shared opt-in; no LLM propose in dogfood).
+  idle-self-dev prefs/status (Qt↔Desktop shared opt-in; no LLM propose in dogfood),
+  product `chat/send` («модель себя») and `mentions/suggest`,
+  Models panel (`panel/state models`; prefs writes require approval).
   Requires `@eurika/client` build output under `clients/eurika-client/lib/`
   (`npm --prefix clients/eurika-client run build`; predogfood runs this).
 - Desktop type safety and production bundle:
@@ -50,10 +52,11 @@ change, rollback conflict handling, and `git-hitl-commit` (git_commit without
 approval must fail). Case IDs and required tool contracts are validated by the
 Python test suite.
 
-Qt coding path (same core): `reviewInApprovals` parks edits into Approvals;
-Chat auto-focuses that tab when `approvalsQueued > 0`. Missing agent HTTP for a
-coding request fails loudly (no silent core-chat fallback). Covered by
-`tests/test_qt_agent_hitl.py`.
+Qt and Desktop coding path (same core): `reviewInApprovals` parks edits into
+Approvals; both clients auto-focus that tab when `approvalsQueued > 0`. Missing
+agent HTTP for a Qt coding request fails loudly (no silent core-chat fallback).
+Covered by `tests/test_qt_agent_hitl.py` and
+`tests/test_local_agent_backend.py` (`client: desktop`).
 
 For each dogfood run, record:
 
@@ -81,8 +84,8 @@ Before packaging Desktop or a VSIX:
 6. Confirm an untrusted workspace cannot start the backend or mutate files.
 7. Confirm terminal tools remain disabled by default and require explicit
    approval when enabled.
-8. Open Approvals, Commands, and Market in Desktop and verify they read the same
-   project state as Qt.
+8. Open Approvals, Commands, Market, and Models in Desktop and verify they read the same
+   project state as Qt (Models: routing/status only; no secret values).
 9. Build Linux artifacts in an Ubuntu LTS image and launch them on the oldest
    supported glibc baseline.
 

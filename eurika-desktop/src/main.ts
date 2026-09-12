@@ -21,6 +21,7 @@ type PendingCall = {
 type ChatResult = {
   text: string;
   pendingToolCalls?: PendingCall[];
+  approvalsQueued?: number;
 };
 
 const filesElement = required("files");
@@ -459,8 +460,8 @@ function appendMessage(role: string, text: string): HTMLElement {
   return item;
 }
 
-function setChatBusy(busy: boolean): void {
-  cancelChatButton.disabled = !busy;
+function setChatBusy(busy: boolean, cancellable = true): void {
+  cancelChatButton.disabled = !(busy && cancellable);
   sendChatButton.disabled = busy;
 }
 
@@ -470,12 +471,128 @@ function updateStream(text: string): void {
   messagesElement.scrollTop = messagesElement.scrollHeight;
 }
 
+function chatMode(): "eurika" | "agent" {
+  const selected = document.querySelector<HTMLInputElement>('input[name="chat-mode"]:checked');
+  return selected?.value === "agent" ? "agent" : "eurika";
+}
+
+function extractAtToken(text: string, cursor: number): { at: number; prefix: string } | null {
+  const pos = Math.max(0, Math.min(cursor, text.length));
+  const before = text.slice(0, pos);
+  const at = before.lastIndexOf("@");
+  if (at < 0) return null;
+  if (at > 0) {
+    const prev = before[at - 1] ?? "";
+    if (/[A-Za-z0-9_./\-]/.test(prev)) return null;
+  }
+  const prefix = before.slice(at + 1);
+  if (!/^[A-Za-z0-9_./\-]*$/.test(prefix)) return null;
+  return { at, prefix };
+}
+
+function mentionPopup(): HTMLUListElement {
+  return required("mention-popup") as HTMLUListElement;
+}
+
+function hideMentionPopup(): void {
+  const popup = mentionPopup();
+  popup.hidden = true;
+  popup.replaceChildren();
+}
+
+function insertMention(input: HTMLTextAreaElement, name: string): void {
+  const token = extractAtToken(input.value, input.selectionStart ?? input.value.length);
+  if (!token) return;
+  const cursor = input.selectionStart ?? input.value.length;
+  const next = `${input.value.slice(0, token.at)}@${name} ${input.value.slice(cursor)}`;
+  const pos = token.at + name.length + 2;
+  input.value = next;
+  input.setSelectionRange(pos, pos);
+  hideMentionPopup();
+  input.focus();
+}
+
+function bindMentionInput(input: HTMLTextAreaElement): void {
+  const popup = mentionPopup();
+  let selected = 0;
+  const items = (): HTMLLIElement[] => [...popup.querySelectorAll("li")];
+
+  const render = async (): Promise<void> => {
+    const token = extractAtToken(input.value, input.selectionStart ?? input.value.length);
+    if (!token) {
+      hideMentionPopup();
+      return;
+    }
+    const result = await window.eurika.request<{ candidates?: string[] }>("mentions/suggest", {
+      prefix: token.prefix,
+      limit: 12,
+    });
+    const candidates = Array.isArray(result.candidates) ? result.candidates : [];
+    if (!candidates.length) {
+      hideMentionPopup();
+      return;
+    }
+    popup.replaceChildren();
+    candidates.forEach((name, index) => {
+      const li = document.createElement("li");
+      li.textContent = name;
+      li.setAttribute("aria-selected", index === 0 ? "true" : "false");
+      li.onmousedown = (event) => {
+        event.preventDefault();
+        insertMention(input, name);
+      };
+      popup.append(li);
+    });
+    selected = 0;
+    popup.hidden = false;
+  };
+
+  input.addEventListener("input", () => {
+    void render();
+  });
+  input.addEventListener("click", () => {
+    void render();
+  });
+  input.addEventListener("keydown", (event) => {
+    if (popup.hidden) return;
+    const rows = items();
+    if (!rows.length) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      hideMentionPopup();
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      selected = event.key === "ArrowDown"
+        ? (selected + 1) % rows.length
+        : (selected - 1 + rows.length) % rows.length;
+      rows.forEach((row, index) => {
+        row.setAttribute("aria-selected", index === selected ? "true" : "false");
+      });
+      rows[selected]?.scrollIntoView({ block: "nearest" });
+      return;
+    }
+    if (event.key === "Tab" || event.key === "Enter") {
+      const name = rows[selected]?.textContent;
+      if (name) {
+        event.preventDefault();
+        insertMention(input, name);
+      }
+    }
+  });
+}
+
 async function sendChat(message: string): Promise<void> {
   if (currentPendingCall) {
     throw new Error(`Resolve the pending ${currentPendingCall.tool} action first`);
   }
   if (chatRequestId) {
     throw new Error("A chat request is already running");
+  }
+  if (chatMode() === "eurika") {
+    await sendProductChat(message);
+    return;
   }
   appendMessage("user", message);
   streamMessage = appendMessage("assistant", "…");
@@ -485,7 +602,7 @@ async function sendChat(message: string): Promise<void> {
   try {
     const result = await window.eurika.request<ChatResult>("session/chat", {
       message,
-      context: { activeFile: activePath },
+      context: chatAgentContext(),
     }, requestId);
     updateStream(result.text);
     await renderChatResult(result, { skipText: true });
@@ -495,6 +612,41 @@ async function sendChat(message: string): Promise<void> {
     if (!/cancel/i.test(text)) throw error;
   } finally {
     if (chatRequestId === requestId) chatRequestId = undefined;
+    streamMessage = undefined;
+    setChatBusy(false);
+  }
+}
+
+async function sendProductChat(message: string): Promise<void> {
+  appendMessage("user", message);
+  streamMessage = appendMessage("assistant", "…");
+  setChatBusy(true, false);
+  try {
+    const result = await window.eurika.request<{
+      ok?: boolean;
+      text?: string;
+      error?: string;
+      terminal_cmd?: string;
+      terminal_output?: string;
+      open_project?: string;
+    }>("chat/send", { message });
+    const text = String(result.text ?? result.error ?? "");
+    updateStream(text);
+    if (result.terminal_cmd) terminal.writeln(String(result.terminal_cmd));
+    if (result.terminal_output) terminal.writeln(String(result.terminal_output));
+    const approvals = await window.eurika.request<{
+      data?: { operations?: unknown[] };
+    }>("panel/state", { panel: "approvals" });
+    const queued = Array.isArray(approvals.data?.operations) ? approvals.data.operations.length : 0;
+    if (queued > 0) {
+      await showPanel("approvals");
+    } else {
+      await showPanel("context");
+    }
+    if (result.open_project) {
+      terminal.writeln(`[open_project] ${result.open_project} — Open workspace to switch`);
+    }
+  } finally {
     streamMessage = undefined;
     setChatBusy(false);
   }
@@ -514,10 +666,16 @@ async function renderChatResult(result: ChatResult, options: { skipText?: boolea
       renderToolApproval(call);
     }
   }
-  // Qt parity: refresh Context when that panel is visible after a chat turn.
-  if (!productPanel.hidden && productPanel.dataset.activePanel === "context") {
+  // Qt parity: park agent_edit in Approvals; refresh Context when visible.
+  if ((result.approvalsQueued ?? 0) > 0) {
+    await showPanel("approvals");
+  } else if (!productPanel.hidden && productPanel.dataset.activePanel === "context") {
     await showPanel("context");
   }
+}
+
+function chatAgentContext(): { activeFile?: string; reviewInApprovals: true; client: "desktop" } {
+  return { activeFile: activePath, reviewInApprovals: true, client: "desktop" };
 }
 
 function renderToolApproval(call: PendingCall): void {
@@ -575,7 +733,7 @@ async function decideToolApproval(approved: boolean): Promise<void> {
   appendMessage("assistant", approved ? `${call.tool} completed.` : `${call.tool} rejected.`);
   const continuation = await window.eurika.request<ChatResult>("session/chat", {
     toolResults: [{ callId: call.callId, tool: call.tool, result }],
-    context: { activeFile: activePath },
+    context: chatAgentContext(),
   });
   await renderChatResult(continuation);
 }
@@ -722,7 +880,7 @@ async function decideProposal(apply: boolean): Promise<void> {
           result: { decision: apply ? "applied" : "rejected", outcome },
         },
       ],
-      context: { activeFile: activePath },
+      context: chatAgentContext(),
     });
     await renderChatResult(continuation);
   }
@@ -762,6 +920,9 @@ async function showPanel(panel: string): Promise<void> {
     panel: string;
     data?: Record<string, unknown>;
     text?: string;
+    note?: string;
+    llm?: Record<string, unknown>;
+    ml?: Record<string, unknown>;
     commands?: Array<{ id: string; requiresApproval: boolean }>;
     planValid?: boolean;
     planStale?: boolean;
@@ -769,6 +930,8 @@ async function showPanel(panel: string): Promise<void> {
     fingerprint?: string;
     preview?: Record<string, unknown> | null;
     hasPendingGit?: boolean;
+    hasPendingHostAdmin?: boolean;
+    hostAdmin?: { commands?: string[]; preview?: string } | null;
     canReject?: boolean;
     canApply?: boolean;
   }>("panel/state", { panel });
@@ -780,6 +943,7 @@ async function showPanel(panel: string): Promise<void> {
   if (panel === "approvals") renderApprovals(response.data ?? {});
   if (panel === "commands") renderCommands(response.commands ?? []);
   if (panel === "market") renderMarket(response.data ?? {});
+  if (panel === "models") renderModels(response);
 }
 
 function renderContext(response: {
@@ -791,6 +955,8 @@ function renderContext(response: {
   fingerprint?: string;
   preview?: Record<string, unknown> | null;
   hasPendingGit?: boolean;
+  hasPendingHostAdmin?: boolean;
+  hostAdmin?: { commands?: string[]; preview?: string } | null;
   canReject?: boolean;
   canApply?: boolean;
 }): void {
@@ -816,14 +982,20 @@ function renderContext(response: {
   const hint = document.createElement("p");
   hint.className = "muted";
   hint.textContent =
-    "dialog_state HITL (не Approvals JSON). Diff → Apply, как в Qt Контекст.";
+    "dialog_state / host-admin HITL (не Approvals JSON). Diff → Apply, как в Qt Контекст.";
   productPanel.append(hint);
 
   const diffTitle = document.createElement("h4");
   diffTitle.textContent = "Pending Diff";
   const diffPre = document.createElement("pre");
   diffPre.className = "context-diff";
-  const diffText = formatContextPreview(preview, data, Boolean(response.hasPendingGit));
+  const diffText = formatContextPreview(
+    preview,
+    data,
+    Boolean(response.hasPendingGit),
+    Boolean(response.hasPendingHostAdmin),
+    response.hostAdmin,
+  );
   diffPre.textContent = diffText;
   productPanel.append(diffTitle, diffPre);
 
@@ -837,7 +1009,12 @@ function renderContext(response: {
   actions.className = "context-actions";
   const diffBtn = document.createElement("button");
   diffBtn.textContent = "Diff";
-  diffBtn.disabled = !(planValid || planStale || Boolean(response.hasPendingGit));
+  diffBtn.disabled = !(
+    planValid
+    || planStale
+    || Boolean(response.hasPendingGit)
+    || Boolean(response.hasPendingHostAdmin)
+  );
   const applyBtn = document.createElement("button");
   applyBtn.textContent = "Apply";
   const rejectBtn = document.createElement("button");
@@ -860,12 +1037,16 @@ function renderContext(response: {
       planValid?: boolean;
       planStale?: boolean;
       hasPendingGit?: boolean;
+      hasPendingHostAdmin?: boolean;
+      hostAdmin?: { commands?: string[]; preview?: string } | null;
     }>("context/preview", {});
     const fp = String(refreshed.fingerprint ?? fingerprint);
     const body = formatContextPreview(
       refreshed.preview && typeof refreshed.preview === "object" ? refreshed.preview : null,
       data,
       Boolean(refreshed.hasPendingGit),
+      Boolean(refreshed.hasPendingHostAdmin),
+      refreshed.hostAdmin,
     );
     diffPre.textContent = body;
     if (fp && body && !body.startsWith("No pending")) {
@@ -912,6 +1093,8 @@ function formatContextPreview(
   preview: Record<string, unknown> | null,
   data: Record<string, unknown>,
   hasPendingGit: boolean,
+  hasPendingHostAdmin = false,
+  hostAdmin?: { commands?: string[]; preview?: string } | null,
 ): string {
   if (preview) {
     const unified = String(preview.unified_diff ?? "").trim();
@@ -931,6 +1114,14 @@ function formatContextPreview(
     if (git && typeof git === "object") {
       const g = git as Record<string, unknown>;
       return `Pending git commit\ntoken=${String(g.token ?? "-")}\n\n${String(g.message ?? "")}`;
+    }
+  }
+  if (hasPendingHostAdmin) {
+    const previewText = String(hostAdmin?.preview ?? "").trim();
+    if (previewText) return previewText;
+    const cmds = Array.isArray(hostAdmin?.commands) ? hostAdmin.commands : [];
+    if (cmds.length) {
+      return ["Host admin HITL:", ...cmds.map((cmd) => `- ${cmd}`)].join("\n");
     }
   }
   return "No pending plan.";
@@ -1044,6 +1235,192 @@ function renderCommands(commands: Array<{ id: string; requiresApproval: boolean 
     });
     productPanel.append(button);
   }
+  const createBtn = document.createElement("button");
+  createBtn.textContent = "init / scaffold";
+  createBtn.title = "Sibling project: minimal | python | python-cli (HITL approval)";
+  createBtn.onclick = () => void runUi(async () => {
+    const name = window.prompt("Sibling project name", "my_app")?.trim();
+    if (!name) return;
+    const scaffoldRaw = window.prompt("Scaffold: minimal | python | python-cli", "python")?.trim()
+      || "python";
+    const scaffold = ["minimal", "python", "python-cli"].includes(scaffoldRaw)
+      ? scaffoldRaw
+      : "python";
+    terminal.writeln(`$ project/create ${name} --scaffold ${scaffold}`);
+    const result = await window.eurika.request<Record<string, unknown>>("project/create", {
+      name,
+      scaffold,
+      approval: true,
+    });
+    terminal.writeln(String(result.text ?? result.error ?? JSON.stringify(result)));
+    appendMessage("assistant", String(result.text ?? ""));
+    await showPanel("context");
+  });
+  productPanel.append(createBtn);
+}
+
+function renderModels(state: {
+  note?: string;
+  llm?: Record<string, unknown>;
+  ml?: Record<string, unknown>;
+}): void {
+  const llm = (state.llm ?? {}) as Record<string, unknown>;
+  const ml = (state.ml ?? {}) as Record<string, unknown>;
+  const ollama = (llm.ollama ?? {}) as { healthy?: boolean; models?: string[] };
+  const torch = (ml.torch ?? {}) as Record<string, unknown>;
+  const market = (ml.market ?? {}) as Record<string, unknown>;
+  const keys = (llm.keys_present ?? {}) as Record<string, boolean>;
+  const title = document.createElement("h3");
+  title.textContent = "Models";
+  const note = document.createElement("p");
+  note.className = "muted";
+  note.textContent = String(state.note ?? "Routing prefs + status. Keys stay in .env.");
+  const form = document.createElement("div");
+  form.className = "models-form";
+  const provider = fieldSelect(
+    "Provider",
+    "models-provider",
+    stringList(llm.providers, ["auto", "openai", "ollama", "cursor", "codex"]),
+    String(llm.provider ?? "auto"),
+  );
+  const presets = Array.isArray(llm.presets) ? llm.presets : [];
+  const presetIds = ["", ...presets.map((item) => String((item as { id?: string }).id ?? ""))];
+  const presetLabels = [
+    "from .env",
+    ...presets.map((item) => {
+      const preset = item as { id?: string; label?: string };
+      return String(preset.label ?? preset.id ?? "");
+    }),
+  ];
+  const preset = fieldSelect(
+    "API preset",
+    "models-preset",
+    presetIds,
+    String(llm.api_preset ?? ""),
+    presetLabels,
+  );
+  const openaiModel = fieldInput("OpenAI model", "models-openai-model", String(llm.openai_model ?? ""));
+  const ollamaModel = fieldInput("Ollama model", "models-ollama-model", String(llm.ollama_model ?? ""));
+  const cursorModel = fieldInput("Cursor model", "models-cursor-model", String(llm.cursor_model ?? ""));
+  const cursorRouter = fieldSelect(
+    "Cursor router",
+    "models-cursor-router",
+    ["", "cost", "balanced", "intelligence"],
+    String(llm.cursor_router ?? ""),
+  );
+  const timeout = fieldInput(
+    "Timeout sec",
+    "models-timeout",
+    String(llm.timeout_sec ?? 120),
+    "number",
+  );
+  const torchDevice = fieldSelect(
+    "Torch device",
+    "models-torch-device",
+    stringList(ml.devices, ["cpu", "cuda", "mps"]),
+    String(ml.torch_device ?? "cpu"),
+  );
+  form.append(
+    ...provider,
+    ...preset,
+    ...openaiModel,
+    ...ollamaModel,
+    ...cursorModel,
+    ...cursorRouter,
+    ...timeout,
+    ...torchDevice,
+  );
+  const status = document.createElement("p");
+  status.className = "muted";
+  status.textContent =
+    `Ollama ${ollama.healthy ? "up" : "down"}` +
+    `${ollama.models?.length ? ` · ${ollama.models.slice(0, 8).join(", ")}` : ""}` +
+    ` · base ${String(llm.openai_base_url || "—")}` +
+    ` · torch ${torch.available ? String(torch.version ?? "ok") : "off"}` +
+    ` · paper trades ${String(market.trades ?? "—")}` +
+    ` acc ${String(market.accuracy ?? "—")}` +
+    ` live ${String(market.live_n ?? "—")}` +
+    ` equity ${String(market.equity ?? "—")}` +
+    ` opens ${String(market.opens ?? "—")}`;
+  const keyRow = document.createElement("div");
+  keyRow.className = "models-keys";
+  for (const [name, present] of Object.entries(keys)) {
+    const chip = document.createElement("span");
+    chip.className = present ? "ok" : "";
+    chip.textContent = `${name}${present ? " set" : " missing"}`;
+    keyRow.append(chip);
+  }
+  const actions = document.createElement("div");
+  actions.className = "models-actions";
+  const refresh = document.createElement("button");
+  refresh.textContent = "Refresh";
+  refresh.onclick = () => void runUi(() => showPanel("models"));
+  const save = document.createElement("button");
+  save.textContent = "Save routing";
+  save.onclick = () => void runUi(async () => {
+    const prefs = {
+      provider: inputValue("models-provider"),
+      api_preset: inputValue("models-preset"),
+      openai_model: inputValue("models-openai-model"),
+      ollama_model: inputValue("models-ollama-model"),
+      cursor_model: inputValue("models-cursor-model"),
+      cursor_router: inputValue("models-cursor-router"),
+      timeout_sec: Number(inputValue("models-timeout") || 120),
+      torch_device: inputValue("models-torch-device"),
+    };
+    await window.eurika.request("models/prefs", { approval: true, prefs });
+    await showPanel("models");
+  });
+  actions.append(refresh, save);
+  productPanel.append(title, note, form, keyRow, status, actions);
+}
+
+function stringList(value: unknown, fallback: string[]): string[] {
+  return Array.isArray(value) && value.length ? value.map((item) => String(item)) : fallback;
+}
+
+function fieldSelect(
+  label: string,
+  id: string,
+  values: string[],
+  current: string,
+  labels: string[] = values,
+): [HTMLLabelElement, HTMLSelectElement] {
+  const caption = document.createElement("label");
+  caption.htmlFor = id;
+  caption.textContent = label;
+  const select = document.createElement("select");
+  select.id = id;
+  for (const [index, value] of values.entries()) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = labels[index] ?? (value || "(from .env)");
+    if (value === current) option.selected = true;
+    select.append(option);
+  }
+  return [caption, select];
+}
+
+function fieldInput(
+  label: string,
+  id: string,
+  value: string,
+  type = "text",
+): [HTMLLabelElement, HTMLInputElement] {
+  const caption = document.createElement("label");
+  caption.htmlFor = id;
+  caption.textContent = label;
+  const input = document.createElement("input");
+  input.id = id;
+  input.type = type;
+  input.value = value;
+  return [caption, input];
+}
+
+function inputValue(id: string): string {
+  const node = document.getElementById(id);
+  if (node instanceof HTMLInputElement || node instanceof HTMLSelectElement) return node.value;
+  return "";
 }
 
 function renderMarket(data: Record<string, unknown>): void {
@@ -1079,8 +1456,10 @@ required("idle-self-dev").addEventListener("change", () => {
     syncIdleSelfDevTimer();
   });
 });
+bindMentionInput(required("prompt") as HTMLTextAreaElement);
 required("chat-form").addEventListener("submit", (event) => {
   event.preventDefault();
+  hideMentionPopup();
   const input = required("prompt") as HTMLTextAreaElement;
   const message = input.value.trim();
   if (message) void runUi(() => sendChat(message));

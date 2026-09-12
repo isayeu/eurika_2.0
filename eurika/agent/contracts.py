@@ -142,6 +142,57 @@ RPC_METHOD_CONTRACTS: dict[str, dict[str, Any]] = {
             },
         },
     },
+    "chat/send": {
+        "mutatesWorkspace": False,
+        "inputSchema": {
+            "type": "object",
+            "required": ["message"],
+            "properties": {"message": {"type": "string", "minLength": 1}},
+        },
+    },
+    "mentions/suggest": {
+        "mutatesWorkspace": False,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prefix": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 40},
+            },
+        },
+    },
+    "project/create": {
+        "mutatesWorkspace": True,
+        "requiresApproval": True,
+        "inputSchema": {
+            "type": "object",
+            "required": ["name", "approval"],
+            "properties": {
+                "name": {"type": "string", "minLength": 1},
+                "scaffold": {"type": "string", "enum": ["minimal", "python", "python-cli"]},
+                "approval": {"type": "boolean", "const": True},
+            },
+        },
+    },
+    "models/prefs": {
+        "mutatesWorkspace": True,
+        "requiresApproval": True,
+        "inputSchema": {
+            "type": "object",
+            "required": ["approval"],
+            "properties": {
+                "approval": {"type": "boolean", "const": True},
+                "prefs": {"type": "object"},
+                "provider": {"type": "string"},
+                "openai_model": {"type": "string"},
+                "api_preset": {"type": "string"},
+                "ollama_model": {"type": "string"},
+                "cursor_model": {"type": "string"},
+                "cursor_router": {"type": "string"},
+                "timeout_sec": {"type": "integer"},
+                "torch_device": {"type": "string"},
+            },
+        },
+    },
 }
 
 

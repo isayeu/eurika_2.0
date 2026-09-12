@@ -15,7 +15,10 @@ EURIKA_PYTHON=/path/to/python npm start
 
 The desktop opens a workspace, starts `python -m eurika.agent.stdio`, and offers
 Monaco editing, Chat, structured tools, diff approvals, checkpoints, terminal
-commands, Approvals (Save + Run apply-approved), Context (dialog_state Diff/Apply/Reject), Commands, and Market panels.
+commands, Approvals (Save + Run apply-approved; Agent Chat parks `agent_edit` via
+`reviewInApprovals`), Context (dialog_state + host-admin Diff/Apply/Reject),
+Commands (`self-model` / `hypotheses` / `ab-compare` + init/scaffold),
+product Eurika Chat (`chat/send`, `@`-mentions), Market, and Models panels.
 
 The header provides **Refresh files** and conflict-safe **Restore checkpoint**.
 Backend startup/crash details are shown in the red error banner and mirrored to

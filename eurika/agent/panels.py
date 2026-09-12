@@ -27,6 +27,18 @@ COMMANDS = (
     "self-check",
     "bug-hunt",
     "learn-github",
+    "self-model",
+    "hypotheses",
+    "ab-compare",
+)
+READ_ONLY_COMMANDS = frozenset(
+    {
+        "report-snapshot",
+        "learning-kpi",
+        "self-model",
+        "hypotheses",
+        "ab-compare",
+    }
 )
 
 
@@ -43,16 +55,35 @@ class PanelService:
                 "commands": [
                     {
                         "id": command,
-                        "requiresApproval": command not in {"report-snapshot", "learning-kpi"},
+                        "requiresApproval": command not in READ_ONLY_COMMANDS,
                     }
                     for command in COMMANDS
                 ],
             }
         if panel == "market":
             return {"panel": panel, "data": self._market_state()}
+        if panel == "models":
+            from eurika.api.models_panel import build_models_state
+
+            return build_models_state(self.tools.root)
         if panel == "context":
             return self._context_state()
         raise RpcError(ERR_INVALID_PARAMS, f"Unknown panel: {panel}")
+
+    def models_prefs(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Write allowlisted LLM/ML routing prefs (HITL). Never writes API keys."""
+        self._approved(params, "models prefs")
+        from eurika.api.models_panel import ALLOWED_PREF_KEYS, apply_models_prefs
+
+        raw = params.get("prefs")
+        if raw is None:
+            raw = {key: value for key, value in params.items() if key in ALLOWED_PREF_KEYS}
+        if not isinstance(raw, dict):
+            raise RpcError(ERR_INVALID_PARAMS, "prefs must be an object")
+        try:
+            return apply_models_prefs(self.tools.root, raw)
+        except ValueError as exc:
+            raise RpcError(ERR_INVALID_PARAMS, str(exc)) from exc
 
     def approval_preview(self, params: dict[str, Any]) -> dict[str, Any]:
         operation = params.get("operation")
@@ -136,7 +167,7 @@ class PanelService:
         command = params.get("command")
         if command not in COMMANDS:
             raise RpcError(ERR_INVALID_PARAMS, f"Unsupported command: {command}")
-        if command not in {"report-snapshot", "learning-kpi"}:
+        if command not in READ_ONLY_COMMANDS:
             self._approved(params, f"command {command}")
         extra = params.get("args", [])
         if not isinstance(extra, list) or not all(isinstance(item, str) for item in extra):
@@ -161,6 +192,68 @@ class PanelService:
             cancel=cancel,
             emit=emit,
         )
+
+    def product_chat(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Qt Chat path: ``chat_send`` (intents, host-admin, scaffolds). Not session/chat."""
+        message = params.get("message")
+        if not isinstance(message, str) or not message.strip():
+            raise RpcError(ERR_INVALID_PARAMS, "message must be a non-empty string")
+        from eurika.api.chat import chat_send
+
+        result = chat_send(self.tools.root, message.strip(), persist_history=True)
+        if not isinstance(result, dict):
+            return {"ok": False, "text": "", "error": "empty chat result"}
+        text = str(result.get("text") or "")
+        error = result.get("error")
+        return {
+            "ok": error in (None, "", False),
+            "text": text,
+            "error": error,
+            "terminal_cmd": result.get("terminal_cmd") or "",
+            "terminal_output": result.get("terminal_output") or "",
+            "terminal_exit_code": result.get("terminal_exit_code"),
+            "open_project": result.get("open_project"),
+        }
+
+    def mentions_suggest(self, params: dict[str, Any]) -> dict[str, Any]:
+        """@-mention catalog filter (same as Qt ChatInput)."""
+        from eurika.api.chat_mentions import mention_candidates
+
+        prefix = str(params.get("prefix") or "")
+        limit = params.get("limit", 12)
+        if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+            raise RpcError(ERR_INVALID_PARAMS, "limit must be a positive integer")
+        return {
+            "prefix": prefix.lstrip("@"),
+            "candidates": mention_candidates(self.tools.root, prefix, limit=min(limit, 40)),
+        }
+
+    def project_create(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Sibling project + scaffold. Refuses to re-init the open workspace."""
+        self._approved(params, "project create")
+        raw = str(params.get("name") or params.get("path") or "").strip()
+        if not raw:
+            raise RpcError(ERR_INVALID_PARAMS, "name is required")
+        if raw.startswith("/") or raw.startswith("~") or "/" in raw or "\\" in raw:
+            raise RpcError(
+                ERR_INVALID_PARAMS,
+                "use a bare sibling name (no path separators)",
+            )
+        from eurika.api.project_bootstrap import (
+            create_project,
+            format_create_project_text,
+            resolve_create_project_path,
+        )
+
+        dest = resolve_create_project_path(self.tools.root, raw)
+        if dest == self.tools.root.resolve():
+            raise RpcError(ERR_INVALID_PARAMS, "refusing to re-init the open workspace")
+        scaffold = str(params.get("scaffold") or "minimal")
+        result = create_project(dest, name=raw, scaffold=scaffold)
+        return {
+            **result,
+            "text": format_create_project_text(result),
+        }
 
     @staticmethod
     def _approved(params: dict[str, Any], operation: str) -> None:
@@ -238,6 +331,16 @@ class PanelService:
                 if git_token
                 else f"git:{str(pending_git.get('message') or '')[:64]}"
             )
+        host_admin = self._host_admin_state()
+        has_host_admin = bool(host_admin.get("commands"))
+        if has_host_admin and not fingerprint:
+            fingerprint = str(host_admin.get("fingerprint") or "host:pending")
+        if has_host_admin and not preview:
+            preview = {
+                "intent": "host_admin",
+                "target": "os",
+                "unified_diff": str(host_admin.get("preview") or ""),
+            }
         return {
             "panel": "context",
             "text": text,
@@ -248,8 +351,34 @@ class PanelService:
             "fingerprint": fingerprint,
             "preview": preview,
             "hasPendingGit": has_pending_git,
-            "canReject": bool(pending) or has_pending_git,
-            "canApply": plan_valid or has_pending_git,
+            "hasPendingHostAdmin": has_host_admin,
+            "hostAdmin": host_admin if has_host_admin else None,
+            "canReject": bool(pending) or has_pending_git or has_host_admin,
+            "canApply": plan_valid or has_pending_git or has_host_admin,
+        }
+
+    def _host_admin_state(self) -> dict[str, Any]:
+        """Queued OS mutate HITL — same queue Qt Chat «одобрить» applies."""
+        try:
+            from eurika.api.host_admin import (
+                format_pending_host_admin_text,
+                load_pending_host_admin,
+            )
+
+            pending = load_pending_host_admin(self.tools.root)
+        except Exception:
+            return {}
+        if not isinstance(pending, dict):
+            return {}
+        cmds = [str(c).strip() for c in (pending.get("commands") or []) if str(c).strip()]
+        if not cmds:
+            return {}
+        updated = str(pending.get("updated_at") or pending.get("created_at") or "")
+        return {
+            "commands": cmds,
+            "updated_at": updated,
+            "fingerprint": f"host:{updated}:{cmds[0]}"[:120],
+            "preview": format_pending_host_admin_text(pending),
         }
 
     def context_preview(self, params: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -266,6 +395,8 @@ class PanelService:
             "planValid": bool(state.get("planValid")),
             "planStale": bool(state.get("planStale")),
             "hasPendingGit": bool(state.get("hasPendingGit")),
+            "hasPendingHostAdmin": bool(state.get("hasPendingHostAdmin")),
+            "hostAdmin": state.get("hostAdmin"),
             "preview": preview,
         }
 

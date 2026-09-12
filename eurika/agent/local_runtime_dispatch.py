@@ -153,6 +153,26 @@ def dispatch(
                 emit=lambda event, data: emit(event, None, data),
             ),
         )
+    if method == "chat/send":
+        return runtime._with_live_activity(
+            method,
+            params,
+            lambda: runtime.panels.product_chat(params if isinstance(params, dict) else {}),
+        )
+    if method == "mentions/suggest":
+        return runtime.panels.mentions_suggest(params if isinstance(params, dict) else {})
+    if method == "project/create":
+        return runtime._with_live_activity(
+            method,
+            params,
+            lambda: runtime.panels.project_create(params if isinstance(params, dict) else {}),
+        )
+    if method == "models/prefs":
+        return runtime._with_live_activity(
+            method,
+            params,
+            lambda: runtime.panels.models_prefs(params if isinstance(params, dict) else {}),
+        )
     if method == "activity/recent":
         from .live_activity import recent as live_recent
 

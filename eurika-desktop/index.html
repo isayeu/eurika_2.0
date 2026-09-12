@@ -35,6 +35,7 @@
           <button data-panel="approvals">Approvals</button>
           <button data-panel="commands">Commands</button>
           <button data-panel="market">Market</button>
+          <button data-panel="models">Models</button>
           <button data-panel="chat">Chat</button>
         </nav>
         <div id="product-panel" hidden></div>
@@ -44,8 +45,15 @@
           <input type="checkbox" id="idle-self-dev" />
           Саморазвитие в простое LLM
         </label>
+        <div id="chat-mode" class="opt-in" title="Eurika = Qt Chat (chat_send). Agent = local coding loop (session/chat → Approvals).">
+          <label><input type="radio" name="chat-mode" value="eurika" checked /> Eurika</label>
+          <label><input type="radio" name="chat-mode" value="agent" /> Agent</label>
+        </div>
         <form id="chat-form">
-          <textarea id="prompt" placeholder="Ask Eurika…"></textarea>
+          <div id="prompt-wrap">
+            <textarea id="prompt" placeholder="Ask Eurika…  (@module / @smell)"></textarea>
+            <ul id="mention-popup" hidden></ul>
+          </div>
           <button id="clear-chat" type="button">Clear</button>
           <button id="cancel-chat" type="button" disabled>Cancel</button>
           <button id="send-chat">Send</button>

@@ -26,6 +26,10 @@ const REQUEST_METHODS = new Set([
   "idle-self-dev/run",
   "idle-self-dev/status",
   "command/run",
+  "chat/send",
+  "mentions/suggest",
+  "project/create",
+  "models/prefs",
 ]);
 
 let window: BrowserWindow | undefined;
@@ -114,7 +118,7 @@ async function startBackend(root: string): Promise<Record<string, unknown>> {
         terminal: true,
         notifications: true,
         approvals: true,
-        panels: ["chat", "diff", "context", "approvals", "commands", "market"],
+        panels: ["chat", "diff", "context", "approvals", "commands", "market", "models"],
       },
     },
     log: (line) => sendToRenderer("eurika:log", line),

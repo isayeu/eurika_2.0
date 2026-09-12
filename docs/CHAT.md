@@ -19,7 +19,7 @@
 Один цикл вместо двухфазного ритуала: **LLM → инструмент → LLM**.
 
 1. Модель получает описание инструмента `host_shell` (cwd = project root) и, если нужны факты, выводит блок ```` ```eurika-cmds ```` с командами (`ls -la`, `git status`, `journalctl`, `pacman -S …`, `pwd`, …).
-2. Eurika выполняет их сама через `bash -c` (**без** binary allowlist), пишет `$ cmd` + вывод во вкладку **Terminal**. Если нужны права — Qt предлагает: пароль sudo / продолжить без пароля (с ограничениями) / пропустить. **Запрещены** только записи в дерево проекта (`rm`/`tee`/`>`/`git commit`); пакеты и сервисы ОС (pacman/apt/systemctl) — разрешены под sudo UI. Правки кода — Approvals / Cursor.
+2. Eurika выполняет их сама через `bash -c` (**без** binary allowlist), пишет `$ cmd` + вывод во вкладку **Terminal**. **Host admin — read-only default:** наблюдение (`systemctl status`, `journalctl`, `pacman -Q`/`-Ss`, `nmcli show`) выполняется сразу; мутации ОС (`pacman -S`, `systemctl restart`, `reboot`, `nmcli radio off`) **не** запускаются — очередь `.eurika/pending_host_admin.json`, подтверждение теми же «одобрить» / «применяй» (не новый phrase-book). После approve sudo — отдельный диалог (пароль / без пароля / пропустить). **Запрещены** записи в дерево проекта (`rm`/`tee`/`>`/`git commit`) — Approvals / Cursor.
 3. Вывод возвращается модели, она отвечает своими словами. Пустой блок `eurika-cmds` — модели сообщают об этом, и она может повторить. Если вместо проверки хоста модель выдала лекцию (`netstat`/`ifconfig`/Activity Monitor) — цикл один раз требует реальный `eurika-cmds`. Если модель отказывается «нет внешнего API / интернета» на живых фактах (цена тикера и т.п.) — тот же recovery: Binance read-only / curl через `eurika-cmds`, без phrase-book «стоимость BTC». Если на «содержимое каталога» ушла в pytest/ruff/pacman — recovery требует `ls -la`. Если на вопрос про Wi‑Fi/VPN она сняла только порты (`ss`/`lsof`/`netstat`) — цикл требует `nmcli`/`ip`. Обычные ```` ```bash ```` / ```` ```python ```` **не** автозапускаются (для UI Copy/Run).
 4. Удачные tool-turns пишутся в `.eurika/chat_tool_turns.jsonl` (команды + `outcome_hint`) и подмешиваются в промпт **по релевантности** к текущему сообщению (не только хвост файла; не YAML phrase-book).
 5. В каждый промпт кладётся `[Host identity]` (`uname` / os-release) — чтобы не выдумывать macOS. Вопросы про **успехи обучения market ML** — факты из `resolve_market_root()` (`[Market facts]` = `format_market_learning_report`: таблицы банк / live / тени / головы / ворота / LLM-учитель + **вердикт** по equity/net edge). Прямой интент «успехи на маркете» отдаёт тот же отчёт без сжатия LLM. **Не** `eurika scan`. Убыток по банку нельзя смягчать через accuracy.
@@ -62,6 +62,7 @@
 | `выполни ls`, `ls` | Голый `ls` → host_shell; «выполни ls» → LLM tool-loop |
 | `покажи содержимое каталога проекта` | LLM tool-loop (`ls -la`); не путать с «покажи файл …» |
 | `покажи файл app.py` | Содержимое файла |
+| `создай проект my_app` / `как python` / `python-cli` | Project Creation: sibling/`~/…` + `.eurika/`; шаблон `minimal` (default) / `python` / `python-cli`. CLI: `eurika init <path> --scaffold …` |
 
 ### Анализ Eurika
 
@@ -91,12 +92,12 @@
 | `какие документы по проекту?`, `покажи документацию` | Список README / docs / rules |
 | `прочти всю документацию, что реализовано?` | Аудит VISION/ROADMAP vs код (LLM/Groq; fallback по ✅) |
 | `какая цель?`, `что в контексте?` | Статус active_goal / pending; после release — последний итог + «что получилось?» |
-| `модель себя`, `какое состояние?` | Self + Capability + Goal snapshot (факты → `.eurika/self_model.json`); CLI `eurika self-model .`; scores: HITL accept-rate, **apply_ok_rate**, verify_by_kind, time_to_decide, hypotheses_supported |
+| `модель себя`, `какое состояние?` | Self + Capability + Goal snapshot (факты → `.eurika/self_model.json`); first-class **deps / versions / problems**; CLI `eurika self-model .`; scores: HITL accept-rate, **apply_ok_rate**, verify_by_kind, time_to_decide, hypotheses_supported |
 | `гипотезы`, `какие гипотезы?` | Hypothesis Engine v0 + **ranking** (`rank_score`, multi reject); CLI `eurika hypotheses .`; hypothesis ≠ fact |
-| `a/b`, `сравни sandbox` | Formal A/B v0 (baseline vs sandbox → `.eurika/ab_trials.json`); `EURIKA_AB_RESCAN=auto` (default) rescans when metrics stable; CLI `eurika ab-compare .`; не autoapply |
+| `a/b`, `сравни sandbox` | Formal A/B v2 (core + suite: modules/density/max_blast/**layer_violations** → `.eurika/ab_trials.json`); `EURIKA_AB_RESCAN=auto` (default) rescans when metrics stable; CLI `eurika ab-compare .`; не autoapply |
 | `что получилось?`, `итог цели` | Reflection: факты + краткий narrative (Groq/Ollama); без LLM — только факты |
 | ↑/↓ в поле Chat | История отправленных запросов (персист `.eurika/chat_prompt_history.json`) |
-| `@` в поле Chat | Автодополнение модулей из `self_map.json` и smell-типов (`@patch_engine.py`, `@god_module`); Tab/Enter — вставить, Esc — закрыть |
+| `@` в поле Chat | Автодополнение модулей из `self_map.json` и smell-типов (`@patch_engine.py`, `@god_module`); Tab/Enter — вставить, Esc — закрыть. Desktop: тот же каталог через `mentions/suggest` |
 | `сбрось цель`, `clear goal` | Очистить active_goal + pending_clarification + last_execution (не HITL Apply) |
 | `проведи ритуал` | scan → doctor → report-snapshot |
 | `прогони release check` | `./scripts/release_check.sh` |
@@ -113,7 +114,7 @@
 | `включи EURIKA_USE_VECTOR_INTENT=1` | Fuzzy embeddings (нужен `nomic-embed-text`) |
 | вопрос про тикеры / общую модель market ML | Прямой ответ из кода (без LLM) |
 
-В Qt панель **Контекст** (справа в Агент) показывает те же блоки: Цель / Pending Diff / Итог / **Approvals** (`.eurika/pending_plan.json`) / краткий **Self·Capability·Goal**; после run цель может быть «нет», а итог ещё виден до «сбрось цель». Idle self-dev тоже пишет итог. В Desktop — вкладка **Context** (`panel/state` → `context`), тот же `format_agent_context_panel`; **Diff / Apply / Reject** для HITL `dialog_state.pending_plan` (`context/preview`, `context/decide`) — не путать с Approvals `.eurika/pending_plan.json`.
+В Qt панель **Контекст** (справа в Агент) показывает те же блоки: Цель / Pending Diff / Итог / **Approvals** (`.eurika/pending_plan.json`) / **Host admin HITL** (`.eurika/pending_host_admin.json`) / краткий **Self·Capability·Goal**; после run цель может быть «нет», а итог ещё виден до «сбрось цель». Idle self-dev тоже пишет итог. В Desktop — вкладка **Context** (`panel/state` → `context`), тот же `format_agent_context_panel`; **Diff / Apply / Reject** для HITL `dialog_state.pending_plan` и очереди host-admin (`context/preview`, `context/decide`) — не путать с Approvals `.eurika/pending_plan.json`. Desktop Chat паркует `agent_edit` в Approvals (`reviewInApprovals`), как Qt IMPLEMENT.
 
 ### Git
 
@@ -145,7 +146,7 @@
 
 ## LLM-провайдеры (Models + `.env`)
 
-Настройка во вкладке **Models** или в `.env` в корне проекта Eurika / открытого проекта.
+Настройка во вкладке **Models** (Qt) / панели **Models** (Desktop: `panel/state models`, запись `models/prefs` с HITL) или в `.env` в корне проекта Eurika / открытого проекта. Desktop не стартует/не останавливает Ollama и не пишет API-ключи.
 
 | Переменная | Назначение |
 |------------|------------|
@@ -168,7 +169,7 @@
 
 ### Free / cloud LLM presets
 
-Отдельный SDK не нужен — тот же OpenAI-compatible HTTP. В Qt: **Models → API preset** (подставляет `OPENAI_BASE_URL` + модель по умолчанию). Ключ только в `.env` как `OPENAI_API_KEY`.
+Отдельный SDK не нужен — тот же OpenAI-compatible HTTP. В Qt и Desktop: **Models → API preset** (подставляет `OPENAI_BASE_URL` + модель по умолчанию). Ключ только в `.env` как `OPENAI_API_KEY`.
 
 | Preset | `OPENAI_BASE_URL` | Пример модели | Ключ |
 |--------|-------------------|---------------|------|
@@ -279,6 +280,7 @@ BRAVE_SEARCH_API_KEY=BSA...
 ```bash
 python -m eurika.agent.http_client chat "Что за проект?"
 python -m eurika.agent.http_client market
+python -m eurika.agent.http_client models
 ```
 
 `chat` — тот же `chat_send`, что вкладка Chat. Подробнее: [CLI.md](CLI.md) § `eurika serve`.

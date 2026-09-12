@@ -158,11 +158,15 @@ def test_gateway_exposes_core_api_market_and_learning(agent_http: AgentHttpServi
     endpoints = " ".join(catalog.get("endpoints") or [])
     assert "GET /api/market" in endpoints
     assert "GET /api/learning" in endpoints
+    assert "GET /api/models" in endpoints
     market = client.get("/api/market")
     assert market["panel"] == "market"
     assert isinstance(market.get("data"), dict)
     learning = client.get("/api/learning")
     assert "paper" in learning
+    models = client.get("/api/models")
+    assert models["panel"] == "models"
+    assert isinstance(models.get("llm"), dict)
     missing = client.post("/api/chat", {})
     assert "error" in missing
 

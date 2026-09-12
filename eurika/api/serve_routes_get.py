@@ -70,7 +70,7 @@ def dispatch_api_get(
                 "GET /api/doctor?window=5&no_llm=0 — full report + architect (ROADMAP 3.5.1)",
                 "GET /api/patch_plan?window=5 — planned operations",
                 "GET /api/explain?module=...&window=5 — module role and risks",
-                "GET /api/graph — dependency graph (nodes=modules, edges=imports)",
+                "GET /api/graph?include_calls=1 — dependency graph; optional best-effort static call graph + read-only accuracy/cost diagnostics",
                 "GET /api/operational_metrics?window=10 — apply-rate, rollback-rate, median verify time",
                 "GET /api/pattern_library?with_samples=1 — OSS pattern library (Learning from GitHub 3.0.5)",
                 "GET /api/test_links — R10: test_file→module links",
@@ -79,6 +79,7 @@ def dispatch_api_get(
                 "GET /api/pending_plan — team-mode plan for approve UI (ROADMAP 3.5.6)",
                 "GET /api/market — paper Market panel (portfolio, opens, journal)",
                 "GET /api/learning — paper learning snapshot (trades, model, bank)",
+                "GET /api/models — Models-tab snapshot (LLM/ML status; no secrets)",
                 "GET /api/file?path=... — read file content (for diff preview)",
                 "GET /api/activity?after=0 — live API/agent work for Chat/Terminal/Desktop",
                 "POST /api/operation_preview — preview single-file op diff (ROADMAP 3.6.7)",
@@ -110,7 +111,8 @@ def dispatch_api_get(
         _json_response(handler, plan if plan else {"error": "patch plan not available", "hint": "run eurika scan first"})
         return True
     if path == "/api/graph":
-        _json_response(handler, get_graph(project_root))
+        include_calls = query.get("include_calls", ["0"])[0].lower() in ("1", "true", "yes")
+        _json_response(handler, get_graph(project_root, include_calls=include_calls))
         return True
     if path == "/api/operational_metrics":
         window = int(query.get("window", [10])[0])
@@ -147,6 +149,12 @@ def dispatch_api_get(
         from eurika.ml.learning_status import market_learning_status
 
         _json_response(handler, market_learning_status(project_root))
+        return True
+    if path == "/api/models":
+        from eurika.agent.panels import PanelService
+        from eurika.agent.workspace import WorkspaceTools
+
+        _json_response(handler, PanelService(WorkspaceTools(project_root)).state("models"))
         return True
     if path == "/api/file":
         file_q = query.get("path", [])

@@ -117,6 +117,20 @@ test("desktop can cancel an in-flight chat request", () => {
   assert.match(renderer, /agent\/event/);
 });
 
+test("desktop product chat, mentions, and scaffolds share Qt RPC", () => {
+  assert.match(main, /"chat\/send"/);
+  assert.match(main, /"mentions\/suggest"/);
+  assert.match(main, /"project\/create"/);
+  assert.match(main, /"models\/prefs"/);
+  assert.match(html, /name="chat-mode"/);
+  assert.match(html, /id="mention-popup"/);
+  assert.match(html, /data-panel="models"/);
+  assert.match(renderer, /function sendProductChat/);
+  assert.match(renderer, /function bindMentionInput/);
+  assert.match(renderer, /"project\/create"/);
+  assert.match(renderer, /function renderModels/);
+});
+
 test("desktop idle self-dev opt-in mirrors Qt", () => {
   assert.match(html, /id="idle-self-dev"/);
   assert.match(html, /Саморазвитие в простое LLM/);

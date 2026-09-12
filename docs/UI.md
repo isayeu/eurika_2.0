@@ -6,10 +6,10 @@
 
 | Вкладка | Назначение |
 |---------|------------|
-| **Chat** (первая) | Chat-first: слева **рейка как в Cursor** — воркспейс = Project root, дети = чаты; **‹/›** сворачивает панель; **Новый чат** выбирает каталог; **+** — тред в этом root; ПКМ по чату — переименовать/удалить; ПКМ по воркспейсу — убрать из списка (каталог на диске не трогается). Подвкладки **Агент** / **Market**. Правки агента → **Approvals**. Market: Live paper, без live-ордеров. См. [CHAT.md](CHAT.md) |
+| **Chat** (первая) | Chat-first: слева **рейка как в Cursor** — воркспейс = Project root, дети = чаты; **‹/›** сворачивает панель; **Новый чат** выбирает каталог; **+** — тред в этом root; ПКМ по чату — переименовать/удалить; ПКМ по воркспейсу — убрать из списка (каталог на диске не трогается). Подвкладки **Агент** / **Market**. Правки агента → **Approvals**. Desktop: режимы **Eurika** (`chat/send`) и **Agent** (`session/chat`). Market: Live paper, без live-ордеров. См. [CHAT.md](CHAT.md) |
 | **Terminal** | Классический экран: ввод после `$ ` (Enter = Run), Stop/Clear сверху; вывод Commands + shell |
-| **Models** | Подвкладки **LLM** / **ML**. LLM: Ollama, GPU, chat provider. ML: PyTorch + **Market learning**. См. [CHAT.md](CHAT.md) / [HARDWARE.md](HARDWARE.md) |
-| **Commands** | scan/doctor/fix/cycle/explain/…, **bug-hunt** (C.14 HITL), learn-github; Run/Stop; Quality: Ruff, Mypy, Release check |
+| **Models** | Подвкладки **LLM** / **ML**. LLM: Ollama, GPU, chat provider. ML: PyTorch + **Market learning**. Desktop: панель **Models** (`panel/state` / `models/prefs`) — routing + статус, без start/stop Ollama и без ключей. См. [CHAT.md](CHAT.md) / [HARDWARE.md](HARDWARE.md) |
+| **Commands** | scan/doctor/fix/cycle/explain/…, **bug-hunt** (C.14 HITL), learn-github, **self-model / hypotheses / ab-compare**; Run/Stop; Quality: Ruff, Mypy, Release check. Desktop: те же id через `command/run`. |
 | **Dashboard** | Summary (modules, deps, cycles, risk, maturity, trends, **Energy**), Top risks, Operational metrics, Learning insights, **ARCHITECTURE METRICS** (blast radius, dependency_density, fragility heatmap 🟢🟡🔴 RV10); Energy — MetricVector (ROADMAP §5.7); автообновление при смене project root |
 | **Graph** | Интерактивный граф зависимостей. Требует `eurika scan .` перед использованием. |
 | **Approvals** | Chat-агент (Qt, `reviewInApprovals`) кладёт полный патч (`agent_edit`) в `.eurika/pending_plan.json`; после ответа с `approvalsQueued>0` вкладка открывается сама. Load plan → **approve** → **Save** или **Run apply-approved**. Desktop: та же цепочка через `approval/save` / `approval/apply`. `git_commit`/`git_push` в этом режиме **отложены** до apply на диск (потом отдельный HITL / повторный запрос). Также team-mode `eurika fix`. Для extract_block/extract_nested — OSS Reference (Learning from GitHub). |
@@ -137,7 +137,7 @@ Evolution report: тренды (complexity, smells, centralization), регре�
 ### Chat
 Чат с Eurika через прослойку Ollama: введите сообщение, получите ответ с учётом контекста проекта (summary, recent events). RAG: при похожем запросе — прошлые обмены в промпт.
 
-На Агенте: **Apply / Reject / Diff** для HITL pending-плана (`dialog_state`) и для agent `pendingToolCalls` (git Commit/Push, edit без Approvals-режима). Diff в **Контекст** открывается **автоматически** при pending; **Apply** активен только после Diff (кнопка Diff — обновить). Desktop **Context** — тот же HITL (`context/preview` / `context/decide`). Основной путь правок кода в Qt — вкладка **Approvals** (`agent_edit`), не путать с Chat Apply.
+На Агенте: **Apply / Reject / Diff** для HITL pending-плана (`dialog_state`), **host-admin** (`.eurika/pending_host_admin.json`) и для agent `pendingToolCalls` (git Commit/Push, edit без Approvals-режима). Diff в **Контекст** открывается **автоматически** при pending; **Apply** активен только после Diff (кнопка Diff — обновить). Desktop **Context** — тот же HITL (`context/preview` / `context/decide`), включая host-admin. Основной путь правок кода — вкладка **Approvals** (`agent_edit` + `reviewInApprovals`), не путать с Chat Apply.
 
 **Agent intents (3.5.11.C):**
 
